@@ -5,7 +5,7 @@
   "scripts": {
       "dev": "ts-node src/index.ts",
   "start": "ts-node src/index.ts",
-  "build": "echo 'No build needed'"
+  "build": "echo 'skip'"
   },
   "dependencies": {
     "@prisma/adapter-pg": "^7.0.0",
