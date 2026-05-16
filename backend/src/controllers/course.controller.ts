@@ -1,0 +1,259 @@
+import { Response } from 'express'
+import { AuthRequest } from '../middlewares/auth.middleware'
+import prisma from '../lib/prisma'
+
+const BTH_GRADES = ['TERCERO', 'CUARTO', 'QUINTO', 'SEXTO']
+
+// ─────────────────────────────────────────────
+// GET /api/courses — Listar cursos
+// ─────────────────────────────────────────────
+export const getCourses = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const { level, shift, educationType } = req.query
+
+    const courses = await prisma.course.findMany({
+      where: {
+        ...(level         ? { level:         level         as any } : {}),
+        ...(shift         ? { shift:         shift         as any } : {}),
+        ...(educationType ? { educationType: educationType as any } : {}),
+      },
+      include: {
+        shiftDirector: {
+          include: { user: { select: { id: true, email: true } } }
+        },
+        _count: { select: { assignments: true, schedules: true } }
+      },
+      orderBy: [{ level: 'asc' }, { grade: 'asc' }, { parallel: 'asc' }, { shift: 'asc' }]
+    })
+
+    res.json(courses)
+  } catch (error) {
+    console.error('getCourses error:', error)
+    res.status(500).json({ message: 'Error al obtener cursos' })
+  }
+}
+
+// ─────────────────────────────────────────────
+// GET /api/courses/:id — Obtener un curso
+// ─────────────────────────────────────────────
+export const getCourseById = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const { id } = req.params
+
+    const course = await prisma.course.findUnique({
+      where: { id: parseInt(id) },
+      include: {
+        shiftDirector: {
+          include: { user: { select: { id: true, email: true } } }
+        },
+        teacherSubjects: {
+          include: {
+            teacher: { select: { id: true, firstName: true, lastName: true } },
+            subject: { select: { id: true, name: true, code: true } },
+          }
+        },
+        _count: { select: { assignments: true } }
+      }
+    })
+
+    if (!course) {
+      res.status(404).json({ message: 'Curso no encontrado' })
+      return
+    }
+
+    res.json(course)
+  } catch (error) {
+    console.error('getCourseById error:', error)
+    res.status(500).json({ message: 'Error al obtener curso' })
+  }
+}
+
+// ─────────────────────────────────────────────
+// GET /api/courses/:id/students — Estudiantes
+// ─────────────────────────────────────────────
+export const getCourseStudents = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const { id }   = req.params
+    const { year } = req.query
+
+    let academicYear = year ? parseInt(year as string) : null
+    if (!academicYear) {
+      const active = await prisma.academicYear.findFirst({ where: { isActive: true } })
+      if (active) academicYear = active.year
+    }
+
+    const assignments = await prisma.studentAcademicAssignment.findMany({
+      where: {
+        courseId: parseInt(id),
+        ...(academicYear ? { year: academicYear } : {}),
+      },
+      include: {
+        student: {
+          select: { id: true, firstName: true, lastName: true, ci: true, rude: true, birthDate: true }
+        }
+      },
+      orderBy: { student: { lastName: 'asc' } }
+    })
+
+    res.json(assignments)
+  } catch (error) {
+    console.error('getCourseStudents error:', error)
+    res.status(500).json({ message: 'Error al obtener estudiantes del curso' })
+  }
+}
+
+// ─────────────────────────────────────────────
+// POST /api/courses — Crear curso
+// ─────────────────────────────────────────────
+export const createCourse = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const { level, grade, parallel, educationType, shift } = req.body
+    const eduType = educationType || 'REGULAR'
+
+    if (!level || !grade || !parallel || !shift) {
+      res.status(400).json({ message: 'Nivel, grado, paralelo y turno son requeridos' })
+      return
+    }
+
+    // BTH solo en Secundaria desde 3°
+    if (eduType === 'BTH') {
+      if (level !== 'SECUNDARIA') {
+        res.status(400).json({ message: 'El tipo BTH solo aplica en el nivel Secundaria' })
+        return
+      }
+      if (!BTH_GRADES.includes(grade)) {
+        res.status(400).json({ message: 'El tipo BTH solo aplica desde 3° grado de Secundaria' })
+        return
+      }
+    }
+
+    // Verificar duplicado exacto
+    const existing = await prisma.course.findUnique({
+      where: { level_grade_parallel_educationType_shift: { level, grade, parallel, educationType: eduType, shift } }
+    })
+    if (existing) {
+      res.status(409).json({ message: 'Ya existe un curso con esas características en ese turno' })
+      return
+    }
+
+    // BTH no puede compartir turno con Regular del mismo grado/paralelo
+    if (eduType === 'BTH') {
+      const regularSameTurn = await prisma.course.findFirst({
+        where: { level, grade, parallel, educationType: 'REGULAR', shift }
+      })
+      if (regularSameTurn) {
+        res.status(409).json({ message: 'El curso BTH no puede estar en el mismo turno que el Regular del mismo grado y paralelo' })
+        return
+      }
+    }
+
+    // Regular no puede compartir turno con BTH del mismo grado/paralelo
+    if (eduType === 'REGULAR') {
+      const bthSameTurn = await prisma.course.findFirst({
+        where: { level, grade, parallel, educationType: 'BTH', shift }
+      })
+      if (bthSameTurn) {
+        res.status(409).json({ message: 'El curso Regular no puede estar en el mismo turno que el BTH del mismo grado y paralelo' })
+        return
+      }
+    }
+
+    const course = await prisma.course.create({
+      data: { level, grade, parallel, educationType: eduType, shift },
+      include: { _count: { select: { assignments: true } } }
+    })
+
+    res.status(201).json({ message: 'Curso creado correctamente', course })
+  } catch (error) {
+    console.error('createCourse error:', error)
+    res.status(500).json({ message: 'Error al crear curso' })
+  }
+}
+
+// ─────────────────────────────────────────────
+// PUT /api/courses/:id — Editar curso
+// ─────────────────────────────────────────────
+export const updateCourse = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const { id } = req.params
+    const { level, grade, parallel, educationType, shift, shiftDirectorId } = req.body
+
+    const existing = await prisma.course.findUnique({ where: { id: parseInt(id) } })
+    if (!existing) {
+      res.status(404).json({ message: 'Curso no encontrado' })
+      return
+    }
+
+    const newLevel    = level         || existing.level
+    const newGrade    = grade         || existing.grade
+    const newParallel = parallel      || existing.parallel
+    const newEduType  = educationType || existing.educationType
+    const newShift    = shift         || existing.shift
+
+    // Validar BTH
+    if (newEduType === 'BTH') {
+      if (newLevel !== 'SECUNDARIA') {
+        res.status(400).json({ message: 'El tipo BTH solo aplica en el nivel Secundaria' })
+        return
+      }
+      if (!BTH_GRADES.includes(newGrade)) {
+        res.status(400).json({ message: 'El tipo BTH solo aplica desde 3° grado de Secundaria' })
+        return
+      }
+    }
+
+    // Verificar duplicado (excluyendo el actual)
+    const duplicate = await prisma.course.findFirst({
+      where: {
+        level: newLevel, grade: newGrade, parallel: newParallel,
+        educationType: newEduType, shift: newShift,
+        NOT: { id: parseInt(id) }
+      }
+    })
+    if (duplicate) {
+      res.status(409).json({ message: 'Ya existe un curso con esas características' })
+      return
+    }
+
+    const course = await prisma.course.update({
+      where: { id: parseInt(id) },
+      data: {
+        level: newLevel, grade: newGrade, parallel: newParallel,
+        educationType: newEduType, shift: newShift,
+        ...(shiftDirectorId !== undefined ? { shiftDirectorId } : {}),
+      },
+      include: { _count: { select: { assignments: true } } }
+    })
+
+    res.json({ message: 'Curso actualizado correctamente', course })
+  } catch (error) {
+    console.error('updateCourse error:', error)
+    res.status(500).json({ message: 'Error al actualizar curso' })
+  }
+}
+
+// ─────────────────────────────────────────────
+// DELETE /api/courses/:id — Eliminar curso
+// ─────────────────────────────────────────────
+export const deleteCourse = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const { id } = req.params
+
+    const count = await prisma.studentAcademicAssignment.count({
+      where: { courseId: parseInt(id) }
+    })
+
+    if (count > 0) {
+      res.status(400).json({
+        message: `No se puede eliminar el curso porque tiene ${count} estudiante(s) inscrito(s)`
+      })
+      return
+    }
+
+    await prisma.course.delete({ where: { id: parseInt(id) } })
+    res.json({ message: 'Curso eliminado correctamente' })
+  } catch (error) {
+    console.error('deleteCourse error:', error)
+    res.status(500).json({ message: 'Error al eliminar curso' })
+  }
+}

@@ -1,0 +1,309 @@
+import { Response } from 'express'
+import bcrypt from 'bcryptjs'
+import { AuthRequest } from '../middlewares/auth.middleware'
+import prisma from '../lib/prisma'
+
+// ─────────────────────────────────────────────
+// Función: generar email único
+// ─────────────────────────────────────────────
+const generateEmail = async (firstName: string, lastName: string): Promise<string> => {
+  const normalize = (str: string) =>
+    str.toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/\s+/g, '.')
+      .replace(/[^a-z0-9.]/g, '')
+
+  const first = normalize(firstName.split(' ')[0])
+  const last  = normalize(lastName.split(' ')[0])
+  const base  = `${first}.${last}@nnuu.edu.bo`
+
+  const existing = await prisma.user.findUnique({ where: { email: base } })
+  if (!existing) return base
+
+  let counter = 2
+  while (true) {
+    const candidate = `${first}.${last}${counter}@nnuu.edu.bo`
+    const dup = await prisma.user.findUnique({ where: { email: candidate } })
+    if (!dup) return candidate
+    counter++
+  }
+}
+
+// ─────────────────────────────────────────────
+// Función: generar contraseña identificable
+// maestro + últimos 4 dígitos CI + año
+// Sin CI: maestro + primeras 4 letras apellido + año
+// ─────────────────────────────────────────────
+const generateTeacherPassword = (lastName: string, ci?: string): string => {
+  const year = new Date().getFullYear()
+  if (ci && ci.trim().length >= 4) {
+    return `maestro${ci.trim().slice(-4)}${year}`
+  }
+  const normalize = (str: string) =>
+    str.toUpperCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^A-Z]/g, '')
+  const letters = normalize(lastName.split(' ')[0]).slice(0, 4)
+  return `maestro${letters}${year}`
+}
+
+// ─────────────────────────────────────────────
+// GET /api/teachers — Listar maestros
+// ─────────────────────────────────────────────
+export const getTeachers = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const { search, isActive } = req.query
+
+    const teachers = await prisma.teacher.findMany({
+      where: {
+        ...(isActive !== undefined ? { isActive: isActive === 'true' } : {}),
+        ...(search ? {
+          OR: [
+            { firstName: { contains: search as string, mode: 'insensitive' } },
+            { lastName:  { contains: search as string, mode: 'insensitive' } },
+            { ci:        { contains: search as string, mode: 'insensitive' } },
+            { specialty: { contains: search as string, mode: 'insensitive' } },
+          ]
+        } : {})
+      },
+      include: {
+        user: { select: { id: true, email: true, role: true, isActive: true } },
+        assignments: {
+          include: {
+            subject: { select: { id: true, name: true, code: true } },
+            course:  { select: { id: true, level: true, grade: true, parallel: true, shift: true } },
+          },
+          take: 5
+        },
+        _count: { select: { assignments: true } }
+      },
+      orderBy: [{ lastName: 'asc' }, { firstName: 'asc' }]
+    })
+
+    res.json(teachers)
+  } catch (error) {
+    console.error('getTeachers error:', error)
+    res.status(500).json({ message: 'Error al obtener maestros' })
+  }
+}
+
+// ─────────────────────────────────────────────
+// GET /api/teachers/:id
+// ─────────────────────────────────────────────
+export const getTeacherById = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const { id } = req.params
+
+    const teacher = await prisma.teacher.findUnique({
+      where: { id: parseInt(id) },
+      include: {
+        user: { select: { id: true, email: true, role: true, isActive: true } },
+        assignments: {
+          include: {
+            subject:      { select: { id: true, name: true, code: true } },
+            course:       { select: { id: true, level: true, grade: true, parallel: true, shift: true, educationType: true } }, 
+          }
+        }
+      }
+    })
+
+    if (!teacher) {
+      res.status(404).json({ message: 'Maestro no encontrado' })
+      return
+    }
+
+    res.json(teacher)
+  } catch (error) {
+    console.error('getTeacherById error:', error)
+    res.status(500).json({ message: 'Error al obtener maestro' })
+  }
+}
+
+// ─────────────────────────────────────────────
+// POST /api/teachers — Crear maestro
+// ─────────────────────────────────────────────
+export const createTeacher = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const { firstName, lastName, ci, phone, email, specialty } = req.body
+
+    if (!firstName || !lastName) {
+      res.status(400).json({ message: 'Nombre y apellido son requeridos' })
+      return
+    }
+
+    // Verificar CI único
+    if (ci) {
+      const existingCI = await prisma.teacher.findUnique({ where: { ci } })
+      if (existingCI) {
+        res.status(409).json({ message: `Ya existe un maestro con el CI ${ci}` })
+        return
+      }
+    }
+
+    // Generar email
+    let accessEmail: string
+    if (email && email.trim() !== '') {
+      const existing = await prisma.user.findUnique({ where: { email: email.trim() } })
+      if (existing) {
+        res.status(409).json({ message: `El correo ${email} ya está en uso` })
+        return
+      }
+      accessEmail = email.trim()
+    } else {
+      accessEmail = await generateEmail(firstName, lastName)
+    }
+
+    // Generar contraseña identificable
+    const defaultPassword = generateTeacherPassword(lastName, ci)
+    const hashedPassword  = await bcrypt.hash(defaultPassword, 10)
+
+    // Crear usuario
+    const user = await prisma.user.create({
+      data: { email: accessEmail, password: hashedPassword, role: 'TEACHER', isActive: true }
+    })
+
+    // Crear maestro
+    const teacher = await prisma.teacher.create({
+      data: {
+        firstName,
+        lastName,
+        ci:        ci        || null,
+        phone:     phone     || null,
+        email:     email     || null,
+        specialty: specialty || null,
+        isActive:  true,
+        userId:    user.id,
+      },
+      include: {
+        user: { select: { id: true, email: true, role: true } }
+      }
+    })
+
+    res.status(201).json({
+      message:         'Maestro registrado correctamente',
+      teacher,
+      accessEmail,
+      defaultPassword,
+      passwordHint:    ci
+        ? `Contraseña = maestro + últimos 4 dígitos del CI + año`
+        : `Contraseña = maestro + primeras 4 letras del apellido + año`,
+    })
+  } catch (error) {
+    console.error('createTeacher error:', error)
+    res.status(500).json({ message: 'Error al registrar maestro' })
+  }
+}
+
+// ─────────────────────────────────────────────
+// PUT /api/teachers/:id — Actualizar
+// ─────────────────────────────────────────────
+export const updateTeacher = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const { id } = req.params
+    const { firstName, lastName, ci, phone, email, specialty } = req.body
+
+    const existing = await prisma.teacher.findUnique({ where: { id: parseInt(id) } })
+    if (!existing) {
+      res.status(404).json({ message: 'Maestro no encontrado' })
+      return
+    }
+
+    if (ci && ci !== existing.ci) {
+      const dup = await prisma.teacher.findUnique({ where: { ci } })
+      if (dup) {
+        res.status(409).json({ message: `Ya existe un maestro con el CI ${ci}` })
+        return
+      }
+    }
+
+    const teacher = await prisma.teacher.update({
+      where: { id: parseInt(id) },
+      data: {
+        ...(firstName !== undefined ? { firstName }                  : {}),
+        ...(lastName  !== undefined ? { lastName  }                  : {}),
+        ...(ci        !== undefined ? { ci:        ci       || null } : {}),
+        ...(phone     !== undefined ? { phone:     phone    || null } : {}),
+        ...(email     !== undefined ? { email:     email    || null } : {}),
+        ...(specialty !== undefined ? { specialty: specialty || null } : {}),
+      },
+      include: { user: { select: { id: true, email: true, role: true } } }
+    })
+
+    res.json({ message: 'Maestro actualizado correctamente', teacher })
+  } catch (error) {
+    console.error('updateTeacher error:', error)
+    res.status(500).json({ message: 'Error al actualizar maestro' })
+  }
+}
+
+// ─────────────────────────────────────────────
+// PATCH /api/teachers/:id/toggle
+// ─────────────────────────────────────────────
+export const toggleTeacherStatus = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const { id } = req.params
+
+    const teacher = await prisma.teacher.findUnique({
+      where: { id: parseInt(id) },
+      include: { user: true }
+    })
+
+    if (!teacher) {
+      res.status(404).json({ message: 'Maestro no encontrado' })
+      return
+    }
+
+    const newStatus = !teacher.isActive
+
+    await prisma.teacher.update({ where: { id: parseInt(id) }, data: { isActive: newStatus } })
+
+    if (teacher.userId) {
+      await prisma.user.update({ where: { id: teacher.userId }, data: { isActive: newStatus } })
+    }
+
+    res.json({ message: newStatus ? 'Maestro activado' : 'Maestro desactivado' })
+  } catch (error) {
+    console.error('toggleTeacherStatus error:', error)
+    res.status(500).json({ message: 'Error al cambiar estado' })
+  }
+}
+
+// ─────────────────────────────────────────────
+// DELETE /api/teachers/:id — Eliminar
+// ─────────────────────────────────────────────
+export const deleteTeacher = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const { id } = req.params
+
+    const teacher = await prisma.teacher.findUnique({
+      where: { id: parseInt(id) },
+      include: { _count: { select: { assignments: true } } }
+    })
+
+    if (!teacher) {
+      res.status(404).json({ message: 'Maestro no encontrado' })
+      return
+    }
+
+    if (teacher._count.assignments > 0) {
+      res.status(400).json({
+        message: `No se puede eliminar: tiene ${teacher._count.assignments} asignación(es) de materia. Desactívalo en su lugar.`
+      })
+      return
+    }
+
+    if (teacher.userId) {
+      const savedUserId = teacher.userId
+      await prisma.$executeRaw`UPDATE "Teacher" SET "userId" = NULL WHERE id = ${parseInt(id)}`
+      await prisma.user.delete({ where: { id: savedUserId } })
+    }
+
+    await prisma.teacher.delete({ where: { id: parseInt(id) } })
+    res.json({ message: 'Maestro eliminado correctamente' })
+  } catch (error) {
+    console.error('deleteTeacher error:', error)
+    res.status(500).json({ message: 'Error al eliminar maestro' })
+  }
+}
