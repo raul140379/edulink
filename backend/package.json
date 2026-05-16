@@ -3,9 +3,9 @@
   "version": "1.0.0",
   "main": "dist/index.js",
   "scripts": {
-    "dev": "ts-node src/index.ts",
-    "build": "tsc",
-    "start": "ts-node src/index.ts"
+      "dev": "ts-node src/index.ts",
+  "start": "ts-node src/index.ts",
+  "build": "echo 'No build needed'"
   },
   "dependencies": {
     "@prisma/adapter-pg": "^7.0.0",
