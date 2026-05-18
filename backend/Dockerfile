@@ -1,3 +1,4 @@
+# Build v2 - Prisma 6.7.0
 FROM node:20-alpine
 WORKDIR /app
 COPY package*.json ./
