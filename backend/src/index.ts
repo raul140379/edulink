@@ -1,20 +1,29 @@
 import express from 'express'
 import cors from 'cors'
 import dotenv from 'dotenv'
-import authRoutes    from './routes/auth.routes'
-import userRoutes    from './routes/user.routes'
+import authRoutes     from './routes/auth.routes'
+import userRoutes     from './routes/user.routes'
 import academicRoutes from './routes/academic.routes'
-import courseRoutes  from './routes/course.routes'
-import studentRoutes from './routes/student.routes'
-import parentRoutes  from './routes/parent.routes'
-import teacherRoutes from './routes/teacher.routes'
+import courseRoutes   from './routes/course.routes'
+import studentRoutes  from './routes/student.routes'
+import parentRoutes   from './routes/parent.routes'
+import teacherRoutes  from './routes/teacher.routes'
 
 dotenv.config()
 
 const app  = express()
-const PORT = process.env.PORT || 4000
+const PORT = parseInt(process.env.PORT || '4000')
 
-app.use(cors({ origin: 'http://localhost:3000', credentials: true }))
+// CORS: en producción acepta cualquier origen, en local solo localhost:3000
+const allowedOrigins = process.env.NODE_ENV === 'production'
+  ? '*'
+  : 'http://localhost:3000'
+
+app.use(cors({
+  origin: allowedOrigins,
+  credentials: process.env.NODE_ENV !== 'production'
+}))
+
 app.use(express.json())
 
 app.use('/api/auth',     authRoutes)
@@ -29,8 +38,9 @@ app.get('/', (req, res) => {
   res.json({ message: '🚀 SGJE Backend funcionando correctamente', version: '1.0.0' })
 })
 
-app.listen(PORT, () => {
-  console.log(`✅ Servidor corriendo en http://localhost:${PORT}`)
+// Escuchar en 0.0.0.0 para que Railway pueda acceder
+app.listen(PORT, '0.0.0.0', () => {
+  console.log(`✅ Servidor corriendo en puerto ${PORT}`)
 })
 
 export default app
