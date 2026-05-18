@@ -1,4 +1,4 @@
-# Build v3 - Force Prisma 6.7.0
+# Build v4 - Skip migrate deploy
 FROM node:20-alpine
 WORKDIR /app
 COPY package*.json ./
@@ -8,4 +8,4 @@ RUN npm cache clean --force && npm install
 COPY src ./src/
 RUN ./node_modules/.bin/prisma generate
 EXPOSE 4000
-CMD ["sh", "-c", "./node_modules/.bin/prisma migrate deploy && ./node_modules/.bin/ts-node --transpile-only src/index.ts"]
+CMD ["./node_modules/.bin/ts-node", "--transpile-only", "src/index.ts"]
