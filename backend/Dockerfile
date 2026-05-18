@@ -9,4 +9,4 @@ COPY start.sh ./
 RUN chmod +x start.sh
 RUN ./node_modules/.bin/prisma generate
 EXPOSE 4000
-CMD ["./start.sh"]
+CMD ["/bin/sh", "start.sh"]
