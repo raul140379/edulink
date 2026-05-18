@@ -5,6 +5,6 @@ COPY prisma ./prisma/
 COPY tsconfig.json ./
 RUN npm install
 COPY src ./src/
-RUN npx prisma generate
+RUN ./node_modules/.bin/prisma generate
 EXPOSE 4000
-CMD ["sh", "-c", "npx prisma migrate deploy && npx ts-node --transpile-only src/index.ts"]cd
+CMD ["sh", "-c", "./node_modules/.bin/prisma migrate deploy && ./node_modules/.bin/ts-node --transpile-only src/index.ts"]
