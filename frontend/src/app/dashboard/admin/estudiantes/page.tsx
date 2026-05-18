@@ -75,7 +75,7 @@ export default function EstudiantesPage() {
       const params = new URLSearchParams()
       if (search)       params.set('search', search)
       if (filterActive) params.set('isActive', filterActive)
-      const res  = await fetch(`http://localhost:4000/api/students?${params}`, { headers: { Authorization: `Bearer ${token}` } })
+      const res  = await fetch(`process.env.NEXT_PUBLIC_API_URL/api/students?${params}`, { headers: { Authorization: `Bearer ${token}` } })
       const data = await res.json()
       if (res.ok) setStudents(data)
       else notify('Error al cargar estudiantes', 'error')
@@ -85,7 +85,7 @@ export default function EstudiantesPage() {
 
   const fetchCourses = async () => {
     try {
-      const res  = await fetch('http://localhost:4000/api/courses', { headers: { Authorization: `Bearer ${token}` } })
+      const res  = await fetch('process.env.NEXT_PUBLIC_API_URL/api/courses', { headers: { Authorization: `Bearer ${token}` } })
       const data = await res.json()
       if (res.ok) setCourses(data)
     } catch { console.error('Error cargando cursos') }
@@ -111,7 +111,7 @@ export default function EstudiantesPage() {
   const handleSave = async () => {
     setError(''); setSaving(true)
     try {
-      const url    = editMode ? `http://localhost:4000/api/students/${editId}` : 'http://localhost:4000/api/students'
+      const url    = editMode ? `process.env.NEXT_PUBLIC_API_URL/api/students/${editId}` : 'process.env.NEXT_PUBLIC_API_URL/api/students'
       const method = editMode ? 'PUT' : 'POST'
       const res    = await fetch(url, {
         method,
@@ -136,7 +136,7 @@ export default function EstudiantesPage() {
     if (!enrollCourseId) { notify('Selecciona un curso', 'error'); return }
     setError(''); setSaving(true)
     try {
-      const res  = await fetch(`http://localhost:4000/api/students/${enrollId}/enroll`, {
+      const res  = await fetch(`process.env.NEXT_PUBLIC_API_URL/api/students/${enrollId}/enroll`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify({ courseId: parseInt(enrollCourseId) }),
@@ -150,7 +150,7 @@ export default function EstudiantesPage() {
 
   const handleToggle = async (id: number) => {
     try {
-      const res  = await fetch(`http://localhost:4000/api/students/${id}/toggle`, { method: 'PATCH', headers: { Authorization: `Bearer ${token}` } })
+      const res  = await fetch(`process.env.NEXT_PUBLIC_API_URL/api/students/${id}/toggle`, { method: 'PATCH', headers: { Authorization: `Bearer ${token}` } })
       const data = await res.json()
       if (res.ok) { notify(data.message); fetchStudents() }
       else notify(data.message, 'error')
@@ -160,7 +160,7 @@ export default function EstudiantesPage() {
   const handleDelete = async (id: number, name: string) => {
     if (!confirm(`¿Eliminar a ${name}? Esta acción no se puede deshacer.`)) return
     try {
-      const res  = await fetch(`http://localhost:4000/api/students/${id}`, { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } })
+      const res  = await fetch(`process.env.NEXT_PUBLIC_API_URL/api/students/${id}`, { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } })
       const data = await res.json()
       if (res.ok) { notify(data.message); fetchStudents() }
       else notify(data.message, 'error')
@@ -169,7 +169,7 @@ export default function EstudiantesPage() {
 
   const handleGenerateCredentials = async (id: number, name: string) => {
     try {
-      const res  = await fetch(`http://localhost:4000/api/students/${id}/generate-credentials`, { method: 'POST', headers: { Authorization: `Bearer ${token}` } })
+      const res  = await fetch(`process.env.NEXT_PUBLIC_API_URL/api/students/${id}/generate-credentials`, { method: 'POST', headers: { Authorization: `Bearer ${token}` } })
       const data = await res.json()
       if (!res.ok) { notify(data.message, 'error'); return }
       setCredentials({ accessEmail: data.accessEmail, defaultPassword: data.defaultPassword, studentName: name })

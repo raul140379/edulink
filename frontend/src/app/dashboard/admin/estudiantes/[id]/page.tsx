@@ -90,7 +90,7 @@ export default function StudentDetailPage() {
     const fetchStudent = async () => {
       setLoading(true)
       try {
-        const res  = await fetch(`http://localhost:4000/api/students/${id}`, {
+        const res  = await fetch(`process.env.next_public_api_url/api/students/${id}`, {
           headers: { Authorization: `Bearer ${token}` }
         })
         const data = await res.json()

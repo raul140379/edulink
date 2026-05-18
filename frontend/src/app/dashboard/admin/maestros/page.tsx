@@ -55,7 +55,7 @@ export default function MaestrosPage() {
       const params = new URLSearchParams()
       if (search)       params.set('search', search)
       if (filterActive) params.set('isActive', filterActive)
-      const res  = await fetch(`http://localhost:4000/api/teachers?${params}`, { headers: { Authorization: `Bearer ${token}` } })
+      const res  = await fetch(`process.env.NEXT_PUBLIC_API_URL/api/teachers?${params}`, { headers: { Authorization: `Bearer ${token}` } })
       const data = await res.json()
       if (res.ok) setTeachers(data)
       else notify('Error al cargar maestros', 'error')
@@ -80,7 +80,7 @@ export default function MaestrosPage() {
   const handleSave = async () => {
     setError(''); setSaving(true)
     try {
-      const url    = editMode ? `http://localhost:4000/api/teachers/${editId}` : 'http://localhost:4000/api/teachers'
+      const url    = editMode ? `process.env.NEXT_PUBLIC_API_URL/api/teachers/${editId}` : 'process.env.NEXT_PUBLIC_API_URL/api/teachers'
       const method = editMode ? 'PUT' : 'POST'
       const res    = await fetch(url, {
         method,
@@ -107,7 +107,7 @@ export default function MaestrosPage() {
 
   const handleToggle = async (id: number) => {
     try {
-      const res  = await fetch(`http://localhost:4000/api/teachers/${id}/toggle`, { method: 'PATCH', headers: { Authorization: `Bearer ${token}` } })
+      const res  = await fetch(`process.env.NEXT_PUBLIC_API_URL/api/teachers/${id}/toggle`, { method: 'PATCH', headers: { Authorization: `Bearer ${token}` } })
       const data = await res.json()
       if (res.ok) { notify(data.message); fetchTeachers() }
       else notify(data.message, 'error')
@@ -117,7 +117,7 @@ export default function MaestrosPage() {
   const handleDelete = async (id: number, name: string) => {
     if (!confirm(`¿Eliminar al maestro ${name}?`)) return
     try {
-      const res  = await fetch(`http://localhost:4000/api/teachers/${id}`, { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } })
+      const res  = await fetch(`process.env.NEXT_PUBLIC_API_URL/api/teachers/${id}`, { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } })
       const data = await res.json()
       if (res.ok) { notify(data.message); fetchTeachers() }
       else notify(data.message, 'error')

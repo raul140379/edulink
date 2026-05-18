@@ -88,7 +88,7 @@ export default function PadresPage() {
     try {
       const params = new URLSearchParams()
       if (search) params.set('search', search)
-      const res  = await fetch(`http://localhost:4000/api/parents?${params}`, { headers: { Authorization: `Bearer ${token}` } })
+      const res  = await fetch(`process.env.NEXT_PUBLIC_API_URL/api/parents?${params}`, { headers: { Authorization: `Bearer ${token}` } })
       const data = await res.json()
       if (res.ok) setParents(data)
       else notify('Error al cargar padres', 'error')
@@ -98,7 +98,7 @@ export default function PadresPage() {
 
   const fetchStudents = async () => {
     try {
-      const res  = await fetch('http://localhost:4000/api/students', { headers: { Authorization: `Bearer ${token}` } })
+      const res  = await fetch('process.env.NEXT_PUBLIC_API_URL/api/students', { headers: { Authorization: `Bearer ${token}` } })
       const data = await res.json()
       if (res.ok) setStudents(data)
     } catch { console.error('Error') }
@@ -128,7 +128,7 @@ export default function PadresPage() {
   const handleSave = async () => {
     setError(''); setSaving(true)
     try {
-      const url    = editMode ? `http://localhost:4000/api/parents/${editId}` : 'http://localhost:4000/api/parents'
+      const url    = editMode ? `process.env.NEXT_PUBLIC_API_URL/api/parents/${editId}` : 'process.env.NEXT_PUBLIC_API_URL/api/parents'
       const method = editMode ? 'PUT' : 'POST'
       const res    = await fetch(url, {
         method,
@@ -150,7 +150,7 @@ export default function PadresPage() {
     if (linkStudentIds.length === 0) { notify('Selecciona al menos un estudiante', 'error'); return }
     setError(''); setSaving(true)
     try {
-      const res  = await fetch(`http://localhost:4000/api/parents/${linkId}/link-students`, {
+      const res  = await fetch(`process.env.NEXT_PUBLIC_API_URL/api/parents/${linkId}/link-students`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify({ studentIds: linkStudentIds, relationType: linkRelType }),
@@ -167,7 +167,7 @@ export default function PadresPage() {
     if (changeRelType === currentRelType) { notify('Selecciona un tipo diferente al actual', 'error'); return }
     setError(''); setSaving(true)
     try {
-      const res  = await fetch(`http://localhost:4000/api/parents/${changeRelParentId}/change-relation/${changeRelStudentId}`, {
+      const res  = await fetch(`process.env.NEXT_PUBLIC_API_URL/api/parents/${changeRelParentId}/change-relation/${changeRelStudentId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify({ relationType: changeRelType }),
@@ -189,7 +189,7 @@ export default function PadresPage() {
   const handleUnlink = async (parentId: number, studentId: number) => {
     if (!confirm('¿Desvincular este estudiante?')) return
     try {
-      const res  = await fetch(`http://localhost:4000/api/parents/${parentId}/unlink/${studentId}`, { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } })
+      const res  = await fetch(`process.env.NEXT_PUBLIC_API_URL/api/parents/${parentId}/unlink/${studentId}`, { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } })
       const data = await res.json()
       if (res.ok) { notify(data.message); fetchParents() }
       else notify(data.message, 'error')
@@ -198,7 +198,7 @@ export default function PadresPage() {
 
   const handleToggle = async (id: number) => {
     try {
-      const res  = await fetch(`http://localhost:4000/api/parents/${id}/toggle`, { method: 'PATCH', headers: { Authorization: `Bearer ${token}` } })
+      const res  = await fetch(`process.env.NEXT_PUBLIC_API_URL/api/parents/${id}/toggle`, { method: 'PATCH', headers: { Authorization: `Bearer ${token}` } })
       const data = await res.json()
       if (res.ok) { notify(data.message); fetchParents() }
       else notify(data.message, 'error')
@@ -208,7 +208,7 @@ export default function PadresPage() {
   const handleDelete = async (id: number, name: string) => {
     if (!confirm(`¿Eliminar a ${name}?`)) return
     try {
-      const res  = await fetch(`http://localhost:4000/api/parents/${id}`, { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } })
+      const res  = await fetch(`process.env.NEXT_PUBLIC_API_URL/api/parents/${id}`, { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } })
       const data = await res.json()
       if (res.ok) { notify(data.message); fetchParents() }
       else notify(data.message, 'error')
@@ -217,7 +217,7 @@ export default function PadresPage() {
 
   const handleGenerateCreds = async (id: number, name: string) => {
     try {
-      const res  = await fetch(`http://localhost:4000/api/parents/${id}/generate-credentials`, { method: 'POST', headers: { Authorization: `Bearer ${token}` } })
+      const res  = await fetch(`process.env.NEXT_PUBLIC_API_URL/api/parents/${id}/generate-credentials`, { method: 'POST', headers: { Authorization: `Bearer ${token}` } })
       const data = await res.json()
       if (!res.ok) { notify(data.message, 'error'); return }
       setCreds({ accessEmail: data.accessEmail, defaultPassword: data.defaultPassword, name })

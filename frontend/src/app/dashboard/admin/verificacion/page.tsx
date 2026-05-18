@@ -73,7 +73,7 @@ export default function VerificacionPage() {
     if (!query.trim()) return
     setLoading(true); setSearched(true); setSelected(null); setStatus(null)
     try {
-      const res  = await fetch(`http://localhost:4000/api/students?search=${encodeURIComponent(query)}`, {
+      const res  = await fetch(`process.env.NEXT_PUBLIC_API_URL/api/students?search=${encodeURIComponent(query)}`, {
         headers: { Authorization: `Bearer ${token}` }
       })
       const data = await res.json()

@@ -59,7 +59,7 @@ export default function GestionPage() {
   const fetchYears = async () => {
     setLoading(true)
     try {
-      const res  = await fetch('http://localhost:4000/api/academic', {
+      const res  = await fetch('process.env.NEXT_PUBLIC_API_URL/api/academic', {
         headers: { Authorization: `Bearer ${token}` }
       })
       const data = await res.json()
@@ -77,8 +77,8 @@ export default function GestionPage() {
 
     if (!trimesters[yearId]) {
       const [tRes, hRes] = await Promise.all([
-        fetch(`http://localhost:4000/api/academic/${yearId}/trimesters`, { headers: { Authorization: `Bearer ${token}` } }),
-        fetch(`http://localhost:4000/api/academic/${yearId}/holidays`,   { headers: { Authorization: `Bearer ${token}` } }),
+        fetch(`process.env.NEXT_PUBLIC_API_URL/api/academic/${yearId}/trimesters`, { headers: { Authorization: `Bearer ${token}` } }),
+        fetch(`process.env.NEXT_PUBLIC_API_URL/api/academic/${yearId}/holidays`,   { headers: { Authorization: `Bearer ${token}` } }),
       ])
       const [tData, hData] = await Promise.all([tRes.json(), hRes.json()])
       if (tRes.ok) setTrimesters(p => ({ ...p, [yearId]: tData }))
@@ -90,7 +90,7 @@ export default function GestionPage() {
   const handleCreateYear = async () => {
     setError(''); setSaving(true)
     try {
-      const res  = await fetch('http://localhost:4000/api/academic', {
+      const res  = await fetch('process.env.NEXT_PUBLIC_API_URL/api/academic', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify(yearForm),
@@ -108,7 +108,7 @@ export default function GestionPage() {
   // ── Activar/Desactivar gestión ───────────────────
   const handleToggleYear = async (id: number) => {
     try {
-      const res  = await fetch(`http://localhost:4000/api/academic/${id}/toggle`, {
+      const res  = await fetch(`process.env.NEXT_PUBLIC_API_URL/api/academic/${id}/toggle`, {
         method: 'PATCH', headers: { Authorization: `Bearer ${token}` }
       })
       const data = await res.json()
@@ -121,7 +121,7 @@ export default function GestionPage() {
     if (!selectedYear) return
     setError(''); setSaving(true)
     try {
-      const res  = await fetch(`http://localhost:4000/api/academic/${selectedYear}/trimesters`, {
+      const res  = await fetch(`process.env.NEXT_PUBLIC_API_URL/api/academic/${selectedYear}/trimesters`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify(trimForm),
@@ -132,7 +132,7 @@ export default function GestionPage() {
       setShowTrimModal(false)
       setTrimForm({ number: '1', name: '', startDate: '', endDate: '' })
       // Recargar trimestres
-      const tRes  = await fetch(`http://localhost:4000/api/academic/${selectedYear}/trimesters`, { headers: { Authorization: `Bearer ${token}` } })
+      const tRes  = await fetch(`process.env.NEXT_PUBLIC_API_URL/api/academic/${selectedYear}/trimesters`, { headers: { Authorization: `Bearer ${token}` } })
       const tData = await tRes.json()
       if (tRes.ok) setTrimesters(p => ({ ...p, [selectedYear]: tData }))
     } catch { notify('Error de conexión', 'error') }
@@ -144,7 +144,7 @@ export default function GestionPage() {
     if (!selectedYear) return
     setError(''); setSaving(true)
     try {
-      const res  = await fetch(`http://localhost:4000/api/academic/${selectedYear}/holidays`, {
+      const res  = await fetch(`process.env.NEXT_PUBLIC_API_URL/api/academic/${selectedYear}/holidays`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify(holForm),
@@ -154,7 +154,7 @@ export default function GestionPage() {
       notify('Feriado registrado')
       setShowHolModal(false)
       setHolForm({ date: '', description: '' })
-      const hRes  = await fetch(`http://localhost:4000/api/academic/${selectedYear}/holidays`, { headers: { Authorization: `Bearer ${token}` } })
+      const hRes  = await fetch(`process.env.NEXT_PUBLIC_API_URL/api/academic/${selectedYear}/holidays`, { headers: { Authorization: `Bearer ${token}` } })
       const hData = await hRes.json()
       if (hRes.ok) setHolidays(p => ({ ...p, [selectedYear]: hData }))
     } catch { notify('Error de conexión', 'error') }
@@ -164,7 +164,7 @@ export default function GestionPage() {
   // ── Eliminar feriado ─────────────────────────────
   const handleDeleteHol = async (yearId: number, holId: number) => {
     try {
-      const res = await fetch(`http://localhost:4000/api/academic/${yearId}/holidays/${holId}`, {
+      const res = await fetch(`process.env.NEXT_PUBLIC_API_URL/api/academic/${yearId}/holidays/${holId}`, {
         method: 'DELETE', headers: { Authorization: `Bearer ${token}` }
       })
       if (res.ok) {

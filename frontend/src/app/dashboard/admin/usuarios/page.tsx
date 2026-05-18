@@ -65,7 +65,7 @@ export default function UsuariosPage() {
       const params = new URLSearchParams()
       if (search)     params.set('search', search)
       if (roleFilter) params.set('role', roleFilter)
-      const res  = await fetch(`http://localhost:4000/api/users?${params}`, {
+      const res  = await fetch(`process.env.NEXT_PUBLIC_API_URL/api/users?${params}`, {
         headers: { Authorization: `Bearer ${token}` },
       })
       const data = await res.json()
@@ -79,7 +79,7 @@ export default function UsuariosPage() {
   const handleCreate = async () => {
     setError(''); setSaving(true)
     try {
-      const res  = await fetch('http://localhost:4000/api/users', {
+      const res  = await fetch('process.env.NEXT_PUBLIC_API_URL/api/users', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify(form),
@@ -96,7 +96,7 @@ export default function UsuariosPage() {
 
   const handleToggle = async (id: number) => {
     try {
-      const res  = await fetch(`http://localhost:4000/api/users/${id}/toggle`, {
+      const res  = await fetch(`process.env.NEXT_PUBLIC_API_URL/api/users/${id}/toggle`, {
         method: 'PATCH', headers: { Authorization: `Bearer ${token}` },
       })
       const data = await res.json()
@@ -106,7 +106,7 @@ export default function UsuariosPage() {
 
   const handleResetPassword = async (id: number) => {
     try {
-      const res  = await fetch(`http://localhost:4000/api/users/${id}/reset-password`, {
+      const res  = await fetch(`process.env.NEXT_PUBLIC_API_URL/api/users/${id}/reset-password`, {
         method: 'POST', headers: { Authorization: `Bearer ${token}` },
       })
       const data = await res.json()

@@ -58,7 +58,7 @@ export default function CursosPage() {
       if (filterLevel) params.set('level', filterLevel)
       if (filterShift) params.set('shift', filterShift)
       if (filterType)  params.set('educationType', filterType)
-      const res  = await fetch(`http://localhost:4000/api/courses?${params}`, { headers: { Authorization: `Bearer ${token}` } })
+      const res  = await fetch(`process.env.NEXT_PUBLIC_API_URL/api/courses?${params}`, { headers: { Authorization: `Bearer ${token}` } })
       const data = await res.json()
       if (res.ok) setCourses(data)
       else notify('Error al cargar cursos', 'error')
@@ -86,7 +86,7 @@ export default function CursosPage() {
   const handleSave = async () => {
     setError(''); setSaving(true)
     try {
-      const url    = editMode ? `http://localhost:4000/api/courses/${editId}` : 'http://localhost:4000/api/courses'
+      const url    = editMode ? `process.env.NEXT_PUBLIC_API_URL/api/courses/${editId}` : 'process.env.NEXT_PUBLIC_API_URL/api/courses'
       const method = editMode ? 'PUT' : 'POST'
       const res    = await fetch(url, {
         method,
@@ -105,7 +105,7 @@ export default function CursosPage() {
   const handleDelete = async (id: number, name: string) => {
     if (!confirm(`¿Eliminar el curso ${name}?`)) return
     try {
-      const res  = await fetch(`http://localhost:4000/api/courses/${id}`, { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } })
+      const res  = await fetch(`process.env.NEXT_PUBLIC_API_URL/api/courses/${id}`, { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } })
       const data = await res.json()
       if (res.ok) { notify(data.message); fetchCourses() }
       else notify(data.message, 'error')

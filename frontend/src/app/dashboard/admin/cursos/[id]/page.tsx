@@ -57,8 +57,8 @@ export default function CourseDetailPage() {
       setLoading(true)
       try {
         const [cRes, aRes] = await Promise.all([
-          fetch(`http://localhost:4000/api/courses/${id}`,          { headers: { Authorization: `Bearer ${token}` } }),
-          fetch(`http://localhost:4000/api/courses/${id}/students`, { headers: { Authorization: `Bearer ${token}` } }),
+          fetch(`process.env.next_public_api_url/api/courses/${id}`,          { headers: { Authorization: `Bearer ${token}` } }),
+          fetch(`process.env.next_public_api_url/api/courses/${id}/students`, { headers: { Authorization: `Bearer ${token}` } }),
         ])
         const [cData, aData] = await Promise.all([cRes.json(), aRes.json()])
         if (cRes.ok) setCourse(cData)
