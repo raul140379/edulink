@@ -4,6 +4,8 @@ import { useEffect, useState } from 'react'
 import { Plus, Search, X, Edit, Eye, UserCheck, UserX, Trash2, Copy, Check } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000'
+
 interface Teacher {
   id:        number
   firstName: string
@@ -55,7 +57,7 @@ export default function MaestrosPage() {
       const params = new URLSearchParams()
       if (search)       params.set('search', search)
       if (filterActive) params.set('isActive', filterActive)
-      const res  = await fetch(`process.env.NEXT_PUBLIC_API_URL/api/teachers?${params}`, { headers: { Authorization: `Bearer ${token}` } })
+      const res  = await fetch(`${API_URL}/api/teachers?${params}`, { headers: { Authorization: `Bearer ${token}` } })
       const data = await res.json()
       if (res.ok) setTeachers(data)
       else notify('Error al cargar maestros', 'error')
@@ -63,6 +65,7 @@ export default function MaestrosPage() {
     finally  { setLoading(false) }
   }
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { fetchTeachers() }, [])
 
   const openCreate = () => { setEditMode(false); setEditId(null); setForm(emptyForm); setError(''); setShowModal(true) }
@@ -80,7 +83,7 @@ export default function MaestrosPage() {
   const handleSave = async () => {
     setError(''); setSaving(true)
     try {
-      const url    = editMode ? `process.env.NEXT_PUBLIC_API_URL/api/teachers/${editId}` : 'process.env.NEXT_PUBLIC_API_URL/api/teachers'
+      const url    = editMode ? `${API_URL}/api/teachers/${editId}` : `${API_URL}/api/teachers`
       const method = editMode ? 'PUT' : 'POST'
       const res    = await fetch(url, {
         method,
@@ -107,7 +110,7 @@ export default function MaestrosPage() {
 
   const handleToggle = async (id: number) => {
     try {
-      const res  = await fetch(`process.env.NEXT_PUBLIC_API_URL/api/teachers/${id}/toggle`, { method: 'PATCH', headers: { Authorization: `Bearer ${token}` } })
+      const res  = await fetch(`${API_URL}/api/teachers/${id}/toggle`, { method: 'PATCH', headers: { Authorization: `Bearer ${token}` } })
       const data = await res.json()
       if (res.ok) { notify(data.message); fetchTeachers() }
       else notify(data.message, 'error')
@@ -117,7 +120,7 @@ export default function MaestrosPage() {
   const handleDelete = async (id: number, name: string) => {
     if (!confirm(`¿Eliminar al maestro ${name}?`)) return
     try {
-      const res  = await fetch(`process.env.NEXT_PUBLIC_API_URL/api/teachers/${id}`, { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } })
+      const res  = await fetch(`${API_URL}/api/teachers/${id}`, { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } })
       const data = await res.json()
       if (res.ok) { notify(data.message); fetchTeachers() }
       else notify(data.message, 'error')
@@ -143,7 +146,6 @@ export default function MaestrosPage() {
       {success && <div className="alert suc">{success}</div>}
       {error && !showModal && <div className="alert err">{error}</div>}
 
-      {/* Filtros */}
       <div className="filters-bar">
         <div className="search-wrap">
           <Search size={14} className="sicon"/>
@@ -158,7 +160,6 @@ export default function MaestrosPage() {
         <button className="btn-outline" onClick={fetchTeachers}>Buscar</button>
       </div>
 
-      {/* Tabla */}
       <div className="table-card">
         {loading ? (
           <div className="center-state"><div className="spinner"/><p>Cargando...</p></div>
@@ -180,14 +181,8 @@ export default function MaestrosPage() {
                   <td className="muted">{t.ci || '—'}</td>
                   <td className="muted">{t.specialty || '—'}</td>
                   <td className="muted">{t.phone || '—'}</td>
-                  <td>
-                    <span className="count-badge">{t._count.assignments} asig.</span>
-                  </td>
-                  <td>
-                    <span className={`sbadge ${t.isActive ? 'act' : 'ina'}`}>
-                      {t.isActive ? 'Activo' : 'Inactivo'}
-                    </span>
-                  </td>
+                  <td><span className="count-badge">{t._count.assignments} asig.</span></td>
+                  <td><span className={`sbadge ${t.isActive ? 'act' : 'ina'}`}>{t.isActive ? 'Activo' : 'Inactivo'}</span></td>
                   <td>
                     <div className="actions">
                       <button className="icon-btn view" title="Ver detalle" onClick={() => router.push(`/dashboard/admin/maestros/${t.id}`)}><Eye size={13}/></button>
@@ -206,7 +201,6 @@ export default function MaestrosPage() {
       </div>
       <div className="tfooter">Total: <strong>{teachers.length}</strong> maestros</div>
 
-      {/* Modal crear/editar */}
       {showModal && (
         <div className="overlay" onClick={() => setShowModal(false)}>
           <div className="modal modal-lg" onClick={e => e.stopPropagation()}>
@@ -249,7 +243,6 @@ export default function MaestrosPage() {
         </div>
       )}
 
-      {/* Modal credenciales */}
       {showCredentials && creds && (
         <div className="overlay">
           <div className="modal" onClick={e => e.stopPropagation()}>

@@ -4,6 +4,8 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Image from 'next/image'
 
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000'
+
 export default function LoginPage() {
   const router = useRouter()
   const [email, setEmail] = useState('')
@@ -18,7 +20,7 @@ export default function LoginPage() {
     setLoading(true)
 
     try {
-      const res = await fetch('process.env.NEXT_PUBLIC_API_URL/api/auth/login', {
+      const res = await fetch(`${API_URL}/api/auth/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, password }),
@@ -172,8 +174,6 @@ export default function LoginPage() {
           --texto-suave: #6B8BB0;
         }
         .login-container { display: flex; min-height: 100vh; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; }
-
-        /* IZQUIERDO */
         .login-left { flex: 1; background: linear-gradient(145deg, var(--azul) 0%, #0D2352 60%, #1A3A7C 100%); position: relative; overflow: hidden; display: flex; align-items: center; justify-content: center; }
         .left-inner { position: relative; z-index: 2; padding: 48px; display: flex; flex-direction: column; gap: 40px; max-width: 500px; width: 100%; }
         .brand { display: flex; align-items: center; gap: 14px; }
@@ -194,8 +194,6 @@ export default function LoginPage() {
         .r1 { width: 500px; height: 500px; top: -200px; right: -200px; }
         .r2 { width: 350px; height: 350px; top: -125px; right: -125px; border-color: rgba(245,197,24,0.08); }
         .r3 { width: 180px; height: 180px; top: -40px; right: -40px; background: rgba(245,197,24,0.04); }
-
-        /* DERECHO */
         .login-right { width: 460px; background: var(--gris-claro); display: flex; align-items: center; justify-content: center; padding: 40px 32px; }
         .login-card { width: 100%; max-width: 380px; display: flex; flex-direction: column; gap: 32px; }
         .card-top { display: flex; flex-direction: column; gap: 8px; }
@@ -224,7 +222,6 @@ export default function LoginPage() {
         @keyframes spin { to { transform: rotate(360deg); } }
         .card-footer { border-top: 1px solid var(--gris-borde); padding-top: 20px; }
         .card-footer p { font-size: 12px; color: var(--texto-suave); text-align: center; line-height: 1.5; }
-
         @media (max-width: 820px) {
           .login-container { flex-direction: column; }
           .login-left { min-height: 260px; }

@@ -7,6 +7,8 @@ import {
   Phone, Mail, MapPin, CreditCard, Calendar, KeyRound
 } from 'lucide-react'
 
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000'
+
 interface Student {
   id:        number
   firstName: string
@@ -90,7 +92,7 @@ export default function StudentDetailPage() {
     const fetchStudent = async () => {
       setLoading(true)
       try {
-        const res  = await fetch(`process.env.next_public_api_url/api/students/${id}`, {
+        const res  = await fetch(`${API_URL}/api/students/${id}`, {
           headers: { Authorization: `Bearer ${token}` }
         })
         const data = await res.json()
@@ -107,11 +109,9 @@ export default function StudentDetailPage() {
   if (!student) return null
 
   const activeCourse = student.assignments.find(a => a.academicYear.isActive)
-  const tutorLegal   = student.parents.find(p => p.relationType === 'TUTOR_LEGAL')
 
   return (
     <div>
-      {/* Header */}
       <div className="page-header">
         <button className="back-btn" onClick={() => router.back()}>
           <ArrowLeft size={16}/> Volver
@@ -140,8 +140,6 @@ export default function StudentDetailPage() {
       </div>
 
       <div className="grid-layout">
-
-        {/* Datos personales */}
         <div className="card">
           <div className="card-title"><User size={15}/> Datos personales</div>
           <div className="data-grid">
@@ -172,7 +170,6 @@ export default function StudentDetailPage() {
           </div>
         </div>
 
-        {/* Acceso al sistema */}
         <div className="card">
           <div className="card-title"><KeyRound size={15}/> Acceso al sistema</div>
           {student.user ? (
@@ -199,7 +196,6 @@ export default function StudentDetailPage() {
           )}
         </div>
 
-        {/* Curso actual */}
         <div className="card">
           <div className="card-title"><GraduationCap size={15}/> Gestión actual</div>
           {activeCourse ? (
@@ -219,7 +215,6 @@ export default function StudentDetailPage() {
           )}
         </div>
 
-        {/* Padres y tutores */}
         <div className="card card-full">
           <div className="card-title"><Users size={15}/> Padres y Tutores</div>
           {student.parents.length === 0 ? (
@@ -246,7 +241,6 @@ export default function StudentDetailPage() {
           )}
         </div>
 
-        {/* Historial académico */}
         <div className="card card-full">
           <div className="card-title"><BookOpen size={15}/> Historial académico</div>
           {student.assignments.length === 0 ? (
@@ -276,7 +270,6 @@ export default function StudentDetailPage() {
             </table>
           )}
         </div>
-
       </div>
 
       <style>{`

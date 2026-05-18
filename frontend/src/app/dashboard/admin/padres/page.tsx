@@ -4,6 +4,8 @@ import { useEffect, useState } from 'react'
 import { Plus, Search, X, Edit, Eye, UserCheck, UserX, Trash2, KeyRound, Copy, Check, Link } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000'
+
 interface Student {
   id: number; firstName: string; lastName: string; ci?: string
 }
@@ -69,8 +71,6 @@ export default function PadresPage() {
   const [copied,     setCopied]     = useState(false)
   const [linkStudentIds,  setLinkStudentIds]  = useState<number[]>([])
   const [linkRelType,     setLinkRelType]     = useState('PADRE')
-
-  // Para cambiar relación
   const [changeRelParentId,  setChangeRelParentId]  = useState<number | null>(null)
   const [changeRelStudentId, setChangeRelStudentId] = useState<number | null>(null)
   const [changeRelType,      setChangeRelType]      = useState('PADRE')
@@ -88,7 +88,7 @@ export default function PadresPage() {
     try {
       const params = new URLSearchParams()
       if (search) params.set('search', search)
-      const res  = await fetch(`process.env.NEXT_PUBLIC_API_URL/api/parents?${params}`, { headers: { Authorization: `Bearer ${token}` } })
+      const res  = await fetch(`${API_URL}/api/parents?${params}`, { headers: { Authorization: `Bearer ${token}` } })
       const data = await res.json()
       if (res.ok) setParents(data)
       else notify('Error al cargar padres', 'error')
@@ -98,12 +98,13 @@ export default function PadresPage() {
 
   const fetchStudents = async () => {
     try {
-      const res  = await fetch('process.env.NEXT_PUBLIC_API_URL/api/students', { headers: { Authorization: `Bearer ${token}` } })
+      const res  = await fetch(`${API_URL}/api/students`, { headers: { Authorization: `Bearer ${token}` } })
       const data = await res.json()
       if (res.ok) setStudents(data)
     } catch { console.error('Error') }
   }
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { fetchParents(); fetchStudents() }, [])
 
   const openCreate = () => { setEditMode(false); setEditId(null); setForm(emptyForm); setError(''); setShowModal(true) }
@@ -128,7 +129,7 @@ export default function PadresPage() {
   const handleSave = async () => {
     setError(''); setSaving(true)
     try {
-      const url    = editMode ? `process.env.NEXT_PUBLIC_API_URL/api/parents/${editId}` : 'process.env.NEXT_PUBLIC_API_URL/api/parents'
+      const url    = editMode ? `${API_URL}/api/parents/${editId}` : `${API_URL}/api/parents`
       const method = editMode ? 'PUT' : 'POST'
       const res    = await fetch(url, {
         method,
@@ -150,7 +151,7 @@ export default function PadresPage() {
     if (linkStudentIds.length === 0) { notify('Selecciona al menos un estudiante', 'error'); return }
     setError(''); setSaving(true)
     try {
-      const res  = await fetch(`process.env.NEXT_PUBLIC_API_URL/api/parents/${linkId}/link-students`, {
+      const res  = await fetch(`${API_URL}/api/parents/${linkId}/link-students`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify({ studentIds: linkStudentIds, relationType: linkRelType }),
@@ -167,7 +168,7 @@ export default function PadresPage() {
     if (changeRelType === currentRelType) { notify('Selecciona un tipo diferente al actual', 'error'); return }
     setError(''); setSaving(true)
     try {
-      const res  = await fetch(`process.env.NEXT_PUBLIC_API_URL/api/parents/${changeRelParentId}/change-relation/${changeRelStudentId}`, {
+      const res  = await fetch(`${API_URL}/api/parents/${changeRelParentId}/change-relation/${changeRelStudentId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify({ relationType: changeRelType }),
@@ -189,7 +190,7 @@ export default function PadresPage() {
   const handleUnlink = async (parentId: number, studentId: number) => {
     if (!confirm('¿Desvincular este estudiante?')) return
     try {
-      const res  = await fetch(`process.env.NEXT_PUBLIC_API_URL/api/parents/${parentId}/unlink/${studentId}`, { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } })
+      const res  = await fetch(`${API_URL}/api/parents/${parentId}/unlink/${studentId}`, { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } })
       const data = await res.json()
       if (res.ok) { notify(data.message); fetchParents() }
       else notify(data.message, 'error')
@@ -198,7 +199,7 @@ export default function PadresPage() {
 
   const handleToggle = async (id: number) => {
     try {
-      const res  = await fetch(`process.env.NEXT_PUBLIC_API_URL/api/parents/${id}/toggle`, { method: 'PATCH', headers: { Authorization: `Bearer ${token}` } })
+      const res  = await fetch(`${API_URL}/api/parents/${id}/toggle`, { method: 'PATCH', headers: { Authorization: `Bearer ${token}` } })
       const data = await res.json()
       if (res.ok) { notify(data.message); fetchParents() }
       else notify(data.message, 'error')
@@ -208,7 +209,7 @@ export default function PadresPage() {
   const handleDelete = async (id: number, name: string) => {
     if (!confirm(`¿Eliminar a ${name}?`)) return
     try {
-      const res  = await fetch(`process.env.NEXT_PUBLIC_API_URL/api/parents/${id}`, { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } })
+      const res  = await fetch(`${API_URL}/api/parents/${id}`, { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } })
       const data = await res.json()
       if (res.ok) { notify(data.message); fetchParents() }
       else notify(data.message, 'error')
@@ -217,7 +218,7 @@ export default function PadresPage() {
 
   const handleGenerateCreds = async (id: number, name: string) => {
     try {
-      const res  = await fetch(`process.env.NEXT_PUBLIC_API_URL/api/parents/${id}/generate-credentials`, { method: 'POST', headers: { Authorization: `Bearer ${token}` } })
+      const res  = await fetch(`${API_URL}/api/parents/${id}/generate-credentials`, { method: 'POST', headers: { Authorization: `Bearer ${token}` } })
       const data = await res.json()
       if (!res.ok) { notify(data.message, 'error'); return }
       setCreds({ accessEmail: data.accessEmail, defaultPassword: data.defaultPassword, name })
@@ -281,12 +282,8 @@ export default function PadresPage() {
                       : <div className="students-list">
                           {p.students.map(ps => (
                             <div key={ps.student.id} className="schip">
-                              <button
-                                className="rbadge-btn"
-                                style={{ background: relColor[ps.relationType]+'18', color: relColor[ps.relationType] }}
-                                title="Click para cambiar tipo de relación"
-                                onClick={() => openChangeRel(p.id, ps.student.id, ps.relationType)}
-                              >
+                              <button className="rbadge-btn" style={{ background: relColor[ps.relationType]+'18', color: relColor[ps.relationType] }}
+                                title="Click para cambiar tipo de relación" onClick={() => openChangeRel(p.id, ps.student.id, ps.relationType)}>
                                 {relLabel(ps.relationType)} ✏️
                               </button>
                               <span className="sname">{ps.student.lastName} {ps.student.firstName}</span>
@@ -298,9 +295,7 @@ export default function PadresPage() {
                   </td>
                   <td>
                     {p.user ? (
-                      <span className={`sbadge ${p.user.isActive ? 'act' : 'ina'}`}>
-                        {p.user.isActive ? 'Activo' : 'Inactivo'}
-                      </span>
+                      <span className={`sbadge ${p.user.isActive ? 'act' : 'ina'}`}>{p.user.isActive ? 'Activo' : 'Inactivo'}</span>
                     ) : isTutorLegalSinAcceso(p) ? (
                       <button className="gen-cred-btn" onClick={() => handleGenerateCreds(p.id, `${p.firstName} ${p.lastName}`)}>
                         <KeyRound size={11}/> Generar acceso
@@ -330,7 +325,6 @@ export default function PadresPage() {
       </div>
       <div className="tfooter">Total: <strong>{parents.length}</strong> padres/tutores</div>
 
-      {/* Modal crear/editar */}
       {showModal && (
         <div className="overlay" onClick={() => setShowModal(false)}>
           <div className="modal modal-lg" onClick={e => e.stopPropagation()}>
@@ -361,23 +355,19 @@ export default function PadresPage() {
                 <div className="fg"><label>Dirección</label>
                   <input type="text" placeholder="Ej: Av. Principal 123" value={form.address} onChange={e => setForm({...form, address: e.target.value})}/></div>
               </div>
-
               {!editMode && (
                 <>
                   <div className="section-lbl">Tipo de relación *</div>
                   <div className="relation-grid">
                     {RELATION_TYPES.map(r => (
-                      <button key={r.value} type="button"
-                        className={`rel-btn ${form.relationType === r.value ? 'selected' : ''}`}
+                      <button key={r.value} type="button" className={`rel-btn ${form.relationType === r.value ? 'selected' : ''}`}
                         onClick={() => setForm({...form, relationType: r.value})}>
                         {r.value === 'TUTOR_LEGAL' ? '🔑 ' : ''}{r.label}
                       </button>
                     ))}
                   </div>
                   {form.relationType === 'TUTOR_LEGAL' && (
-                    <div className="info-box warn">
-                      ⚠️ Se generará usuario y contraseña de acceso para este tutor legal.
-                    </div>
+                    <div className="info-box warn">⚠️ Se generará usuario y contraseña de acceso para este tutor legal.</div>
                   )}
                   <div className="section-lbl">Vincular estudiantes</div>
                   <div className="students-select">
@@ -406,24 +396,17 @@ export default function PadresPage() {
         </div>
       )}
 
-      {/* Modal cambiar tipo de relación */}
       {showChangeRelModal && (
         <div className="overlay" onClick={() => setShowChangeRelModal(false)}>
           <div className="modal" onClick={e => e.stopPropagation()}>
-            <div className="mhead">
-              <h2>Cambiar tipo de relación</h2>
-              <button onClick={() => setShowChangeRelModal(false)}><X size={18}/></button>
-            </div>
+            <div className="mhead"><h2>Cambiar tipo de relación</h2><button onClick={() => setShowChangeRelModal(false)}><X size={18}/></button></div>
             <div className="mbody">
               {error && <div className="alert err">{error}</div>}
-              <div className="info-box">
-                Relación actual: <strong style={{ color: relColor[currentRelType] }}>{relLabel(currentRelType)}</strong>
-              </div>
+              <div className="info-box">Relación actual: <strong style={{ color: relColor[currentRelType] }}>{relLabel(currentRelType)}</strong></div>
               <div className="section-lbl">Nuevo tipo de relación</div>
               <div className="relation-grid">
                 {RELATION_TYPES.filter(r => r.value !== currentRelType).map(r => (
-                  <button key={r.value} type="button"
-                    className={`rel-btn ${changeRelType === r.value ? 'selected' : ''}`}
+                  <button key={r.value} type="button" className={`rel-btn ${changeRelType === r.value ? 'selected' : ''}`}
                     onClick={() => setChangeRelType(r.value)}>
                     {r.value === 'TUTOR_LEGAL' ? '🔑 ' : ''}{r.label}
                   </button>
@@ -431,9 +414,9 @@ export default function PadresPage() {
               </div>
               {changeRelType === 'TUTOR_LEGAL' && (
                 <div className="info-box warn">
-                  ⚠️ Al asignar como <strong>Tutor Legal</strong>:
-                  <br/>• Se le generará acceso al sistema si no tiene
-                  <br/>• Los otros tutores legales de este estudiante serán cambiados a "Otro"
+                  ⚠️ Al asignar como <strong>Tutor Legal</strong>:<br/>
+                  • Se le generará acceso al sistema si no tiene<br/>
+                  • Los otros tutores legales serán cambiados a "Otro"
                 </div>
               )}
             </div>
@@ -448,7 +431,6 @@ export default function PadresPage() {
         </div>
       )}
 
-      {/* Modal vincular */}
       {showLinkModal && (
         <div className="overlay" onClick={() => setShowLinkModal(false)}>
           <div className="modal" onClick={e => e.stopPropagation()}>
@@ -483,7 +465,6 @@ export default function PadresPage() {
         </div>
       )}
 
-      {/* Modal credenciales */}
       {showCredentials && creds && (
         <div className="overlay">
           <div className="modal" onClick={e => e.stopPropagation()}>

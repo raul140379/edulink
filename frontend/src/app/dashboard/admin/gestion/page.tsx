@@ -3,6 +3,8 @@
 import { useEffect, useState } from 'react'
 import { Plus, X, Calendar, BookOpen, CheckCircle, XCircle, ChevronDown, ChevronUp, Trash2 } from 'lucide-react'
 
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000'
+
 interface AcademicYear {
   id:        number
   year:      number
@@ -35,14 +37,12 @@ export default function GestionPage() {
   const [success, setSuccess]       = useState('')
   const [error, setError]           = useState('')
 
-  // Modales
-  const [showYearModal, setShowYearModal]   = useState(false)
-  const [showTrimModal, setShowTrimModal]   = useState(false)
-  const [showHolModal, setShowHolModal]     = useState(false)
-  const [selectedYear, setSelectedYear]     = useState<number | null>(null)
-  const [saving, setSaving]                 = useState(false)
+  const [showYearModal, setShowYearModal] = useState(false)
+  const [showTrimModal, setShowTrimModal] = useState(false)
+  const [showHolModal,  setShowHolModal]  = useState(false)
+  const [selectedYear,  setSelectedYear]  = useState<number | null>(null)
+  const [saving,        setSaving]        = useState(false)
 
-  // Formularios
   const [yearForm, setYearForm] = useState({ year: new Date().getFullYear().toString(), startDate: '', endDate: '' })
   const [trimForm, setTrimForm] = useState({ number: '1', name: '', startDate: '', endDate: '' })
   const [holForm,  setHolForm]  = useState({ date: '', description: '' })
@@ -55,11 +55,10 @@ export default function GestionPage() {
     setTimeout(() => { setSuccess(''); setError('') }, 3000)
   }
 
-  // ── Cargar gestiones ─────────────────────────────
   const fetchYears = async () => {
     setLoading(true)
     try {
-      const res  = await fetch('process.env.NEXT_PUBLIC_API_URL/api/academic', {
+      const res  = await fetch(`${API_URL}/api/academic`, {
         headers: { Authorization: `Bearer ${token}` }
       })
       const data = await res.json()
@@ -68,17 +67,16 @@ export default function GestionPage() {
     finally  { setLoading(false) }
   }
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { fetchYears() }, [])
 
-  // ── Expandir y cargar trimestres/feriados ─────────
   const handleExpand = async (yearId: number) => {
     if (expanded === yearId) { setExpanded(null); return }
     setExpanded(yearId)
-
     if (!trimesters[yearId]) {
       const [tRes, hRes] = await Promise.all([
-        fetch(`process.env.NEXT_PUBLIC_API_URL/api/academic/${yearId}/trimesters`, { headers: { Authorization: `Bearer ${token}` } }),
-        fetch(`process.env.NEXT_PUBLIC_API_URL/api/academic/${yearId}/holidays`,   { headers: { Authorization: `Bearer ${token}` } }),
+        fetch(`${API_URL}/api/academic/${yearId}/trimesters`, { headers: { Authorization: `Bearer ${token}` } }),
+        fetch(`${API_URL}/api/academic/${yearId}/holidays`,   { headers: { Authorization: `Bearer ${token}` } }),
       ])
       const [tData, hData] = await Promise.all([tRes.json(), hRes.json()])
       if (tRes.ok) setTrimesters(p => ({ ...p, [yearId]: tData }))
@@ -86,11 +84,10 @@ export default function GestionPage() {
     }
   }
 
-  // ── Crear gestión ─────────────────────────────────
   const handleCreateYear = async () => {
     setError(''); setSaving(true)
     try {
-      const res  = await fetch('process.env.NEXT_PUBLIC_API_URL/api/academic', {
+      const res  = await fetch(`${API_URL}/api/academic`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify(yearForm),
@@ -105,10 +102,9 @@ export default function GestionPage() {
     finally  { setSaving(false) }
   }
 
-  // ── Activar/Desactivar gestión ───────────────────
   const handleToggleYear = async (id: number) => {
     try {
-      const res  = await fetch(`process.env.NEXT_PUBLIC_API_URL/api/academic/${id}/toggle`, {
+      const res  = await fetch(`${API_URL}/api/academic/${id}/toggle`, {
         method: 'PATCH', headers: { Authorization: `Bearer ${token}` }
       })
       const data = await res.json()
@@ -116,12 +112,11 @@ export default function GestionPage() {
     } catch { notify('Error al cambiar estado', 'error') }
   }
 
-  // ── Crear trimestre ──────────────────────────────
   const handleCreateTrim = async () => {
     if (!selectedYear) return
     setError(''); setSaving(true)
     try {
-      const res  = await fetch(`process.env.NEXT_PUBLIC_API_URL/api/academic/${selectedYear}/trimesters`, {
+      const res  = await fetch(`${API_URL}/api/academic/${selectedYear}/trimesters`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify(trimForm),
@@ -131,20 +126,18 @@ export default function GestionPage() {
       notify('Trimestre creado')
       setShowTrimModal(false)
       setTrimForm({ number: '1', name: '', startDate: '', endDate: '' })
-      // Recargar trimestres
-      const tRes  = await fetch(`process.env.NEXT_PUBLIC_API_URL/api/academic/${selectedYear}/trimesters`, { headers: { Authorization: `Bearer ${token}` } })
+      const tRes  = await fetch(`${API_URL}/api/academic/${selectedYear}/trimesters`, { headers: { Authorization: `Bearer ${token}` } })
       const tData = await tRes.json()
       if (tRes.ok) setTrimesters(p => ({ ...p, [selectedYear]: tData }))
     } catch { notify('Error de conexión', 'error') }
     finally  { setSaving(false) }
   }
 
-  // ── Crear feriado ────────────────────────────────
   const handleCreateHol = async () => {
     if (!selectedYear) return
     setError(''); setSaving(true)
     try {
-      const res  = await fetch(`process.env.NEXT_PUBLIC_API_URL/api/academic/${selectedYear}/holidays`, {
+      const res  = await fetch(`${API_URL}/api/academic/${selectedYear}/holidays`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify(holForm),
@@ -154,17 +147,16 @@ export default function GestionPage() {
       notify('Feriado registrado')
       setShowHolModal(false)
       setHolForm({ date: '', description: '' })
-      const hRes  = await fetch(`process.env.NEXT_PUBLIC_API_URL/api/academic/${selectedYear}/holidays`, { headers: { Authorization: `Bearer ${token}` } })
+      const hRes  = await fetch(`${API_URL}/api/academic/${selectedYear}/holidays`, { headers: { Authorization: `Bearer ${token}` } })
       const hData = await hRes.json()
       if (hRes.ok) setHolidays(p => ({ ...p, [selectedYear]: hData }))
     } catch { notify('Error de conexión', 'error') }
     finally  { setSaving(false) }
   }
 
-  // ── Eliminar feriado ─────────────────────────────
   const handleDeleteHol = async (yearId: number, holId: number) => {
     try {
-      const res = await fetch(`process.env.NEXT_PUBLIC_API_URL/api/academic/${yearId}/holidays/${holId}`, {
+      const res = await fetch(`${API_URL}/api/academic/${yearId}/holidays/${holId}`, {
         method: 'DELETE', headers: { Authorization: `Bearer ${token}` }
       })
       if (res.ok) {
@@ -205,17 +197,13 @@ export default function GestionPage() {
         <div className="years-list">
           {years.map(y => (
             <div key={y.id} className={`year-card ${y.isActive ? 'active-card' : ''}`}>
-
-              {/* Header de la gestión */}
               <div className="year-header">
                 <div className="year-left">
                   <div className={`year-badge ${y.isActive ? 'ybadge-active' : 'ybadge-inactive'}`}>
                     {y.year}
                   </div>
                   <div className="year-info">
-                    <div className="year-dates">
-                      {fmt(y.startDate)} — {fmt(y.endDate)}
-                    </div>
+                    <div className="year-dates">{fmt(y.startDate)} — {fmt(y.endDate)}</div>
                     <div className="year-counts">
                       <span>📚 {y._count.trimesters} trimestres</span>
                       <span>🎓 {y._count.assignments} inscripciones</span>
@@ -223,17 +211,12 @@ export default function GestionPage() {
                     </div>
                   </div>
                 </div>
-
                 <div className="year-actions">
                   {y.isActive
                     ? <span className="active-pill"><CheckCircle size={12}/> Activa</span>
                     : <span className="inactive-pill"><XCircle size={12}/> Inactiva</span>
                   }
-                  <button
-                    className={`toggle-btn ${y.isActive ? 'tbtn-off' : 'tbtn-on'}`}
-                    onClick={() => handleToggleYear(y.id)}
-                    title={y.isActive ? 'Desactivar' : 'Activar'}
-                  >
+                  <button className={`toggle-btn ${y.isActive ? 'tbtn-off' : 'tbtn-on'}`} onClick={() => handleToggleYear(y.id)}>
                     {y.isActive ? 'Desactivar' : 'Activar'}
                   </button>
                   <button className="expand-btn" onClick={() => handleExpand(y.id)}>
@@ -242,11 +225,8 @@ export default function GestionPage() {
                 </div>
               </div>
 
-              {/* Detalle expandido */}
               {expanded === y.id && (
                 <div className="year-detail">
-
-                  {/* Trimestres */}
                   <div className="detail-section">
                     <div className="detail-header">
                       <span><BookOpen size={14}/> Trimestres</span>
@@ -271,7 +251,6 @@ export default function GestionPage() {
                     )}
                   </div>
 
-                  {/* Feriados */}
                   <div className="detail-section">
                     <div className="detail-header">
                       <span><Calendar size={14}/> Días feriados</span>
@@ -287,9 +266,7 @@ export default function GestionPage() {
                           <div key={h.id} className="hol-item">
                             <span className="hol-date">{fmt(h.date)}</span>
                             <span className="hol-desc">{h.description}</span>
-                            <button className="del-btn" onClick={() => handleDeleteHol(y.id, h.id)} title="Eliminar">
-                              <Trash2 size={13}/>
-                            </button>
+                            <button className="del-btn" onClick={() => handleDeleteHol(y.id, h.id)}><Trash2 size={13}/></button>
                           </div>
                         ))}
                       </div>
@@ -302,7 +279,6 @@ export default function GestionPage() {
         </div>
       )}
 
-      {/* Modal nueva gestión */}
       {showYearModal && (
         <div className="overlay" onClick={() => setShowYearModal(false)}>
           <div className="modal" onClick={e => e.stopPropagation()}>
@@ -312,16 +288,13 @@ export default function GestionPage() {
             <div className="mbody">
               <div className="fg"><label>Año *</label>
                 <input type="number" min="2020" max="2100" value={yearForm.year}
-                  onChange={e => setYearForm({...yearForm, year: e.target.value})}/>
-              </div>
+                  onChange={e => setYearForm({...yearForm, year: e.target.value})}/></div>
               <div className="fg"><label>Fecha de inicio *</label>
                 <input type="date" value={yearForm.startDate}
-                  onChange={e => setYearForm({...yearForm, startDate: e.target.value})}/>
-              </div>
+                  onChange={e => setYearForm({...yearForm, startDate: e.target.value})}/></div>
               <div className="fg"><label>Fecha de fin *</label>
                 <input type="date" value={yearForm.endDate}
-                  onChange={e => setYearForm({...yearForm, endDate: e.target.value})}/>
-              </div>
+                  onChange={e => setYearForm({...yearForm, endDate: e.target.value})}/></div>
             </div>
             <div className="mfoot">
               <button className="btn-outline" onClick={() => setShowYearModal(false)}>Cancelar</button>
@@ -334,7 +307,6 @@ export default function GestionPage() {
         </div>
       )}
 
-      {/* Modal nuevo trimestre */}
       {showTrimModal && (
         <div className="overlay" onClick={() => setShowTrimModal(false)}>
           <div className="modal" onClick={e => e.stopPropagation()}>
@@ -347,20 +319,16 @@ export default function GestionPage() {
                   <option value="1">1° Trimestre</option>
                   <option value="2">2° Trimestre</option>
                   <option value="3">3° Trimestre</option>
-                </select>
-              </div>
+                </select></div>
               <div className="fg"><label>Nombre (opcional)</label>
                 <input type="text" placeholder="Ej: Primer Trimestre" value={trimForm.name}
-                  onChange={e => setTrimForm({...trimForm, name: e.target.value})}/>
-              </div>
+                  onChange={e => setTrimForm({...trimForm, name: e.target.value})}/></div>
               <div className="fg"><label>Fecha inicio *</label>
                 <input type="date" value={trimForm.startDate}
-                  onChange={e => setTrimForm({...trimForm, startDate: e.target.value})}/>
-              </div>
+                  onChange={e => setTrimForm({...trimForm, startDate: e.target.value})}/></div>
               <div className="fg"><label>Fecha fin *</label>
                 <input type="date" value={trimForm.endDate}
-                  onChange={e => setTrimForm({...trimForm, endDate: e.target.value})}/>
-              </div>
+                  onChange={e => setTrimForm({...trimForm, endDate: e.target.value})}/></div>
             </div>
             <div className="mfoot">
               <button className="btn-outline" onClick={() => setShowTrimModal(false)}>Cancelar</button>
@@ -373,7 +341,6 @@ export default function GestionPage() {
         </div>
       )}
 
-      {/* Modal nuevo feriado */}
       {showHolModal && (
         <div className="overlay" onClick={() => setShowHolModal(false)}>
           <div className="modal" onClick={e => e.stopPropagation()}>
@@ -383,12 +350,10 @@ export default function GestionPage() {
             <div className="mbody">
               <div className="fg"><label>Fecha *</label>
                 <input type="date" value={holForm.date}
-                  onChange={e => setHolForm({...holForm, date: e.target.value})}/>
-              </div>
+                  onChange={e => setHolForm({...holForm, date: e.target.value})}/></div>
               <div className="fg"><label>Descripción *</label>
                 <input type="text" placeholder="Ej: Día de la Independencia" value={holForm.description}
-                  onChange={e => setHolForm({...holForm, description: e.target.value})}/>
-              </div>
+                  onChange={e => setHolForm({...holForm, description: e.target.value})}/></div>
             </div>
             <div className="mfoot">
               <button className="btn-outline" onClick={() => setShowHolModal(false)}>Cancelar</button>

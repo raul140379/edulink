@@ -4,6 +4,8 @@ import { useEffect, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { ArrowLeft, Users, BookOpen, Clock, GraduationCap } from 'lucide-react'
 
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000'
+
 interface Course {
   id:            number
   level:         string
@@ -57,8 +59,8 @@ export default function CourseDetailPage() {
       setLoading(true)
       try {
         const [cRes, aRes] = await Promise.all([
-          fetch(`process.env.next_public_api_url/api/courses/${id}`,          { headers: { Authorization: `Bearer ${token}` } }),
-          fetch(`process.env.next_public_api_url/api/courses/${id}/students`, { headers: { Authorization: `Bearer ${token}` } }),
+          fetch(`${API_URL}/api/courses/${id}`,          { headers: { Authorization: `Bearer ${token}` } }),
+          fetch(`${API_URL}/api/courses/${id}/students`, { headers: { Authorization: `Bearer ${token}` } }),
         ])
         const [cData, aData] = await Promise.all([cRes.json(), aRes.json()])
         if (cRes.ok) setCourse(cData)
@@ -77,7 +79,6 @@ export default function CourseDetailPage() {
 
   return (
     <div>
-      {/* Header */}
       <div className="page-header">
         <button className="back-btn" onClick={() => router.back()}>
           <ArrowLeft size={16}/> Volver
@@ -98,7 +99,6 @@ export default function CourseDetailPage() {
         </div>
       </div>
 
-      {/* Stats */}
       <div className="stats-row">
         <div className="stat-card">
           <Users size={20} color="#1A3A7C"/>
@@ -116,7 +116,6 @@ export default function CourseDetailPage() {
         </div>
       </div>
 
-      {/* Materias y maestros */}
       {course.teacherSubjects.length > 0 && (
         <div className="section-card">
           <div className="section-title"><BookOpen size={15}/> Materias y Maestros</div>
@@ -137,7 +136,6 @@ export default function CourseDetailPage() {
         </div>
       )}
 
-      {/* Lista de estudiantes */}
       <div className="section-card">
         <div className="section-title"><Users size={15}/> Estudiantes inscritos</div>
         {assignments.length === 0 ? (

@@ -3,6 +3,8 @@
 import { useState } from 'react'
 import { Search, CheckCircle, XCircle, User, Phone, BookOpen, Bell, Clock, ShieldCheck, ShieldX } from 'lucide-react'
 
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000'
+
 interface Student {
   id:        number
   firstName: string
@@ -22,28 +24,11 @@ interface Student {
   }[]
 }
 
-interface SearchResult {
-  type:     'student' | 'parent'
-  student?: Student
-  students?: Student[]
-  parent?:  { firstName: string; lastName: string }
-}
+const GRADE_LABELS: Record<string, string> = { PRIMERO: '1°', SEGUNDO: '2°', TERCERO: '3°', CUARTO: '4°', QUINTO: '5°', SEXTO: '6°' }
+const SHIFT_LABELS: Record<string, string> = { MORNING: 'Mañana', AFTERNOON: 'Tarde', NIGHT: 'Noche' }
+const LEVEL_LABELS: Record<string, string> = { INICIAL: 'Inicial', PRIMARIA: 'Primaria', SECUNDARIA: 'Secundaria' }
+const REL_LABELS:  Record<string, string> = { PADRE: 'Padre', MADRE: 'Madre', TUTOR_LEGAL: 'Tutor Legal', OTRO: 'Otro' }
 
-const GRADE_LABELS: Record<string, string> = {
-  PRIMERO: '1°', SEGUNDO: '2°', TERCERO: '3°',
-  CUARTO: '4°', QUINTO: '5°', SEXTO: '6°'
-}
-const SHIFT_LABELS: Record<string, string> = {
-  MORNING: 'Mañana', AFTERNOON: 'Tarde', NIGHT: 'Noche'
-}
-const LEVEL_LABELS: Record<string, string> = {
-  INICIAL: 'Inicial', PRIMARIA: 'Primaria', SECUNDARIA: 'Secundaria'
-}
-const REL_LABELS: Record<string, string> = {
-  PADRE: 'Padre', MADRE: 'Madre', TUTOR_LEGAL: 'Tutor Legal', OTRO: 'Otro'
-}
-
-// Días de la semana en español
 const getDayName = () => {
   const days = ['Domingo', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado']
   return days[new Date().getDay()]
@@ -65,15 +50,15 @@ export default function VerificacionPage() {
   const [status,   setStatus]   = useState<'authorized' | 'denied' | null>(null)
 
   const token = typeof window !== 'undefined' ? localStorage.getItem('token') : ''
-  const today      = getDayName()
+  const today        = getDayName()
   const currentShift = getShiftOfDay()
-  const now        = new Date().toLocaleTimeString('es-BO', { hour: '2-digit', minute: '2-digit' })
+  const now          = new Date().toLocaleTimeString('es-BO', { hour: '2-digit', minute: '2-digit' })
 
   const handleSearch = async () => {
     if (!query.trim()) return
     setLoading(true); setSearched(true); setSelected(null); setStatus(null)
     try {
-      const res  = await fetch(`process.env.NEXT_PUBLIC_API_URL/api/students?search=${encodeURIComponent(query)}`, {
+      const res  = await fetch(`${API_URL}/api/students?search=${encodeURIComponent(query)}`, {
         headers: { Authorization: `Bearer ${token}` }
       })
       const data = await res.json()
@@ -85,10 +70,7 @@ export default function VerificacionPage() {
     finally  { setLoading(false) }
   }
 
-  const handleSelect = (s: Student) => {
-    setSelected(s); setStatus(null)
-  }
-
+  const handleSelect    = (s: Student) => { setSelected(s); setStatus(null) }
   const handleAuthorize = () => setStatus('authorized')
   const handleDeny      = () => setStatus('denied')
 
@@ -102,7 +84,6 @@ export default function VerificacionPage() {
 
   return (
     <div className="container">
-      {/* Header */}
       <div className="header">
         <div className="header-left">
           <ShieldCheck size={28} color="#1A3A7C"/>
@@ -118,19 +99,14 @@ export default function VerificacionPage() {
         </div>
       </div>
 
-      {/* Buscador */}
       <div className="search-card">
         <p className="search-label">Buscar por nombre, CI o RUDE del estudiante o padre/tutor</p>
         <div className="search-row">
           <div className="search-wrap">
             <Search size={18} className="sicon"/>
-            <input
-              placeholder="Ej: García, 12345678, 00123456789..."
-              value={query}
-              onChange={e => setQuery(e.target.value)}
-              onKeyDown={e => e.key === 'Enter' && handleSearch()}
-              autoFocus
-            />
+            <input placeholder="Ej: García, 12345678, 00123456789..."
+              value={query} onChange={e => setQuery(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && handleSearch()} autoFocus/>
           </div>
           <button className="btn-search" onClick={handleSearch} disabled={loading}>
             {loading ? <span className="spinsm"/> : <Search size={16}/>}
@@ -140,7 +116,6 @@ export default function VerificacionPage() {
         </div>
       </div>
 
-      {/* Resultados múltiples */}
       {results.length > 1 && !selected && (
         <div className="results-card">
           <p className="results-title">Se encontraron {results.length} coincidencias — selecciona un estudiante:</p>
@@ -155,16 +130,13 @@ export default function VerificacionPage() {
                     {s.rude && <span>RUDE: {s.rude}</span>}
                   </div>
                 </div>
-                <span className={`sbadge ${s.isActive ? 'act' : 'ina'}`}>
-                  {s.isActive ? 'Activo' : 'Inactivo'}
-                </span>
+                <span className={`sbadge ${s.isActive ? 'act' : 'ina'}`}>{s.isActive ? 'Activo' : 'Inactivo'}</span>
               </button>
             ))}
           </div>
         </div>
       )}
 
-      {/* Sin resultados */}
       {searched && results.length === 0 && !loading && (
         <div className="no-results">
           <XCircle size={40} color="#CBE0F0"/>
@@ -172,41 +144,30 @@ export default function VerificacionPage() {
         </div>
       )}
 
-      {/* Detalle del estudiante seleccionado */}
       {selected && (
         <div className="detail-card">
-          {/* Estado de autorización */}
           {status === 'authorized' && (
             <div className="status-banner green">
               <CheckCircle size={28}/>
-              <div>
-                <div className="status-title">INGRESO AUTORIZADO</div>
-                <div className="status-sub">{selected.firstName} {selected.lastName} — {now}</div>
-              </div>
+              <div><div className="status-title">INGRESO AUTORIZADO</div>
+                <div className="status-sub">{selected.firstName} {selected.lastName} — {now}</div></div>
             </div>
           )}
           {status === 'denied' && (
             <div className="status-banner red">
               <XCircle size={28}/>
-              <div>
-                <div className="status-title">INGRESO DENEGADO</div>
-                <div className="status-sub">{selected.firstName} {selected.lastName} — {now}</div>
-              </div>
+              <div><div className="status-title">INGRESO DENEGADO</div>
+                <div className="status-sub">{selected.firstName} {selected.lastName} — {now}</div></div>
             </div>
           )}
 
-          {/* Info del estudiante */}
           <div className="student-info">
             <div className="student-avatar-lg">{selected.firstName[0]}{selected.lastName[0]}</div>
             <div className="student-data">
               <h2>{selected.lastName} {selected.firstName}</h2>
               <div className="student-badges">
-                <span className={`sbadge ${selected.isActive ? 'act' : 'ina'}`}>
-                  {selected.isActive ? 'Activo' : 'Inactivo'}
-                </span>
-                {!selected.isActive && (
-                  <span className="warn-badge">⚠️ Estudiante inactivo — verificar</span>
-                )}
+                <span className={`sbadge ${selected.isActive ? 'act' : 'ina'}`}>{selected.isActive ? 'Activo' : 'Inactivo'}</span>
+                {!selected.isActive && <span className="warn-badge">⚠️ Estudiante inactivo — verificar</span>}
               </div>
               <div className="student-ids">
                 {selected.ci   && <span>CI: <strong>{selected.ci}</strong></span>}
@@ -216,20 +177,15 @@ export default function VerificacionPage() {
           </div>
 
           <div className="detail-grid">
-
-            {/* Curso y turno */}
             <div className="detail-section">
               <div className="section-title"><BookOpen size={14}/> Curso actual</div>
               {activeCourse ? (
                 <div className="course-info">
-                  <div className="course-big">
-                    {GRADE_LABELS[activeCourse.course.grade]} {activeCourse.course.parallel}
-                  </div>
+                  <div className="course-big">{GRADE_LABELS[activeCourse.course.grade]} {activeCourse.course.parallel}</div>
                   <div className="course-tags">
                     <span className="tag">{LEVEL_LABELS[activeCourse.course.level]}</span>
                     <span className={`tag ${isInShift ? 'tag-green' : 'tag-gray'}`}>
-                      Turno {SHIFT_LABELS[activeCourse.course.shift]}
-                      {isInShift ? ' ✓' : ' — No es su turno hoy'}
+                      Turno {SHIFT_LABELS[activeCourse.course.shift]}{isInShift ? ' ✓' : ' — No es su turno hoy'}
                     </span>
                     <span className="tag">{activeCourse.educationType}</span>
                   </div>
@@ -239,12 +195,9 @@ export default function VerificacionPage() {
                     </div>
                   )}
                 </div>
-              ) : (
-                <div className="no-data">No inscrito en la gestión actual</div>
-              )}
+              ) : <div className="no-data">No inscrito en la gestión actual</div>}
             </div>
 
-            {/* Padres y tutores */}
             <div className="detail-section">
               <div className="section-title"><User size={14}/> Padres y Tutores</div>
               {selected.parents.length === 0 ? (
@@ -269,37 +222,28 @@ export default function VerificacionPage() {
               )}
             </div>
 
-            {/* Notificaciones */}
             <div className="detail-section detail-full">
               <div className="section-title"><Bell size={14}/> Notificaciones</div>
               <div className="no-data">Sin notificaciones activas</div>
             </div>
-
           </div>
 
-          {/* Botones de acción */}
           {!status && selected.isActive && (
             <div className="action-row">
-              <button className="btn-deny" onClick={handleDeny}>
-                <ShieldX size={18}/> Denegar ingreso
-              </button>
-              <button className="btn-authorize" onClick={handleAuthorize}>
-                <ShieldCheck size={18}/> Autorizar ingreso
-              </button>
+              <button className="btn-deny" onClick={handleDeny}><ShieldX size={18}/> Denegar ingreso</button>
+              <button className="btn-authorize" onClick={handleAuthorize}><ShieldCheck size={18}/> Autorizar ingreso</button>
             </div>
           )}
 
           {status && (
             <div className="action-row">
-              <button className="btn-reset-full" onClick={handleReset}>
-                <Search size={16}/> Nueva verificación
-              </button>
+              <button className="btn-reset-full" onClick={handleReset}><Search size={16}/> Nueva verificación</button>
             </div>
           )}
 
           {!selected.isActive && (
             <div className="inactive-warn">
-              ⚠️ Este estudiante está marcado como inactivo en el sistema. Consultar con la administración antes de autorizar el ingreso.
+              ⚠️ Este estudiante está marcado como inactivo. Consultar con la administración antes de autorizar el ingreso.
             </div>
           )}
         </div>
@@ -336,7 +280,7 @@ export default function VerificacionPage() {
         .result-name{font-size:14px;font-weight:600;color:#1A3A7C}
         .result-meta{display:flex;gap:10px;font-size:12px;color:#6B8BB0;margin-top:2px}
         .no-results{display:flex;flex-direction:column;align-items:center;padding:40px;gap:12px;color:#6B8BB0;font-size:13px}
-        .detail-card{background:#fff;border:2px solid #CBE0F0;border-radius:14px;overflow:hidden;display:flex;flex-direction:column;gap:0}
+        .detail-card{background:#fff;border:2px solid #CBE0F0;border-radius:14px;overflow:hidden;display:flex;flex-direction:column}
         .status-banner{display:flex;align-items:center;gap:14px;padding:16px 20px;font-weight:700}
         .status-banner.green{background:#0F6E56;color:#fff}
         .status-banner.red{background:#C0392B;color:#fff}

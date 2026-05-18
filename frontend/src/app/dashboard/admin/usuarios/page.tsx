@@ -3,6 +3,8 @@
 import { useEffect, useState } from 'react'
 import { Plus, Search, RefreshCw, UserCheck, UserX, Eye, EyeOff, X, KeyRound, Copy, Check } from 'lucide-react'
 
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000'
+
 interface User {
   id:        number
   email:     string
@@ -47,7 +49,6 @@ export default function UsuariosPage() {
   const [showPass, setShowPass]     = useState(false)
   const [form, setForm] = useState({ email: '', password: '', role: 'PARENT' })
 
-  // Reset password
   const [showResetModal,   setShowResetModal]   = useState(false)
   const [resetCredentials, setResetCredentials] = useState<{ email: string; password: string } | null>(null)
   const [copied,           setCopied]           = useState(false)
@@ -65,7 +66,7 @@ export default function UsuariosPage() {
       const params = new URLSearchParams()
       if (search)     params.set('search', search)
       if (roleFilter) params.set('role', roleFilter)
-      const res  = await fetch(`process.env.NEXT_PUBLIC_API_URL/api/users?${params}`, {
+      const res  = await fetch(`${API_URL}/api/users?${params}`, {
         headers: { Authorization: `Bearer ${token}` },
       })
       const data = await res.json()
@@ -74,12 +75,13 @@ export default function UsuariosPage() {
     finally  { setLoading(false) }
   }
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { fetchUsers() }, [])
 
   const handleCreate = async () => {
     setError(''); setSaving(true)
     try {
-      const res  = await fetch('process.env.NEXT_PUBLIC_API_URL/api/users', {
+      const res  = await fetch(`${API_URL}/api/users`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body: JSON.stringify(form),
@@ -96,7 +98,7 @@ export default function UsuariosPage() {
 
   const handleToggle = async (id: number) => {
     try {
-      const res  = await fetch(`process.env.NEXT_PUBLIC_API_URL/api/users/${id}/toggle`, {
+      const res  = await fetch(`${API_URL}/api/users/${id}/toggle`, {
         method: 'PATCH', headers: { Authorization: `Bearer ${token}` },
       })
       const data = await res.json()
@@ -106,7 +108,7 @@ export default function UsuariosPage() {
 
   const handleResetPassword = async (id: number) => {
     try {
-      const res  = await fetch(`process.env.NEXT_PUBLIC_API_URL/api/users/${id}/reset-password`, {
+      const res  = await fetch(`${API_URL}/api/users/${id}/reset-password`, {
         method: 'POST', headers: { Authorization: `Bearer ${token}` },
       })
       const data = await res.json()
@@ -177,21 +179,14 @@ export default function UsuariosPage() {
                       {roleLabels[u.role] || u.role}
                     </span>
                   </td>
-                  <td>
-                    <span className={`sbadge ${u.isActive ? 'act' : 'ina'}`}>
-                      {u.isActive ? 'Activo' : 'Inactivo'}
-                    </span>
-                  </td>
+                  <td><span className={`sbadge ${u.isActive ? 'act' : 'ina'}`}>{u.isActive ? 'Activo' : 'Inactivo'}</span></td>
                   <td className="muted">{new Date(u.createdAt).toLocaleDateString('es-BO')}</td>
                   <td>
                     <div className="actions">
-                      <button className="abtn btn-reset" title="Restablecer contraseña"
-                        onClick={() => handleResetPassword(u.id)}>
+                      <button className="abtn btn-reset" title="Restablecer contraseña" onClick={() => handleResetPassword(u.id)}>
                         <KeyRound size={14}/>
                       </button>
-                      <button className={`abtn ${u.isActive ? 'dng' : 'suc'}`}
-                        title={u.isActive ? 'Desactivar' : 'Activar'}
-                        onClick={() => handleToggle(u.id)}>
+                      <button className={`abtn ${u.isActive ? 'dng' : 'suc'}`} title={u.isActive ? 'Desactivar' : 'Activar'} onClick={() => handleToggle(u.id)}>
                         {u.isActive ? <UserX size={14}/> : <UserCheck size={14}/>}
                       </button>
                     </div>
@@ -204,7 +199,6 @@ export default function UsuariosPage() {
       </div>
       <div className="tfooter">Total: <strong>{filtered.length}</strong> usuarios</div>
 
-      {/* Modal crear usuario */}
       {showModal && (
         <div className="overlay" onClick={() => setShowModal(false)}>
           <div className="modal" onClick={e => e.stopPropagation()}>
@@ -250,13 +244,10 @@ export default function UsuariosPage() {
         </div>
       )}
 
-      {/* Modal reset password */}
       {showResetModal && resetCredentials && (
         <div className="overlay">
           <div className="modal" onClick={e => e.stopPropagation()}>
-            <div className="mhead">
-              <h2>🔑 Nueva contraseña generada</h2>
-            </div>
+            <div className="mhead"><h2>🔑 Nueva contraseña generada</h2></div>
             <div className="mbody">
               <div className="cred-box">
                 <div className="cred-row">
@@ -267,9 +258,7 @@ export default function UsuariosPage() {
                   <span className="cred-label">Contraseña:</span>
                   <span className="cred-value">{resetCredentials.password}</span>
                 </div>
-                <div className="cred-note">
-                  ⚠️ Comunica esta contraseña al usuario. No se podrá ver de nuevo.
-                </div>
+                <div className="cred-note">⚠️ Comunica esta contraseña al usuario. No se podrá ver de nuevo.</div>
               </div>
             </div>
             <div className="mfoot">

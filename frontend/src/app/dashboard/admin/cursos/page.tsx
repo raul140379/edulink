@@ -4,6 +4,8 @@ import { useEffect, useState } from 'react'
 import { Plus, X, Trash2, Users, Filter, Edit, Eye } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000'
+
 interface Course {
   id:            number
   level:         string
@@ -43,12 +45,21 @@ export default function CursosPage() {
   const [filterShift, setFilterShift] = useState('')
   const [filterType,  setFilterType]  = useState('')
   const [form, setForm] = useState(emptyForm)
+  const [warning, setWarning] = useState('')
 
   const token = typeof window !== 'undefined' ? localStorage.getItem('token') : ''
 
   const notify = (msg: string, type: 'success' | 'error' = 'success') => {
     if (type === 'success') { setSuccess(msg); setTimeout(() => setSuccess(''), 3000) }
     else                    { setError(msg);   setTimeout(() => setError(''),   4000) }
+  }
+
+  const checkWarning = (level: string, shift: string) => {
+    if (level === 'INICIAL' && shift !== 'MORNING') {
+      setWarning('⚠️ El nivel Inicial normalmente funciona en turno Mañana.')
+    } else {
+      setWarning('')
+    }
   }
 
   const fetchCourses = async () => {
@@ -58,7 +69,7 @@ export default function CursosPage() {
       if (filterLevel) params.set('level', filterLevel)
       if (filterShift) params.set('shift', filterShift)
       if (filterType)  params.set('educationType', filterType)
-      const res  = await fetch(`process.env.NEXT_PUBLIC_API_URL/api/courses?${params}`, { headers: { Authorization: `Bearer ${token}` } })
+      const res  = await fetch(`${API_URL}/api/courses?${params}`, { headers: { Authorization: `Bearer ${token}` } })
       const data = await res.json()
       if (res.ok) setCourses(data)
       else notify('Error al cargar cursos', 'error')
@@ -66,27 +77,27 @@ export default function CursosPage() {
     finally  { setLoading(false) }
   }
 
-  useEffect(() => { fetchCourses() }, [])
+useEffect(() => { fetchCourses() }, [])  
 
   const openCreate = () => {
-  setEditMode(false); setEditId(null)
-  setForm(emptyForm); setError('')
-  checkWarning(emptyForm.level, emptyForm.shift)
-  setShowModal(true)
-}
+    setEditMode(false); setEditId(null)
+    setForm(emptyForm); setError('')
+    checkWarning(emptyForm.level, emptyForm.shift)
+    setShowModal(true)
+  }
 
   const openEdit = (c: Course) => {
-  setEditMode(true); setEditId(c.id)
-  setForm({ level: c.level, grade: c.grade, parallel: c.parallel, educationType: c.educationType, shift: c.shift })
-  setError('')
-  checkWarning(c.level, c.shift)
-  setShowModal(true)
-}
+    setEditMode(true); setEditId(c.id)
+    setForm({ level: c.level, grade: c.grade, parallel: c.parallel, educationType: c.educationType, shift: c.shift })
+    setError('')
+    checkWarning(c.level, c.shift)
+    setShowModal(true)
+  }
 
   const handleSave = async () => {
     setError(''); setSaving(true)
     try {
-      const url    = editMode ? `process.env.NEXT_PUBLIC_API_URL/api/courses/${editId}` : 'process.env.NEXT_PUBLIC_API_URL/api/courses'
+      const url    = editMode ? `${API_URL}/api/courses/${editId}` : `${API_URL}/api/courses`
       const method = editMode ? 'PUT' : 'POST'
       const res    = await fetch(url, {
         method,
@@ -105,7 +116,7 @@ export default function CursosPage() {
   const handleDelete = async (id: number, name: string) => {
     if (!confirm(`¿Eliminar el curso ${name}?`)) return
     try {
-      const res  = await fetch(`process.env.NEXT_PUBLIC_API_URL/api/courses/${id}`, { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } })
+      const res  = await fetch(`${API_URL}/api/courses/${id}`, { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } })
       const data = await res.json()
       if (res.ok) { notify(data.message); fetchCourses() }
       else notify(data.message, 'error')
@@ -133,7 +144,6 @@ export default function CursosPage() {
       {success && <div className="alert suc">{success}</div>}
       {error && !showModal && <div className="alert err">{error}</div>}
 
-      {/* Filtros */}
       <div className="filters-bar">
         <Filter size={15} color="#6B8BB0"/>
         <select value={filterLevel} onChange={e => setFilterLevel(e.target.value)}>
@@ -155,55 +165,51 @@ export default function CursosPage() {
         <div className="center"><div className="spinner"/></div>
       ) : courses.length === 0 ? (
         <div className="empty-card">
-          <p>No hay cursos registrados</p>
+          <p>No se encontraron cursos</p>
           <button className="btn-primary" onClick={openCreate}><Plus size={14}/> Crear primer curso</button>
         </div>
       ) : (
         <div className="levels-container">
-          {['INICIAL', 'PRIMARIA', 'SECUNDARIA'].map(level => {
-            if (!grouped[level]) return null
-            return (
-              <div key={level} className="level-section">
-                <div className="level-header" style={{ borderLeftColor: levelColor[level] }}>
-                  <span className="level-title" style={{ color: levelColor[level] }}>{levelLabel(level)}</span>
-                  <span className="level-count">{grouped[level].length} cursos</span>
-                </div>
-                <div className="courses-grid">
-                  {grouped[level].map(c => (
-                    <div key={c.id} className="course-card">
-                      <div className="course-top">
-                        <div className="course-name">{courseName(c)}</div>
-                        <div className="course-badges">
-                          <span className="cbadge" style={{ background: shiftColor[c.shift]+'18', color: shiftColor[c.shift] }}>
-                            {shiftLabel(c.shift)}
-                          </span>
-                          {c.educationType === 'BTH' && <span className="cbadge bth">BTH</span>}
-                        </div>
-                      </div>
-                      <div className="cstat"><Users size={13}/><span>{c._count.assignments} estudiantes</span></div>
-                      <div className="course-actions">
-                        <button className="icon-btn view" title="Ver detalle" onClick={() => router.push(`/dashboard/admin/cursos/${c.id}`)}>
-                          <Eye size={13}/>
-                        </button>
-                        <button className="icon-btn edit" title="Editar" onClick={() => openEdit(c)}>
-                          <Edit size={13}/>
-                        </button>
-                        <button className="icon-btn del" title="Eliminar" onClick={() => handleDelete(c.id, courseName(c))}>
-                          <Trash2 size={13}/>
-                        </button>
+          {Object.entries(grouped).map(([level, list]) => (
+            <div key={level} className="level-section">
+              <div className="level-header">
+                <span className="level-title" style={{ color: levelColor[level] }}>{levelLabel(level)}</span>
+                <span className="level-count">{list.length} cursos</span>
+              </div>
+              <div className="courses-grid">
+                {list.map(c => (
+                  <div key={c.id} className="course-card">
+                    <div className="course-top">
+                      <div className="course-name">{courseName(c)}</div>
+                      <div className="course-badges">
+                        <span className="cbadge" style={{ background: shiftColor[c.shift]+'18', color: shiftColor[c.shift] }}>
+                          {shiftLabel(c.shift)}
+                        </span>
+                        {c.educationType === 'BTH' && <span className="cbadge bth">BTH</span>}
                       </div>
                     </div>
-                  ))}
-                </div>
+                    <div className="cstat"><Users size={12}/>{c._count.assignments} estudiantes</div>
+                    <div className="course-actions">
+                      <button className="icon-btn view" title="Ver detalle" onClick={() => router.push(`/dashboard/admin/cursos/${c.id}`)}>
+                        <Eye size={13}/>
+                      </button>
+                      <button className="icon-btn edit" title="Editar" onClick={() => openEdit(c)}>
+                        <Edit size={13}/>
+                      </button>
+                      <button className="icon-btn del" title="Eliminar" onClick={() => handleDelete(c.id, courseName(c))}>
+                        <Trash2 size={13}/>
+                      </button>
+                    </div>
+                  </div>
+                ))}
               </div>
-            )
-          })}
+            </div>
+          ))}
         </div>
       )}
 
       {courses.length > 0 && <div className="summary">Total: <strong>{courses.length}</strong> cursos registrados</div>}
 
-      {/* Modal crear/editar */}
       {showModal && (
         <div className="overlay" onClick={() => setShowModal(false)}>
           <div className="modal" onClick={e => e.stopPropagation()}>
@@ -213,10 +219,11 @@ export default function CursosPage() {
             </div>
             <div className="mbody">
               {error && <div className="alert err">{error}</div>}
+              {warning && <div className="alert warn">{warning}</div>}
               <div className="form-grid">
                 <div className="fg">
                   <label>Nivel *</label>
-                  <select value={form.level} onChange={e => setForm({...form, level: e.target.value})}>
+                  <select value={form.level} onChange={e => { setForm({...form, level: e.target.value}); checkWarning(e.target.value, form.shift) }}>
                     {LEVELS.map(l => <option key={l.value} value={l.value}>{l.label}</option>)}
                   </select>
                 </div>
@@ -234,7 +241,7 @@ export default function CursosPage() {
                 </div>
                 <div className="fg">
                   <label>Turno *</label>
-                  <select value={form.shift} onChange={e => setForm({...form, shift: e.target.value})}>
+                  <select value={form.shift} onChange={e => { setForm({...form, shift: e.target.value}); checkWarning(form.level, e.target.value) }}>
                     {SHIFTS.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
                   </select>
                 </div>
@@ -268,6 +275,7 @@ export default function CursosPage() {
         .alert{padding:10px 14px;border-radius:8px;font-size:13px;margin-bottom:16px}
         .alert.suc{background:#E1F5EE;border:1px solid #9FE1CB;color:#0F6E56}
         .alert.err{background:#FFF0F0;border:1px solid #FFBBBB;color:#C0392B}
+        .alert.warn{background:#FFFBEA;border:1px solid #F5C518;color:#7A6000}
         .filters-bar{display:flex;align-items:center;gap:10px;margin-bottom:20px;flex-wrap:wrap;background:#fff;border:1px solid #CBE0F0;border-radius:10px;padding:12px 16px}
         .filters-bar select{padding:7px 10px;border:1.5px solid #CBE0F0;border-radius:7px;font-size:13px;outline:none;color:#1A3A7C;cursor:pointer}
         .btn-primary{display:flex;align-items:center;gap:6px;padding:9px 16px;background:#1A3A7C;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:500;cursor:pointer;white-space:nowrap}
