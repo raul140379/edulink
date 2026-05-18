@@ -7,4 +7,4 @@ RUN npm install
 COPY src ./src/
 RUN npx prisma generate
 EXPOSE 4000
-CMD ["sh", "-c", "npx prisma migrate deploy && npx ts-node --transpile-only src/index.ts"]
+CMD ["sh", "-c", "npx prisma migrate deploy && npx ts-node --transpile-only src/index.ts"]cd
