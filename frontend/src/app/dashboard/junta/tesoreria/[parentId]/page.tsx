@@ -173,7 +173,7 @@ export default function TutorAccountPage() {
           </div>
         </div>
         {canEdit && (
-        <button className="btn-primary" onClick={() => router.push(`/dashboard/admin/tesoreria/nuevo-cargo?parentId=${parentId}`)}>
+        <button className="btn-primary" onClick={() => router.push(`/dashboard/junta/tesoreria/nuevo?parentId=${parentId}`)}>
          <Plus size={16}/> Nuevo cargo
          </button>
             )}

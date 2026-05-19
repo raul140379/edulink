@@ -76,11 +76,11 @@ const menuItems: MenuItem[] = [
     icon:  <Clock size={18} />,
     roles: ['SUPER_ADMIN','DIRECTOR','REGENTE','SECRETARY','TEACHER','PARENT','STUDENT'],
   },
-  {
+ {
   label: 'Tesorería',
   href:  '/dashboard/admin/tesoreria',
   icon:  <DollarSign size={18} />,
-  roles: ['SUPER_ADMIN','JUNTA_ESCOLAR'],
+  roles: ['SUPER_ADMIN','JUNTA_ESCOLAR','DIRECTOR','SECRETARY'],
 },
   {
     label: 'Notificaciones',

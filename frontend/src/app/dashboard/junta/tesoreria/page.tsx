@@ -81,7 +81,7 @@ export default function TesoreriaPage() {
           <p>Gestión económica de padres y tutores legales</p>
         </div>
        {canEdit && (
-            <button className="btn-primary" onClick={() => router.push('/dashboard/admin/tesoreria/nuevo-cargo')}>
+            <button className="btn-primary" onClick={() => router.push('/dashboard/junta/tesoreria/nuevo')}>
             <Plus size={16}/> Nuevo cargo
         </button>
         )}
@@ -215,7 +215,7 @@ export default function TesoreriaPage() {
                     }
                   </td>
                   <td>
-                    <button className="btn-ver" onClick={() => router.push(`/dashboard/admin/tesoreria/${p.id}`)}>
+                    <button className="btn-ver" onClick={() => router.push(`/dashboard/junta/tesoreria/${p.id}`)}>
                       Ver cuenta
                     </button>
                   </td>

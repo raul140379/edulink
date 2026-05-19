@@ -20,12 +20,14 @@ interface User {
 const roleLabels: Record<string, string> = {
   SUPER_ADMIN: 'Super Admin', DIRECTOR: 'Director', REGENTE: 'Regente',
   SECRETARY: 'Secretaria', TEACHER: 'Maestro', DELEGATE: 'Delegado',
+  JUNTA_ESCOLAR: 'Junta Escolar',
   PARENT: 'Padre / Tutor', STUDENT: 'Estudiante', STUDENT_GOV: 'Gob. Estudiantil', STAFF: 'Personal',
 }
 
 const roleColors: Record<string, string> = {
   SUPER_ADMIN: '#1A3A7C', DIRECTOR: '#0F6E56', REGENTE: '#3C3489',
   SECRETARY: '#712B13', TEACHER: '#633806', DELEGATE: '#444441',
+  JUNTA_ESCOLAR: '#0F6E56',
   PARENT: '#27500A', STUDENT: '#791F1F', STUDENT_GOV: '#185FA5', STAFF: '#4A4A4A',
 }
 
