@@ -77,11 +77,11 @@ const menuItems: MenuItem[] = [
     roles: ['SUPER_ADMIN','DIRECTOR','REGENTE','SECRETARY','TEACHER','PARENT','STUDENT'],
   },
   {
-    label: 'Tesorería',
-    href:  '/dashboard/admin/tesoreria',
-    icon:  <DollarSign size={18} />,
-    roles: ['SUPER_ADMIN','DIRECTOR','SECRETARY','DELEGATE','PARENT'],
-  },
+  label: 'Tesorería',
+  href:  '/dashboard/admin/tesoreria',
+  icon:  <DollarSign size={18} />,
+  roles: ['SUPER_ADMIN','JUNTA_ESCOLAR'],
+},
   {
     label: 'Notificaciones',
     href:  '/dashboard/admin/notificaciones',
@@ -112,6 +112,7 @@ const menuItems: MenuItem[] = [
 const roleLabels: Record<string, string> = {
   SUPER_ADMIN:  'Super Administrador',
   DIRECTOR:     'Director',
+  JUNTA_ESCOLAR: 'Junta Escolar',
   REGENTE:      'Regente',
   SECRETARY:    'Secretaria',
   TEACHER:      'Maestro',
@@ -126,6 +127,7 @@ const roleLabels: Record<string, string> = {
 const roleBadgeStyle: Record<string, string> = {
   SUPER_ADMIN: 'background:#1A3A7C;color:#fff',
   DIRECTOR:    'background:#0F6E56;color:#fff',
+  JUNTA_ESCOLAR: 'background:#712B13;color:#fff',
   REGENTE:     'background:#3C3489;color:#fff',
   SECRETARY:   'background:#712B13;color:#fff',
   TEACHER:     'background:#633806;color:#fff',
