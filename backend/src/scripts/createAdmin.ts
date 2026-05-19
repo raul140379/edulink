@@ -1,34 +1,29 @@
-import bcrypt from 'bcryptjs'
 import { PrismaClient } from '@prisma/client'
-import { PrismaPg } from '@prisma/adapter-pg'
-import dotenv from 'dotenv'
+import bcrypt from 'bcryptjs'
 
-dotenv.config()
-
-const adapter = new PrismaPg({
-  connectionString: process.env.DATABASE_URL as string
-})
-
-const prisma = new PrismaClient({ adapter })
+const prisma = new PrismaClient()
 
 async function main() {
-  const hashedPassword = await bcrypt.hash('admin123', 10)
+  const email    = 'admin@sgje.com'
+  const password = 'admin123'
 
-  const user = await prisma.user.create({
-    data: {
-      email: 'admin@sgje.com',
-      password: hashedPassword,
-      role: 'SUPER_ADMIN',
-      isActive: true
-    }
+  const existing = await prisma.user.findUnique({ where: { email } })
+  if (existing) {
+    console.log('✅ El usuario admin ya existe:', email)
+    return
+  }
+
+  const hashed = await bcrypt.hash(password, 10)
+  const user   = await prisma.user.create({
+    data: { email, password: hashed, role: 'SUPER_ADMIN', isActive: true }
   })
 
-  console.log('✅ Usuario administrador creado:')
-  console.log(`   Email: ${user.email}`)
-  console.log(`   Role:  ${user.role}`)
-  console.log(`   ID:    ${user.id}`)
+  console.log('✅ Usuario admin creado correctamente')
+  console.log('   Email:    ', user.email)
+  console.log('   Password: ', password)
+  console.log('   Role:     ', user.role)
 }
 
 main()
-  .catch(console.error)
+  .catch(e => { console.error('❌ Error:', e); process.exit(1) })
   .finally(() => prisma.$disconnect())

@@ -8,6 +8,7 @@ import courseRoutes   from './routes/course.routes'
 import studentRoutes  from './routes/student.routes'
 import parentRoutes   from './routes/parent.routes'
 import teacherRoutes  from './routes/teacher.routes'
+import treasuryRoutes from './routes/treasury.routes'
 
 dotenv.config()
 
@@ -33,6 +34,7 @@ app.use('/api/courses',  courseRoutes)
 app.use('/api/students', studentRoutes)
 app.use('/api/parents',  parentRoutes)
 app.use('/api/teachers', teacherRoutes)
+app.use('/api/treasury', treasuryRoutes)
 
 app.get('/', (req, res) => {
   res.json({ message: '🚀 SGJE Backend funcionando correctamente', version: '1.0.0' })

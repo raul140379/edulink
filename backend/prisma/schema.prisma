@@ -12,16 +12,17 @@ datasource db {
 // ─────────────────────────────────────────────
 
 enum Role {
-  SUPER_ADMIN   // Administrador general del sistema
-  DIRECTOR      // Director de turno
-  REGENTE       // Regente / subdirector
-  TEACHER       // Maestro
-  DELEGATE      // Delegado de curso (junta)
-  SECRETARY    // secretaria de la U.E
-  PARENT        // Padre / madre de familia
-  STUDENT       // Estudiante (consulta)
-  STUDENT_GOV   // Gobierno estudiantil
-  STAFF         // Personal administrativo (portero, secretaria, etc.)
+  SUPER_ADMIN    // Administrador general del sistema
+  DIRECTOR       // Director de turno
+  REGENTE        // Regente / subdirector
+  TEACHER        // Maestro
+  DELEGATE       // Delegado de curso (padre designado por el curso)
+  JUNTA_ESCOLAR  // Directorio de la junta escolar - responsable económico
+  SECRETARY      // Secretaria de la U.E
+  PARENT         // Padre / madre de familia
+  STUDENT        // Estudiante (consulta)
+  STUDENT_GOV    // Gobierno estudiantil
+  STAFF          // Personal administrativo (portero, etc.)
 }
 
 enum AcademicLevel {
@@ -71,6 +72,46 @@ enum StaffRole {
   OTRO
 }
 
+// Destino del cargo: al tutor (general) o a un estudiante específico
+enum ChargeTarget {
+  TUTOR      // Cargo general al tutor legal (cuota inicial, minga, multa asamblea)
+  ESTUDIANTE // Cargo por estudiante específico (reunión de curso, actividades, materiales)
+}
+
+enum ChargeType {
+  CUOTA_INICIAL     // Monto de inicio de año — por TUTOR
+  DEUDA_ANTERIOR    // Saldo pendiente del año anterior — por TUTOR
+  MULTA_ASAMBLEA    // Multa por inasistencia a asamblea general — por TUTOR
+  MINGA             // Minga de cada gestión — por TUTOR
+  MULTA_REUNION     // Multa por inasistencia a reunión de curso — por ESTUDIANTE
+  ACTIVIDAD         // Kermesse, día del padre/madre, festivos — por ESTUDIANTE
+  MATERIAL_ESCOLAR  // Venta de materiales — por ESTUDIANTE
+  OTRO              // Cobros eventuales
+}
+
+enum ChargeStatus {
+  PENDIENTE
+  PARCIAL
+  PAGADO
+  ANULADO
+}
+
+enum PaymentMethod {
+  EFECTIVO
+  DEPOSITO_BANCARIO
+  QR
+  TRANSFERENCIA
+  OTRO
+}
+
+enum NotificationType {
+  REUNION         // Convocatoria a reunión
+  ACTIVIDAD       // Actividad programada
+  DEUDA           // Recordatorio de pago pendiente
+  ACADEMICA       // Notificación académica del maestro
+  GENERAL         // Comunicado general
+}
+
 // ─────────────────────────────────────────────
 // USUARIOS Y SEGURIDAD
 // ─────────────────────────────────────────────
@@ -84,49 +125,97 @@ model User {
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
 
-  // Relaciones a perfiles específicos
-  parent    Parent?
-  teacher   Teacher?
-  student   Student?
-  staff     Staff?
-  director  ShiftDirector?
+  parent        Parent?
+  teacher       Teacher?
+  student       Student?
+  staff         Staff?
+  director      ShiftDirector?
+  juntaMember   JuntaMember?
+  delegate      CourseDelegate?
+}
+
+// ─────────────────────────────────────────────
+// JUNTA ESCOLAR
+// ─────────────────────────────────────────────
+
+enum JuntaRole {
+  PRESIDENTE
+  VICEPRESIDENTE
+  SECRETARIA
+  TESORERO
+  VOCAL
+}
+
+model JuntaMember {
+  id          Int       @id @default(autoincrement())
+  firstName   String
+  lastName    String
+  ci          String?   @unique
+  phone       String?
+  juntaRole   JuntaRole @default(VOCAL)
+  academicYear Int      // Gestión a la que pertenece
+  isActive    Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+
+  userId      Int       @unique
+  user        User      @relation(fields: [userId], references: [id])
+}
+
+// ─────────────────────────────────────────────
+// DELEGADO DE CURSO
+// ─────────────────────────────────────────────
+
+model CourseDelegate {
+  id          Int      @id @default(autoincrement())
+  firstName   String
+  lastName    String
+  ci          String?  @unique
+  phone       String?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+
+  userId      Int      @unique
+  user        User     @relation(fields: [userId], references: [id])
+
+  courseId    Int      @unique  // Un delegado por curso
+  course      Course   @relation(fields: [courseId], references: [id])
 }
 
 // ─────────────────────────────────────────────
 // UNIDAD EDUCATIVA Y TURNOS
 // ─────────────────────────────────────────────
 
-// Cada turno tiene su propio director y configuración
 model ShiftDirector {
   id        Int      @id @default(autoincrement())
-  shift     Shift    @unique  // Un director por turno
+  shift     Shift    @unique
   userId    Int      @unique
   user      User     @relation(fields: [userId], references: [id])
   courses   Course[]
 }
 
 // ─────────────────────────────────────────────
-// GESTIÓN ACADÉMICA (AÑO ESCOLAR)
+// GESTIÓN ACADÉMICA
 // ─────────────────────────────────────────────
 
 model AcademicYear {
   id          Int          @id @default(autoincrement())
-  year        Int          @unique   // Ej: 2026
+  year        Int          @unique
   startDate   DateTime
   endDate     DateTime
   isActive    Boolean      @default(false)
   createdAt   DateTime     @default(now())
 
   trimesters  Trimester[]
-  subjects    Subject[]                    // Materias configuradas para esta gestión
+  subjects    Subject[]
   assignments StudentAcademicAssignment[]
   holidays    Holiday[]
+  charges     Charge[]
 }
 
 model Trimester {
   id             Int          @id @default(autoincrement())
-  number         Int          // 1, 2, 3 (variable)
-  name           String?      // Ej: "Primer Trimestre"
+  number         Int
+  name           String?
   startDate      DateTime
   endDate        DateTime
   academicYearId Int
@@ -135,7 +224,6 @@ model Trimester {
   @@unique([academicYearId, number])
 }
 
-// Días no hábiles / feriados
 model Holiday {
   id             Int          @id @default(autoincrement())
   date           DateTime
@@ -145,7 +233,7 @@ model Holiday {
 }
 
 // ─────────────────────────────────────────────
-// ACTORES: PADRES, ESTUDIANTES, MAESTROS, STAFF
+// ACTORES
 // ─────────────────────────────────────────────
 
 model Parent {
@@ -162,38 +250,38 @@ model Parent {
   userId    Int?            @unique
   user      User?           @relation(fields: [userId], references: [id])
 
-  students  ParentStudent[]
-  charges   Charge[]
-  payments  Payment[]
+  students      ParentStudent[]
+  charges       Charge[]
+  payments      Payment[]
   notifications Notification[]
 }
 
 model Student {
-  id          Int       @id @default(autoincrement())
-  firstName   String
-  lastName    String
-  ci          String?   @unique
-  rude        String?   @unique   // Código nacional boliviano del estudiante
-  birthDate   DateTime?
-  phone       String?
-  email       String?   @unique
+  id        Int       @id @default(autoincrement())
+  firstName String
+  lastName  String
+  ci        String?   @unique
+  rude      String?   @unique
+  birthDate DateTime?
+  phone     String?
+  email     String?   @unique
   address   String?
-  isActive    Boolean   @default(true)
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  isActive  Boolean   @default(true)
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
 
   userId      Int?      @unique
   user        User?     @relation(fields: [userId], references: [id])
 
   parents     ParentStudent[]
   assignments StudentAcademicAssignment[]
+  charges     Charge[]   // Cargos asignados a este estudiante específico
 }
 
-// Relación padre ↔ estudiante (muchos a muchos)
 model ParentStudent {
   id           Int          @id @default(autoincrement())
   relationType RelationType @default(OTRO)
-  isTutor      Boolean      @default(false) // Es el tutor legal principal
+  isTutor      Boolean      @default(false)
   parentId     Int
   studentId    Int
   parent       Parent       @relation(fields: [parentId], references: [id])
@@ -203,23 +291,23 @@ model ParentStudent {
 }
 
 model Teacher {
-  id          Int       @id @default(autoincrement())
-  firstName   String
-  lastName    String
-  ci          String?   @unique
-  phone       String?
-  email       String?   @unique
-  specialty   String?
-  isActive    Boolean   @default(true)
-  createdAt   DateTime  @default(now())
+  id        Int       @id @default(autoincrement())
+  firstName String
+  lastName  String
+  ci        String?   @unique
+  phone     String?
+  email     String?   @unique
+  specialty String?
+  isActive  Boolean   @default(true)
+  createdAt DateTime  @default(now())
 
   userId      Int       @unique
   user        User      @relation(fields: [userId], references: [id])
 
   assignments TeacherSubjectCourse[]
+  tutorCourse CourseTutor?           // Maestro tutor de un curso
 }
 
-// Personal administrativo (portero, secretaria, regente, etc.)
 model Staff {
   id        Int       @id @default(autoincrement())
   firstName String
@@ -227,7 +315,7 @@ model Staff {
   ci        String?   @unique
   phone     String?
   staffRole StaffRole
-  shift     Shift?    // Turno al que pertenece (opcional)
+  shift     Shift?
   isActive  Boolean   @default(true)
   createdAt DateTime  @default(now())
 
@@ -236,16 +324,16 @@ model Staff {
 }
 
 // ─────────────────────────────────────────────
-// ESTRUCTURA ACADÉMICA: CURSOS Y MATERIAS
+// CURSOS
 // ─────────────────────────────────────────────
 
 model Course {
-  id              Int           @id @default(autoincrement())
-  level           AcademicLevel
-  grade           Grade
-  parallel        Parallel
-  educationType   EducationType @default(REGULAR)
-  shift           Shift
+  id            Int           @id @default(autoincrement())
+  level         AcademicLevel
+  grade         Grade
+  parallel      Parallel
+  educationType EducationType @default(REGULAR)
+  shift         Shift
 
   shiftDirectorId Int?
   shiftDirector   ShiftDirector? @relation(fields: [shiftDirectorId], references: [id])
@@ -253,26 +341,36 @@ model Course {
   assignments     StudentAcademicAssignment[]
   schedules       Schedule[]
   teacherSubjects TeacherSubjectCourse[]
+  delegate        CourseDelegate?   // Delegado de curso
+  tutor           CourseTutor?      // Maestro tutor del curso
 
-  @@unique([level, grade, parallel, educationType, shift]) // No puede haber dos cursos iguales en el mismo turno
+  @@unique([level, grade, parallel, educationType, shift])
 }
 
-// Materias configuradas por el administrador cada gestión
+// Maestro tutor designado a un curso
+model CourseTutor {
+  id        Int      @id @default(autoincrement())
+  courseId  Int      @unique  // Un tutor por curso
+  teacherId Int      @unique  // Un maestro no puede tutorear más de un curso
+  course    Course   @relation(fields: [courseId], references: [id])
+  teacher   Teacher  @relation(fields: [teacherId], references: [id])
+  createdAt DateTime @default(now())
+}
+
 model Subject {
-  id             Int          @id @default(autoincrement())
-  name           String       // Ej: "Matemáticas"
-  code           String?      // Ej: "MAT"
+  id             Int           @id @default(autoincrement())
+  name           String
+  code           String?
   level          AcademicLevel
-  hoursPerWeek   Int          @default(4)
+  hoursPerWeek   Int           @default(4)
   academicYearId Int
-  academicYear   AcademicYear @relation(fields: [academicYearId], references: [id])
+  academicYear   AcademicYear  @relation(fields: [academicYearId], references: [id])
 
   teacherSubjects TeacherSubjectCourse[]
 
   @@unique([name, level, academicYearId])
 }
 
-// Asignación maestro ↔ materia ↔ curso ↔ gestión
 model TeacherSubjectCourse {
   id        Int     @id @default(autoincrement())
   teacherId Int
@@ -287,106 +385,90 @@ model TeacherSubjectCourse {
   @@unique([teacherId, subjectId, courseId])
 }
 
-// ─────────────────────────────────────────────
-// INSCRIPCIONES DE ESTUDIANTES
-// ─────────────────────────────────────────────
-
 model StudentAcademicAssignment {
   id             Int           @id @default(autoincrement())
-  educationType  EducationType // REGULAR o BTH
-  year           Int           // Gestión (2026, 2027…)
+  educationType  EducationType
+  year           Int
   studentId      Int
   courseId       Int
   academicYearId Int
   createdAt      DateTime      @default(now())
 
-  student        Student       @relation(fields: [studentId], references: [id])
-  course         Course        @relation(fields: [courseId], references: [id])
-  academicYear   AcademicYear  @relation(fields: [academicYearId], references: [id])
+  student      Student      @relation(fields: [studentId], references: [id])
+  course       Course       @relation(fields: [courseId], references: [id])
+  academicYear AcademicYear @relation(fields: [academicYearId], references: [id])
 
-  // Un estudiante solo puede estar en un curso por tipo y gestión
-  // (excepto secundaria 3°+ que puede tener REGULAR + BTH)
   @@unique([studentId, academicYearId, educationType])
 }
 
-// ─────────────────────────────────────────────
-// HORARIOS
-// ─────────────────────────────────────────────
-
 model Schedule {
-  id                    Int                  @id @default(autoincrement())
-  dayOfWeek             Int                  // 1=Lunes … 5=Viernes
-  startTime             String               // "08:00"
-  endTime               String               // "08:45"
-  courseId              Int
+  id                     Int                  @id @default(autoincrement())
+  dayOfWeek              Int
+  startTime              String
+  endTime                String
+  courseId               Int
   teacherSubjectCourseId Int
 
-  course                Course               @relation(fields: [courseId], references: [id])
-  teacherSubjectCourse  TeacherSubjectCourse @relation(fields: [teacherSubjectCourseId], references: [id])
+  course               Course               @relation(fields: [courseId], references: [id])
+  teacherSubjectCourse TeacherSubjectCourse @relation(fields: [teacherSubjectCourseId], references: [id])
 
-  @@unique([courseId, dayOfWeek, startTime]) // No puede haber dos clases al mismo tiempo en un curso
+  @@unique([courseId, dayOfWeek, startTime])
 }
 
 // ─────────────────────────────────────────────
-// TESORERÍA: CARGOS Y PAGOS
+// TESORERÍA
 // ─────────────────────────────────────────────
-
-enum ChargeType {
-  CUOTA_INICIAL     // Monto de inicio de año
-  MULTA_REUNION     // Multa por inasistencia a reunión
-  ACTIVIDAD_EXTRA   // Kermesses, excursiones, etc.
-  MINGA             // Minga de cada gestión
-  MENSUALIDAD       // Pagos regulares si aplica
-}
-
-enum ChargeStatus {
-  PENDIENTE
-  PARCIAL
-  PAGADO
-  ANULADO
-}
 
 model Charge {
-  id          Int          @id @default(autoincrement())
-  title       String
-  description String?
-  amount      Float
-  paidAmount  Float        @default(0)
-  type        ChargeType
-  status      ChargeStatus @default(PENDIENTE)
-  dueDate     DateTime?
-  createdAt   DateTime     @default(now())
+  id            Int          @id @default(autoincrement())
+  title         String
+  description   String?
+  amount        Float
+  paidAmount    Float        @default(0)
+  type          ChargeType
+  target        ChargeTarget @default(TUTOR) // TUTOR o ESTUDIANTE
+  status        ChargeStatus @default(PENDIENTE)
+  dueDate       DateTime?
+  tolerance     Boolean      @default(false) // Caso especial con tolerancia
+  toleranceNote String?      // Nota sobre la tolerancia
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
 
+  academicYearId Int
+  academicYear   AcademicYear @relation(fields: [academicYearId], references: [id])
+
+  // El pago siempre lo hace el tutor legal
   parentId    Int
   parent      Parent       @relation(fields: [parentId], references: [id])
+
+  // Si el cargo es por ESTUDIANTE, se especifica el estudiante
+  studentId   Int?
+  student     Student?     @relation(fields: [studentId], references: [id])
+
   payments    Payment[]
 }
 
 model Payment {
-  id        Int      @id @default(autoincrement())
+  id        Int           @id @default(autoincrement())
   amount    Float
-  method    String   // EFECTIVO, QR, TRANSFERENCIA
-  reference String?  // Número de comprobante
-  date      DateTime @default(now())
-  createdAt DateTime @default(now())
+  method    PaymentMethod @default(EFECTIVO)
+  reference String?       // Número de comprobante / referencia
+  note      String?       // Nota adicional
+  date      DateTime      @default(now())
+  createdAt DateTime      @default(now())
 
   chargeId  Int
-  charge    Charge   @relation(fields: [chargeId], references: [id])
-  parentId  Int
-  parent    Parent   @relation(fields: [parentId], references: [id])
+  charge    Charge        @relation(fields: [chargeId], references: [id])
+
+  // Quien recibió el pago (miembro de la junta)
+  receivedById Int?
+  parentId     Int
+  parent       Parent     @relation(fields: [parentId], references: [id])
 }
 
 // ─────────────────────────────────────────────
 // NOTIFICACIONES
 // ─────────────────────────────────────────────
-
-enum NotificationType {
-  REUNION         // Convocatoria a reunión
-  ACTIVIDAD       // Actividad programada
-  DEUDA           // Recordatorio de pago pendiente
-  ACADEMICA       // Notificación académica del maestro
-  GENERAL         // Comunicado general
-}
 
 model Notification {
   id        Int              @id @default(autoincrement())
