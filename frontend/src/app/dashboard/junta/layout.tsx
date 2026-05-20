@@ -6,8 +6,9 @@ import Link from 'next/link'
 import Image from 'next/image'
 import {
   LayoutDashboard, DollarSign, FileBarChart,
-  Bell, LogOut, Menu, X, ChevronRight, ClipboardList
-} from 'lucide-react'
+  Bell, LogOut, Menu, X,Users, ChevronRight, ClipboardList
+    } from 'lucide-react'
+
 
 interface User {
   id:    number
@@ -31,6 +32,11 @@ const menuItems = [
     href:  '/dashboard/junta/cargos/nuevo',
     icon:  <ClipboardList size={18}/>,
   },
+  {
+  label: 'Delegados',
+  href:  '/dashboard/junta/delegados',
+  icon:  <Users size={18}/>,
+},
   {
     label: 'Reportes',
     href:  '/dashboard/junta/reportes',

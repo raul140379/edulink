@@ -84,17 +84,28 @@ const createTutorUser = async (
 // ─────────────────────────────────────────────
 export const getParents = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    const { search, isActive } = req.query
+    const { search, isActive, isTutor } = req.query
 
     const parents = await prisma.parent.findMany({
       where: {
         ...(search ? {
-          OR: [
-            { firstName: { contains: search as string, mode: 'insensitive' } },
-            { lastName:  { contains: search as string, mode: 'insensitive' } },
-            { ci:        { contains: search as string, mode: 'insensitive' } },
-            { phone:     { contains: search as string, mode: 'insensitive' } },
-          ]
+         OR: [
+  { firstName: { contains: search as string, mode: 'insensitive' } },
+  { lastName:  { contains: search as string, mode: 'insensitive' } },
+  { ci:        { contains: search as string, mode: 'insensitive' } },
+  { phone:     { contains: search as string, mode: 'insensitive' } },
+  { AND: [
+    { firstName: { contains: (search as string).split(' ')[0], mode: 'insensitive' } },
+    { lastName:  { contains: (search as string).split(' ')[1] || '', mode: 'insensitive' } },
+  ]},
+  { AND: [
+    { lastName:  { contains: (search as string).split(' ')[0], mode: 'insensitive' } },
+    { firstName: { contains: (search as string).split(' ')[1] || '', mode: 'insensitive' } },
+  ]},
+]
+} : {}),
+        ...(isTutor === 'true' ? {
+          students: { some: { isTutor: true } }
         } : {})
       },
       include: {
@@ -603,5 +614,246 @@ export const changeTutor = async (req: AuthRequest, res: Response): Promise<void
   } catch (error) {
     console.error('changeTutor error:', error)
     res.status(500).json({ message: 'Error al cambiar tutor legal' })
+  }
+}
+// ─────────────────────────────────────────────
+// POST /api/parents/import — Importar padres desde Excel
+// ─────────────────────────────────────────────
+export const importParents = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    if (!req.file) {
+      res.status(400).json({ message: 'No se subió ningún archivo' })
+      return
+    }
+
+    const XLSX     = require('xlsx')
+    const bcrypt   = require('bcryptjs')
+    const workbook = XLSX.read(req.file.buffer, { type: 'buffer' })
+    const sheet    = workbook.Sheets[workbook.SheetNames[0]]
+    const rows     = XLSX.utils.sheet_to_json(sheet, { defval: '' })
+
+    const created = []
+    const errors  = []
+    const skipped = []
+
+    for (const row of rows as any[]) {
+      ///console.log('Fila:', JSON.stringify(row))
+      try {
+        const kardex = String(row['NROKARDEX'] || '').trim()
+
+        if (!kardex) {
+          errors.push({ kardex: '', reason: 'Sin kardex' })
+          continue
+        }
+
+        // Buscar estudiantes con este kardex
+        const students = await prisma.student.findMany({
+          where: { kardex }
+        })
+
+        if (students.length === 0) {
+          skipped.push({ kardex, reason: 'No se encontró estudiante con ese kardex' })
+          continue
+        }
+
+        // ── Registrar PADRE ──────────────────────────
+        const nombrePadre   = String(row['NOMBREPADRE']   || '').trim()
+        const apellidoPadre = String(row['APELLIDOPADRE'] || '').trim()
+        const ciPadre       = String(row['NROCIPADRE']    || '').trim()
+        const telPadre      = String(row['TELEFONOPADRE'] || '').trim()
+
+        if (nombrePadre && apellidoPadre) {
+          let padre = ciPadre ? await prisma.parent.findUnique({ where: { ci: ciPadre } }) : null
+
+          if (!padre) {
+            // Crear usuario para el padre
+            const baseEmail = `${nombrePadre.split(' ')[0].toLowerCase()}.${apellidoPadre.split(' ')[0].toLowerCase()}@nnuu.edu.bo`
+              .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+
+            let email = baseEmail
+            let emailExists = await prisma.user.findUnique({ where: { email } })
+            let counter = 1
+            while (emailExists) {
+              email = baseEmail.replace('@', `${counter}@`)
+              emailExists = await prisma.user.findUnique({ where: { email } })
+              counter++
+            }
+
+            const year     = new Date().getFullYear()
+            const ci4      = ciPadre ? ciPadre.slice(-4) : apellidoPadre.substring(0, 3).toLowerCase()
+            const password = `padre${ci4}${year}`
+            const hashed   = await bcrypt.hash(password, 10)
+
+            const user = await prisma.user.create({
+              data: { email, password: hashed, role: 'PARENT', isActive: true }
+            })
+
+            padre = await prisma.parent.create({
+              data: {
+                firstName: nombrePadre,
+                lastName:  apellidoPadre,
+                ci:        ciPadre   || null,
+                phone:     telPadre  || null,
+                userId:    user.id,
+              }
+            })
+
+            created.push({ name: `${apellidoPadre} ${nombrePadre}`, type: 'PADRE', email, password })
+          }
+
+          // Vincular padre con todos los estudiantes del kardex
+          for (const student of students) {
+            const existing = await prisma.parentStudent.findUnique({
+              where: { parentId_studentId: { parentId: padre!.id, studentId: student.id } }
+            })
+            if (!existing) {
+              await prisma.parentStudent.create({
+                data: {
+                  parentId:    padre!.id,
+                  studentId:   student.id,
+                  relationType: 'PADRE',
+                  isTutor:     false,
+                }
+              })
+            }
+          }
+        }
+
+        // ── Registrar MADRE ──────────────────────────
+        const nombreMadre   = String(row['NOMBRESMADRE']   || '').trim()
+        const apellidoMadre = String(row['APELLIDOSMADRE'] || '').trim()
+        const ciMadre       = String(row['NROCIMADRE']     || '').trim()
+        const telMadre      = String(row['TELEFONOMADRE']  || '').trim()
+
+        if (nombreMadre && apellidoMadre) {
+          let madre = ciMadre ? await prisma.parent.findUnique({ where: { ci: ciMadre } }) : null
+
+          if (!madre) {
+            const baseEmail = `${nombreMadre.split(' ')[0].toLowerCase()}.${apellidoMadre.split(' ')[0].toLowerCase()}@nnuu.edu.bo`
+              .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+
+            let email = baseEmail
+            let emailExists = await prisma.user.findUnique({ where: { email } })
+            let counter = 1
+            while (emailExists) {
+              email = baseEmail.replace('@', `${counter}@`)
+              emailExists = await prisma.user.findUnique({ where: { email } })
+              counter++
+            }
+
+            const year     = new Date().getFullYear()
+            const ci4      = ciMadre ? ciMadre.slice(-4) : apellidoMadre.substring(0, 3).toLowerCase()
+            const password = `padre${ci4}${year}`
+            const hashed   = await bcrypt.hash(password, 10)
+
+            const user = await prisma.user.create({
+              data: { email, password: hashed, role: 'PARENT', isActive: true }
+            })
+
+            madre = await prisma.parent.create({
+              data: {
+                firstName: nombreMadre,
+                lastName:  apellidoMadre,
+                ci:        ciMadre  || null,
+                phone:     telMadre || null,
+                userId:    user.id,
+              }
+            })
+
+            created.push({ name: `${apellidoMadre} ${nombreMadre}`, type: 'MADRE', email, password })
+          }
+
+          // Vincular madre con todos los estudiantes del kardex
+          for (const student of students) {
+            const existing = await prisma.parentStudent.findUnique({
+              where: { parentId_studentId: { parentId: madre!.id, studentId: student.id } }
+            })
+            if (!existing) {
+              await prisma.parentStudent.create({
+                data: {
+                  parentId:    madre!.id,
+                  studentId:   student.id,
+                  relationType: 'MADRE',
+                  isTutor:     false,
+                }
+              })
+            }
+          }
+        }
+
+      } catch (e: any) {
+        errors.push({
+          kardex: String(row['NROKARDEX'] || ''),
+          reason: e.message || 'Error desconocido'
+        })
+      }
+    }
+
+    res.status(201).json({
+      message: `Importación completada: ${created.length} registros creados, ${skipped.length} omitidos, ${errors.length} errores`,
+      created,
+      skipped,
+      errors,
+      total: rows.length,
+    })
+  } catch (error) {
+    console.error('importParents error:', error)
+    res.status(500).json({ message: 'Error al importar padres' })
+  }
+}
+// ─────────────────────────────────────────────
+// PATCH /api/parents/:id/changeRelation
+// asigna untutor legal — puede ser un padre ya
+// registrado o uno nuevo designado como tutor
+// ─────────────────────────────────────────────
+export const changeRelation = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const { id, studentId } = req.params
+    const { relationType, isTutor } = req.body
+
+    // Si se marca como tutor legal, quitar tutor anterior de este estudiante
+    if (isTutor) {
+      await prisma.parentStudent.updateMany({
+        where:  { studentId: parseInt(studentId), isTutor: true },
+        data:   { isTutor: false, relationType: 'OTRO' }
+      })
+    }
+
+    // Actualizar la relación
+    await prisma.parentStudent.update({
+      where: { parentId_studentId: { parentId: parseInt(id), studentId: parseInt(studentId) } },
+      data:  { 
+        relationType: relationType as any,
+        isTutor:      isTutor || false 
+      }
+    })
+
+    // Si es tutor legal y no tiene usuario, generarle acceso
+    const parent = await prisma.parent.findUnique({
+      where: { id: parseInt(id) },
+      include: { user: true }
+    })
+
+    let accessEmail:     string | undefined
+    let defaultPassword: string | undefined
+
+    if (isTutor && parent && !parent.userId) {
+      try {
+        const result = await createTutorUser(parent.firstName, parent.lastName, parent.ci || undefined, parent.email || undefined)
+        await prisma.parent.update({ where: { id: parseInt(id) }, data: { userId: result.user.id } })
+        accessEmail     = result.accessEmail
+        defaultPassword = result.defaultPassword
+      } catch (err: any) {
+        console.error('Error generando credenciales:', err.message)
+      }
+    }
+
+    res.json({
+      message: 'Relación actualizada correctamente',
+      ...(accessEmail ? { accessEmail, defaultPassword } : {}),
+    })
+  } catch (error) {
+    console.error('changeRelation error:', error)
+    res.status(500).json({ message: 'Error al actualizar relación' })
   }
 }

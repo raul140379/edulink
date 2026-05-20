@@ -7,7 +7,7 @@ import { useRouter } from 'next/navigation'
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000'
 
 interface Student {
-  id: number; firstName: string; lastName: string; ci?: string
+  id: number; firstName: string; lastName: string; ci?: string; rude?: string
 }
 
 interface ParentStudent {
@@ -40,7 +40,14 @@ const RELATION_TYPES = [
   { value: 'OTRO',        label: 'Otro' },
 ]
 
-const relLabel = (v: string) => RELATION_TYPES.find(r => r.value === v)?.label || v
+const relLabel = (v: string, isTutor?: boolean) => {
+  if (isTutor) {
+    if (v === 'PADRE')  return 'Padre · Tutor Legal'
+    if (v === 'MADRE')  return 'Madre · Tutora Legal'
+    return 'Tutor Legal'
+  }
+  return RELATION_TYPES.find(r => r.value === v)?.label || v
+}
 const relColor: Record<string, string> = {
   PADRE: '#1A3A7C', MADRE: '#0F6E56', TUTOR_LEGAL: '#712B13', OTRO: '#444441'
 }
@@ -75,6 +82,12 @@ export default function PadresPage() {
   const [changeRelStudentId, setChangeRelStudentId] = useState<number | null>(null)
   const [changeRelType,      setChangeRelType]      = useState('PADRE')
   const [currentRelType,     setCurrentRelType]     = useState('')
+  const [showImportModal, setShowImportModal] = useState(false)
+  const [importing,       setImporting]       = useState(false)
+  const [importResult,    setImportResult]    = useState<any>(null)
+  const [linkSearch, setLinkSearch] = useState('')
+  const [changeIsTutor, setChangeIsTutor] = useState(false)
+  const [filterTutor, setFilterTutor] = useState('')
 
   const token = typeof window !== 'undefined' ? localStorage.getItem('token') : ''
 
@@ -88,6 +101,7 @@ export default function PadresPage() {
     try {
       const params = new URLSearchParams()
       if (search) params.set('search', search)
+      if (filterTutor === 'TUTOR') params.set('isTutor', 'true')
       const res  = await fetch(`${API_URL}/api/parents?${params}`, { headers: { Authorization: `Bearer ${token}` } })
       const data = await res.json()
       if (res.ok) setParents(data)
@@ -117,14 +131,15 @@ export default function PadresPage() {
 
   const openLink = (id: number) => { setLinkId(id); setLinkStudentIds([]); setLinkRelType('PADRE'); setError(''); setShowLinkModal(true) }
 
-  const openChangeRel = (parentId: number, studentId: number, currentRel: string) => {
-    setChangeRelParentId(parentId)
-    setChangeRelStudentId(studentId)
-    setCurrentRelType(currentRel)
-    setChangeRelType(currentRel)
-    setError('')
-    setShowChangeRelModal(true)
-  }
+  const openChangeRel = (parentId: number, studentId: number, currentRel: string, isTutor: boolean) => {
+  setChangeRelParentId(parentId)
+  setChangeRelStudentId(studentId)
+  setCurrentRelType(currentRel)
+  setChangeRelType(currentRel)
+  setChangeIsTutor(isTutor)
+  setError('')
+  setShowChangeRelModal(true)
+}
 
   const handleSave = async () => {
     setError(''); setSaving(true)
@@ -164,28 +179,27 @@ export default function PadresPage() {
   }
 
   const handleChangeRel = async () => {
-    if (!changeRelParentId || !changeRelStudentId) return
-    if (changeRelType === currentRelType) { notify('Selecciona un tipo diferente al actual', 'error'); return }
-    setError(''); setSaving(true)
-    try {
-      const res  = await fetch(`${API_URL}/api/parents/${changeRelParentId}/change-relation/${changeRelStudentId}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ relationType: changeRelType }),
-      })
-      const data = await res.json()
-      if (!res.ok) { notify(data.message, 'error'); return }
-      setShowChangeRelModal(false)
-      fetchParents()
-      if (data.accessEmail) {
-        setCreds({ accessEmail: data.accessEmail, defaultPassword: data.defaultPassword, name: '' })
-        setShowCredentials(true)
-      } else {
-        notify(data.message)
-      }
-    } catch { notify('Error de conexión', 'error') }
-    finally  { setSaving(false) }
-  }
+  if (!changeRelParentId || !changeRelStudentId) return
+  setError(''); setSaving(true)
+  try {
+    const res  = await fetch(`${API_URL}/api/parents/${changeRelParentId}/change-relation/${changeRelStudentId}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ relationType: changeRelType, isTutor: changeIsTutor }),
+    })
+    const data = await res.json()
+    if (!res.ok) { notify(data.message, 'error'); return }
+    setShowChangeRelModal(false)
+    fetchParents()
+    if (data.accessEmail) {
+      setCreds({ accessEmail: data.accessEmail, defaultPassword: data.defaultPassword, name: '' })
+      setShowCredentials(true)
+    } else {
+      notify(data.message)
+    }
+  } catch { notify('Error de conexión', 'error') }
+  finally  { setSaving(false) }
+}
 
   const handleUnlink = async (parentId: number, studentId: number) => {
     if (!confirm('¿Desvincular este estudiante?')) return
@@ -231,7 +245,22 @@ export default function PadresPage() {
     navigator.clipboard.writeText(`Nombre: ${creds.name}\nEmail: ${creds.accessEmail}\nContraseña: ${creds.defaultPassword}`)
     setCopied(true); setTimeout(() => setCopied(false), 2000)
   }
-
+  const handleImportParents = async (file: File) => {
+  setImporting(true)
+  try {
+    const formData = new FormData()
+    formData.append('file', file)
+    const res  = await fetch(`${API_URL}/api/parents/import`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}` },
+      body: formData,
+    })
+    const data = await res.json()
+    setImportResult(data)
+    if (res.ok) fetchParents()
+  } catch { notify('Error al importar', 'error') }
+  finally  { setImporting(false) }
+}
   const toggleLink = (id: number) => setLinkStudentIds(p => p.includes(id) ? p.filter(s => s !== id) : [...p, id])
   const toggleForm = (id: number) => setForm(p => ({ ...p, studentIds: p.studentIds.includes(id) ? p.studentIds.filter(s => s !== id) : [...p.studentIds, id] }))
 
@@ -241,6 +270,12 @@ export default function PadresPage() {
     <div>
       <div className="page-header">
         <div><h1>Padres y Tutores</h1><p>Registro y vinculación con estudiantes</p></div>
+        <div style={{display:'flex', gap:'8px'}}>
+       <button className="btn-outline" onClick={() => { setShowImportModal(true); setImportResult(null) }}>
+      📥 Importar Excel
+    </button>
+        <button className="btn-primary" onClick={openCreate}><Plus size={16}/> Nuevo padre/tutor</button>
+</div>
         <button className="btn-primary" onClick={openCreate}><Plus size={16}/> Nuevo padre/tutor</button>
       </div>
 
@@ -253,6 +288,10 @@ export default function PadresPage() {
           <input placeholder="Buscar por nombre, CI o teléfono..." value={search}
             onChange={e => setSearch(e.target.value)} onKeyDown={e => e.key === 'Enter' && fetchParents()}/>
         </div>
+        <select value={filterTutor} onChange={e => setFilterTutor(e.target.value)}>
+  <option value="">Todos</option>
+  <option value="TUTOR">Solo tutores legales</option>
+</select>
         <button className="btn-outline" onClick={fetchParents}>Buscar</button>
       </div>
 
@@ -282,10 +321,10 @@ export default function PadresPage() {
                       : <div className="students-list">
                           {p.students.map(ps => (
                             <div key={ps.student.id} className="schip">
-                              <button className="rbadge-btn" style={{ background: relColor[ps.relationType]+'18', color: relColor[ps.relationType] }}
-                                title="Click para cambiar tipo de relación" onClick={() => openChangeRel(p.id, ps.student.id, ps.relationType)}>
-                                {relLabel(ps.relationType)} ✏️
-                              </button>
+                            <button className="rbadge-btn" style={{ background: relColor[ps.relationType]+'18', color: relColor[ps.relationType] }}
+                              title="Click para cambiar tipo de relación" onClick={() => openChangeRel(p.id, ps.student.id, ps.relationType, ps.isTutor)}>
+                              {relLabel(ps.relationType, ps.isTutor)} ✏️
+                            </button>
                               <span className="sname">{ps.student.lastName} {ps.student.firstName}</span>
                               <button className="unlink-btn" onClick={() => handleUnlink(p.id, ps.student.id)} title="Desvincular">×</button>
                             </div>
@@ -404,6 +443,18 @@ export default function PadresPage() {
               {error && <div className="alert err">{error}</div>}
               <div className="info-box">Relación actual: <strong style={{ color: relColor[currentRelType] }}>{relLabel(currentRelType)}</strong></div>
               <div className="section-lbl">Nuevo tipo de relación</div>
+              {/* Checkbox tutor legal */}
+<div className="tolerance-box" style={{marginTop:'8px'}}>
+  <label className="checkbox-label">
+    <input type="checkbox"
+      checked={changeRelType === 'TUTOR_LEGAL'}
+      onChange={e => {
+        if (e.target.checked) setChangeRelType('TUTOR_LEGAL')
+        else setChangeRelType(currentRelType)
+      }}/>
+    <span>🔑 Designar como Tutor Legal</span>
+  </label>
+</div>
               <div className="relation-grid">
                 {RELATION_TYPES.filter(r => r.value !== currentRelType).map(r => (
                   <button key={r.value} type="button" className={`rel-btn ${changeRelType === r.value ? 'selected' : ''}`}
@@ -412,6 +463,14 @@ export default function PadresPage() {
                   </button>
                 ))}
               </div>
+              <div className="tolerance-box" style={{marginTop:'8px'}}>
+  <label className="checkbox-label">
+    <input type="checkbox"
+      checked={changeIsTutor}
+      onChange={e => setChangeIsTutor(e.target.checked)}/>
+    <span>🔑 Designar como Tutor Legal</span>
+  </label>
+</div>
               {changeRelType === 'TUTOR_LEGAL' && (
                 <div className="info-box warn">
                   ⚠️ Al asignar como <strong>Tutor Legal</strong>:<br/>
@@ -442,17 +501,25 @@ export default function PadresPage() {
                   {RELATION_TYPES.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
                 </select>
               </div>
-              <div className="fg"><label>Estudiantes *</label>
-                <div className="students-select">
-                  {students.map(s => (
-                    <label key={s.id} className={`student-option ${linkStudentIds.includes(s.id) ? 'selected' : ''}`}>
-                      <input type="checkbox" checked={linkStudentIds.includes(s.id)} onChange={() => toggleLink(s.id)}/>
-                      <span>{s.lastName} {s.firstName}</span>
-                      {s.ci && <span className="muted-sm">CI: {s.ci}</span>}
-                    </label>
-                  ))}
-                </div>
-              </div>
+            <div className="fg"><label>Estudiantes *</label>
+  <input type="text" placeholder="Buscar por nombre, CI o RUDE..."
+    value={linkSearch} onChange={e => setLinkSearch(e.target.value)}
+    style={{padding:'8px 12px',border:'1.5px solid #CBE0F0',borderRadius:'8px',fontSize:'13px',marginBottom:'8px',width:'100%',outline:'none'}}/>
+  <div className="students-select">
+    {students.filter(s =>
+      linkSearch === '' ||
+      `${s.firstName} ${s.lastName}`.toLowerCase().includes(linkSearch.toLowerCase()) ||
+      (s.ci   && s.ci.includes(linkSearch)) ||
+      (s.rude && s.rude.includes(linkSearch))
+    ).map(s => (
+      <label key={s.id} className={`student-option ${linkStudentIds.includes(s.id) ? 'selected' : ''}`}>
+        <input type="checkbox" checked={linkStudentIds.includes(s.id)} onChange={() => toggleLink(s.id)}/>
+        <span>{s.lastName} {s.firstName}</span>
+        {s.ci && <span className="muted-sm">CI: {s.ci}</span>}
+      </label>
+    ))}
+  </div>
+</div>
             </div>
             <div className="mfoot">
               <button className="btn-outline" onClick={() => setShowLinkModal(false)}>Cancelar</button>
@@ -487,7 +554,80 @@ export default function PadresPage() {
           </div>
         </div>
       )}
-
+    {/* Modal importar Excel padres */}
+{showImportModal && (
+  <div className="overlay" onClick={() => setShowImportModal(false)}>
+    <div className="modal modal-lg" onClick={e => e.stopPropagation()}>
+      <div className="mhead">
+        <h2>📥 Importar Padres desde Excel</h2>
+        <button onClick={() => setShowImportModal(false)}><X size={18}/></button>
+      </div>
+      <div className="mbody">
+        {!importResult ? (
+          <>
+            <div className="info-box">
+              El archivo Excel debe tener estas columnas:<br/>
+              <strong>NROKARDEX · NOMBREPADRE · APELLIDOPADRE · NROCIPADRE · TELEFONOPADRE · NOMBRESMADRE · APELLIDOSMADRE · NROCIMADRE · TELEFONOMADRE</strong>
+            </div>
+            <div className="fg">
+              <label>Seleccionar archivo Excel *</label>
+              <input type="file" accept=".xlsx,.xls"
+                onChange={e => {
+                  const file = e.target.files?.[0]
+                  if (file) handleImportParents(file)
+                }}/>
+            </div>
+            {importing && (
+              <div className="center-state">
+                <div className="spinner"/>
+                <p>Importando padres... esto puede tomar varios minutos</p>
+              </div>
+            )}
+          </>
+        ) : (
+          <div style={{display:'flex',flexDirection:'column',gap:'12px'}}>
+            <div className="alert suc">{importResult.message}</div>
+            {importResult.created?.length > 0 && (
+              <div>
+                <div className="section-lbl">✅ Creados ({importResult.created.length})</div>
+                <div style={{maxHeight:'200px',overflowY:'auto',marginTop:'8px'}}>
+                  {importResult.created.map((p: any, i: number) => (
+                    <div key={i} style={{padding:'6px 0',borderBottom:'1px solid #F0F6FC',fontSize:'12px'}}>
+                      <strong>{p.name}</strong> ({p.type}) — {p.email} / {p.password}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+            {importResult.skipped?.length > 0 && (
+              <div>
+                <div className="section-lbl">⚠️ Omitidos ({importResult.skipped.length})</div>
+                {importResult.skipped.map((s: any, i: number) => (
+                  <div key={i} style={{fontSize:'12px',color:'#7A6000',padding:'4px 0'}}>
+                    Kardex {s.kardex} — {s.reason}
+                  </div>
+                ))}
+              </div>
+            )}
+            {importResult.errors?.length > 0 && (
+              <div>
+                <div className="section-lbl">❌ Errores ({importResult.errors.length})</div>
+                {importResult.errors.map((e: any, i: number) => (
+                  <div key={i} style={{fontSize:'12px',color:'#C0392B',padding:'4px 0'}}>
+                    Kardex {e.kardex} — {e.reason}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+      <div className="mfoot">
+        <button className="btn-primary" onClick={() => setShowImportModal(false)}>Cerrar</button>
+      </div>
+    </div>
+  </div>
+)}
       <style>{`
         .page-header{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:24px;gap:16px}
         .page-header h1{font-size:20px;font-weight:700;color:#1A3A7C;margin-bottom:4px}

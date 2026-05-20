@@ -10,6 +10,7 @@ interface Student {
   id:        number
   firstName: string
   lastName:  string
+  gender:    string
   ci?:       string
   rude?:     string
   birthDate?: string
@@ -41,7 +42,7 @@ const GRADE_LABELS: Record<string, string> = { PRIMERO: '1°', SEGUNDO: '2°', T
 const SHIFT_LABELS: Record<string, string> = { MORNING: 'Mañana', AFTERNOON: 'Tarde', NIGHT: 'Noche' }
 const LEVEL_LABELS: Record<string, string> = { INICIAL: 'Inicial', PRIMARIA: 'Primaria', SECUNDARIA: 'Secundaria' }
 
-const emptyForm = { firstName: '', lastName: '', ci: '', rude: '', birthDate: '', phone: '', email: '', address: '' }
+const emptyForm = { firstName: '', lastName: '', ci: '', rude: '', birthDate: '', phone: '', email: '', address: '', gender: '' }
 
 export default function EstudiantesPage() {
   const router = useRouter()
@@ -63,6 +64,10 @@ export default function EstudiantesPage() {
   const [enrollCourseId, setEnrollCourseId] = useState('')
   const [credentials,  setCredentials]  = useState<CreatedCredentials | null>(null)
   const [copied,       setCopied]       = useState(false)
+  const [showImportModal, setShowImportModal] = useState(false)
+  const [importing,       setImporting]       = useState(false)
+  const [importResult,    setImportResult]    = useState<any>(null)
+  const [importType, setImportType] = useState<'students' | 'tutors'>('students')
 
   const token = typeof window !== 'undefined' ? localStorage.getItem('token') : ''
 
@@ -104,7 +109,7 @@ export default function EstudiantesPage() {
       firstName: s.firstName, lastName: s.lastName,
       ci: s.ci || '', rude: s.rude || '',
       birthDate: s.birthDate ? s.birthDate.split('T')[0] : '',
-      phone: s.phone || '', email: s.email || '', address: s.address || '',
+      phone: s.phone || '', email: s.email || '', address: s.address || '',gender: s.gender || '',
     })
     setError(''); setShowModal(true)
   }
@@ -113,6 +118,7 @@ export default function EstudiantesPage() {
 
   const handleSave = async () => {
     setError(''); setSaving(true)
+    if (!form.gender) { notify('El género es requerido', 'error'); setSaving(false); return }
     try {
       const url    = editMode ? `${API_URL}/api/students/${editId}` : `${API_URL}/api/students`
       const method = editMode ? 'PUT' : 'POST'
@@ -194,6 +200,39 @@ export default function EstudiantesPage() {
     return `${LEVEL_LABELS[c.level]} ${GRADE_LABELS[c.grade]} ${c.parallel} · ${SHIFT_LABELS[c.shift]}`
   }
 
+  const handleImport = async (file: File) => {
+  setImporting(true)
+  try {
+    const formData = new FormData()
+    formData.append('file', file)
+    const res  = await fetch(`${API_URL}/api/students/import`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}` },
+      body: formData,
+    })
+    const data = await res.json()
+    setImportResult(data)
+    if (res.ok) fetchStudents()
+  } catch { notify('Error al importar', 'error') }
+  finally  { setImporting(false) }
+}
+
+const handleImportTutors = async (file: File) => {
+  setImporting(true)
+  try {
+    const formData = new FormData()
+    formData.append('file', file)
+    const res  = await fetch(`${API_URL}/api/students/import-tutors`, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}` },
+      body: formData,
+    })
+    const data = await res.json()
+    setImportResult(data)
+    if (res.ok) fetchStudents()
+  } catch { notify('Error al importar tutores', 'error') }
+  finally  { setImporting(false) }
+}
   return (
     <div>
       <div className="page-header">
@@ -201,6 +240,9 @@ export default function EstudiantesPage() {
           <h1>Gestión de Estudiantes</h1>
           <p>Registro, edición e inscripción de estudiantes</p>
         </div>
+        <button className="btn-outline" onClick={() => { setShowImportModal(true); setImportResult(null) }}>
+  📥 Importar Excel
+</button>
         <button className="btn-primary" onClick={openCreate}><Plus size={16}/> Nuevo estudiante</button>
       </div>
 
@@ -289,6 +331,13 @@ export default function EstudiantesPage() {
                   <input type="text" placeholder="Ej: 00123456789" value={form.rude} onChange={e => setForm({...form, rude: e.target.value})}/></div>
                 <div className="fg"><label>Fecha de nacimiento</label>
                   <input type="date" value={form.birthDate} onChange={e => setForm({...form, birthDate: e.target.value})}/></div>
+                  <div className="fg"><label>Género *</label>
+                    <select value={form.gender} onChange={e => setForm({...form, gender: e.target.value})}>
+                       <option value="">-- Selecciona género --</option>
+                      <option value="MASCULINO">Masculino</option>
+                      <option value="FEMENINO">Femenino</option>
+                    </select>
+                  </div>
                 <div className="fg"><label>Teléfono</label>
                   <input type="text" placeholder="Ej: 70012345" value={form.phone} onChange={e => setForm({...form, phone: e.target.value})}/></div>
                 <div className="fg"><label>Correo personal</label>
@@ -362,7 +411,112 @@ export default function EstudiantesPage() {
           </div>
         </div>
       )}
-
+      {/* Modal importar Excel */} 
+      {showImportModal && (
+  <div className="overlay" onClick={() => setShowImportModal(false)}>
+    <div className="modal modal-lg" onClick={e => e.stopPropagation()}>
+      <div className="mhead">
+        <h2>📥 Importar desde Excel</h2>
+        <button onClick={() => setShowImportModal(false)}><X size={18}/></button>
+      </div>
+      <div className="mbody">
+        {!importResult ? (
+          <>
+            {/* Selector de tipo */}
+            <div className="mode-toggle">
+              <button className={`mode-btn ${importType === 'students' ? 'active' : ''}`}
+                onClick={() => setImportType('students')}>
+                Estudiantes
+              </button>
+              <button className={`mode-btn ${importType === 'tutors' ? 'active' : ''}`}
+                onClick={() => setImportType('tutors')}>
+                Tutores Legales
+              </button>
+            </div>
+            <div className="info-box">
+              {importType === 'students' ? (
+                <>Columnas requeridas:<br/><strong>RUDE · NROKARDEX · NOMBRESCOMPLETO · APELLIDOS · GENERO</strong><br/>Género: <strong>M</strong> o <strong>F</strong></>
+              ) : (
+                <>Columnas requeridas:<br/><strong>RUDE · NROKARDEX · TUTORLEGAL</strong><br/>Si no tiene tutor escribe: <strong>SIN REGISTRO</strong></>
+              )}
+            </div>
+            <div className="fg">
+              <label>Seleccionar archivo Excel *</label>
+              <input type="file" accept=".xlsx,.xls"
+                onChange={e => {
+                  const file = e.target.files?.[0]
+                  if (file) importType === 'students' ? handleImport(file) : handleImportTutors(file)
+                }}/>
+            </div>
+            {importing && (
+              <div className="center-state">
+                <div className="spinner"/>
+                <p>Importando... esto puede tomar varios minutos</p>
+              </div>
+            )}
+          </>
+        ) : (
+          <div style={{display:'flex',flexDirection:'column',gap:'12px'}}>
+            <div className="alert suc">{importResult.message}</div>
+            {/* Resultados de estudiantes */}
+            {importResult.created?.length > 0 && (
+              <div>
+                <div className="section-lbl">✅ Creados ({importResult.created.length})</div>
+                <div style={{maxHeight:'200px',overflowY:'auto',marginTop:'8px'}}>
+                  {importResult.created.map((s: any, i: number) => (
+                    <div key={i} style={{padding:'6px 0',borderBottom:'1px solid #F0F6FC',fontSize:'12px'}}>
+                      <strong>{s.name}</strong> — {s.email} / {s.password}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+            {/* Resultados de tutores asignados */}
+            {importResult.assigned?.length > 0 && (
+              <div>
+                <div className="section-lbl">✅ Tutores asignados ({importResult.assigned.length})</div>
+                <div style={{maxHeight:'200px',overflowY:'auto',marginTop:'8px'}}>
+                  {importResult.assigned.map((s: any, i: number) => (
+                    <div key={i} style={{padding:'6px 0',borderBottom:'1px solid #F0F6FC',fontSize:'12px'}}>
+                      <strong>{s.student}</strong> → Tutor: {s.tutor}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+            {importResult.skipped?.length > 0 && (
+              <div>
+                <div className="section-lbl">⚠️ Omitidos ({importResult.skipped.length})</div>
+                <div style={{maxHeight:'150px',overflowY:'auto',marginTop:'4px'}}>
+                  {importResult.skipped.map((s: any, i: number) => (
+                    <div key={i} style={{fontSize:'12px',color:'#7A6000',padding:'4px 0'}}>
+                      {s.name || `Kardex ${s.kardex}`} — {s.reason}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+            {importResult.errors?.length > 0 && (
+              <div>
+                <div className="section-lbl">❌ Errores ({importResult.errors.length})</div>
+                <div style={{maxHeight:'150px',overflowY:'auto',marginTop:'4px'}}>
+                  {importResult.errors.map((e: any, i: number) => (
+                    <div key={i} style={{fontSize:'12px',color:'#C0392B',padding:'4px 0'}}>
+                      {e.name || e.tutorNombre || `Kardex ${e.kardex}`} — {e.reason}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+      <div className="mfoot">
+        <button className="btn-primary" onClick={() => { setShowImportModal(false); setImportResult(null) }}>Cerrar</button>
+      </div>
+    </div>
+  </div>
+)}
       <style>{`
         .page-header{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:24px;gap:16px}
         .page-header h1{font-size:20px;font-weight:700;color:#1A3A7C;margin-bottom:4px}
@@ -433,6 +587,9 @@ export default function EstudiantesPage() {
         .spinsm{width:14px;height:14px;border:2px solid rgba(255,255,255,.3);border-top-color:#fff;border-radius:50%;animation:spin .7s linear infinite;display:inline-block}
         @keyframes spin{to{transform:rotate(360deg)}}
         @media(max-width:600px){.page-header{flex-direction:column}.form-grid{grid-template-columns:1fr}th:nth-child(4),td:nth-child(4){display:none}}
+        .mode-toggle{display:flex;background:#F0F6FC;border-radius:10px;padding:4px;gap:4px}
+.mode-btn{flex:1;padding:8px;border:none;border-radius:8px;font-size:13px;cursor:pointer;background:transparent;color:#6B8BB0;transition:all .15s}
+.mode-btn.active{background:#fff;color:#1A3A7C;font-weight:600;box-shadow:0 1px 4px rgba(0,0,0,.1)}
       `}</style>
     </div>
   )

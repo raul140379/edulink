@@ -22,3 +22,7 @@ Thumbs.db
 
 # Prisma
 backend/prisma/migrations/*.lock
+*.xlsx
+*.xls
+~$*
+temp*.js

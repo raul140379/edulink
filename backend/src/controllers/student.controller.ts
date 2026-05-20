@@ -175,7 +175,7 @@ export const getStudentEnrollments = async (req: AuthRequest, res: Response): Pr
 // ─────────────────────────────────────────────
 export const createStudent = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    const { firstName, lastName, ci, rude, birthDate, phone, email, address } = req.body
+    const { firstName, lastName, ci, rude, birthDate, phone, email, address,gender } = req.body
 
     if (!firstName || !lastName) {
       res.status(400).json({ message: 'Nombre y apellido son requeridos' })
@@ -210,6 +210,7 @@ export const createStudent = async (req: AuthRequest, res: Response): Promise<vo
       data: {
         firstName,
         lastName,
+        gender,
         ci:        ci        || null,
         rude:      rude      || null,
         birthDate: birthDate ? new Date(birthDate) : null,
@@ -245,7 +246,7 @@ export const createStudent = async (req: AuthRequest, res: Response): Promise<vo
 export const updateStudent = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const { id } = req.params
-    const { firstName, lastName, ci, rude, birthDate, phone, email, address } = req.body
+    const { firstName, lastName, ci, rude, birthDate, phone, email, address,gender } = req.body
 
     const existing = await prisma.student.findUnique({ where: { id: parseInt(id) } })
     if (!existing) {
@@ -280,6 +281,7 @@ export const updateStudent = async (req: AuthRequest, res: Response): Promise<vo
         ...(phone     !== undefined ? { phone:   phone   || null }     : {}),
         ...(email     !== undefined ? { email:   email   || null }     : {}),
         ...(address   !== undefined ? { address: address || null }     : {}),
+        ...(gender   !== undefined ? { gender}     : {}),
       },
       include: {
         user: { select: { id: true, email: true, role: true } }
@@ -484,5 +486,271 @@ export const enrollStudent = async (req: AuthRequest, res: Response): Promise<vo
   } catch (error) {
     console.error('enrollStudent error:', error)
     res.status(500).json({ message: 'Error al inscribir estudiante' })
+  }
+}
+// ─────────────────────────────────────────────
+// POST /api/students/import — Importar estudiantes desde Excel
+// ─────────────────────────────────────────────
+export const importStudents = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    if (!req.file) {
+      res.status(400).json({ message: 'No se subió ningún archivo' })
+      return
+    }
+ 
+    const XLSX    = require('xlsx')
+    const bcrypt  = require('bcryptjs')
+    const workbook = XLSX.read(req.file.buffer, { type: 'buffer' })
+    const sheet    = workbook.Sheets[workbook.SheetNames[0]]
+    const rows     = XLSX.utils.sheet_to_json(sheet, { defval: '' })
+   console.log('Primera fila:', JSON.stringify(rows[0]))
+    const created = []
+    const errors  = []
+    const skipped = []
+ 
+    for (const row of rows as any[]) {
+      try {
+       const firstName   = String(row['NOMBRESCOMPLETO'] || row['NOMBRES'] || row['NOMBRECOMPLETO'] || '').trim()
+          const lastName    = String(row['APELLIDOS']  || '').trim()
+          const rude        = String(row['RUDE']       || '').trim()
+          const kardex      = String(row['NROKARDEX']  || '').trim()
+          const tutorLegal  = String(row['TUTORLEGAL'] || '').trim()
+          const generoRaw   = String(row['GENERO']     || '').trim().toUpperCase()
+          const gender      = generoRaw === 'F' ? 'FEMENINO' : 'MASCULINO'
+ 
+        if (!firstName || !lastName) {
+          errors.push({ rude, reason: 'Nombre o apellido vacío' })
+          continue
+        }
+ 
+        // Verificar si ya existe por RUDE
+if (rude) {
+  const existing = await prisma.student.findUnique({ where: { rude } })
+  if (existing) {
+    skipped.push({ rude, name: `${lastName} ${firstName}`, reason: 'RUDE ya registrado' })
+    continue
+  }
+}
+
+// Verificar si ya existe por kardex + nombre + apellido
+if (kardex) {
+  const existing = await prisma.student.findFirst({
+    where: { kardex, firstName, lastName }
+  })
+  if (existing) {
+    skipped.push({ rude, name: `${lastName} ${firstName}`, reason: 'Estudiante ya registrado' })
+    continue
+  }
+}
+ 
+        // Generar email único
+        const baseEmail = `${firstName.split(' ')[0].toLowerCase()}.${lastName.split(' ')[0].toLowerCase()}@nnuu.edu.bo`
+          .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+        
+        let email = baseEmail
+        let emailExists = await prisma.user.findUnique({ where: { email } })
+        let counter = 1
+        while (emailExists) {
+          email = `${baseEmail.replace('@', `${counter}@`)}`
+          emailExists = await prisma.user.findUnique({ where: { email } })
+          counter++
+        }
+ 
+        // Generar contraseña
+        const year     = new Date().getFullYear()
+        const password = rude
+          ? rude
+          : `${lastName.substring(0, 4).toLowerCase()}${year}`
+        const hashed   = await bcrypt.hash(password, 10)
+ 
+        // Crear usuario
+        const user = await prisma.user.create({
+          data: { email, password: hashed, role: 'STUDENT', isActive: true }
+        })
+ 
+        // Crear estudiante
+        const student = await prisma.student.create({
+          data: {
+            firstName,
+            lastName,
+            gender:   gender as any,
+            rude:     rude || null,
+            kardex:   kardex  || null,
+            isActive: true,
+            userId:   user.id,
+          }
+        })
+ 
+        created.push({
+          name:     `${lastName} ${firstName}`,
+          rude,
+          email,
+          password,
+          gender,
+        })
+      } catch (e: any) {
+        errors.push({
+          rude: String(row['RUDE'] || ''),
+          name: `${row['APELLIDOS'] || ''} ${row['NOMBRECOMPLETO'] || ''}`,
+          reason: e.message || 'Error desconocido'
+        })
+      }
+    }
+ 
+    res.status(201).json({
+      message: `Importación completada: ${created.length} creados, ${skipped.length} omitidos, ${errors.length} errores`,
+      created,
+      skipped,
+      errors,
+      total: rows.length,
+    })
+  } catch (error) {
+    console.error('importStudents error:', error)
+    res.status(500).json({ message: 'Error al importar estudiantes' })
+  }
+}
+// ─────────────────────────────────────────────
+// POST /api/students/import-tutors — Importar tutores legales desde Excel
+// ─────────────────────────────────────────────
+export const importTutors = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    if (!req.file) {
+      res.status(400).json({ message: 'No se subió ningún archivo' })
+      return
+    }
+
+    const XLSX     = require('xlsx')
+    const workbook = XLSX.read(req.file.buffer, { type: 'buffer' })
+    const sheet    = workbook.Sheets[workbook.SheetNames[0]]
+    const rows     = XLSX.utils.sheet_to_json(sheet, { defval: '' })
+
+    const assigned = []
+    const skipped  = []
+    const errors   = []
+
+    for (const row of rows as any[]) {
+      try {
+        const rude        = String(row['RUDE']          || '').trim()
+        const kardex      = String(row['NROKARDEX']      || '').trim()
+        const tutorNombre = String(row['TUTORLEGAL']     || '').trim()
+
+        // Ignorar filas sin tutor o con SIN REGISTRO
+        if (!tutorNombre || tutorNombre.toUpperCase() === 'SIN REGISTRO') {
+          skipped.push({ rude, kardex, reason: 'Sin tutor legal registrado' })
+          continue
+        }
+
+        // Buscar estudiante por RUDE o kardex
+        let student = null
+        if (rude) {
+          student = await prisma.student.findUnique({ where: { rude } })
+        }
+        if (!student && kardex) {
+          student = await prisma.student.findFirst({ where: { kardex } })
+        }
+
+        if (!student) {
+          skipped.push({ rude, kardex, reason: 'Estudiante no encontrado' })
+          continue
+        }
+
+        // Buscar tutor por nombre completo
+        // El nombre puede venir como "APELLIDO1 APELLIDO2 NOMBRE" o "NOMBRE APELLIDO"
+        const palabras   = tutorNombre.split(' ').filter(p => p.length > 0)
+        const tutores    = await prisma.parent.findMany({
+          where: {
+            OR: [
+              { lastName:  { contains: palabras[0], mode: 'insensitive' } },
+              { firstName: { contains: palabras[0], mode: 'insensitive' } },
+            ]
+          },
+          include: { students: { where: { studentId: student.id } } }
+        })
+
+        // Filtrar el tutor que mejor coincida
+        let tutor = tutores.find(t => {
+          const fullName = `${t.firstName} ${t.lastName}`.toUpperCase()
+          const fullName2 = `${t.lastName} ${t.firstName}`.toUpperCase()
+          return fullName.includes(palabras[0].toUpperCase()) ||
+                 fullName2.includes(palabras[0].toUpperCase())
+        })
+
+        // Si tiene más palabras, filtrar más
+        if (tutores.length > 1 && palabras.length > 1) {
+          const mejor = tutores.find(t => {
+            const fullName = `${t.firstName} ${t.lastName}`.toUpperCase()
+            return palabras.every(p => fullName.includes(p.toUpperCase()))
+          })
+          if (mejor) tutor = mejor
+        }
+
+        if (!tutor) {
+          errors.push({ rude, kardex, tutorNombre, reason: 'Tutor no encontrado en el sistema' })
+          continue
+        }
+
+        // Quitar tutor legal anterior de este estudiante
+        await prisma.parentStudent.updateMany({
+          where: { studentId: student.id, isTutor: true },
+          data:  { isTutor: false }
+        })
+
+        // Verificar si el tutor ya está vinculado al estudiante
+        const existingLink = await prisma.parentStudent.findUnique({
+          where: { parentId_studentId: { parentId: tutor.id, studentId: student.id } }
+        })
+
+        if (existingLink) {
+  await prisma.parentStudent.update({
+    where: { parentId_studentId: { parentId: tutor.id, studentId: student.id } },
+    data:  { isTutor: true }
+  })
+} else {
+          // Crear nueva vinculación como tutor legal
+          await prisma.parentStudent.create({
+            data: {
+              parentId:    tutor.id,
+              studentId:   student.id,
+              relationType: 'TUTOR_LEGAL',
+              isTutor:     true,
+            }
+          })
+        }
+
+        // Actualizar rol del usuario a PARENT si no lo tiene
+        if (tutor.userId) {
+          await prisma.user.update({
+            where: { id: tutor.userId },
+            data:  { role: 'PARENT', isActive: true }
+          })
+        }
+
+        assigned.push({
+          student:  `${student.lastName} ${student.firstName}`,
+          tutor:    `${tutor.lastName} ${tutor.firstName}`,
+          kardex,
+          rude,
+        })
+
+      } catch (e: any) {
+        errors.push({
+          rude:    String(row['RUDE']      || ''),
+          kardex:  String(row['NROKARDEX'] || ''),
+          tutorNombre: String(row['TUTORLEGAL'] || ''),
+          reason:  e.message || 'Error desconocido'
+        })
+      }
+    }
+
+    res.status(200).json({
+      message:  `Importación completada: ${assigned.length} tutores asignados, ${skipped.length} omitidos, ${errors.length} errores`,
+      assigned,
+      skipped,
+      errors,
+      total: rows.length,
+    })
+  } catch (error) {
+    console.error('importTutors error:', error)
+    res.status(500).json({ message: 'Error al importar tutores' })
   }
 }

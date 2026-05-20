@@ -30,7 +30,10 @@ enum AcademicLevel {
   PRIMARIA
   SECUNDARIA
 }
-
+enum Gender {
+  MASCULINO
+  FEMENINO
+}
 enum EducationType {
   REGULAR
   BTH           // Bachillerato Técnico Humanístico
@@ -130,8 +133,7 @@ model User {
   student       Student?
   staff         Staff?
   director      ShiftDirector?
-  juntaMember   JuntaMember?
-  delegate      CourseDelegate?
+  juntaMember   JuntaMember? 
 }
 
 // ─────────────────────────────────────────────
@@ -159,26 +161,6 @@ model JuntaMember {
 
   userId      Int       @unique
   user        User      @relation(fields: [userId], references: [id])
-}
-
-// ─────────────────────────────────────────────
-// DELEGADO DE CURSO
-// ─────────────────────────────────────────────
-
-model CourseDelegate {
-  id          Int      @id @default(autoincrement())
-  firstName   String
-  lastName    String
-  ci          String?  @unique
-  phone       String?
-  isActive    Boolean  @default(true)
-  createdAt   DateTime @default(now())
-
-  userId      Int      @unique
-  user        User     @relation(fields: [userId], references: [id])
-
-  courseId    Int      @unique  // Un delegado por curso
-  course      Course   @relation(fields: [courseId], references: [id])
 }
 
 // ─────────────────────────────────────────────
@@ -246,14 +228,13 @@ model Parent {
   email     String?         @unique
   createdAt DateTime        @default(now())
   updatedAt DateTime        @updatedAt
-
   userId    Int?            @unique
   user      User?           @relation(fields: [userId], references: [id])
-
   students      ParentStudent[]
   charges       Charge[]
   payments      Payment[]
-  notifications Notification[]
+  notifications Notification[]  
+  delegateCourse Course? @relation("CourseDelegate")
 }
 
 model Student {
@@ -266,10 +247,11 @@ model Student {
   phone     String?
   email     String?   @unique
   address   String?
+  gender    Gender   @default(MASCULINO)
   isActive  Boolean   @default(true)
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
-
+  kardex    String?  
   userId      Int?      @unique
   user        User?     @relation(fields: [userId], references: [id])
 
@@ -326,7 +308,6 @@ model Staff {
 // ─────────────────────────────────────────────
 // CURSOS
 // ─────────────────────────────────────────────
-
 model Course {
   id            Int           @id @default(autoincrement())
   level         AcademicLevel
@@ -338,11 +319,13 @@ model Course {
   shiftDirectorId Int?
   shiftDirector   ShiftDirector? @relation(fields: [shiftDirectorId], references: [id])
 
+  delegateId  Int?    @unique
+  delegate    Parent? @relation("CourseDelegate", fields: [delegateId], references: [id])
+
   assignments     StudentAcademicAssignment[]
   schedules       Schedule[]
   teacherSubjects TeacherSubjectCourse[]
-  delegate        CourseDelegate?   // Delegado de curso
-  tutor           CourseTutor?      // Maestro tutor del curso
+  tutor           CourseTutor?
 
   @@unique([level, grade, parallel, educationType, shift])
 }

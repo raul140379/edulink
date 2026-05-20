@@ -11,9 +11,13 @@ import {
   unlinkStudent,
   generateParentCredentials,
   changeTutor,
+  importParents,
+  changeRelation,
 } from '../controllers/parent.controller'
 import { verifyToken, requirePermission } from '../middlewares/auth.middleware'
 import { Permission } from '../config/permissions'
+import multer from 'multer'
+const upload = multer({ storage: multer.memoryStorage() })
 
 const router = Router()
 
@@ -30,5 +34,7 @@ router.post('/:id/link-students',        requirePermission(Permission.PARENT_CRE
 router.delete('/:id/unlink/:studentId',  requirePermission(Permission.PARENT_CREATE),   unlinkStudent)
 router.post('/:id/generate-credentials', requirePermission(Permission.PARENT_CREATE),   generateParentCredentials)
 router.patch('/student/:id/change-tutor', requirePermission(Permission.PARENT_CREATE),  changeTutor)
+router.post('/import', verifyToken, upload.single('file'), importParents)
+router.patch('/:id/change-relation/:studentId', verifyToken, changeRelation)
 
 export default router

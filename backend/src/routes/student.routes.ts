@@ -9,9 +9,13 @@ import {
   enrollStudent,
   deleteStudent,
   generateCredentials,
+  importStudents,
+  importTutors,
 } from '../controllers/student.controller'
 import { verifyToken, requirePermission } from '../middlewares/auth.middleware'
 import { Permission } from '../config/permissions'
+import multer from 'multer'
+const upload = multer({ storage: multer.memoryStorage() })
 
 const router = Router()
 
@@ -25,6 +29,9 @@ router.put('/:id',                        requirePermission(Permission.STUDENT_C
 router.patch('/:id/toggle',              requirePermission(Permission.STUDENT_CREATE),    toggleStudentStatus)
 router.post('/:id/enroll',               requirePermission(Permission.ENROLLMENT_CREATE), enrollStudent)
 router.delete('/:id',                    requirePermission(Permission.STUDENT_CREATE),    deleteStudent)
-router.post('/:id/generate-credentials', requirePermission(Permission.STUDENT_CREATE),    generateCredentials)
+router.post('/:id/generate-credentials', requirePermission(Permission.STUDENT_CREATE),
+generateCredentials)
+router.post('/import', verifyToken, upload.single('file'), importStudents)
+router.post('/import-tutors', verifyToken, upload.single('file'), importTutors)
 
 export default router
