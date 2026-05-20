@@ -651,10 +651,10 @@ export const importParents = async (req: AuthRequest, res: Response): Promise<vo
           where: { kardex }
         })
 
-        if (students.length === 0) {
-          skipped.push({ kardex, reason: 'No se encontró estudiante con ese kardex' })
-          continue
-        }
+        const sinVincular = students.length === 0
+if (sinVincular) {
+  skipped.push({ kardex, reason: 'Sin kardex — se registrará sin vinculación' })
+}
 
         // ── Registrar PADRE ──────────────────────────
         const nombrePadre   = String(row['NOMBREPADRE']   || '').trim()
@@ -702,6 +702,7 @@ export const importParents = async (req: AuthRequest, res: Response): Promise<vo
           }
 
           // Vincular padre con todos los estudiantes del kardex
+          if (!sinVincular) {
           for (const student of students) {
             const existing = await prisma.parentStudent.findUnique({
               where: { parentId_studentId: { parentId: padre!.id, studentId: student.id } }
@@ -716,6 +717,7 @@ export const importParents = async (req: AuthRequest, res: Response): Promise<vo
                 }
               })
             }
+          }
           }
         }
 
@@ -764,6 +766,7 @@ export const importParents = async (req: AuthRequest, res: Response): Promise<vo
           }
 
           // Vincular madre con todos los estudiantes del kardex
+           if (!sinVincular) {
           for (const student of students) {
             const existing = await prisma.parentStudent.findUnique({
               where: { parentId_studentId: { parentId: madre!.id, studentId: student.id } }
@@ -778,6 +781,7 @@ export const importParents = async (req: AuthRequest, res: Response): Promise<vo
                 }
               })
             }
+          }
           }
         }
 
