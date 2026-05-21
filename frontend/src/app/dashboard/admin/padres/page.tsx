@@ -7,7 +7,7 @@ import { useRouter } from 'next/navigation'
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000'
 
 interface Student {
-  id: number; firstName: string; lastName: string; ci?: string; rude?: string
+  id: number; firstName: string; lastName: string; ci?: string; rude?: string; kardex?: string
 }
 
 interface ParentStudent {
@@ -16,7 +16,7 @@ interface ParentStudent {
   student:      Student
 }
 
-interface Parent {
+interface Parent {  
   id:        number
   firstName: string
   lastName:  string
@@ -88,6 +88,7 @@ export default function PadresPage() {
   const [linkSearch, setLinkSearch] = useState('')
   const [changeIsTutor, setChangeIsTutor] = useState(false)
   const [filterTutor, setFilterTutor] = useState('')
+  const [orderBy, setOrderBy] = useState('alfabetico')
 
   const token = typeof window !== 'undefined' ? localStorage.getItem('token') : ''
 
@@ -104,7 +105,17 @@ export default function PadresPage() {
       if (filterTutor === 'TUTOR') params.set('isTutor', 'true')
       const res  = await fetch(`${API_URL}/api/parents?${params}`, { headers: { Authorization: `Bearer ${token}` } })
       const data = await res.json()
-      if (res.ok) setParents(data)
+      if (res.ok) {
+        const sorted = data.sort((a: any, b: any) => {
+       if (orderBy === 'kardex') {
+          const kardexA = a.students.find((s: any) => s.isTutor)?.student?.kardex || '9999'
+          const kardexB = b.students.find((s: any) => s.isTutor)?.student?.kardex || '9999'
+          return kardexA.toString().localeCompare(kardexB.toString(), undefined, { numeric: true })
+        }
+      return `${a.lastName} ${a.firstName}`.localeCompare(`${b.lastName} ${b.firstName}`)
+  })
+  setParents(sorted)
+}
       else notify('Error al cargar padres', 'error')
     } catch { notify('Error de conexión', 'error') }
     finally  { setLoading(false) }
@@ -288,10 +299,16 @@ export default function PadresPage() {
           <input placeholder="Buscar por nombre, CI o teléfono..." value={search}
             onChange={e => setSearch(e.target.value)} onKeyDown={e => e.key === 'Enter' && fetchParents()}/>
         </div>
-        <select value={filterTutor} onChange={e => setFilterTutor(e.target.value)}>
-  <option value="">Todos</option>
-  <option value="TUTOR">Solo tutores legales</option>
-</select>
+        <select value={filterTutor} onChange={e => { setFilterTutor(e.target.value); fetchParents() }}>
+          <option value="">Todos</option>
+          <option value="TUTOR">Solo tutores legales</option>
+          <option value="SIN_VINCULAR">Sin vincular</option>
+          <option value="NO_TUTOR">Vinculados no tutores</option>
+      </select>
+      <select value={orderBy} onChange={e => setOrderBy(e.target.value)}>
+        <option value="alfabetico">Ordenar: Alfabético</option>
+        <option value="kardex">Ordenar: Por Kardex</option>
+      </select>
         <button className="btn-outline" onClick={fetchParents}>Buscar</button>
       </div>
 
@@ -326,6 +343,7 @@ export default function PadresPage() {
                               {relLabel(ps.relationType, ps.isTutor)} ✏️
                             </button>
                               <span className="sname">{ps.student.lastName} {ps.student.firstName}</span>
+                              {ps.student.kardex && <span className="muted-sm">K:{ps.student.kardex}</span>}
                               <button className="unlink-btn" onClick={() => handleUnlink(p.id, ps.student.id)} title="Desvincular">×</button>
                             </div>
                           ))}

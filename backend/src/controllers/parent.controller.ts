@@ -104,9 +104,9 @@ export const getParents = async (req: AuthRequest, res: Response): Promise<void>
   ]},
 ]
 } : {}),
-        ...(isTutor === 'true' ? {
-          students: { some: { isTutor: true } }
-        } : {})
+        ...(isTutor === 'true'        ? { students: { some: { isTutor: true } } }          : {}),
+        ...(isTutor === 'SIN_VINCULAR' ? { students: { none: {} } }                         : {}),
+        ...(isTutor === 'NO_TUTOR'    ? { students: { some: { isTutor: false } }, AND: [{ students: { none: { isTutor: true } } }] } : {}),
       },
       include: {
         user: { select: { id: true, email: true, role: true, isActive: true } },
