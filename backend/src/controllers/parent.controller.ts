@@ -663,8 +663,18 @@ if (sinVincular) {
         const telPadre      = String(row['TELEFONOPADRE'] || '').trim()
 
         if (nombrePadre && apellidoPadre) {
-          let padre = ciPadre ? await prisma.parent.findUnique({ where: { ci: ciPadre } }) : null
-
+          let padre = null
+if (ciPadre) {
+  padre = await prisma.parent.findUnique({ where: { ci: ciPadre } })
+}
+if (!padre && nombrePadre && apellidoPadre) {
+  padre = await prisma.parent.findFirst({
+    where: {
+      firstName: { contains: nombrePadre, mode: 'insensitive' },
+      lastName:  { contains: apellidoPadre, mode: 'insensitive' },
+    }
+  })
+}
           if (!padre) {
             // Crear usuario para el padre
             const baseEmail = `${nombrePadre.split(' ')[0].toLowerCase()}.${apellidoPadre.split(' ')[0].toLowerCase()}@nnuu.edu.bo`
@@ -728,8 +738,18 @@ if (sinVincular) {
         const telMadre      = String(row['TELEFONOMADRE']  || '').trim()
 
         if (nombreMadre && apellidoMadre) {
-          let madre = ciMadre ? await prisma.parent.findUnique({ where: { ci: ciMadre } }) : null
-
+          let madre = null
+if (ciMadre) {
+  madre = await prisma.parent.findUnique({ where: { ci: ciMadre } })
+}
+if (!madre && nombreMadre && apellidoMadre) {
+  madre = await prisma.parent.findFirst({
+    where: {
+      firstName: { contains: nombreMadre, mode: 'insensitive' },
+      lastName:  { contains: apellidoMadre, mode: 'insensitive' },
+    }
+  })
+}
           if (!madre) {
             const baseEmail = `${nombreMadre.split(' ')[0].toLowerCase()}.${apellidoMadre.split(' ')[0].toLowerCase()}@nnuu.edu.bo`
               .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
