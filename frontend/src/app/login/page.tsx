@@ -52,9 +52,12 @@ export default function LoginPage() {
           break
         case 'STUDENT':
           router.push('/dashboard/student')
+        case 'DELEGATE':
+          router.push('/dashboard/delegate')          
           break
         default:
           router.push('/dashboard')
+
       }
     } catch {
       setError('Error de conexión con el servidor')

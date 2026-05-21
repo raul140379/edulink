@@ -101,8 +101,10 @@ export default function PadresPage() {
     setLoading(true)
     try {
       const params = new URLSearchParams()
-      if (search) params.set('search', search)
-      if (filterTutor === 'TUTOR') params.set('isTutor', 'true')
+      if (search) params.set('search', search) 
+      if (filterTutor === 'TUTOR')        params.set('isTutor', 'true')
+      if (filterTutor === 'SIN_VINCULAR') params.set('isTutor', 'SIN_VINCULAR')
+      if (filterTutor === 'NO_TUTOR')     params.set('isTutor', 'NO_TUTOR')
       const res  = await fetch(`${API_URL}/api/parents?${params}`, { headers: { Authorization: `Bearer ${token}` } })
       const data = await res.json()
       if (res.ok) {
@@ -113,9 +115,9 @@ export default function PadresPage() {
           return kardexA.toString().localeCompare(kardexB.toString(), undefined, { numeric: true })
         }
       return `${a.lastName} ${a.firstName}`.localeCompare(`${b.lastName} ${b.firstName}`)
-  })
-  setParents(sorted)
-}
+      })
+      setParents(sorted)
+      }
       else notify('Error al cargar padres', 'error')
     } catch { notify('Error de conexión', 'error') }
     finally  { setLoading(false) }
@@ -299,16 +301,26 @@ export default function PadresPage() {
           <input placeholder="Buscar por nombre, CI o teléfono..." value={search}
             onChange={e => setSearch(e.target.value)} onKeyDown={e => e.key === 'Enter' && fetchParents()}/>
         </div>
-        <select value={filterTutor} onChange={e => { setFilterTutor(e.target.value); fetchParents() }}>
+        <select value={filterTutor} onChange={e => { setFilterTutor(e.target.value);}}>
           <option value="">Todos</option>
           <option value="TUTOR">Solo tutores legales</option>
           <option value="SIN_VINCULAR">Sin vincular</option>
           <option value="NO_TUTOR">Vinculados no tutores</option>
       </select>
-      <select value={orderBy} onChange={e => setOrderBy(e.target.value)}>
-        <option value="alfabetico">Ordenar: Alfabético</option>
-        <option value="kardex">Ordenar: Por Kardex</option>
-      </select>
+      <select value={orderBy} onChange={e => {
+  setOrderBy(e.target.value)
+  setParents(prev => [...prev].sort((a: any, b: any) => {
+    if (e.target.value === 'kardex') {
+      const kardexA = a.students.find((s: any) => s.isTutor)?.student?.kardex || '9999'
+      const kardexB = b.students.find((s: any) => s.isTutor)?.student?.kardex || '9999'
+      return kardexA.toString().localeCompare(kardexB.toString(), undefined, { numeric: true })
+    }
+    return `${a.lastName} ${a.firstName}`.localeCompare(`${b.lastName} ${b.firstName}`)
+  }))
+}}>
+  <option value="alfabetico">Ordenar: Alfabético</option>
+  <option value="kardex">Ordenar: Por Kardex</option>
+</select>
         <button className="btn-outline" onClick={fetchParents}>Buscar</button>
       </div>
 

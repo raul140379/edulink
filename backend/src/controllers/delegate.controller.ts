@@ -77,8 +77,8 @@ export const getEligibleParents = async (req: AuthRequest, res: Response): Promi
     const parentsMap = new Map()
     for (const assignment of assignments) {
       for (const ps of assignment.student.parents) {
-        if (!parentsMap.has(ps.parent.id)) {
-          parentsMap.set(ps.parent.id, {
+        if (ps.isTutor && !parentsMap.has(ps.parent.id)) {
+            parentsMap.set(ps.parent.id, {
             ...ps.parent,
             relationType: ps.relationType,
             studentName: `${assignment.student.lastName} ${assignment.student.firstName}`

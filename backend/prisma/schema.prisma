@@ -126,14 +126,14 @@ model User {
   role      Role
   isActive  Boolean   @default(true)
   createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
-
+  updatedAt DateTime  @updatedAt  
   parent        Parent?
   teacher       Teacher?
   student       Student?
   staff         Staff?
   director      ShiftDirector?
   juntaMember   JuntaMember? 
+  meetingsCreated  Meeting[] @relation("MeetingCreator")
 }
 
 // ─────────────────────────────────────────────
@@ -235,6 +235,7 @@ model Parent {
   payments      Payment[]
   notifications Notification[]  
   delegateCourse Course? @relation("CourseDelegate")
+  attendances  Attendance[]
 }
 
 model Student {
@@ -315,7 +316,7 @@ model Course {
   parallel      Parallel
   educationType EducationType @default(REGULAR)
   shift         Shift
-
+  meetings  Meeting[]
   shiftDirectorId Int?
   shiftDirector   ShiftDirector? @relation(fields: [shiftDirectorId], references: [id])
 
@@ -463,4 +464,35 @@ model Notification {
 
   parentId  Int
   parent    Parent           @relation(fields: [parentId], references: [id])
+}
+// ─────────────────────────────────────────────
+// REUNIONES
+// ─────────────────────────────────────────────
+
+model Meeting {
+  id           Int           @id @default(autoincrement())
+  title        String
+  date         DateTime
+  courseId     Int
+  course       Course        @relation(fields: [courseId], references: [id])
+  createdById  Int
+  createdBy    User          @relation("MeetingCreator", fields: [createdById], references: [id])
+  attendances  Attendance[]
+  createdAt    DateTime      @default(now())
+}
+// ─────────────────────────────────────────────
+// ASISTENCIA
+// ─────────────────────────────────────────────
+
+model Attendance {
+  id        Int      @id @default(autoincrement())
+  meetingId Int
+  meeting   Meeting  @relation(fields: [meetingId], references: [id])
+  parentId  Int
+  parent    Parent   @relation(fields: [parentId], references: [id])
+  present   Boolean  @default(false)
+  note      String?
+  createdAt DateTime @default(now())
+
+  @@unique([meetingId, parentId])
 }

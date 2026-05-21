@@ -85,7 +85,7 @@ const createTutorUser = async (
 export const getParents = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const { search, isActive, isTutor } = req.query
-
+    console.log('Filtro isTutor:', isTutor)
     const parents = await prisma.parent.findMany({
       where: {
         ...(search ? {
@@ -104,15 +104,20 @@ export const getParents = async (req: AuthRequest, res: Response): Promise<void>
   ]},
 ]
 } : {}),
-        ...(isTutor === 'true'        ? { students: { some: { isTutor: true } } }          : {}),
-        ...(isTutor === 'SIN_VINCULAR' ? { students: { none: {} } }                         : {}),
-        ...(isTutor === 'NO_TUTOR'    ? { students: { some: { isTutor: false } }, AND: [{ students: { none: { isTutor: true } } }] } : {}),
+       ...(isTutor === 'true'         ? { students: { some: { isTutor: true } } } : {}),
+      ...(isTutor === 'SIN_VINCULAR' ? { students: { none: {} } }                : {}),
+      ...(isTutor === 'NO_TUTOR'     ? { AND: [
+          { students: { some: {} } },
+            { students: { none: { isTutor: true } } }
+      ]} : {}),
       },
       include: {
         user: { select: { id: true, email: true, role: true, isActive: true } },
-        students: {
-          include: {
-            student: { select: { id: true, firstName: true, lastName: true, ci: true, rude: true } }
+       students: {
+        select: {
+          relationType: true,
+          isTutor:      true,
+            student: { select: { id: true, firstName: true, lastName: true, ci: true, rude: true, kardex: true } }
           }
         },
         _count: { select: { students: true } }
