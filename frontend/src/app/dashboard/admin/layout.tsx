@@ -59,11 +59,23 @@ const menuItems: MenuItem[] = [
     roles: ['SUPER_ADMIN','DIRECTOR','REGENTE','SECRETARY','DELEGATE'],
   },
   {
+  label: 'Maestros',
+  href:  '/dashboard/admin/maestros',
+  icon:  <GraduationCap size={18} />,
+  roles: ['SUPER_ADMIN', 'DIRECTOR', 'SECRETARY'],
+},
+  {
     label: 'Cursos',
     href:  '/dashboard/admin/cursos',
     icon:  <BookOpen size={18} />,
     roles: ['SUPER_ADMIN','DIRECTOR','REGENTE','SECRETARY','TEACHER','DELEGATE'],
   },
+  {
+  label: 'Materias',
+  href:  '/dashboard/admin/materias',
+  icon:  <BookOpen size={18}/>,
+  roles: ['SUPER_ADMIN', 'DIRECTOR', 'SECRETARY'],
+},
   {
     label: 'Notas',
     href:  '/dashboard/admin/notas',

@@ -187,8 +187,7 @@ model AcademicYear {
   isActive    Boolean      @default(false)
   createdAt   DateTime     @default(now())
 
-  trimesters  Trimester[]
-  subjects    Subject[]
+  trimesters  Trimester[] 
   assignments StudentAcademicAssignment[]
   holidays    Holiday[]
   charges     Charge[]
@@ -340,19 +339,15 @@ model CourseTutor {
   teacher   Teacher  @relation(fields: [teacherId], references: [id])
   createdAt DateTime @default(now())
 }
-
+////MATERIAL_ESCOLAR
 model Subject {
   id             Int           @id @default(autoincrement())
   name           String
   code           String?
   level          AcademicLevel
   hoursPerWeek   Int           @default(4)
-  academicYearId Int
-  academicYear   AcademicYear  @relation(fields: [academicYearId], references: [id])
-
   teacherSubjects TeacherSubjectCourse[]
-
-  @@unique([name, level, academicYearId])
+  @@unique([name, level])
 }
 
 model TeacherSubjectCourse {

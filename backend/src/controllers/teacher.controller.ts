@@ -307,3 +307,81 @@ export const deleteTeacher = async (req: AuthRequest, res: Response): Promise<vo
     res.status(500).json({ message: 'Error al eliminar maestro' })
   }
 }
+// ─────────────────────────────────────────────
+// GET /api/teachers/my-course — Curso asignado al maestro tutor
+// ─────────────────────────────────────────────
+export const getTeacherMyCourse = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const userId = req.userId
+    console.log('Buscando maestro con userId:', userId)
+    const teacher = await prisma.teacher.findUnique({
+      where: { userId },
+      include: {
+        tutorCourse: {
+          include: {
+            course: {
+              include: {
+                assignments: {
+                  where: { academicYear: { isActive: true } },
+                  include: {
+                    student: {
+                      select: {
+                        id: true, firstName: true, lastName: true,
+                        ci: true, rude: true, isActive: true, gender: true,
+                        parents: {
+                          include: {
+                            parent: {
+                              select: {
+                                id: true, firstName: true, lastName: true,
+                                phone: true, ci: true,
+                                charges: {
+                                  where: { status: { not: 'ANULADO' } },
+                                  select: { amount: true, paidAmount: true, status: true }
+                                }
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
+                  }
+                },
+                delegate: {
+                  select: {
+                    id: true, firstName: true, lastName: true, phone: true, ci: true
+                  }
+                },
+                meetings: {
+                  orderBy: { date: 'desc' },
+                  take: 5,
+                  include: {
+                    attendances: {
+                      include: {
+                        parent: { select: { id: true, firstName: true, lastName: true } }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    })
+
+    if (!teacher) {
+      res.status(404).json({ message: 'Maestro no encontrado' })
+      return
+    }
+
+    if (!teacher.tutorCourse) {
+      res.status(404).json({ message: 'No tienes un curso asignado como tutor' })
+      return
+    }
+
+    res.json(teacher.tutorCourse.course)
+  } catch (error) {
+    console.error('getTeacherMyCourse error:', error)
+    res.status(500).json({ message: 'Error al obtener curso' })
+  }
+}

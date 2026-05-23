@@ -18,14 +18,14 @@ export const getCourses = async (req: AuthRequest, res: Response): Promise<void>
         ...(educationType ? { educationType: educationType as any } : {}),
       },
       include: {
-        shiftDirector: {
-          include: { user: { select: { id: true, email: true } } }
+          shiftDirector: { include: { user: { select: { id: true, email: true } } }},
+          tutor: {include: { teacher: { select: { id: true, firstName: true, lastName: true } } } },
+          _count: { select: { assignments: true, schedules: true } },
+         // 
         },
-        _count: { select: { assignments: true, schedules: true } }
-      },
       orderBy: [{ level: 'asc' }, { grade: 'asc' }, { parallel: 'asc' }, { shift: 'asc' }]
     })
-
+//orderBy: [{ level: 'asc' }, { grade: 'asc' }, { parallel: 'asc' }, { shift: 'asc' }]
     res.json(courses)
   } catch (error) {
     console.error('getCourses error:', error)
@@ -50,6 +50,11 @@ export const getCourseById = async (req: AuthRequest, res: Response): Promise<vo
           include: {
             teacher: { select: { id: true, firstName: true, lastName: true } },
             subject: { select: { id: true, name: true, code: true } },
+          }
+        },
+         tutor: {
+            include: {
+            teacher: { select: { id: true, firstName: true, lastName: true } }
           }
         },
         _count: { select: { assignments: true } }
@@ -255,5 +260,91 @@ export const deleteCourse = async (req: AuthRequest, res: Response): Promise<voi
   } catch (error) {
     console.error('deleteCourse error:', error)
     res.status(500).json({ message: 'Error al eliminar curso' })
+  }
+}
+// ─────────────────────────────────────────────
+// POST /api/courses/:id/assign-tutor — Asignar maestro tutor
+// ─────────────────────────────────────────────
+export const assignCourseTutor = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const { id }        = req.params
+    const { teacherId } = req.body
+
+    if (!teacherId) {
+      res.status(400).json({ message: 'El ID del maestro es requerido' })
+      return
+    }
+
+    // Verificar que el curso existe
+    const course = await prisma.course.findUnique({ where: { id: parseInt(id) } })
+    if (!course) {
+      res.status(404).json({ message: 'Curso no encontrado' })
+      return
+    }
+
+    // Verificar que el maestro existe
+    const teacher = await prisma.teacher.findUnique({
+      where: { id: parseInt(teacherId) },
+      include: { tutorCourse: true }
+    })
+    if (!teacher) {
+      res.status(404).json({ message: 'Maestro no encontrado' })
+      return
+    }
+
+    // Verificar que el maestro no es tutor de otro curso
+    if (teacher.tutorCourse && teacher.tutorCourse.courseId !== parseInt(id)) {
+      res.status(400).json({ message: 'Este maestro ya es tutor de otro curso' })
+      return
+    }
+
+    // Eliminar tutor anterior si existe
+    await prisma.courseTutor.deleteMany({ where: { courseId: parseInt(id) } })
+
+    // Asignar nuevo tutor
+    await prisma.courseTutor.create({
+      data: {
+        courseId:  parseInt(id),
+        teacherId: parseInt(teacherId),
+      }
+    })
+
+    // Actualizar rol del usuario del maestro a TEACHER si no lo tiene
+    if (teacher.userId) {
+      await prisma.user.update({
+        where: { id: teacher.userId },
+        data:  { role: 'TEACHER' }
+      })
+    }
+
+    res.json({ message: `${teacher.lastName} ${teacher.firstName} asignado como tutor del curso` })
+  } catch (error) {
+    console.error('assignCourseTutor error:', error)
+    res.status(500).json({ message: 'Error al asignar tutor' })
+  }
+}
+
+// ─────────────────────────────────────────────
+// DELETE /api/courses/:id/assign-tutor — Quitar maestro tutor
+// ─────────────────────────────────────────────
+export const removeCourseTutor = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const { id } = req.params
+
+    const tutor = await prisma.courseTutor.findUnique({
+      where: { courseId: parseInt(id) }
+    })
+
+    if (!tutor) {
+      res.status(400).json({ message: 'Este curso no tiene maestro tutor asignado' })
+      return
+    }
+
+    await prisma.courseTutor.delete({ where: { courseId: parseInt(id) } })
+
+    res.json({ message: 'Maestro tutor removido correctamente' })
+  } catch (error) {
+    console.error('removeCourseTutor error:', error)
+    res.status(500).json({ message: 'Error al remover tutor' })
   }
 }

@@ -11,6 +11,8 @@ import teacherRoutes  from './routes/teacher.routes'
 import treasuryRoutes from './routes/treasury.routes'
 import delegateRoutes from './routes/delegate.routes'
 import meetingRoutes from './routes/meeting.routes'
+import subjectRoutes from './routes/subject.routes'
+
 dotenv.config()
 
 const app  = express()
@@ -38,6 +40,7 @@ app.use('/api/teachers', teacherRoutes)
 app.use('/api/treasury', treasuryRoutes)
 app.use('/api/delegates', delegateRoutes)
 app.use('/api/meetings', meetingRoutes)
+app.use('/api/subjects', subjectRoutes)
 
 app.get('/', (req, res) => {
   res.json({ message: '🚀 SGJE Backend funcionando correctamente', version: '1.0.0' })

@@ -6,6 +6,8 @@ import {
   updateCourse,
   deleteCourse,
   getCourseStudents,
+  assignCourseTutor,
+  removeCourseTutor,
 } from '../controllers/course.controller'
 import { verifyToken, requirePermission } from '../middlewares/auth.middleware'
 import { Permission } from '../config/permissions'
@@ -20,5 +22,7 @@ router.get('/:id/students',  requirePermission(Permission.COURSE_VIEW_ALL), getC
 router.post('/',             requirePermission(Permission.COURSE_CREATE),   createCourse)
 router.put('/:id',           requirePermission(Permission.COURSE_CREATE),   updateCourse)
 router.delete('/:id',        requirePermission(Permission.COURSE_CREATE),   deleteCourse)
+router.post('/:id/assign-tutor',   requirePermission(Permission.COURSE_CREATE), assignCourseTutor)
+router.delete('/:id/assign-tutor', requirePermission(Permission.COURSE_CREATE), removeCourseTutor)
 
 export default router

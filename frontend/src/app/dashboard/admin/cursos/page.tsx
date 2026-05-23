@@ -14,6 +14,9 @@ interface Course {
   educationType: string
   shift:         string
   _count:        { assignments: number; schedules: number }
+    tutor?: {
+    teacher: { firstName: string; lastName: string }
+  }
 }
 
 const LEVELS    = [{ value: 'INICIAL', label: 'Inicial' }, { value: 'PRIMARIA', label: 'Primaria' }, { value: 'SECUNDARIA', label: 'Secundaria' }]
@@ -187,8 +190,13 @@ useEffect(() => { fetchCourses() }, [])
                         </span>
                         {c.educationType === 'BTH' && <span className="cbadge bth">BTH</span>}
                       </div>
-                    </div>
+                    </div> 
                     <div className="cstat"><Users size={12}/>{c._count.assignments} estudiantes</div>
+                      {c.tutor && (
+                        <div className="cstat tutor-info">
+                          <span>🎓 {c.tutor.teacher.lastName} {c.tutor.teacher.firstName}</span>
+                        </div>
+                      )}
                     <div className="course-actions">
                       <button className="icon-btn view" title="Ver detalle" onClick={() => router.push(`/dashboard/admin/cursos/${c.id}`)}>
                         <Eye size={13}/>
