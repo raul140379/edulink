@@ -133,6 +133,7 @@ model User {
   staff         Staff?
   director      ShiftDirector?
   juntaMember   JuntaMember? 
+  notificationsSent  Notification[] @relation("NotificationSender") 
   meetingsCreated  Meeting[] @relation("MeetingCreator")
 }
 
@@ -456,7 +457,8 @@ model Notification {
   type      NotificationType
   isRead    Boolean          @default(false)
   createdAt DateTime         @default(now())
-
+  sentById  Int
+  sentBy    User   @relation("NotificationSender", fields: [sentById], references: [id])
   parentId  Int
   parent    Parent           @relation(fields: [parentId], references: [id])
 }
