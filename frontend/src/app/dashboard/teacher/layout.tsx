@@ -27,6 +27,11 @@ const menuItems = [
     icon:  <DollarSign size={18}/>,
   },
   {
+    label: 'Mis Notas',
+    href:  '/dashboard/teacher/notas',
+    icon:  <BookOpen size={18}/>,
+  },
+  {
     label: 'Reuniones',
     href:  '/dashboard/teacher/reuniones',
     icon:  <Users size={18}/>,

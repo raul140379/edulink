@@ -30,6 +30,12 @@ enum AcademicLevel {
   PRIMARIA
   SECUNDARIA
 }
+enum CampoSaber {
+  VIDA_TIERRA_TERRITORIO       // Vida Tierra y Territorio
+  COMUNIDAD_SOCIEDAD           // Comunidad y Sociedad
+  COSMOS_PENSAMIENTO           // Cosmos y Pensamiento
+  CIENCIA_TECNOLOGIA_PRODUCCION // Ciencia Tecnología y Producción
+}
 enum Gender {
   MASCULINO
   FEMENINO
@@ -159,7 +165,6 @@ model JuntaMember {
   academicYear Int      // Gestión a la que pertenece
   isActive    Boolean   @default(true)
   createdAt   DateTime  @default(now())
-
   userId      Int       @unique
   user        User      @relation(fields: [userId], references: [id])
 }
@@ -187,7 +192,6 @@ model AcademicYear {
   endDate     DateTime
   isActive    Boolean      @default(false)
   createdAt   DateTime     @default(now())
-
   trimesters  Trimester[] 
   assignments StudentAcademicAssignment[]
   holidays    Holiday[]
@@ -202,8 +206,8 @@ model Trimester {
   endDate        DateTime
   academicYearId Int
   academicYear   AcademicYear @relation(fields: [academicYearId], references: [id])
-
   @@unique([academicYearId, number])
+  notas     Nota[]
 }
 
 model Holiday {
@@ -255,10 +259,10 @@ model Student {
   kardex    String?  
   userId      Int?      @unique
   user        User?     @relation(fields: [userId], references: [id])
-
   parents     ParentStudent[]
   assignments StudentAcademicAssignment[]
   charges     Charge[]   // Cargos asignados a este estudiante específico
+  notas     Nota[]
 }
 
 model ParentStudent {
@@ -269,7 +273,6 @@ model ParentStudent {
   studentId    Int
   parent       Parent       @relation(fields: [parentId], references: [id])
   student      Student      @relation(fields: [studentId], references: [id])
-
   @@unique([parentId, studentId])
 }
 
@@ -281,16 +284,27 @@ model Teacher {
   phone     String?
   email     String?   @unique
   specialty String?
+  birthDate DateTime?  // Fecha de nacimiento
+  hoursLoad Int?      // Carga horaria mensual del maestro
+  gender     String?   // MASCULINO | FEMENINO
   isActive  Boolean   @default(true)
   createdAt DateTime  @default(now())
-
   userId      Int       @unique
   user        User      @relation(fields: [userId], references: [id])
-
   assignments TeacherSubjectCourse[]
   tutorCourse CourseTutor?           // Maestro tutor de un curso
+  notas     Nota[]
+  specialties TeacherSpecialty[]
 }
+model TeacherSpecialty {
+  id        Int     @id @default(autoincrement())
+  teacherId Int
+  subjectId Int
+  teacher   Teacher @relation(fields: [teacherId], references: [id], onDelete: Cascade)
+  subject   Subject @relation(fields: [subjectId], references: [id], onDelete: Cascade)
 
+  @@unique([teacherId, subjectId])
+}
 model Staff {
   id        Int       @id @default(autoincrement())
   firstName String
@@ -301,7 +315,6 @@ model Staff {
   shift     Shift?
   isActive  Boolean   @default(true)
   createdAt DateTime  @default(now())
-
   userId    Int       @unique
   user      User      @relation(fields: [userId], references: [id])
 }
@@ -319,16 +332,14 @@ model Course {
   meetings  Meeting[]
   shiftDirectorId Int?
   shiftDirector   ShiftDirector? @relation(fields: [shiftDirectorId], references: [id])
-
   delegateId  Int?    @unique
   delegate    Parent? @relation("CourseDelegate", fields: [delegateId], references: [id])
-
   assignments     StudentAcademicAssignment[]
   schedules       Schedule[]
   teacherSubjects TeacherSubjectCourse[]
   tutor           CourseTutor?
-
   @@unique([level, grade, parallel, educationType, shift])
+  notas     Nota[]
 }
 
 // Maestro tutor designado a un curso
@@ -342,15 +353,32 @@ model CourseTutor {
 }
 ////MATERIAL_ESCOLAR
 model Subject {
-  id             Int           @id @default(autoincrement())
-  name           String
-  code           String?
-  level          AcademicLevel
-  hoursPerWeek   Int           @default(4)
+  id           Int           @id @default(autoincrement())
+  name         String
+  code         String?
+  level        AcademicLevel
+  campo        CampoSaber?   // Campo de Saberes y Conocimientos
+  hoursPerWeek Int           @default(4) // Horas base (referencia)
+  isActive     Boolean       @default(true)
   teacherSubjects TeacherSubjectCourse[]
+  gradeConfigs    SubjectGradeConfig[]   // Horas y disponibilidad por grado
+  notas           Nota[]
   @@unique([name, level])
+  teacherSpecialties TeacherSpecialty[]
 }
+// Configuración de materia por grado: qué grados aplica y cuántas horas
+model SubjectGradeConfig {
+  id           Int     @id @default(autoincrement())
+  subjectId    Int
+  grade        Grade   // PRIMERO...SEXTO
+  hoursPerWeek Int     // Horas semanales para ese grado específico
+  educationType EducationType @default(REGULAR) // REGULAR o BTH
 
+  subject Subject @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+
+  @@unique([subjectId, grade, educationType])
+}
+//PROFESOR MATERIA Y CURSO
 model TeacherSubjectCourse {
   id        Int     @id @default(autoincrement())
   teacherId Int
@@ -359,9 +387,7 @@ model TeacherSubjectCourse {
   teacher   Teacher @relation(fields: [teacherId], references: [id])
   subject   Subject @relation(fields: [subjectId], references: [id])
   course    Course  @relation(fields: [courseId], references: [id])
-
   schedules Schedule[]
-
   @@unique([teacherId, subjectId, courseId])
 }
 
@@ -373,11 +399,9 @@ model StudentAcademicAssignment {
   courseId       Int
   academicYearId Int
   createdAt      DateTime      @default(now())
-
   student      Student      @relation(fields: [studentId], references: [id])
   course       Course       @relation(fields: [courseId], references: [id])
   academicYear AcademicYear @relation(fields: [academicYearId], references: [id])
-
   @@unique([studentId, academicYearId, educationType])
 }
 
@@ -388,10 +412,8 @@ model Schedule {
   endTime                String
   courseId               Int
   teacherSubjectCourseId Int
-
   course               Course               @relation(fields: [courseId], references: [id])
   teacherSubjectCourse TeacherSubjectCourse @relation(fields: [teacherSubjectCourseId], references: [id])
-
   @@unique([courseId, dayOfWeek, startTime])
 }
 
@@ -413,18 +435,14 @@ model Charge {
   toleranceNote String?      // Nota sobre la tolerancia
   createdAt     DateTime     @default(now())
   updatedAt     DateTime     @updatedAt
-
   academicYearId Int
   academicYear   AcademicYear @relation(fields: [academicYearId], references: [id])
-
   // El pago siempre lo hace el tutor legal
   parentId    Int
   parent      Parent       @relation(fields: [parentId], references: [id])
-
   // Si el cargo es por ESTUDIANTE, se especifica el estudiante
   studentId   Int?
   student     Student?     @relation(fields: [studentId], references: [id])
-
   payments    Payment[]
 }
 
@@ -436,10 +454,8 @@ model Payment {
   note      String?       // Nota adicional
   date      DateTime      @default(now())
   createdAt DateTime      @default(now())
-
   chargeId  Int
   charge    Charge        @relation(fields: [chargeId], references: [id])
-
   // Quien recibió el pago (miembro de la junta)
   receivedById Int?
   parentId     Int
@@ -490,6 +506,26 @@ model Attendance {
   present   Boolean  @default(false)
   note      String?
   createdAt DateTime @default(now())
-
   @@unique([meetingId, parentId])
+}// ─────────────────────────────────────────────
+// NOTAS Y CALIFICACIONES
+// ─────────────────────────────────────────────
+
+model Nota {
+  id          Int      @id @default(autoincrement())
+  value       Float    // 0 a 100, aprobado >= 51
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  studentId   Int
+  subjectId   Int
+  courseId    Int
+  teacherId   Int
+  trimesterId Int
+  student   Student   @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  subject   Subject   @relation(fields: [subjectId], references: [id])
+  course    Course    @relation(fields: [courseId], references: [id])
+  teacher   Teacher   @relation(fields: [teacherId], references: [id])
+  trimester Trimester @relation(fields: [trimesterId], references: [id])
+  @@unique([studentId, subjectId, courseId, trimesterId])
 }
+

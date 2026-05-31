@@ -7,7 +7,12 @@ import { ArrowLeft, Plus, Trash2, BookOpen } from 'lucide-react'
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000'
 
 interface Subject {
-  id: number; name: string; code?: string; level: string
+  id: number
+  name: string
+  code?: string
+  level: string
+  campo?: string
+  gradeConfigs?: { hoursPerWeek: number }[]
 }
 
 interface Teacher {
@@ -51,25 +56,31 @@ export default function AsignarMateriaPage() {
   }
 
   const fetchData = async () => {
-    setLoading(true)
-    try {
-      const [cRes, sRes, tRes] = await Promise.all([
-        fetch(`${API_URL}/api/courses/${id}`,  { headers: { Authorization: `Bearer ${token}` } }),
-        fetch(`${API_URL}/api/subjects`,        { headers: { Authorization: `Bearer ${token}` } }),
-        fetch(`${API_URL}/api/teachers`,        { headers: { Authorization: `Bearer ${token}` } }),
-      ])
-      const [cData, sData, tData] = await Promise.all([cRes.json(), sRes.json(), tRes.json()])
-      if (cRes.ok) setCourse(cData)
-      if (sRes.ok) {
-        //Filtrar materias por nivel del curso
-        if (cRes.ok) setSubjects(sData.filter((s: Subject) => s.level === cData.level))
-        else setSubjects(sData)
-        //setSubjects(sData)
-      }
-      if (tRes.ok) setTeachers(tData)
-    } catch { notify('Error de conexión', 'error') }
-    finally  { setLoading(false) }
-  }
+  setLoading(true)
+  try {
+    // 1. Primero obtener el curso (necesitamos level y grade)
+    const cRes  = await fetch(`${API_URL}/api/courses/${id}`, {
+      headers: { Authorization: `Bearer ${token}` }
+    })
+    const cData = await cRes.json()
+    if (cRes.ok) setCourse(cData)
+    else { notify('Curso no encontrado', 'error'); return }
+
+    // 2. Con level y grade ya disponibles, pedir subjects y teachers en paralelo
+    const [sRes, tRes] = await Promise.all([
+      fetch(`${API_URL}/api/subjects?level=${cData.level}&grade=${cData.grade}`,
+        { headers: { Authorization: `Bearer ${token}` } }),
+      fetch(`${API_URL}/api/teachers`,
+        { headers: { Authorization: `Bearer ${token}` } }),
+    ])
+    const [sData, tData] = await Promise.all([sRes.json(), tRes.json()])
+
+    if (sRes.ok) setSubjects(sData)
+    if (tRes.ok) setTeachers(tData)
+
+  } catch { notify('Error de conexión', 'error') }
+  finally  { setLoading(false) }
+}
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { fetchData() }, [id])
@@ -138,15 +149,20 @@ export default function AsignarMateriaPage() {
         <div className="form-row">
           <div className="fg">
             <label>Materia *</label>
-            <select value={form.subjectId} onChange={e => setForm({...form, subjectId: e.target.value})}>
-              <option value="">Selecciona una materia</option>
-              {subjects.map(s => (
-                <option key={s.id} value={s.id}
-                  disabled={assignedSubjectIds.includes(s.id)}>
-                  {s.name}{s.code ? ` (${s.code})` : ''}{assignedSubjectIds.includes(s.id) ? ' ✓ Ya asignada' : ''}
-                </option>
-              ))}
-            </select>
+           <select value={form.subjectId} onChange={e => setForm({...form, subjectId: e.target.value})}>
+  <option value="">Selecciona una materia</option>
+  {subjects.map(s => {
+    const hours     = s.gradeConfigs?.[0]?.hoursPerWeek
+    const isAssigned = assignedSubjectIds.includes(s.id)
+    return (
+      <option key={s.id} value={s.id} disabled={isAssigned}>
+        {s.name}
+        {hours      ? ` — ${hours}h/sem` : ''}
+        {isAssigned ? ' ✓ Ya asignada'   : ''}
+      </option>
+    )
+  })}
+</select>
           </div>
           <div className="fg">
             <label>Maestro *</label>

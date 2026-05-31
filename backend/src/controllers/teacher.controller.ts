@@ -54,7 +54,7 @@ const generateTeacherPassword = (lastName: string, ci?: string): string => {
 // ─────────────────────────────────────────────
 export const getTeachers = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    const { search, isActive } = req.query
+    const { search, isActive, subjectId } = req.query  // ← AGREGAR subjectId
 
     const teachers = await prisma.teacher.findMany({
       where: {
@@ -66,7 +66,13 @@ export const getTeachers = async (req: AuthRequest, res: Response): Promise<void
             { ci:        { contains: search as string, mode: 'insensitive' } },
             { specialty: { contains: search as string, mode: 'insensitive' } },
           ]
-        } : {})
+        } : {}),
+        // ← AGREGAR filtro por especialidad
+        ...(subjectId ? {
+          specialties: {
+            some: { subjectId: parseInt(subjectId as string) }
+          }
+        } : {}),
       },
       include: {
         user: { select: { id: true, email: true, role: true, isActive: true } },
@@ -77,7 +83,13 @@ export const getTeachers = async (req: AuthRequest, res: Response): Promise<void
           },
           take: 5
         },
-        _count: { select: { assignments: true } }
+        _count: { select: { assignments: true } },
+        // ← AGREGAR specialties
+        specialties: {
+          include: {
+            subject: { select: { id: true, name: true, campo: true } }
+          }
+        }
       },
       orderBy: [{ lastName: 'asc' }, { firstName: 'asc' }]
     })
@@ -126,7 +138,7 @@ export const getTeacherById = async (req: AuthRequest, res: Response): Promise<v
 // ─────────────────────────────────────────────
 export const createTeacher = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    const { firstName, lastName, ci, phone, email, specialty } = req.body
+   const { firstName, lastName, ci, phone, email, specialty, birthDate, hoursLoad, gender } = req.body
 
     if (!firstName || !lastName) {
       res.status(400).json({ message: 'Nombre y apellido son requeridos' })
@@ -173,9 +185,12 @@ export const createTeacher = async (req: AuthRequest, res: Response): Promise<vo
         phone:     phone     || null,
         email:     email     || null,
         specialty: specialty || null,
+        birthDate: birthDate ? new Date(birthDate) : null,
+        hoursLoad: hoursLoad ? parseInt(hoursLoad) : null,
+        gender:    gender    || null,
         isActive:  true,
         userId:    user.id,
-      },
+      },  
       include: {
         user: { select: { id: true, email: true, role: true } }
       }
@@ -202,7 +217,7 @@ export const createTeacher = async (req: AuthRequest, res: Response): Promise<vo
 export const updateTeacher = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const { id } = req.params
-    const { firstName, lastName, ci, phone, email, specialty } = req.body
+    const { firstName, lastName, ci, phone, email, specialty, birthDate, hoursLoad, gender } = req.body
 
     const existing = await prisma.teacher.findUnique({ where: { id: parseInt(id) } })
     if (!existing) {
@@ -227,6 +242,9 @@ export const updateTeacher = async (req: AuthRequest, res: Response): Promise<vo
         ...(phone     !== undefined ? { phone:     phone    || null } : {}),
         ...(email     !== undefined ? { email:     email    || null } : {}),
         ...(specialty !== undefined ? { specialty: specialty || null } : {}),
+        ...(birthDate !== undefined ? { birthDate: birthDate ? new Date(birthDate) : null } : {}),
+        ...(hoursLoad !== undefined ? { hoursLoad: hoursLoad ? parseInt(hoursLoad) : null }  : {}),
+        ...(gender    !== undefined ? { gender:    gender    || null }                        : {}),
       },
       include: { user: { select: { id: true, email: true, role: true } } }
     })

@@ -10,6 +10,12 @@ import {
 } from '../controllers/teacher.controller'
 import { verifyToken, requirePermission } from '../middlewares/auth.middleware'
 import { Permission } from '../config/permissions'
+import {
+  getTeacherSpecialties,
+  addTeacherSpecialty,
+  removeTeacherSpecialty
+} from '../controllers/teacherSpecialty.controller'
+
 
 const router = Router()
 
@@ -22,5 +28,8 @@ router.post('/',          requirePermission(Permission.STUDENT_CREATE),   create
 router.put('/:id',        requirePermission(Permission.STUDENT_CREATE),   updateTeacher)
 router.patch('/:id/toggle', requirePermission(Permission.STUDENT_CREATE), toggleTeacherStatus)
 router.delete('/:id',    requirePermission(Permission.STUDENT_CREATE),   deleteTeacher)
-
+router.get('/:id/specialties',                    getTeacherSpecialties)
+router.post('/:id/specialties',                   addTeacherSpecialty)
+router.delete('/:id/specialties/:specialtyId',    removeTeacherSpecialty)
+// GET /api/teachers?subjectId=5 — maestros con esa especialidad
 export default router

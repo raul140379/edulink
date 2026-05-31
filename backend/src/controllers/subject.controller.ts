@@ -7,17 +7,26 @@ import prisma from '../lib/prisma'
 // ─────────────────────────────────────────────
 export const getSubjects = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    const { level, academicYearId } = req.query
+    const { level, grade } = req.query
 
     const subjects = await prisma.subject.findMany({
       where: {
-        ...(level          ? { level:          level          as any } : {}), 
+        ...(level ? { level: level as any } : {}),
+        // Si viene grade, solo mostrar materias que tengan config para ese grado
+        ...(grade ? {
+          gradeConfigs: {
+            some: { grade: grade as any }
+          }
+        } : {}),
       },
       include: {
-        
-        _count: { select: { teacherSubjects: true } }
+        _count: { select: { teacherSubjects: true } },
+        // Incluir horas del grado específico si se pide
+        ...(grade ? {
+          gradeConfigs: { where: { grade: grade as any } }
+        } : {}),
       },
-      orderBy: [{ level: 'asc' }, { name: 'asc' }]
+      orderBy: [{ campo: 'asc' }, { name: 'asc' }]
     })
 
     res.json(subjects)
