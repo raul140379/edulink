@@ -39,8 +39,15 @@ interface Credentials {
 const emptyForm = {
   firstName: '', lastName: '', ci: '', phone: '', email: '', specialty: '',
   birthDate: '', hoursLoad: '', gender: '',
-  campo: '', subjectIds: [] as number[],
+  subjectIds: [] as number[],
 }
+
+const CAMPOS = [
+  { value: 'VIDA_TIERRA_TERRITORIO',        label: '🌿 Vida, Tierra y Territorio' },
+  { value: 'COMUNIDAD_SOCIEDAD',            label: '🌐 Comunidad y Sociedad' },
+  { value: 'COSMOS_PENSAMIENTO',            label: '✨ Cosmos y Pensamiento' },
+  { value: 'CIENCIA_TECNOLOGIA_PRODUCCION', label: '⚙️ Ciencia, Tecnología y Producción' },
+]
 
 const CAMPO_LABELS: Record<string, string> = {
   VIDA_TIERRA_TERRITORIO:        'Vida Tierra y Territorio',
@@ -82,6 +89,7 @@ export default function MaestrosPage() {
   const [creds,        setCreds]        = useState<Credentials | null>(null)
   const [copied,       setCopied]       = useState(false)
   const [formSubjects, setFormSubjects] = useState<Subject[]>([])
+  const [subjectsByCampo, setSubjectsByCampo] = useState<Record<string, Subject[]>>({})
 
   // Especialidades modal
   const [showSpecialties,   setShowSpecialties]   = useState(false)
@@ -140,16 +148,24 @@ export default function MaestrosPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { fetchTeachers() }, [])
 
-  const handleCampoChange = async (campo: string) => {
-    setForm(prev => ({ ...prev, campo, subjectIds: [] }))
-    if (!campo) { setFormSubjects([]); return }
+  // Cargar y agrupar todas las materias por campo
+  const loadAllSubjects = async () => {
+    const tk = localStorage.getItem('token') || ''
     try {
       const res  = await fetch(`${API_URL}/api/subjects?level=SECUNDARIA`, {
-        headers: { Authorization: `Bearer ${token}` }
+        headers: { Authorization: `Bearer ${tk}` }
       })
       const data = await res.json()
-      if (res.ok) setFormSubjects(data.filter((s: Subject) => s.campo === campo))
-    } catch { console.error('Error cargando materias') }
+      if (res.ok && Array.isArray(data)) {
+        const grouped: Record<string, Subject[]> = {}
+        for (const s of data) {
+          const c = s.campo || 'SIN_CAMPO'
+          if (!grouped[c]) grouped[c] = []
+          grouped[c].push(s)
+        }
+        setSubjectsByCampo(grouped)
+      }
+    } catch (e) { console.error('Error cargando materias', e) }
   }
 
   const toggleSubject = (subjectId: number) => {
@@ -205,45 +221,33 @@ export default function MaestrosPage() {
   const openCreate = () => {
     setEditMode(false); setEditId(null)
     setForm(emptyForm); setFormSubjects([])
-    setError(''); setShowModal(true)
+    setError('')
+    loadAllSubjects()
+    setShowModal(true)
   }
 
   const openEdit = async (t: Teacher) => {
     setEditMode(true); setEditId(t.id)
-    setError(''); setLoadingEdit(true); setShowModal(true)
+    setError(''); setLoadingEdit(true)
+    loadAllSubjects()
+    setShowModal(true)
 
     try {
-      // Cargar especialidades actuales
       const res   = await fetch(`${API_URL}/api/teachers/${t.id}/specialties`, {
         headers: { Authorization: `Bearer ${token}` }
       })
       const specs: Specialty[] = await res.json()
 
-      // Detectar campo actual
-      const campoActual = specs.find(s => s.subject.campo)?.subject.campo || ''
-
-      // Cargar materias de ese campo
-      let materiasDelCampo: Subject[] = []
-      if (campoActual) {
-        const sRes  = await fetch(`${API_URL}/api/subjects?level=SECUNDARIA`, {
-          headers: { Authorization: `Bearer ${token}` }
-        })
-        const sData = await sRes.json()
-        materiasDelCampo = sData.filter((s: Subject) => s.campo === campoActual)
-      }
-
-      setFormSubjects(materiasDelCampo)
       setForm({
-        firstName: t.firstName,
-        lastName:  t.lastName,
-        ci:        t.ci        || '',
-        phone:     t.phone     || '',
-        email:     t.email     || '',
-        specialty: t.specialty || '',
-        birthDate: t.birthDate ? t.birthDate.substring(0, 10) : '',
-        hoursLoad: t.hoursLoad ? String(t.hoursLoad) : '',
-        gender:    t.gender    || '',
-        campo:     campoActual,
+        firstName:  t.firstName,
+        lastName:   t.lastName,
+        ci:         t.ci        || '',
+        phone:      t.phone     || '',
+        email:      t.email     || '',
+        specialty:  t.specialty || '',
+        birthDate:  t.birthDate ? t.birthDate.substring(0, 10) : '',
+        hoursLoad:  t.hoursLoad ? String(t.hoursLoad) : '',
+        gender:     t.gender    || '',
         subjectIds: specs.map(s => s.subject.id),
       })
     } catch {
@@ -254,7 +258,7 @@ export default function MaestrosPage() {
         birthDate: t.birthDate ? t.birthDate.substring(0, 10) : '',
         hoursLoad: t.hoursLoad ? String(t.hoursLoad) : '',
         gender: t.gender || '',
-        campo: '', subjectIds: [],
+        subjectIds: [],
       })
     } finally {
       setLoadingEdit(false)
@@ -288,13 +292,11 @@ export default function MaestrosPage() {
 
       if (teacherIdToUse) {
         if (editMode) {
-          // Al editar: sincronizar especialidades
           const currentSpecs: Specialty[] = await fetch(
             `${API_URL}/api/teachers/${teacherIdToUse}/specialties`,
             { headers: { Authorization: `Bearer ${token}` } }
           ).then(r => r.json())
 
-          // Borrar las que ya no están seleccionadas
           await Promise.all(
             currentSpecs
               .filter(s => !form.subjectIds.includes(s.subject.id))
@@ -306,7 +308,6 @@ export default function MaestrosPage() {
               )
           )
 
-          // Agregar las nuevas
           const currentIds = currentSpecs.map(s => s.subject.id)
           await Promise.all(
             form.subjectIds
@@ -320,7 +321,6 @@ export default function MaestrosPage() {
               )
           )
         } else if (form.subjectIds.length > 0) {
-          // Al crear: asignar todas las seleccionadas
           await Promise.all(
             form.subjectIds.map(subjectId =>
               fetch(`${API_URL}/api/teachers/${teacherIdToUse}/specialties`, {
@@ -543,12 +543,12 @@ export default function MaestrosPage() {
       {/* ── Modal crear/editar ─────────────────────────────────────────────── */}
       {showModal && (
         <div className="overlay" onClick={() => setShowModal(false)}>
-          <div className="modal modal-lg" onClick={e => e.stopPropagation()}>
+          <div className="modal modal-lg" onClick={e => e.stopPropagation()} style={{overflow:'hidden'}}>
             <div className="mhead">
               <h2>{editMode ? 'Editar Maestro' : 'Nuevo Maestro'}</h2>
               <button onClick={() => setShowModal(false)}><X size={18}/></button>
             </div>
-            <div className="mbody">
+            <div className="mbody" style={{overflowY:'auto',maxHeight:'70vh'}}>
               {error && <div className="alert err">{error}</div>}
               {loadingEdit ? (
                 <div className="center-state"><div className="spinner"/><p>Cargando datos...</p></div>
@@ -597,42 +597,47 @@ export default function MaestrosPage() {
                     </div>
                   </div>
 
-                  {/* Campo y materias — tanto al crear como al editar */}
-                  <div className="section-lbl">Campo de Saberes y Materias</div>
-                  <div className="fg">
-                    <label>Campo de Saberes</label>
-                    <select value={form.campo} onChange={e => handleCampoChange(e.target.value)}
-                      className="fg-select">
-                      <option value="">— Seleccionar campo —</option>
-                      <option value="VIDA_TIERRA_TERRITORIO">Vida Tierra y Territorio</option>
-                      <option value="COMUNIDAD_SOCIEDAD">Comunidad y Sociedad</option>
-                      <option value="COSMOS_PENSAMIENTO">Cosmos y Pensamiento</option>
-                      <option value="CIENCIA_TECNOLOGIA_PRODUCCION">Ciencia Tecnología y Producción</option>
-                    </select>
+                  {/* Campos de Saberes y Materias */}
+                  <div className="section-lbl">Campos de Saberes y Materias</div>
+                  <div style={{fontSize:'12px',color:'#6B8BB0',marginBottom:'8px'}}>
+                    Selecciona las materias que puede enseñar. Puede pertenecer a múltiples campos.
                   </div>
 
-                  {form.campo && formSubjects.length > 0 && (
-                    <div>
-                      <label className="fg-label">Materias que puede enseñar</label>
-                      <div className="subject-checks">
-                        {formSubjects.map(s => (
-                          <label key={s.id} className={`check-item ${form.subjectIds.includes(s.id) ? 'checked' : ''}`}>
-                            <input type="checkbox" checked={form.subjectIds.includes(s.id)}
-                              onChange={() => toggleSubject(s.id)}/>
-                            <span>{s.name}</span>
-                          </label>
-                        ))}
+                  {CAMPOS.map(campo => {
+                    const materias = subjectsByCampo[campo.value] || []
+                    const selCount = materias.filter(s => form.subjectIds.includes(s.id)).length
+                    return (
+                      <div key={campo.value} style={{border:'1.5px solid #CBE0F0',borderRadius:'10px',marginBottom:'8px'}}>
+                        <div style={{background:'#F8FBFF',padding:'9px 14px',fontWeight:700,fontSize:'12px',
+                          color:'#1A3A7C',display:'flex',alignItems:'center',justifyContent:'space-between'}}>
+                          <span>{campo.label}</span>
+                          {selCount > 0 && (
+                            <span style={{background:'#1A3A7C',color:'#fff',borderRadius:'20px',
+                              padding:'2px 10px',fontSize:'11px'}}>{selCount} seleccionada{selCount>1?'s':''}</span>
+                          )}
+                        </div>
+                        {materias.length === 0 ? (
+                          <div style={{padding:'10px 14px',fontSize:'12px',color:'#6B8BB0',fontStyle:'italic'}}>
+                            Cargando materias...
+                          </div>
+                        ) : (
+                          <div className="subject-checks" style={{padding:'10px 14px'}}>
+                            {materias.map(s => (
+                              <label key={s.id} className={`check-item ${form.subjectIds.includes(s.id) ? 'checked' : ''}`}>
+                                <input type="checkbox" checked={form.subjectIds.includes(s.id)}
+                                  onChange={() => toggleSubject(s.id)}/>
+                                <span>{s.name}</span>
+                              </label>
+                            ))}
+                          </div>
+                        )}
                       </div>
-                      {form.subjectIds.length > 0 && (
-                        <p className="sel-count">
-                          ✅ {form.subjectIds.length} materia{form.subjectIds.length > 1 ? 's' : ''} seleccionada{form.subjectIds.length > 1 ? 's' : ''}
-                        </p>
-                      )}
-                    </div>
-                  )}
-
-                  {form.campo && formSubjects.length === 0 && (
-                    <p className="no-subjects">No hay materias cargadas para este campo.</p>
+                    )
+                  })}
+                  {form.subjectIds.length > 0 && (
+                    <p className="sel-count">
+                      ✓ {form.subjectIds.length} materia{form.subjectIds.length > 1 ? 's' : ''} seleccionada{form.subjectIds.length > 1 ? 's' : ''}
+                    </p>
                   )}
                 </>
               )}
@@ -813,12 +818,12 @@ export default function MaestrosPage() {
         .fg input,.fg-select{padding:9px 12px;border:1.5px solid #CBE0F0;border-radius:8px;font-size:13px;color:#1A3A7C;outline:none;width:100%}
         .fg input:focus,.fg-select:focus{border-color:#4A9FD4;box-shadow:0 0 0 3px rgba(74,159,212,.12)}
         .info-box{background:#F0F6FC;border:1px solid #CBE0F0;border-radius:8px;padding:12px;font-size:12px;color:#6B8BB0;line-height:1.6}
-        .subject-checks{display:flex;flex-wrap:wrap;gap:8px;margin-top:4px}
+        .subject-checks{display:flex;flex-wrap:wrap;gap:8px}
         .check-item{display:flex;align-items:center;gap:6px;padding:7px 12px;border:1.5px solid #CBE0F0;border-radius:8px;font-size:13px;color:#1A3A7C;cursor:pointer;transition:all .15s;user-select:none}
         .check-item:hover{border-color:#4A9FD4;background:#F0F6FC}
         .check-item.checked{border-color:#1A3A7C;background:#E8F0FB;font-weight:500}
         .check-item input{accent-color:#1A3A7C;width:14px;height:14px;flex-shrink:0}
-        .sel-count{font-size:12px;color:#0F6E56;margin-top:6px;font-weight:500}
+        .sel-count{font-size:12px;color:#0F6E56;font-weight:500;margin:0}
         .no-subjects{font-size:12px;color:#6B8BB0;font-style:italic}
         .spec-add-row{display:flex;gap:10px;align-items:center}
         .spec-select{flex:1;padding:9px 12px;border:1.5px solid #CBE0F0;border-radius:8px;font-size:13px;color:#1A3A7C;outline:none}

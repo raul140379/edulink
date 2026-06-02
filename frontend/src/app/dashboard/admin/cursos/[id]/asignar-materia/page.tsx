@@ -2,263 +2,357 @@
 
 import { useEffect, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
-import { ArrowLeft, Plus, Trash2, BookOpen } from 'lucide-react'
+import { ArrowLeft, BookOpen, CheckCircle2, AlertCircle, Save } from 'lucide-react'
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000'
 
-interface Subject {
-  id: number
-  name: string
-  code?: string
-  level: string
-  campo?: string
-  gradeConfigs?: { hoursPerWeek: number }[]
+// ── Tipos ─────────────────────────────────────────────────────────────────
+interface PlanItem {
+  subjectId:    number
+  subject:      { id: number; name: string; code: string; campo: string | null }
+  hoursPerWeek: number
+  teacher:      { id: number; firstName: string; lastName: string } | null
+  assignmentId: number | null
 }
-
+interface CoursePlan {
+  course:        { id: number; grade: string; parallel: string; level: string }
+  totalHours:    number
+  totalSubjects: number
+  assignedCount: number
+  pendingCount:  number
+  grouped:       Record<string, PlanItem[]>
+  campoOrder:    string[]
+}
 interface Teacher {
-  id: number; firstName: string; lastName: string; ci?: string; specialty?: string
+  id: number; firstName: string; lastName: string
 }
 
-interface Assignment {
-  id:      number
-  subject: { id: number; name: string; code?: string }
-  teacher: { id: number; firstName: string; lastName: string }
-}
+// ── Constantes ────────────────────────────────────────────────────────────
+const GRADES = { PRIMERO:'1°', SEGUNDO:'2°', TERCERO:'3°', CUARTO:'4°', QUINTO:'5°', SEXTO:'6°' } as Record<string,string>
+const LEVELS = { INICIAL:'Inicial', PRIMARIA:'Primaria', SECUNDARIA:'Secundaria' } as Record<string,string>
+const SHIFTS = { MORNING:'Mañana', AFTERNOON:'Tarde', NIGHT:'Noche' } as Record<string,string>
 
-interface Course {
-  id: number; level: string; grade: string; parallel: string; shift: string
-  teacherSubjects: Assignment[]
+const CAMPO_LABELS: Record<string,string> = {
+  VIDA_TIERRA_TERRITORIO:        'Vida, Tierra y Territorio',
+  COMUNIDAD_SOCIEDAD:            'Comunidad y Sociedad',
+  COSMOS_PENSAMIENTO:            'Cosmos y Pensamiento',
+  CIENCIA_TECNOLOGIA_PRODUCCION: 'Ciencia, Tecnología y Producción',
+  SIN_CAMPO:                     'Sin campo asignado',
 }
-
-const GRADE_LABELS: Record<string, string> = { PRIMERO: '1°', SEGUNDO: '2°', TERCERO: '3°', CUARTO: '4°', QUINTO: '5°', SEXTO: '6°' }
-const LEVEL_LABELS: Record<string, string> = { INICIAL: 'Inicial', PRIMARIA: 'Primaria', SECUNDARIA: 'Secundaria' }
-const SHIFT_LABELS: Record<string, string> = { MORNING: 'Mañana', AFTERNOON: 'Tarde', NIGHT: 'Noche' }
+const CAMPO_COLORS: Record<string,{bg:string;text:string;border:string}> = {
+  VIDA_TIERRA_TERRITORIO:        { bg:'#E8F5F0', text:'#0F6E56', border:'#9FE1CB' },
+  COMUNIDAD_SOCIEDAD:            { bg:'#E0ECF8', text:'#1A3A7C', border:'#A8C4E8' },
+  COSMOS_PENSAMIENTO:            { bg:'#F3E8FF', text:'#6B21A8', border:'#C4A8E8' },
+  CIENCIA_TECNOLOGIA_PRODUCCION: { bg:'#FFF3E0', text:'#633806', border:'#F5C518' },
+  SIN_CAMPO:                     { bg:'#F5F5F5', text:'#444441', border:'#CCCCCC' },
+}
+const CAMPO_ICONS: Record<string,string> = {
+  VIDA_TIERRA_TERRITORIO:        '🌿',
+  COMUNIDAD_SOCIEDAD:            '🌐',
+  COSMOS_PENSAMIENTO:            '✨',
+  CIENCIA_TECNOLOGIA_PRODUCCION: '⚙️',
+  SIN_CAMPO:                     '📌',
+}
 
 export default function AsignarMateriaPage() {
   const params = useParams()
   const router = useRouter()
   const id     = params.id as string
 
-  const [course,    setCourse]    = useState<Course | null>(null)
-  const [subjects,  setSubjects]  = useState<Subject[]>([])
-  const [teachers,  setTeachers]  = useState<Teacher[]>([])
+  const [plan,      setPlan]      = useState<CoursePlan | null>(null)
+  // Cache: subjectId → maestros con especialidad en esa materia
+  const [teachersBySubject, setTeachersBySubject] = useState<Record<number, Teacher[]>>({})
+  const [loadingTeachers, setLoadingTeachers]     = useState<Record<number, boolean>>({})
   const [loading,   setLoading]   = useState(true)
-  const [saving,    setSaving]    = useState(false)
+  const [saving,    setSaving]    = useState<number | null>(null) // subjectId en proceso
+  const [selections, setSelections] = useState<Record<number, string>>({}) // subjectId → teacherId
   const [success,   setSuccess]   = useState('')
   const [error,     setError]     = useState('')
-  const [form,      setForm]      = useState({ subjectId: '', teacherId: '' })
+  const [courseInfo, setCourseInfo] = useState<{level:string;grade:string;parallel:string;shift:string} | null>(null)
 
   const token = typeof window !== 'undefined' ? localStorage.getItem('token') : ''
 
-  const notify = (msg: string, type: 'success' | 'error' = 'success') => {
-    if (type === 'success') { setSuccess(msg); setTimeout(() => setSuccess(''), 3000) }
-    else                    { setError(msg);   setTimeout(() => setError(''),   4000) }
+  const notify = (msg: string, type: 'ok' | 'err' = 'ok') => {
+    if (type === 'ok') { setSuccess(msg); setTimeout(() => setSuccess(''), 3000) }
+    else               { setError(msg);   setTimeout(() => setError(''),   4000) }
   }
 
   const fetchData = async () => {
-  setLoading(true)
-  try {
-    // 1. Primero obtener el curso (necesitamos level y grade)
-    const cRes  = await fetch(`${API_URL}/api/courses/${id}`, {
-      headers: { Authorization: `Bearer ${token}` }
-    })
-    const cData = await cRes.json()
-    if (cRes.ok) setCourse(cData)
-    else { notify('Curso no encontrado', 'error'); return }
-
-    // 2. Con level y grade ya disponibles, pedir subjects y teachers en paralelo
-    const [sRes, tRes] = await Promise.all([
-      fetch(`${API_URL}/api/subjects?level=${cData.level}&grade=${cData.grade}`,
-        { headers: { Authorization: `Bearer ${token}` } }),
-      fetch(`${API_URL}/api/teachers`,
-        { headers: { Authorization: `Bearer ${token}` } }),
-    ])
-    const [sData, tData] = await Promise.all([sRes.json(), tRes.json()])
-
-    if (sRes.ok) setSubjects(sData)
-    if (tRes.ok) setTeachers(tData)
-
-  } catch { notify('Error de conexión', 'error') }
-  finally  { setLoading(false) }
-}
-
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => { fetchData() }, [id])
-
-  const handleAssign = async () => {
-    if (!form.subjectId || !form.teacherId) {
-      notify('Selecciona materia y maestro', 'error'); return
-    }
-    setSaving(true); setError('')
+    setLoading(true)
     try {
-      const res  = await fetch(`${API_URL}/api/subjects/assign`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({
-          subjectId: parseInt(form.subjectId),
-          teacherId: parseInt(form.teacherId),
-          courseId:  parseInt(id),
-        }),
-      })
-      const data = await res.json()
-      if (!res.ok) { notify(data.message, 'error'); return }
-      notify(data.message)
-      setForm({ subjectId: '', teacherId: '' })
-      fetchData()
-    } catch { notify('Error de conexión', 'error') }
-    finally  { setSaving(false) }
+      const [cRes, pRes] = await Promise.all([
+        fetch(`${API_URL}/api/courses/${id}`,       { headers: { Authorization: `Bearer ${token}` } }),
+        fetch(`${API_URL}/api/subjects/plan/${id}`, { headers: { Authorization: `Bearer ${token}` } }),
+      ])
+      const [cData, pData] = await Promise.all([cRes.json(), pRes.json()])
+      if (cRes.ok) setCourseInfo(cData)
+      if (pRes.ok) setPlan(pData)
+    } catch { notify('Error de conexión', 'err') }
+    finally  { setLoading(false) }
   }
 
-  const handleRemove = async (assignId: number, subjectName: string) => {
-    if (!confirm(`¿Quitar la materia "${subjectName}" de este curso?`)) return
+  // Cargar maestros por especialidad — filtra por materia específica
+  // Si no hay maestros con esa materia, amplía al campo de saber completo
+  const loadTeachersForSubject = async (subjectId: number, campo: string | null) => {
+    if (teachersBySubject[subjectId] !== undefined) return
+    setLoadingTeachers(prev => ({...prev, [subjectId]: true}))
     try {
-      const res  = await fetch(`${API_URL}/api/subjects/assign/${assignId}`, {
-        method: 'DELETE',
+      // 1. Buscar por materia específica
+      let res  = await fetch(`${API_URL}/api/teachers?subjectId=${subjectId}`, {
         headers: { Authorization: `Bearer ${token}` }
       })
+      let data = await res.json()
+
+      // 2. Si no hay maestros con esa materia y tiene campo, ampliar al campo
+      if (res.ok && Array.isArray(data) && data.length === 0 && campo) {
+        res  = await fetch(`${API_URL}/api/teachers?campo=${campo}`, {
+          headers: { Authorization: `Bearer ${token}` }
+        })
+        data = await res.json()
+      }
+
+      setTeachersBySubject(prev => ({...prev, [subjectId]: res.ok ? data : []}))
+    } catch {
+      setTeachersBySubject(prev => ({...prev, [subjectId]: []}))
+    } finally {
+      setLoadingTeachers(prev => ({...prev, [subjectId]: false}))
+    }
+  }
+
+  useEffect(() => { fetchData() }, [id])
+
+  // Al cargar el plan, pre-llenar los selects con maestros ya asignados
+  useEffect(() => {
+    if (!plan) return
+    const pre: Record<number, string> = {}
+    for (const items of Object.values(plan.grouped)) {
+      for (const item of items) {
+        if (item.teacher) pre[item.subjectId] = String(item.teacher.id)
+      }
+    }
+    setSelections(pre)
+  }, [plan])
+
+  const handleAssign = async (subjectId: number) => {
+    const teacherId = selections[subjectId]
+    if (!teacherId) { notify('Selecciona un maestro', 'err'); return }
+    setSaving(subjectId)
+    try {
+      const res  = await fetch(`${API_URL}/api/subjects/assign`, {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body:    JSON.stringify({ subjectId, teacherId: parseInt(teacherId), courseId: parseInt(id) }),
+      })
       const data = await res.json()
-      if (res.ok) { notify(data.message); fetchData() }
-      else notify(data.message, 'error')
-    } catch { notify('Error al eliminar', 'error') }
+      if (!res.ok) { notify(data.message, 'err'); return }
+      notify(data.message)
+      fetchData()
+    } catch { notify('Error de conexión', 'err') }
+    finally  { setSaving(null) }
+  }
+
+  const handleRemove = async (assignmentId: number, subjectId: number) => {
+    if (!confirm('¿Quitar el maestro de esta materia?')) return
+    setSaving(subjectId)
+    try {
+      const res = await fetch(`${API_URL}/api/subjects/assign/${assignmentId}`, {
+        method: 'DELETE', headers: { Authorization: `Bearer ${token}` }
+      })
+      const data = await res.json()
+      if (res.ok) {
+        notify(data.message)
+        setSelections(prev => { const n = {...prev}; delete n[subjectId]; return n })
+        fetchData()
+      } else notify(data.message, 'err')
+    } catch { notify('Error al quitar', 'err') }
+    finally  { setSaving(null) }
   }
 
   if (loading) return <div className="center"><div className="spinner"/></div>
-  if (!course) return <div className="center"><p>Curso no encontrado</p></div>
+  if (!plan || !courseInfo) return <div className="center"><p>No se pudo cargar el plan</p></div>
 
-  // Materias ya asignadas
-  const assignedSubjectIds = course.teacherSubjects.map(ts => ts.subject.id)
+  const camposOrden = [...plan.campoOrder, 'SIN_CAMPO'].filter(c => plan.grouped[c]?.length > 0)
 
   return (
-    <div className="container">
+    <div>
+      {/* Cabecera */}
       <div className="page-header">
         <button className="back-btn" onClick={() => router.back()}>
           <ArrowLeft size={16}/> Volver
         </button>
         <div>
-          <h1>Asignar Materias</h1>
-          <p>{LEVEL_LABELS[course.level]} — {GRADE_LABELS[course.grade]} {course.parallel} · {SHIFT_LABELS[course.shift]}</p>
+          <h1>Asignar Maestros · {GRADES[courseInfo.grade]} {courseInfo.parallel}</h1>
+          <p className="sub">{LEVELS[courseInfo.level]} · {SHIFTS[courseInfo.shift]}</p>
         </div>
       </div>
 
-      {success && <div className="alert suc">{success}</div>}
+      {success && <div className="alert ok">{success}</div>}
       {error   && <div className="alert err">{error}</div>}
 
-      {/* Formulario asignar */}
-      <div className="form-card">
-        <div className="section-lbl">Nueva asignación</div>
-        <div className="form-row">
-          <div className="fg">
-            <label>Materia *</label>
-           <select value={form.subjectId} onChange={e => setForm({...form, subjectId: e.target.value})}>
-  <option value="">Selecciona una materia</option>
-  {subjects.map(s => {
-    const hours     = s.gradeConfigs?.[0]?.hoursPerWeek
-    const isAssigned = assignedSubjectIds.includes(s.id)
-    return (
-      <option key={s.id} value={s.id} disabled={isAssigned}>
-        {s.name}
-        {hours      ? ` — ${hours}h/sem` : ''}
-        {isAssigned ? ' ✓ Ya asignada'   : ''}
-      </option>
-    )
-  })}
-</select>
+      {/* Stats */}
+      <div className="stats-row">
+        <div className="stat-card">
+          <BookOpen size={18} color="#4A9FD4"/>
+          <div><div className="sn">{plan.totalSubjects}</div><div className="sl">Materias del grado</div></div>
+        </div>
+        <div className="stat-card">
+          <CheckCircle2 size={18} color="#0F6E56"/>
+          <div><div className="sn" style={{color:'#0F6E56'}}>{plan.assignedCount}</div><div className="sl">Con maestro</div></div>
+        </div>
+        <div className="stat-card">
+          <AlertCircle size={18} color={plan.pendingCount > 0 ? '#BA7517' : '#0F6E56'}/>
+          <div>
+            <div className="sn" style={{color: plan.pendingCount > 0 ? '#BA7517' : '#0F6E56'}}>{plan.pendingCount}</div>
+            <div className="sl">Sin maestro</div>
           </div>
-          <div className="fg">
-            <label>Maestro *</label>
-            <select value={form.teacherId} onChange={e => setForm({...form, teacherId: e.target.value})}>
-              <option value="">Selecciona un maestro</option>
-              {teachers.map(t => (
-                <option key={t.id} value={t.id}>
-                  {t.lastName} {t.firstName}{t.specialty ? ` — ${t.specialty}` : ''}
-                </option>
-              ))}
-            </select>
-          </div>
-          <button className="btn-primary assign-btn" onClick={handleAssign} disabled={saving}>
-            {saving ? <span className="spinsm"/> : <Plus size={14}/>}
-            {saving ? 'Asignando...' : 'Asignar'}
-          </button>
+        </div>
+        <div className="stat-card">
+          <div style={{fontWeight:700,fontSize:18,color:'#1A3A7C'}}>{plan.totalHours}</div>
+          <div className="sl">Hrs/semana</div>
         </div>
       </div>
 
-      {/* Lista de asignaciones actuales */}
-      <div className="section-card">
-        <div className="section-title">
-          <BookOpen size={15}/> Materias asignadas ({course.teacherSubjects.length})
-        </div>
-        {course.teacherSubjects.length === 0 ? (
-          <div className="no-data">No hay materias asignadas a este curso</div>
-        ) : (
-          <table>
-            <thead>
-              <tr>
-                <th>#</th>
-                <th>Materia</th>
-                <th>Código</th>
-                <th>Maestro</th>
-                <th>Acción</th>
-              </tr>
-            </thead>
-            <tbody>
-              {course.teacherSubjects.map((ts, i) => (
-                <tr key={ts.id}>
-                  <td className="muted">{i + 1}</td>
-                  <td><div className="subject-name">{ts.subject.name}</div></td>
-                  <td className="muted">{ts.subject.code || '—'}</td>
-                  <td>{ts.teacher.lastName} {ts.teacher.firstName}</td>
-                  <td>
-                    <button className="icon-btn del" onClick={() => handleRemove(ts.id, ts.subject.name)}
-                      title="Quitar asignación">
-                      <Trash2 size={13}/>
-                    </button>
-                  </td>
+      {/* Plan agrupado por Campo de Saber */}
+      {camposOrden.map(campo => {
+        const items  = plan.grouped[campo] || []
+        const col    = CAMPO_COLORS[campo] || CAMPO_COLORS['SIN_CAMPO']
+        const icon   = CAMPO_ICONS[campo]  || '📌'
+        const label  = CAMPO_LABELS[campo] || campo
+        const horas  = items.reduce((s, i) => s + i.hoursPerWeek, 0)
+
+        return (
+          <div key={campo} className="section-card">
+            {/* Header campo */}
+            <div className="campo-header" style={{background:col.bg, borderBottom:`2px solid ${col.border}`}}>
+              <span style={{fontSize:'16px'}}>{icon}</span>
+              <span style={{fontWeight:700,color:col.text,fontSize:'13px',textTransform:'uppercase',letterSpacing:'.5px'}}>
+                {label}
+              </span>
+              <span style={{marginLeft:'auto',fontSize:'12px',color:col.text,fontWeight:500}}>
+                {horas} hrs/sem · {items.length} {items.length === 1 ? 'materia' : 'materias'}
+              </span>
+            </div>
+
+            {/* Filas de materias */}
+            <table>
+              <thead>
+                <tr>
+                  <th>Materia</th>
+                  <th style={{textAlign:'center',width:'70px'}}>Hrs/sem</th>
+                  <th>Maestro asignado / Seleccionar</th>
+                  <th style={{width:'110px'}}></th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </div>
+              </thead>
+              <tbody>
+                {items.map(item => {
+                  const isSaving  = saving === item.subjectId
+                  const selected  = selections[item.subjectId] || ''
+                  const hasTeacher = !!item.teacher
+
+                  return (
+                    <tr key={item.subjectId} className={hasTeacher ? 'row-ok' : 'row-pend'}>
+                      {/* Materia */}
+                      <td>
+                        <div style={{fontWeight:500,color:'#1A3A7C'}}>{item.subject.name}</div>
+                        {item.subject.code && <div style={{fontSize:'11px',color:'#6B8BB0'}}>{item.subject.code}</div>}
+                      </td>
+                      {/* Horas */}
+                      <td style={{textAlign:'center'}}>
+                        <span className="hrs-badge">{item.hoursPerWeek}</span>
+                      </td>
+                      {/* Selector maestro */}
+                      <td>
+                        <select
+                          value={selected}
+                          onFocus={() => loadTeachersForSubject(item.subjectId, item.subject.campo)}
+                          onChange={e => setSelections(prev => ({...prev, [item.subjectId]: e.target.value}))}
+                          className={`sel ${hasTeacher ? 'sel-ok' : 'sel-pend'}`}
+                          disabled={isSaving}
+                        >
+                          <option value="">
+                            {loadingTeachers[item.subjectId]
+                              ? 'Cargando maestros...'
+                              : '— Seleccionar maestro —'}
+                          </option>
+                          {(teachersBySubject[item.subjectId] || []).length === 0 &&
+                           !loadingTeachers[item.subjectId] &&
+                           teachersBySubject[item.subjectId] !== undefined && (
+                            <option disabled value="">Sin maestros con esta especialidad</option>
+                          )}
+                          {(teachersBySubject[item.subjectId] || []).map(t => (
+                            <option key={t.id} value={t.id}>
+                              {t.lastName} {t.firstName}
+                            </option>
+                          ))}
+                        </select>
+                      </td>
+                      {/* Acciones */}
+                      <td>
+                        <div style={{display:'flex',gap:'6px',justifyContent:'flex-end'}}>
+                          <button
+                            className="btn-save"
+                            onClick={() => handleAssign(item.subjectId)}
+                            disabled={isSaving || !selected}
+                            title={hasTeacher ? 'Cambiar maestro' : 'Asignar maestro'}
+                          >
+                            {isSaving ? <span className="spinsm"/> : <Save size={12}/>}
+                            {hasTeacher ? 'Cambiar' : 'Asignar'}
+                          </button>
+                          {hasTeacher && item.assignmentId && (
+                            <button
+                              className="btn-del"
+                              onClick={() => handleRemove(item.assignmentId!, item.subjectId)}
+                              disabled={isSaving}
+                              title="Quitar maestro"
+                            >✕</button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        )
+      })}
 
       <style>{`
-        .container{max-width:700px;margin:0 auto}
-        .page-header{display:flex;align-items:flex-start;gap:16px;margin-bottom:24px;flex-wrap:wrap}
-        .page-header h1{font-size:20px;font-weight:700;color:#1A3A7C;margin-bottom:4px}
-        .page-header p{font-size:13px;color:#6B8BB0}
-        .back-btn{display:flex;align-items:center;gap:6px;background:none;border:none;cursor:pointer;color:#6B8BB0;font-size:13px;padding:0}
-        .back-btn:hover{color:#1A3A7C}
-        .alert{padding:10px 14px;border-radius:8px;font-size:13px;margin-bottom:16px}
-        .alert.suc{background:#E1F5EE;border:1px solid #9FE1CB;color:#0F6E56}
-        .alert.err{background:#FFF0F0;border:1px solid #FFBBBB;color:#C0392B}
         .center{display:flex;justify-content:center;align-items:center;padding:48px;color:#6B8BB0}
-        .form-card{background:#fff;border:1px solid #CBE0F0;border-radius:12px;padding:20px;margin-bottom:16px;display:flex;flex-direction:column;gap:14px}
-        .section-lbl{font-size:12px;font-weight:700;color:#1A3A7C;text-transform:uppercase;letter-spacing:.6px;padding-bottom:4px;border-bottom:1px solid #F0F6FC}
-        .form-row{display:grid;grid-template-columns:1fr 1fr auto;gap:12px;align-items:flex-end}
-        .fg{display:flex;flex-direction:column;gap:6px}
-        .fg label{font-size:11px;font-weight:700;color:#1A3A7C;text-transform:uppercase;letter-spacing:.6px}
-        .fg select{padding:10px 12px;border:1.5px solid #CBE0F0;border-radius:8px;font-size:13px;color:#1A3A7C;outline:none}
-        .fg select:focus{border-color:#4A9FD4;box-shadow:0 0 0 3px rgba(74,159,212,.12)}
-        .assign-btn{height:42px;white-space:nowrap}
-        .section-card{background:#fff;border:1px solid #CBE0F0;border-radius:12px;overflow:hidden}
-        .section-title{display:flex;align-items:center;gap:8px;padding:14px 18px;border-bottom:1px solid #F0F6FC;font-size:13px;font-weight:700;color:#1A3A7C}
-        .no-data{padding:20px 18px;font-size:13px;color:#6B8BB0;font-style:italic}
+        .page-header{display:flex;align-items:flex-start;gap:16px;margin-bottom:20px}
+        .page-header h1{font-size:20px;font-weight:700;color:#1A3A7C;margin:0 0 4px}
+        .sub{font-size:13px;color:#6B8BB0;margin:0}
+        .back-btn{display:flex;align-items:center;gap:6px;background:none;border:none;cursor:pointer;color:#6B8BB0;font-size:13px;padding:4px 0;white-space:nowrap}
+        .back-btn:hover{color:#1A3A7C}
+        .alert{padding:10px 14px;border-radius:8px;font-size:13px;margin-bottom:14px}
+        .alert.ok{background:#E1F5EE;border:1px solid #9FE1CB;color:#0F6E56}
+        .alert.err{background:#FFF0F0;border:1px solid #FFBBBB;color:#C0392B}
+        .stats-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin-bottom:18px}
+        .stat-card{background:#fff;border:1px solid #CBE0F0;border-radius:10px;padding:14px;display:flex;align-items:center;gap:10px}
+        .sn{font-size:20px;font-weight:700;color:#1A3A7C}
+        .sl{font-size:11px;color:#6B8BB0}
+        .section-card{background:#fff;border:1px solid #CBE0F0;border-radius:12px;overflow:hidden;margin-bottom:14px}
+        .campo-header{display:flex;align-items:center;gap:10px;padding:10px 16px}
         table{width:100%;border-collapse:collapse}
-        thead tr{background:#F0F6FC}
-        th{padding:10px 14px;text-align:left;font-size:11px;font-weight:600;color:#1A3A7C;text-transform:uppercase;letter-spacing:.5px}
-        td{padding:11px 14px;font-size:13px;color:#1A3A7C;border-top:1px solid #F0F6FC}
-        tr:hover td{background:#FAFCFF}
-        .muted{color:#6B8BB0;font-size:12px}
-        .subject-name{font-weight:500;color:#1A3A7C}
-        .icon-btn{width:28px;height:28px;border:none;border-radius:6px;cursor:pointer;display:flex;align-items:center;justify-content:center}
-        .icon-btn.del{background:#FFF0F0;color:#C0392B}
-        .icon-btn:hover{opacity:.75}
-        .btn-primary{display:flex;align-items:center;gap:6px;padding:10px 16px;background:#1A3A7C;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:500;cursor:pointer}
-        .btn-primary:hover:not(:disabled){background:#4A9FD4}
-        .btn-primary:disabled{opacity:.6;cursor:not-allowed}
+        th{padding:9px 14px;text-align:left;font-size:11px;font-weight:600;color:#1A3A7C;text-transform:uppercase;letter-spacing:.5px;background:#F8FBFF}
+        td{padding:10px 14px;font-size:13px;color:#1A3A7C;border-top:1px solid #F0F6FC}
+        .row-ok td{background:#FAFFFE}
+        .row-pend td{background:#FFFDF8}
+        tr:hover td{filter:brightness(.97)}
+        .hrs-badge{background:#E0ECF8;color:#1A3A7C;border-radius:20px;padding:2px 10px;font-size:12px;font-weight:600}
+        .sel{width:100%;padding:8px 10px;border:1.5px solid #CBE0F0;border-radius:7px;font-size:13px;color:#1A3A7C;outline:none;background:#fff}
+        .sel:focus{border-color:#4A9FD4;box-shadow:0 0 0 3px rgba(74,159,212,.12)}
+        .sel-ok{border-color:#9FE1CB;background:#FAFFFD}
+        .sel-pend{border-color:#F5C518}
+        .btn-save{display:flex;align-items:center;gap:5px;padding:7px 12px;background:#1A3A7C;color:#fff;border:none;border-radius:6px;font-size:12px;cursor:pointer;white-space:nowrap}
+        .btn-save:hover:not(:disabled){background:#4A9FD4}
+        .btn-save:disabled{opacity:.5;cursor:not-allowed}
+        .btn-del{width:28px;height:28px;border:none;border-radius:6px;background:#FFF0F0;color:#C0392B;cursor:pointer;font-size:13px;font-weight:700}
+        .btn-del:hover:not(:disabled){background:#FFD5D5}
+        .btn-del:disabled{opacity:.5;cursor:not-allowed}
         .spinner{width:24px;height:24px;border:2px solid rgba(26,58,124,.2);border-top-color:#1A3A7C;border-radius:50%;animation:spin .7s linear infinite}
-        .spinsm{width:14px;height:14px;border:2px solid rgba(255,255,255,.3);border-top-color:#fff;border-radius:50%;animation:spin .7s linear infinite;display:inline-block}
+        .spinsm{width:12px;height:12px;border:2px solid rgba(255,255,255,.3);border-top-color:#fff;border-radius:50%;animation:spin .7s linear infinite;display:inline-block}
         @keyframes spin{to{transform:rotate(360deg)}}
-        @media(max-width:600px){.form-row{grid-template-columns:1fr}}
       `}</style>
     </div>
   )

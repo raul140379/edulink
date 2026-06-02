@@ -51,6 +51,8 @@ export default function EstudiantesPage() {
   const [loading,      setLoading]      = useState(true)
   const [search,       setSearch]       = useState('')
   const [filterActive, setFilterActive] = useState('')
+  const [filterGender, setFilterGender] = useState('')
+  const [filterCourse, setFilterCourse] = useState('')
   const [showModal,        setShowModal]        = useState(false)
   const [showEnrollModal,  setShowEnrollModal]  = useState(false)
   const [showCredentials,  setShowCredentials]  = useState(false)
@@ -200,6 +202,21 @@ export default function EstudiantesPage() {
     return `${LEVEL_LABELS[c.level]} ${GRADE_LABELS[c.grade]} ${c.parallel} · ${SHIFT_LABELS[c.shift]}`
   }
 
+  const formatDate = (d?: string) => {
+    if (!d) return "—"
+    const dt = new Date(d)
+    return dt.toLocaleDateString("es-BO", { day:"2-digit", month:"2-digit", year:"numeric" })
+  }
+
+  const filteredStudents = students.filter(s => {
+    if (filterGender && s.gender !== filterGender) return false
+    if (filterCourse) {
+      const active = s.assignments.find(a => a.academicYear.isActive)
+      if (!active || String(active.course.level + '_' + active.course.grade + '_' + active.course.parallel) !== filterCourse) return false
+    }
+    return true
+  })
+
   const handleImport = async (file: File) => {
   setImporting(true)
   try {
@@ -260,6 +277,25 @@ const handleImportTutors = async (file: File) => {
           <option value="true">Activos</option>
           <option value="false">Inactivos</option>
         </select>
+        <select value={filterGender} onChange={e => setFilterGender(e.target.value)}>
+          <option value="">Género</option>
+          <option value="MASCULINO">Masculino</option>
+          <option value="FEMENINO">Femenino</option>
+        </select>
+        <select value={filterCourse} onChange={e => setFilterCourse(e.target.value)}>
+          <option value="">Curso</option>
+          {courses
+            .filter(c => c.shift === 'MORNING' && c.educationType === 'REGULAR')
+            .sort((a, b) => {
+              const order = ['PRIMERO','SEGUNDO','TERCERO','CUARTO','QUINTO','SEXTO']
+              return order.indexOf(a.grade) - order.indexOf(b.grade) || a.parallel.localeCompare(b.parallel)
+            })
+            .map(c => {
+              const key = `${c.level}_${c.grade}_${c.parallel}`
+              return <option key={c.id} value={key}>{GRADE_LABELS[c.grade]}{c.parallel} · {LEVEL_LABELS[c.level]}</option>
+            })
+          }
+        </select>
         <button className="btn-outline" onClick={fetchStudents}>Buscar</button>
       </div>
 
@@ -271,10 +307,10 @@ const handleImportTutors = async (file: File) => {
         ) : (
           <table>
             <thead>
-              <tr><th>#</th><th>Nombre completo</th><th>CI</th><th>RUDE</th><th>Curso actual</th><th>Estado</th><th>Acciones</th></tr>
+              <tr><th>#</th><th>Nombre completo</th><th>CI</th><th>RUDE</th><th>Fecha Nac.</th><th>Género</th><th>Curso actual</th><th>Estado</th><th>Acciones</th></tr>
             </thead>
             <tbody>
-              {students.map((s, i) => (
+              {filteredStudents.map((s, i) => (
                 <tr key={s.id}>
                   <td className="muted">{i + 1}</td>
                   <td>
@@ -287,7 +323,20 @@ const handleImportTutors = async (file: File) => {
                     }
                   </td>
                   <td className="muted">{s.ci || '—'}</td>
-                  <td className="muted">{s.rude || '—'}</td>
+                  <td className="muted">{s.rude || "—"}</td>
+                  <td className="muted">
+                    <div>{formatDate(s.birthDate)}</div>
+                    {s.birthDate && (
+                      <div style={{fontSize:'11px',color:'#4A9FD4'}}>
+                        {Math.floor((Date.now() - new Date(s.birthDate).getTime()) / (365.25 * 24 * 60 * 60 * 1000))} años
+                      </div>
+                    )}
+                  </td>
+                  <td>
+                    <span className={`sbadge ${s.gender === 'MASCULINO' ? 'gen-m' : 'gen-f'}`}>
+                      {s.gender === 'MASCULINO' ? '♂ M' : '♀ F'}
+                    </span>
+                  </td>
                   <td className="muted">{getCurrentCourse(s)}</td>
                   <td><span className={`sbadge ${s.isActive ? 'act' : 'ina'}`}>{s.isActive ? 'Activo' : 'Inactivo'}</span></td>
                   <td>
@@ -307,7 +356,21 @@ const handleImportTutors = async (file: File) => {
           </table>
         )}
       </div>
-      <div className="tfooter">Total: <strong>{students.length}</strong> estudiantes</div>
+      <div className="tfooter">
+        <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',flexWrap:'wrap',gap:'8px'}}>
+          <span>Mostrando <strong>{filteredStudents.length}</strong> de <strong>{students.length}</strong> estudiantes</span>
+          <div style={{display:'flex',gap:'12px'}}>
+            <span style={{display:'flex',alignItems:'center',gap:'5px'}}>
+              <span className="sbadge gen-m">♂ M</span>
+              <strong>{filteredStudents.filter(s => s.gender === 'MASCULINO').length}</strong> masculinos
+            </span>
+            <span style={{display:'flex',alignItems:'center',gap:'5px'}}>
+              <span className="sbadge gen-f">♀ F</span>
+              <strong>{filteredStudents.filter(s => s.gender === 'FEMENINO').length}</strong> femeninas
+            </span>
+          </div>
+        </div>
+      </div>
 
       {showModal && (
         <div className="overlay" onClick={() => setShowModal(false)}>
@@ -549,6 +612,8 @@ const handleImportTutors = async (file: File) => {
         .sbadge{padding:3px 9px;border-radius:20px;font-size:11px;font-weight:500}
         .sbadge.act{background:#E1F5EE;color:#0F6E56}
         .sbadge.ina{background:#FFF0F0;color:#C0392B}
+        .sbadge.gen-m{background:#E0ECF8;color:#1A3A7C}
+        .sbadge.gen-f{background:#FCE8F3;color:#8B1A5C}
         .actions{display:flex;gap:5px}
         .icon-btn{width:28px;height:28px;border:none;border-radius:6px;cursor:pointer;display:flex;align-items:center;justify-content:center}
         .icon-btn.view{background:#E0ECF8;color:#1A3A7C}

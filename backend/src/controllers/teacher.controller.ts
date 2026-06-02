@@ -54,10 +54,11 @@ const generateTeacherPassword = (lastName: string, ci?: string): string => {
 // ─────────────────────────────────────────────
 export const getTeachers = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    const { search, isActive, subjectId } = req.query  // ← AGREGAR subjectId
+    const { search, isActive, subjectId, campo } = req.query
 
     const teachers = await prisma.teacher.findMany({
       where: {
+        isActive: true,
         ...(isActive !== undefined ? { isActive: isActive === 'true' } : {}),
         ...(search ? {
           OR: [
@@ -67,10 +68,15 @@ export const getTeachers = async (req: AuthRequest, res: Response): Promise<void
             { specialty: { contains: search as string, mode: 'insensitive' } },
           ]
         } : {}),
-        // ← AGREGAR filtro por especialidad
-        ...(subjectId ? {
+        // Filtrar por materia específica O por campo del saber
+        ...((subjectId || campo) ? {
           specialties: {
-            some: { subjectId: parseInt(subjectId as string) }
+            some: {
+              ...(subjectId ? { subjectId: parseInt(subjectId as string) } : {}),
+              ...(campo && !subjectId ? {
+                subject: { campo: campo as any }
+              } : {}),
+            }
           }
         } : {}),
       },
