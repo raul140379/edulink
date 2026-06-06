@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { Plus, Search, X, Edit, Eye, UserCheck, UserX, Trash2, Copy, Check, BookOpen } from 'lucide-react'
+import { Plus, Search, X, Edit, Eye, UserCheck, UserX, Trash2, Copy, Check, BookOpen,Clock } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000'
@@ -99,6 +99,9 @@ export default function MaestrosPage() {
   const [selectedSubjectId, setSelectedSubjectId] = useState('')
   const [addingSpec,        setAddingSpec]        = useState(false)
   const [loadingSpec,       setLoadingSpec]       = useState(false)
+  const [workloadModal, setWorkloadModal] = useState<{ open: boolean; teacherId: number | null; data: any }>({
+  open: false, teacherId: null, data: null
+});
 
   const token = typeof window !== 'undefined' ? localStorage.getItem('token') : ''
 
@@ -122,7 +125,14 @@ export default function MaestrosPage() {
     } catch { notify('Error de conexión', 'error') }
     finally  { setLoading(false) }
   }
-
+// Función para cargar la data
+const fetchWorkload = async (teacherId: number) => {
+  const res = await fetch(`${API_URL}/api/teachers/${teacherId}/workload`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  const data = await res.json();
+  setWorkloadModal({ open: true, teacherId, data });
+};
   const fetchSubjects = async () => {
     try {
       const res  = await fetch(`${API_URL}/api/subjects?level=SECUNDARIA`, {
@@ -525,6 +535,10 @@ export default function MaestrosPage() {
                           onClick={() => handleDelete(t.id, `${t.firstName} ${t.lastName}`)}>
                           <Trash2 size={13}/>
                         </button>
+                        <button className="icon-btn view" title="Ver carga horaria"
+                              onClick={() => fetchWorkload(t.id)}>
+                              <Clock size={13}/>
+                        </button>
                       </div>
                     </td>
                   </tr>
@@ -744,7 +758,74 @@ export default function MaestrosPage() {
           </div>
         </div>
       )}
+{workloadModal.open && workloadModal.data && (
+  <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+    <div className="bg-white rounded-2xl shadow-xl w-full max-w-2xl max-h-[80vh] overflow-y-auto">
+      
+      {/* Header */}
+      <div className="flex items-center justify-between p-6 border-b border-gray-100">
+        <div>
+          <h2 className="text-xl font-bold text-[#1A3A7C]">
+            {workloadModal.data.teacher.firstName} {workloadModal.data.teacher.lastName}
+          </h2>
+          <p className="text-sm text-gray-500">{workloadModal.data.teacher.specialty ?? 'Sin especialidad registrada'}</p>
+        </div>
+        <button onClick={() => setWorkloadModal({ open: false, teacherId: null, data: null })}>
+          ✕
+        </button>
+      </div>
 
+      {/* Resumen */}
+      <div className="grid grid-cols-3 gap-3 p-6">
+        <div className="bg-[#1A3A7C] text-white rounded-xl p-4 text-center">
+          <p className="text-3xl font-bold">{workloadModal.data.totalHoursPerWeek}</p>
+          <p className="text-xs opacity-80 mt-1">hrs/semana</p>
+        </div>
+        <div className="bg-[#4A9FD4] text-white rounded-xl p-4 text-center">
+          <p className="text-3xl font-bold">
+            {[...new Set(workloadModal.data.assignments.map((a: any) => a.subjectName))].length}
+          </p>
+          <p className="text-xs opacity-80 mt-1">materias</p>
+        </div>
+        <div className="bg-[#0F6E56] text-white rounded-xl p-4 text-center">
+          <p className="text-3xl font-bold">{workloadModal.data.assignments.length}</p>
+          <p className="text-xs opacity-80 mt-1">cursos</p>
+        </div>
+      </div>
+
+      {/* Tabla detalle */}
+      <div className="px-6 pb-6">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="bg-gray-50 text-gray-500 text-left">
+              <th className="px-3 py-2 rounded-l">Materia</th>
+              <th className="px-3 py-2">Curso</th>
+              <th className="px-3 py-2 rounded-r text-right">Hrs/sem</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-gray-100">
+            {workloadModal.data.assignments.map((a: any, i: number) => (
+              <tr key={i} className="hover:bg-gray-50">
+                <td className="px-3 py-2 font-medium text-[#1A3A7C]">{a.subjectName}</td>
+                <td className="px-3 py-2 text-gray-600">{a.courseLabel}</td>
+                <td className="px-3 py-2 text-right font-semibold">{a.hoursPerWeek}</td>
+              </tr>
+            ))}
+          </tbody>
+          <tfoot>
+            <tr className="border-t-2 border-gray-200">
+              <td colSpan={2} className="px-3 py-2 font-bold text-[#1A3A7C]">Total</td>
+              <td className="px-3 py-2 text-right font-bold text-[#1A3A7C]">
+                {workloadModal.data.totalHoursPerWeek}
+              </td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+
+    </div>
+  </div>
+)}
       <style>{`
         .page-header{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:24px;gap:16px}
         .page-header h1{font-size:20px;font-weight:700;color:#1A3A7C;margin-bottom:4px}

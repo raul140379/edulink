@@ -2,16 +2,21 @@
 
 import { useEffect, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
-import { ArrowLeft, Users, BookOpen, Clock, GraduationCap, CheckCircle2, AlertCircle, Trash2 } from 'lucide-react'
+import { ArrowLeft, Users, BookOpen, Clock, GraduationCap, CheckCircle2, AlertCircle, Trash2, Plus, RefreshCw, Copy, Check, X } from 'lucide-react'
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000'
 
-// ── Tipos ──────────────────────────────────────────────────────────────────
+interface Teacher {
+  id: number; firstName: string; lastName: string
+  tutorUserId?: number
+  tutorUser?:   { email: string; isActive: boolean }
+}
+
 interface Course {
   id: number; level: string; grade: string; parallel: string
   educationType: string; shift: string
   _count: { assignments: number }
-  tutor?: { teacher: { id: number; firstName: string; lastName: string } }
+  tutor?: { teacher: Teacher }
 }
 
 interface PlanItem {
@@ -37,7 +42,12 @@ interface Assignment {
   student: { id: number; firstName: string; lastName: string; ci?: string; rude?: string }
 }
 
-// ── Constantes ────────────────────────────────────────────────────────────
+interface Credentials {
+  accessEmail:     string
+  defaultPassword: string
+  name:            string
+}
+
 const LEVELS = { INICIAL:'Inicial', PRIMARIA:'Primaria', SECUNDARIA:'Secundaria' } as Record<string,string>
 const GRADES = { PRIMERO:'1°', SEGUNDO:'2°', TERCERO:'3°', CUARTO:'4°', QUINTO:'5°', SEXTO:'6°' } as Record<string,string>
 const SHIFTS = { MORNING:'Mañana', AFTERNOON:'Tarde', NIGHT:'Noche' } as Record<string,string>
@@ -76,8 +86,23 @@ export default function CourseDetailPage() {
   const [assignments, setAssignments] = useState<Assignment[]>([])
   const [loading,     setLoading]     = useState(true)
   const [removing,    setRemoving]    = useState<number | null>(null)
+  const [working,     setWorking]     = useState(false)
+  const [creds,       setCreds]       = useState<Credentials | null>(null)
+  const [copied,      setCopied]      = useState(false)
+  const [success,     setSuccess]     = useState('')
+  const [error,       setError]       = useState('')
 
-  const token = typeof window !== 'undefined' ? localStorage.getItem('token') : ''
+  const token   = typeof window !== 'undefined' ? localStorage.getItem('token') : ''
+  const userRole = typeof window !== 'undefined'
+    ? JSON.parse(localStorage.getItem('user') || '{}').role
+    : ''
+
+  const isDirector = userRole === 'DIRECTOR' || userRole === 'SUPER_ADMIN'
+
+  const notify = (msg: string, type: 'ok' | 'err' = 'ok') => {
+    if (type === 'ok') { setSuccess(msg); setTimeout(() => setSuccess(''), 3000) }
+    else               { setError(msg);   setTimeout(() => setError(''),   4000) }
+  }
 
   const fetchData = async () => {
     setLoading(true)
@@ -109,12 +134,54 @@ export default function CourseDetailPage() {
     finally  { setRemoving(null) }
   }
 
+  const handleCreateTutorUser = async () => {
+    setWorking(true)
+    try {
+      const res  = await fetch(`${API_URL}/api/courses/${id}/tutor-user`, {
+        method: 'POST', headers: { Authorization: `Bearer ${token}` }
+      })
+      const data = await res.json()
+      if (!res.ok) { notify(data.message, 'err'); return }
+      setCreds({ accessEmail: data.accessEmail, defaultPassword: data.defaultPassword, name: data.tutorName })
+      fetchData()
+    } catch { notify('Error de conexión', 'err') }
+    finally  { setWorking(false) }
+  }
+
+  const handleResetTutorPassword = async () => {
+    if (!confirm('¿Resetear la contraseña del maestro tutor?')) return
+    setWorking(true)
+    try {
+      const res  = await fetch(`${API_URL}/api/courses/${id}/tutor-user/reset`, {
+        method: 'POST', headers: { Authorization: `Bearer ${token}` }
+      })
+      const data = await res.json()
+      if (!res.ok) { notify(data.message, 'err'); return }
+      setCreds({
+        accessEmail:     course?.tutor?.teacher.tutorUser?.email || '',
+        defaultPassword: data.defaultPassword,
+        name:            data.tutorName,
+      })
+    } catch { notify('Error de conexión', 'err') }
+    finally  { setWorking(false) }
+  }
+
+  const copyCreds = () => {
+    if (!creds) return
+    navigator.clipboard.writeText(`Nombre: ${creds.name}\nEmail: ${creds.accessEmail}\nContraseña: ${creds.defaultPassword}`)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
+  }
+
   if (loading) return <div className="center"><div className="spinner"/></div>
   if (!course)  return <div className="center"><p>Curso no encontrado</p></div>
 
   const camposOrden = plan
     ? [...plan.campoOrder, 'SIN_CAMPO'].filter(c => plan.grouped[c]?.length > 0)
     : []
+
+  const hasTutor    = !!course.tutor
+  const hasTutorUser = !!course.tutor?.teacher.tutorUserId
 
   return (
     <div>
@@ -138,6 +205,9 @@ export default function CourseDetailPage() {
           </div>
         </div>
       </div>
+
+      {success && <div className="alert ok">{success}</div>}
+      {error   && <div className="alert err">{error}</div>}
 
       {/* Stats */}
       <div className="stats-row">
@@ -181,15 +251,40 @@ export default function CourseDetailPage() {
       <div className="section-card">
         <div className="section-title"><GraduationCap size={15}/> Maestro Tutor</div>
         <div style={{padding:'16px 18px'}}>
-          {course.tutor ? (
-            <div style={{display:'flex',alignItems:'center',justifyContent:'space-between'}}>
+          {hasTutor ? (
+            <div style={{display:'flex',alignItems:'flex-start',justifyContent:'space-between',gap:'16px',flexWrap:'wrap'}}>
               <div>
-                <div style={{fontWeight:600,color:'#1A3A7C'}}>{course.tutor.teacher.lastName} {course.tutor.teacher.firstName}</div>
-                <div style={{fontSize:'12px',color:'#6B8BB0'}}>Maestro tutor asignado</div>
+                <div style={{fontWeight:600,color:'#1A3A7C',fontSize:'14px'}}>
+                  {course.tutor!.teacher.lastName} {course.tutor!.teacher.firstName}
+                </div>
+                {hasTutorUser ? (
+                  <div style={{marginTop:'4px'}}>
+                    <span style={{fontSize:'11px',color:'#0F6E56'}}>✅ Usuario tutor activo</span>
+                    <div style={{fontSize:'11px',color:'#6B8BB0',fontFamily:'monospace'}}>
+                      {course.tutor!.teacher.tutorUser?.email}
+                    </div>
+                  </div>
+                ) : (
+                  <span style={{fontSize:'11px',color:'#C0392B'}}>❌ Sin usuario tutor</span>
+                )}
               </div>
-              <button className="btn-outline-sm" onClick={() => router.push(`/dashboard/admin/cursos/${id}/asignar-tutor`)}>
-                Cambiar
-              </button>
+              <div style={{display:'flex',gap:'8px',flexWrap:'wrap'}}>
+                <button className="btn-outline-sm" onClick={() => router.push(`/dashboard/admin/cursos/${id}/asignar-tutor`)}>
+                  Cambiar tutor
+                </button>
+                {isDirector && !hasTutorUser && (
+                  <button className="btn-primary-sm" onClick={handleCreateTutorUser} disabled={working}>
+                    {working ? <span className="spinsm"/> : <Plus size={12}/>}
+                    Crear usuario
+                  </button>
+                )}
+                {isDirector && hasTutorUser && (
+                  <button className="btn-outline-sm" onClick={handleResetTutorPassword} disabled={working}>
+                    {working ? <span className="spinsm"/> : <RefreshCw size={12}/>}
+                    Resetear password
+                  </button>
+                )}
+              </div>
             </div>
           ) : (
             <div style={{display:'flex',alignItems:'center',justifyContent:'space-between'}}>
@@ -202,7 +297,7 @@ export default function CourseDetailPage() {
         </div>
       </div>
 
-      {/* Plan de Estudios agrupado por Campo de Saber */}
+      {/* Plan de Estudios */}
       <div className="section-card">
         <div className="section-title" style={{justifyContent:'space-between'}}>
           <span style={{display:'flex',alignItems:'center',gap:'8px'}}>
@@ -222,32 +317,27 @@ export default function CourseDetailPage() {
           <div className="empty-state"><p>No hay plan de estudios configurado para este grado</p></div>
         ) : (
           <div style={{padding:'12px 16px',display:'flex',flexDirection:'column',gap:'16px'}}>
-
-            {/* Alerta si hay materias sin maestro */}
-            {plan.pendingCount > 0 && (
+            {plan.pendingCount > 0 ? (
               <div className="alert-warn">
                 <AlertCircle size={14}/>
                 {plan.pendingCount} {plan.pendingCount === 1 ? 'materia sin' : 'materias sin'} maestro asignado
               </div>
-            )}
-            {plan.pendingCount === 0 && (
+            ) : (
               <div className="alert-ok">
                 <CheckCircle2 size={14}/>
                 Todas las materias tienen maestro asignado ✓
               </div>
             )}
 
-            {/* Materias agrupadas por Campo */}
             {camposOrden.map(campo => {
-              const items  = plan.grouped[campo] || []
-              const col    = CAMPO_COLORS[campo] || CAMPO_COLORS['SIN_CAMPO']
-              const icon   = CAMPO_ICONS[campo]  || '📌'
-              const label  = CAMPO_LABELS[campo] || campo
+              const items      = plan.grouped[campo] || []
+              const col        = CAMPO_COLORS[campo] || CAMPO_COLORS['SIN_CAMPO']
+              const icon       = CAMPO_ICONS[campo]  || '📌'
+              const label      = CAMPO_LABELS[campo] || campo
               const horasCampo = items.reduce((s, i) => s + i.hoursPerWeek, 0)
 
               return (
                 <div key={campo}>
-                  {/* Cabecera del campo */}
                   <div className="campo-header" style={{background:col.bg,borderColor:col.border}}>
                     <span style={{fontSize:'14px'}}>{icon}</span>
                     <span style={{fontWeight:700,color:col.text,fontSize:'12px',textTransform:'uppercase',letterSpacing:'.5px'}}>
@@ -257,8 +347,6 @@ export default function CourseDetailPage() {
                       {horasCampo} hrs/sem · {items.length} {items.length === 1 ? 'materia' : 'materias'}
                     </span>
                   </div>
-
-                  {/* Filas de materias */}
                   <table style={{width:'100%',borderCollapse:'collapse'}}>
                     <thead>
                       <tr style={{background:'#F8FBFF'}}>
@@ -281,9 +369,7 @@ export default function CourseDetailPage() {
                             {item.teacher ? (
                               <span style={{display:'flex',alignItems:'center',gap:'6px'}}>
                                 <CheckCircle2 size={13} color="#0F6E56"/>
-                                <span style={{color:'#1A3A7C'}}>
-                                  {item.teacher.lastName} {item.teacher.firstName}
-                                </span>
+                                <span style={{color:'#1A3A7C'}}>{item.teacher.lastName} {item.teacher.firstName}</span>
                               </span>
                             ) : (
                               <span style={{display:'flex',alignItems:'center',gap:'6px',color:'#BA7517'}}>
@@ -294,12 +380,9 @@ export default function CourseDetailPage() {
                           </td>
                           <td className="td">
                             {item.assignmentId && (
-                              <button
-                                className="icon-del"
-                                title="Quitar maestro"
+                              <button className="icon-del" title="Quitar maestro"
                                 disabled={removing === item.assignmentId}
-                                onClick={() => handleRemoveAssignment(item.assignmentId!)}
-                              >
+                                onClick={() => handleRemoveAssignment(item.assignmentId!)}>
                                 <Trash2 size={12}/>
                               </button>
                             )}
@@ -347,6 +430,39 @@ export default function CourseDetailPage() {
         )}
       </div>
 
+      {/* Modal credenciales tutor */}
+      {creds && (
+        <div className="overlay" onClick={() => setCreds(null)}>
+          <div className="modal" onClick={e => e.stopPropagation()}>
+            <div className="mhead">
+              <h2>✅ Credenciales de acceso</h2>
+              <button onClick={() => setCreds(null)}><X size={18}/></button>
+            </div>
+            <div className="mbody">
+              <div className="info-box"><strong>{creds.name}</strong></div>
+              <div className="cred-row">
+                <span className="cred-label">Email:</span>
+                <span className="cred-value">{creds.accessEmail}</span>
+              </div>
+              <div className="cred-row">
+                <span className="cred-label">Contraseña:</span>
+                <span className="cred-value">{creds.defaultPassword}</span>
+              </div>
+              <div className="cred-note">
+                ⚠️ Anota estas credenciales. El maestro puede cambiar su contraseña desde su perfil.
+              </div>
+            </div>
+            <div className="mfoot">
+              <button className="btn-outline-sm" onClick={copyCreds}>
+                {copied ? <Check size={14}/> : <Copy size={14}/>}
+                {copied ? 'Copiado' : 'Copiar'}
+              </button>
+              <button className="btn-primary-sm" onClick={() => setCreds(null)}>Entendido</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <style>{`
         .center{display:flex;justify-content:center;align-items:center;padding:48px;flex-direction:column;gap:12px;color:#6B8BB0}
         .page-header{display:flex;flex-direction:column;gap:12px;margin-bottom:24px}
@@ -358,6 +474,9 @@ export default function CourseDetailPage() {
         .course-meta{display:flex;gap:8px}
         .meta-badge{display:flex;align-items:center;gap:4px;padding:4px 10px;border-radius:20px;font-size:12px;font-weight:500}
         .meta-badge.bth{background:#FFF3CC;color:#7A6000}
+        .alert{padding:10px 14px;border-radius:8px;font-size:13px;margin-bottom:14px}
+        .alert.ok{background:#E1F5EE;border:1px solid #9FE1CB;color:#0F6E56}
+        .alert.err{background:#FFF0F0;border:1px solid #FFBBBB;color:#C0392B}
         .stats-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:20px}
         .stat-card{background:#fff;border:1px solid #CBE0F0;border-radius:10px;padding:16px;display:flex;align-items:center;gap:12px}
         .stat-num{font-size:22px;font-weight:700;color:#1A3A7C}
@@ -373,14 +492,30 @@ export default function CourseDetailPage() {
         .alert-ok{display:flex;align-items:center;gap:8px;padding:10px 14px;background:#E1F5EE;border:1px solid #9FE1CB;border-radius:8px;font-size:13px;color:#0F6E56}
         .empty-state{display:flex;flex-direction:column;align-items:center;padding:40px;gap:10px;color:#6B8BB0;font-size:13px}
         .spinner{width:24px;height:24px;border:2px solid rgba(26,58,124,.2);border-top-color:#1A3A7C;border-radius:50%;animation:spin .7s linear infinite}
+        .spinsm{width:12px;height:12px;border:2px solid rgba(255,255,255,.3);border-top-color:currentColor;border-radius:50%;animation:spin .7s linear infinite;display:inline-block}
         @keyframes spin{to{transform:rotate(360deg)}}
-        .btn-primary-sm{padding:6px 14px;background:#1A3A7C;color:#fff;border:none;border-radius:6px;font-size:12px;cursor:pointer;white-space:nowrap}
-        .btn-primary-sm:hover{background:#4A9FD4}
-        .btn-outline-sm{padding:6px 14px;background:#fff;color:#1A3A7C;border:1.5px solid #CBE0F0;border-radius:6px;font-size:12px;cursor:pointer}
-        .btn-outline-sm:hover{background:#F0F6FC}
+        .btn-primary-sm{display:flex;align-items:center;gap:5px;padding:6px 14px;background:#1A3A7C;color:#fff;border:none;border-radius:6px;font-size:12px;cursor:pointer;white-space:nowrap}
+        .btn-primary-sm:hover:not(:disabled){background:#4A9FD4}
+        .btn-primary-sm:disabled{opacity:.6;cursor:not-allowed}
+        .btn-outline-sm{display:flex;align-items:center;gap:5px;padding:6px 14px;background:#fff;color:#1A3A7C;border:1.5px solid #CBE0F0;border-radius:6px;font-size:12px;cursor:pointer;white-space:nowrap}
+        .btn-outline-sm:hover:not(:disabled){background:#F0F6FC}
+        .btn-outline-sm:disabled{opacity:.6;cursor:not-allowed}
         .icon-del{width:26px;height:26px;border:none;border-radius:6px;background:#FFF0F0;color:#C0392B;cursor:pointer;display:flex;align-items:center;justify-content:center}
         .icon-del:hover:not(:disabled){background:#FFD5D5}
         .icon-del:disabled{opacity:.5;cursor:not-allowed}
+        .overlay{position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:500;display:flex;align-items:center;justify-content:center;padding:16px}
+        .modal{background:#fff;border-radius:14px;width:100%;max-width:420px;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,0.15)}
+        .mhead{display:flex;align-items:center;justify-content:space-between;padding:18px 20px;border-bottom:1px solid #CBE0F0}
+        .mhead h2{font-size:16px;font-weight:600;color:#1A3A7C;margin:0}
+        .mhead button{background:none;border:none;cursor:pointer;color:#6B8BB0;display:flex;padding:4px;border-radius:6px}
+        .mhead button:hover{background:#F0F6FC}
+        .mbody{padding:20px;display:flex;flex-direction:column;gap:12px}
+        .mfoot{display:flex;justify-content:flex-end;gap:10px;padding:16px 20px;border-top:1px solid #CBE0F0}
+        .info-box{background:#F0F6FC;border:1px solid #CBE0F0;border-radius:8px;padding:12px;font-size:13px;color:#1A3A7C}
+        .cred-row{display:flex;align-items:center;gap:10px;background:#F0F6FC;border:1px solid #CBE0F0;border-radius:8px;padding:10px 14px}
+        .cred-label{font-size:12px;font-weight:600;color:#6B8BB0;min-width:80px;text-transform:uppercase;letter-spacing:.5px}
+        .cred-value{font-size:13px;font-weight:600;color:#1A3A7C;font-family:monospace;word-break:break-all}
+        .cred-note{font-size:12px;color:#BA7517;background:#FFFBEA;border:1px solid #F5C518;border-radius:8px;padding:10px;line-height:1.5}
       `}</style>
     </div>
   )

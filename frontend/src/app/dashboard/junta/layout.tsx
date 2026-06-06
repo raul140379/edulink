@@ -6,7 +6,7 @@ import Link from 'next/link'
 import Image from 'next/image'
 import {
   LayoutDashboard, DollarSign, FileBarChart,
-  Bell, LogOut, Menu, X,Users, ChevronRight, ClipboardList
+  Bell, LogOut, Menu, X,Users, ChevronRight, ClipboardList,UserCircle
     } from 'lucide-react'
 
 
@@ -22,6 +22,11 @@ const menuItems = [
     href:  '/dashboard/junta',
     icon:  <LayoutDashboard size={18}/>,
   },
+  {
+  label: 'Mi Perfil',
+  href:  '/dashboard/junta/perfil',  // cambia NOMBRE por teacher, teacher-tutor, junta, admin
+  icon:  <UserCircle size={18}/>,
+},
   {
     label: 'Tesorería',
     href:  '/dashboard/junta/tesoreria',

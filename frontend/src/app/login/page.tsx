@@ -44,6 +44,9 @@ export default function LoginPage() {
         case 'TEACHER':
           router.push('/dashboard/teacher')
           break
+        case 'TEACHER_TUTOR':
+           router.push('/dashboard/teacher-tutor')
+        break
         case 'JUNTA_ESCOLAR':
           router.push('/dashboard/junta')
           break
@@ -55,10 +58,6 @@ export default function LoginPage() {
         case 'DELEGATE':
           router.push('/dashboard/delegate')          
           break
-        case 'TEACHER':
-          router.push('/dashboard/teacher')
-          break
-
         default:
           router.push('/dashboard')
 

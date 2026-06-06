@@ -5,8 +5,8 @@ import { useRouter, usePathname } from 'next/navigation'
 import Link from 'next/link'
 import Image from 'next/image'
 import {
-  LayoutDashboard, DollarSign, ClipboardList,
-  Users, LogOut, Menu, X, ChevronRight, BookOpen,UserCircle
+  LayoutDashboard, DollarSign, Bell,
+  LogOut, Menu, X, ChevronRight, BookOpen, Users, Clock,UserCircle
 } from 'lucide-react'
 
 interface User {
@@ -16,34 +16,44 @@ interface User {
 }
 
 const menuItems = [
-   {
-    label: 'Mi Perfil',
-    href:  '/dashboard/delegate/perfil',
-    icon:  <UserCircle size={18}/>,
-  },
+{
+  label: 'Mi Perfil',
+  href:  '/dashboard/teacher-tutor/perfil',  // cambia NOMBRE por teacher, teacher-tutor, junta, admin
+  icon:  <UserCircle size={18}/>,
+},
   {
     label: 'Mi Curso',
-    href:  '/dashboard/delegate',
+    href:  '/dashboard/teacher-tutor',
     icon:  <LayoutDashboard size={18}/>,
   },
   {
+    label: 'Carga Horaria',
+    href:  '/dashboard/teacher-tutor/workload',
+    icon:  <Clock size={18}/>,
+  },
+  {
     label: 'Estado de Cuenta',
-    href:  '/dashboard/delegate/tesoreria',
+    href:  '/dashboard/teacher-tutor/tesoreria',
     icon:  <DollarSign size={18}/>,
   },
   {
-    label: 'Nuevo Cargo',
-    href:  '/dashboard/delegate/cargos/nuevo',
-    icon:  <ClipboardList size={18}/>,
+    label: 'Mis Notas',
+    href:  '/dashboard/teacher-tutor/notas',
+    icon:  <BookOpen size={18}/>,
   },
   {
-    label: 'Asistencia',
-    href:  '/dashboard/delegate/asistencia',
+    label: 'Reuniones',
+    href:  '/dashboard/teacher-tutor/reuniones',
     icon:  <Users size={18}/>,
+  },
+  {
+    label: 'Notificaciones',
+    href:  '/dashboard/teacher-tutor/notificaciones',
+    icon:  <Bell size={18}/>,
   },
 ]
 
-export default function DelegateLayout({ children }: { children: React.ReactNode }) {
+export default function TeacherTutorLayout({ children }: { children: React.ReactNode }) {
   const router   = useRouter()
   const pathname = usePathname()
   const [user,       setUser]       = useState<User | null>(null)
@@ -55,7 +65,7 @@ export default function DelegateLayout({ children }: { children: React.ReactNode
     const token    = localStorage.getItem('token')
     if (!userData || !token) { router.push('/login'); return }
     const parsed = JSON.parse(userData)
-    if (parsed.role !== 'DELEGATE' && parsed.role !== 'SUPER_ADMIN') {
+    if (parsed.role !== 'TEACHER_TUTOR' && parsed.role !== 'SUPER_ADMIN') {
       router.push('/login'); return
     }
     setUser(parsed)
@@ -71,7 +81,6 @@ export default function DelegateLayout({ children }: { children: React.ReactNode
 
   const sidebarContent = (
     <div className="sidebar-inner">
-      {/* Header */}
       <div className="sidebar-header">
         <div className="sidebar-brand">
           <div className="brand-logo">
@@ -80,7 +89,7 @@ export default function DelegateLayout({ children }: { children: React.ReactNode
           </div>
           {!collapsed && (
             <div className="brand-info">
-              <span className="brand-name">Delegado de Curso</span>
+              <span className="brand-name">Maestro Tutor</span>
               <span className="brand-loc">U.E. Naciones Unidas</span>
             </div>
           )}
@@ -90,18 +99,16 @@ export default function DelegateLayout({ children }: { children: React.ReactNode
         </button>
       </div>
 
-      {/* Perfil */}
       <div className="user-profile">
         <div className="user-avatar">{user.email.charAt(0).toUpperCase()}</div>
         {!collapsed && (
           <div className="user-info">
             <span className="user-email">{user.email}</span>
-            <span className="user-role-badge">Delegado</span>
+            <span className="user-role-badge">Maestro Tutor</span>
           </div>
         )}
       </div>
 
-      {/* Menú */}
       <nav className="sidebar-nav">
         {!collapsed && <span className="nav-section-label">Menú</span>}
         {menuItems.map(item => {
@@ -118,7 +125,6 @@ export default function DelegateLayout({ children }: { children: React.ReactNode
         })}
       </nav>
 
-      {/* Footer */}
       <div className="sidebar-footer">
         <button className={`nav-item logout-btn ${collapsed ? 'collapsed' : ''}`} onClick={handleLogout}>
           <span className="nav-icon"><LogOut size={18}/></span>
@@ -146,10 +152,10 @@ export default function DelegateLayout({ children }: { children: React.ReactNode
             <Menu size={20}/>
           </button>
           <div className="header-title">
-            <BookOpen size={16} color="#444441"/>
+            <BookOpen size={16} color="#0F6E56"/>
             {menuItems.find(i => pathname === i.href || pathname.startsWith(i.href + '/'))?.label || 'Mi Curso'}
           </div>
-          <div className="header-badge">Delegado de Curso</div>
+          <div className="header-badge">Maestro Tutor</div>
         </header>
 
         <main className="main-content">{children}</main>
@@ -158,15 +164,14 @@ export default function DelegateLayout({ children }: { children: React.ReactNode
       <style>{`
         *, *::before, *::after { margin:0; padding:0; box-sizing:border-box; }
         :root {
-          --azul:    #1A3A7C;
-          --delegate:#444441;
-          --amarillo:#F5C518;
+          --tutor:    #0F6E56;
+          --amarillo: #F5C518;
           --sidebar-w: 240px;
           --sidebar-collapsed: 64px;
           --header-h: 56px;
         }
         .dashboard-root { display:flex; min-height:100vh; background:#F0F6FC; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif; }
-        .sidebar { width:var(--sidebar-w); background:var(--delegate); display:flex; flex-direction:column; position:fixed; top:0; left:0; bottom:0; z-index:100; transition:width 0.2s ease; overflow:hidden; }
+        .sidebar { width:var(--sidebar-w); background:var(--tutor); display:flex; flex-direction:column; position:fixed; top:0; left:0; bottom:0; z-index:100; transition:width 0.2s ease; overflow:hidden; }
         .sidebar-collapsed { width:var(--sidebar-collapsed); }
         .sidebar-inner { display:flex; flex-direction:column; height:100%; overflow:hidden; }
         .sidebar-header { display:flex; align-items:center; justify-content:space-between; padding:16px 12px; border-bottom:1px solid rgba(255,255,255,0.08); min-height:64px; gap:8px; }
@@ -193,16 +198,16 @@ export default function DelegateLayout({ children }: { children: React.ReactNode
         .sidebar-footer { padding:8px; border-top:1px solid rgba(255,255,255,0.08); }
         .logout-btn { color:rgba(255,255,255,0.6); }
         .logout-btn:hover { background:rgba(231,76,60,0.2) !important; color:#ff8a80 !important; }
-        .sidebar-mobile { display:none; width:var(--sidebar-w); background:var(--delegate); position:fixed; top:0; left:-100%; bottom:0; z-index:200; transition:left 0.25s ease; overflow:hidden; }
+        .sidebar-mobile { display:none; width:var(--sidebar-w); background:var(--tutor); position:fixed; top:0; left:-100%; bottom:0; z-index:200; transition:left 0.25s ease; overflow:hidden; }
         .sidebar-mobile.open { left:0; }
         .mobile-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,0.4); z-index:199; }
         .main-wrapper { flex:1; margin-left:var(--sidebar-w); display:flex; flex-direction:column; min-height:100vh; transition:margin-left 0.2s ease; }
         .sidebar-collapsed ~ .main-wrapper { margin-left:var(--sidebar-collapsed); }
         .main-header { height:var(--header-h); background:#fff; border-bottom:1px solid #CBE0F0; display:flex; align-items:center; padding:0 20px; gap:12px; position:sticky; top:0; z-index:50; }
-        .mobile-menu-btn { display:none; background:none; border:none; cursor:pointer; color:var(--delegate); padding:6px; border-radius:6px; }
+        .mobile-menu-btn { display:none; background:none; border:none; cursor:pointer; color:var(--tutor); padding:6px; border-radius:6px; }
         .mobile-menu-btn:hover { background:#F0F6FC; }
-        .header-title { flex:1; font-size:15px; font-weight:600; color:var(--delegate); display:flex; align-items:center; gap:8px; }
-        .header-badge { background:#F0F0EE; color:var(--delegate); padding:4px 12px; border-radius:20px; font-size:11px; font-weight:600; }
+        .header-title { flex:1; font-size:15px; font-weight:600; color:var(--tutor); display:flex; align-items:center; gap:8px; }
+        .header-badge { background:#E1F5EE; color:var(--tutor); padding:4px 12px; border-radius:20px; font-size:11px; font-weight:600; }
         .main-content { flex:1; padding:24px; overflow-y:auto; }
         @media (max-width:768px) {
           .sidebar { display:none; }

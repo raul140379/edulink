@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
-import { ArrowLeft, BookOpen, CheckCircle2, AlertCircle, Save } from 'lucide-react'
+import { ArrowLeft, BookOpen, CheckCircle2, AlertCircle, Save, X, Plus } from 'lucide-react'
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000'
 
@@ -25,6 +25,9 @@ interface CoursePlan {
 }
 interface Teacher {
   id: number; firstName: string; lastName: string
+}
+interface Subject {
+  id: number; name: string; code?: string; campo?: string; level: string
 }
 
 // ── Constantes ────────────────────────────────────────────────────────────
@@ -60,15 +63,20 @@ export default function AsignarMateriaPage() {
   const id     = params.id as string
 
   const [plan,      setPlan]      = useState<CoursePlan | null>(null)
-  // Cache: subjectId → maestros con especialidad en esa materia
   const [teachersBySubject, setTeachersBySubject] = useState<Record<number, Teacher[]>>({})
   const [loadingTeachers, setLoadingTeachers]     = useState<Record<number, boolean>>({})
   const [loading,   setLoading]   = useState(true)
-  const [saving,    setSaving]    = useState<number | null>(null) // subjectId en proceso
-  const [selections, setSelections] = useState<Record<number, string>>({}) // subjectId → teacherId
+  const [saving,    setSaving]    = useState<number | null>(null)
+  const [selections, setSelections] = useState<Record<number, string>>({})
   const [success,   setSuccess]   = useState('')
   const [error,     setError]     = useState('')
-  const [courseInfo, setCourseInfo] = useState<{level:string;grade:string;parallel:string;shift:string} | null>(null)
+  const [courseInfo, setCourseInfo] = useState<{level:string;grade:string;parallel:string;shift:string;educationType?:string} | null>(null)
+
+  // Agregar materia al plan
+  const [showAddPlan,  setShowAddPlan]  = useState(false)
+  const [allSubjects,  setAllSubjects]  = useState<Subject[]>([])
+  const [planForm,     setPlanForm]     = useState({ subjectId: '', hoursPerWeek: '4' })
+  const [savingPlan,   setSavingPlan]   = useState(false)
 
   const token = typeof window !== 'undefined' ? localStorage.getItem('token') : ''
 
@@ -91,26 +99,20 @@ export default function AsignarMateriaPage() {
     finally  { setLoading(false) }
   }
 
-  // Cargar maestros por especialidad — filtra por materia específica
-  // Si no hay maestros con esa materia, amplía al campo de saber completo
   const loadTeachersForSubject = async (subjectId: number, campo: string | null) => {
     if (teachersBySubject[subjectId] !== undefined) return
     setLoadingTeachers(prev => ({...prev, [subjectId]: true}))
     try {
-      // 1. Buscar por materia específica
       let res  = await fetch(`${API_URL}/api/teachers?subjectId=${subjectId}`, {
         headers: { Authorization: `Bearer ${token}` }
       })
       let data = await res.json()
-
-      // 2. Si no hay maestros con esa materia y tiene campo, ampliar al campo
       if (res.ok && Array.isArray(data) && data.length === 0 && campo) {
         res  = await fetch(`${API_URL}/api/teachers?campo=${campo}`, {
           headers: { Authorization: `Bearer ${token}` }
         })
         data = await res.json()
       }
-
       setTeachersBySubject(prev => ({...prev, [subjectId]: res.ok ? data : []}))
     } catch {
       setTeachersBySubject(prev => ({...prev, [subjectId]: []}))
@@ -119,9 +121,18 @@ export default function AsignarMateriaPage() {
     }
   }
 
+  const fetchAllSubjects = async () => {
+    try {
+      const res  = await fetch(`${API_URL}/api/subjects?level=SECUNDARIA`, {
+        headers: { Authorization: `Bearer ${token}` }
+      })
+      const data = await res.json()
+      if (res.ok) setAllSubjects(data)
+    } catch { console.error('Error cargando materias') }
+  }
+
   useEffect(() => { fetchData() }, [id])
 
-  // Al cargar el plan, pre-llenar los selects con maestros ya asignados
   useEffect(() => {
     if (!plan) return
     const pre: Record<number, string> = {}
@@ -149,6 +160,30 @@ export default function AsignarMateriaPage() {
       fetchData()
     } catch { notify('Error de conexión', 'err') }
     finally  { setSaving(null) }
+  }
+
+  const handleAddToPlan = async () => {
+    if (!planForm.subjectId) { notify('Selecciona una materia', 'err'); return }
+    setSavingPlan(true)
+    try {
+      const res  = await fetch(`${API_URL}/api/subjects/grade-config`, {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          subjectId:     parseInt(planForm.subjectId),
+          grade:         courseInfo!.grade,
+          educationType: courseInfo!.educationType ?? 'REGULAR',
+          hoursPerWeek:  parseInt(planForm.hoursPerWeek) || 4,
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok) { notify(data.message, 'err'); return }
+      notify(data.message)
+      setShowAddPlan(false)
+      setPlanForm({ subjectId: '', hoursPerWeek: '4' })
+      fetchData()
+    } catch { notify('Error de conexión', 'err') }
+    finally  { setSavingPlan(false) }
   }
 
   const handleRemove = async (assignmentId: number, subjectId: number) => {
@@ -180,10 +215,13 @@ export default function AsignarMateriaPage() {
         <button className="back-btn" onClick={() => router.back()}>
           <ArrowLeft size={16}/> Volver
         </button>
-        <div>
+        <div style={{flex:1}}>
           <h1>Asignar Maestros · {GRADES[courseInfo.grade]} {courseInfo.parallel}</h1>
           <p className="sub">{LEVELS[courseInfo.level]} · {SHIFTS[courseInfo.shift]}</p>
         </div>
+        <button className="btn-add-plan" onClick={() => { setShowAddPlan(true); fetchAllSubjects() }}>
+          <Plus size={14}/> Agregar materia al plan
+        </button>
       </div>
 
       {success && <div className="alert ok">{success}</div>}
@@ -222,7 +260,6 @@ export default function AsignarMateriaPage() {
 
         return (
           <div key={campo} className="section-card">
-            {/* Header campo */}
             <div className="campo-header" style={{background:col.bg, borderBottom:`2px solid ${col.border}`}}>
               <span style={{fontSize:'16px'}}>{icon}</span>
               <span style={{fontWeight:700,color:col.text,fontSize:'13px',textTransform:'uppercase',letterSpacing:'.5px'}}>
@@ -233,7 +270,6 @@ export default function AsignarMateriaPage() {
               </span>
             </div>
 
-            {/* Filas de materias */}
             <table>
               <thead>
                 <tr>
@@ -245,22 +281,19 @@ export default function AsignarMateriaPage() {
               </thead>
               <tbody>
                 {items.map(item => {
-                  const isSaving  = saving === item.subjectId
-                  const selected  = selections[item.subjectId] || ''
+                  const isSaving   = saving === item.subjectId
+                  const selected   = selections[item.subjectId] || ''
                   const hasTeacher = !!item.teacher
 
                   return (
                     <tr key={item.subjectId} className={hasTeacher ? 'row-ok' : 'row-pend'}>
-                      {/* Materia */}
                       <td>
                         <div style={{fontWeight:500,color:'#1A3A7C'}}>{item.subject.name}</div>
                         {item.subject.code && <div style={{fontSize:'11px',color:'#6B8BB0'}}>{item.subject.code}</div>}
                       </td>
-                      {/* Horas */}
                       <td style={{textAlign:'center'}}>
                         <span className="hrs-badge">{item.hoursPerWeek}</span>
                       </td>
-                      {/* Selector maestro */}
                       <td>
                         <select
                           value={selected}
@@ -270,9 +303,7 @@ export default function AsignarMateriaPage() {
                           disabled={isSaving}
                         >
                           <option value="">
-                            {loadingTeachers[item.subjectId]
-                              ? 'Cargando maestros...'
-                              : '— Seleccionar maestro —'}
+                            {loadingTeachers[item.subjectId] ? 'Cargando maestros...' : '— Seleccionar maestro —'}
                           </option>
                           {(teachersBySubject[item.subjectId] || []).length === 0 &&
                            !loadingTeachers[item.subjectId] &&
@@ -280,13 +311,10 @@ export default function AsignarMateriaPage() {
                             <option disabled value="">Sin maestros con esta especialidad</option>
                           )}
                           {(teachersBySubject[item.subjectId] || []).map(t => (
-                            <option key={t.id} value={t.id}>
-                              {t.lastName} {t.firstName}
-                            </option>
+                            <option key={t.id} value={t.id}>{t.lastName} {t.firstName}</option>
                           ))}
                         </select>
                       </td>
-                      {/* Acciones */}
                       <td>
                         <div style={{display:'flex',gap:'6px',justifyContent:'flex-end'}}>
                           <button
@@ -317,13 +345,71 @@ export default function AsignarMateriaPage() {
         )
       })}
 
+      {/* ── Modal agregar materia al plan ─────────────────────────────────── */}
+      {showAddPlan && courseInfo && (
+        <div className="overlay" onClick={() => setShowAddPlan(false)}>
+          <div className="modal" onClick={e => e.stopPropagation()}>
+            <div className="mhead">
+              <div>
+                <h2>Agregar materia al plan</h2>
+                <p style={{fontSize:'12px',color:'#6B8BB0',margin:'2px 0 0'}}>
+                  {GRADES[courseInfo.grade]} · {courseInfo.educationType ?? 'REGULAR'}
+                </p>
+              </div>
+              <button onClick={() => setShowAddPlan(false)}><X size={18}/></button>
+            </div>
+            <div className="mbody">
+              <div className="fg">
+                <label>Materia *</label>
+                <select
+                  value={planForm.subjectId}
+                  onChange={e => setPlanForm({...planForm, subjectId: e.target.value})}
+                  className="sel"
+                >
+                  <option value="">— Seleccionar materia —</option>
+                  {allSubjects.map(s => (
+                    <option key={s.id} value={s.id}>
+                      {s.name}{s.campo ? ` · ${CAMPO_LABELS[s.campo] || s.campo}` : ''}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="fg">
+                <label>Horas por semana *</label>
+                <input
+                  type="number" min={1} max={40}
+                  value={planForm.hoursPerWeek}
+                  onChange={e => setPlanForm({...planForm, hoursPerWeek: e.target.value})}
+                  style={{padding:'8px 10px',border:'1.5px solid #CBE0F0',borderRadius:'7px',fontSize:'13px',color:'#1A3A7C',outline:'none'}}
+                />
+              </div>
+            </div>
+            <div className="mfoot">
+              <button className="btn-cancel" onClick={() => setShowAddPlan(false)}>Cancelar</button>
+              <button
+                className="btn-save"
+                onClick={handleAddToPlan}
+                disabled={savingPlan || !planForm.subjectId}
+              >
+                {savingPlan ? <span className="spinsm"/> : <Plus size={12}/>}
+                {savingPlan ? 'Guardando...' : 'Agregar al plan'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <style>{`
         .center{display:flex;justify-content:center;align-items:center;padding:48px;color:#6B8BB0}
-        .page-header{display:flex;align-items:flex-start;gap:16px;margin-bottom:20px}
+        .page-header{display:flex;align-items:flex-start;gap:16px;margin-bottom:20px;flex-wrap:wrap}
         .page-header h1{font-size:20px;font-weight:700;color:#1A3A7C;margin:0 0 4px}
         .sub{font-size:13px;color:#6B8BB0;margin:0}
         .back-btn{display:flex;align-items:center;gap:6px;background:none;border:none;cursor:pointer;color:#6B8BB0;font-size:13px;padding:4px 0;white-space:nowrap}
         .back-btn:hover{color:#1A3A7C}
+        .btn-add-plan{display:flex;align-items:center;gap:6px;padding:8px 14px;background:#0F6E56;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:500;cursor:pointer;white-space:nowrap}
+        .btn-add-plan:hover{background:#0A5240}
+        .btn-cancel{display:flex;align-items:center;gap:6px;padding:8px 14px;background:#fff;color:#1A3A7C;border:1.5px solid #CBE0F0;border-radius:7px;font-size:13px;cursor:pointer}
+        .btn-cancel:hover{background:#F0F6FC}
         .alert{padding:10px 14px;border-radius:8px;font-size:13px;margin-bottom:14px}
         .alert.ok{background:#E1F5EE;border:1px solid #9FE1CB;color:#0F6E56}
         .alert.err{background:#FFF0F0;border:1px solid #FFBBBB;color:#C0392B}
@@ -350,9 +436,20 @@ export default function AsignarMateriaPage() {
         .btn-del{width:28px;height:28px;border:none;border-radius:6px;background:#FFF0F0;color:#C0392B;cursor:pointer;font-size:13px;font-weight:700}
         .btn-del:hover:not(:disabled){background:#FFD5D5}
         .btn-del:disabled{opacity:.5;cursor:not-allowed}
+        .overlay{position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:500;display:flex;align-items:center;justify-content:center;padding:16px}
+        .modal{background:#fff;border-radius:14px;width:100%;max-width:420px;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,0.15)}
+        .mhead{display:flex;align-items:flex-start;justify-content:space-between;padding:18px 20px;border-bottom:1px solid #CBE0F0;gap:12px}
+        .mhead h2{font-size:16px;font-weight:600;color:#1A3A7C;margin:0}
+        .mhead button{background:none;border:none;cursor:pointer;color:#6B8BB0;display:flex;padding:4px;border-radius:6px}
+        .mhead button:hover{background:#F0F6FC;color:#1A3A7C}
+        .mbody{padding:20px;display:flex;flex-direction:column;gap:14px}
+        .mfoot{display:flex;justify-content:flex-end;gap:10px;padding:16px 20px;border-top:1px solid #CBE0F0}
+        .fg{display:flex;flex-direction:column;gap:5px}
+        .fg label{font-size:11px;font-weight:600;color:#1A3A7C;text-transform:uppercase;letter-spacing:.5px}
         .spinner{width:24px;height:24px;border:2px solid rgba(26,58,124,.2);border-top-color:#1A3A7C;border-radius:50%;animation:spin .7s linear infinite}
         .spinsm{width:12px;height:12px;border:2px solid rgba(255,255,255,.3);border-top-color:#fff;border-radius:50%;animation:spin .7s linear infinite;display:inline-block}
         @keyframes spin{to{transform:rotate(360deg)}}
+        @media(max-width:600px){.page-header{flex-direction:column}}
       `}</style>
     </div>
   )

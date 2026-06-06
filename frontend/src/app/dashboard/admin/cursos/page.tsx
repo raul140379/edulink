@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { Plus, X, Trash2, Users, Filter, Edit, Eye } from 'lucide-react'
+import { Plus, X, Trash2, Users, Filter, Edit, Eye, UserPlus, Search } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000'
@@ -14,9 +14,22 @@ interface Course {
   educationType: string
   shift:         string
   _count:        { assignments: number; schedules: number }
-    tutor?: {
+  tutor?: {
     teacher: { firstName: string; lastName: string }
   }
+}
+
+interface Student {
+  id:        number
+  firstName: string
+  lastName:  string
+  ci?:       string
+  rude?:     string
+  isActive:  boolean
+  assignments: {
+    course: { grade: string; parallel: string; level: string }
+    academicYear: { isActive: boolean }
+  }[]
 }
 
 const LEVELS    = [{ value: 'INICIAL', label: 'Inicial' }, { value: 'PRIMARIA', label: 'Primaria' }, { value: 'SECUNDARIA', label: 'Secundaria' }]
@@ -36,19 +49,28 @@ const emptyForm = { level: 'PRIMARIA', grade: 'PRIMERO', parallel: 'A', educatio
 
 export default function CursosPage() {
   const router = useRouter()
-  const [courses, setCourses]     = useState<Course[]>([])
-  const [loading, setLoading]     = useState(true)
-  const [showModal, setShowModal] = useState(false)
-  const [editMode, setEditMode]   = useState(false)
-  const [editId, setEditId]       = useState<number | null>(null)
-  const [saving, setSaving]       = useState(false)
-  const [success, setSuccess]     = useState('')
-  const [error, setError]         = useState('')
+  const [courses,     setCourses]     = useState<Course[]>([])
+  const [loading,     setLoading]     = useState(true)
+  const [showModal,   setShowModal]   = useState(false)
+  const [editMode,    setEditMode]    = useState(false)
+  const [editId,      setEditId]      = useState<number | null>(null)
+  const [saving,      setSaving]      = useState(false)
+  const [success,     setSuccess]     = useState('')
+  const [error,       setError]       = useState('')
   const [filterLevel, setFilterLevel] = useState('')
   const [filterShift, setFilterShift] = useState('')
   const [filterType,  setFilterType]  = useState('')
-  const [form, setForm] = useState(emptyForm)
-  const [warning, setWarning] = useState('')
+  const [form,        setForm]        = useState(emptyForm)
+  const [warning,     setWarning]     = useState('')
+
+  // Inscripción
+  const [showEnroll,      setShowEnroll]      = useState(false)
+  const [enrollCourse,    setEnrollCourse]    = useState<Course | null>(null)
+  const [students,        setStudents]        = useState<Student[]>([])
+  const [loadingStudents, setLoadingStudents] = useState(false)
+  const [searchStudent,   setSearchStudent]   = useState('')
+  const [selectedStudent, setSelectedStudent] = useState<number | null>(null)
+  const [enrolling,       setEnrolling]       = useState(false)
 
   const token = typeof window !== 'undefined' ? localStorage.getItem('token') : ''
 
@@ -80,7 +102,50 @@ export default function CursosPage() {
     finally  { setLoading(false) }
   }
 
-useEffect(() => { fetchCourses() }, [])  
+  const fetchStudents = async (search: string) => {
+    setLoadingStudents(true)
+    try {
+      const params = new URLSearchParams()
+      if (search) params.set('search', search)
+      const res  = await fetch(`${API_URL}/api/students?${params}`, { headers: { Authorization: `Bearer ${token}` } })
+      const data = await res.json()
+      if (res.ok) setStudents(data)
+    } catch { console.error('Error cargando estudiantes') }
+    finally  { setLoadingStudents(false) }
+  }
+
+  useEffect(() => { fetchCourses() }, [])
+
+  const openEnroll = (course: Course) => {
+    setEnrollCourse(course)
+    setSelectedStudent(null)
+    setSearchStudent('')
+    setStudents([])
+    setShowEnroll(true)
+  }
+
+  const handleSearchStudent = async () => {
+    if (!searchStudent.trim()) return
+    await fetchStudents(searchStudent)
+  }
+
+  const handleEnroll = async () => {
+    if (!selectedStudent || !enrollCourse) return
+    setEnrolling(true)
+    try {
+      const res  = await fetch(`${API_URL}/api/students/${selectedStudent}/enroll`, {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body:    JSON.stringify({ courseId: enrollCourse.id }),
+      })
+      const data = await res.json()
+      if (!res.ok) { notify(data.message, 'error'); return }
+      notify(data.message)
+      setShowEnroll(false)
+      fetchCourses()
+    } catch { notify('Error de conexión', 'error') }
+    finally  { setEnrolling(false) }
+  }
 
   const openCreate = () => {
     setEditMode(false); setEditId(null)
@@ -126,13 +191,28 @@ useEffect(() => { fetchCourses() }, [])
     } catch { notify('Error al eliminar', 'error') }
   }
 
-  const grouped = courses.reduce((acc, c) => {
+  const grouped   = courses.reduce((acc, c) => {
     if (!acc[c.level]) acc[c.level] = []
     acc[c.level].push(c)
     return acc
   }, {} as Record<string, Course[]>)
 
   const courseName = (c: Course) => `${gradeLabel(c.grade)} ${c.parallel}`
+
+  // Filtrar estudiantes por búsqueda
+  const filteredStudents = students.filter(s => {
+    const q = searchStudent.toLowerCase()
+    return (
+      s.firstName.toLowerCase().includes(q) ||
+      s.lastName.toLowerCase().includes(q)  ||
+      (s.ci   || '').toLowerCase().includes(q) ||
+      (s.rude || '').toLowerCase().includes(q)
+    )
+  })
+
+  // Verificar si estudiante ya está inscrito en año activo
+  const isEnrolled = (s: Student) =>
+    s.assignments?.some(a => a.academicYear?.isActive)
 
   return (
     <div>
@@ -145,7 +225,7 @@ useEffect(() => { fetchCourses() }, [])
       </div>
 
       {success && <div className="alert suc">{success}</div>}
-      {error && !showModal && <div className="alert err">{error}</div>}
+      {error && !showModal && !showEnroll && <div className="alert err">{error}</div>}
 
       <div className="filters-bar">
         <Filter size={15} color="#6B8BB0"/>
@@ -190,19 +270,22 @@ useEffect(() => { fetchCourses() }, [])
                         </span>
                         {c.educationType === 'BTH' && <span className="cbadge bth">BTH</span>}
                       </div>
-                    </div> 
+                    </div>
                     <div className="cstat"><Users size={12}/>{c._count.assignments} estudiantes</div>
-                      {c.tutor && (
-                        <div className="cstat tutor-info">
-                          <span>🎓 {c.tutor.teacher.lastName} {c.tutor.teacher.firstName}</span>
-                        </div>
-                      )}
+                    {c.tutor && (
+                      <div className="cstat tutor-info">
+                        <span>🎓 {c.tutor.teacher.lastName} {c.tutor.teacher.firstName}</span>
+                      </div>
+                    )}
                     <div className="course-actions">
                       <button className="icon-btn view" title="Ver detalle" onClick={() => router.push(`/dashboard/admin/cursos/${c.id}`)}>
                         <Eye size={13}/>
                       </button>
                       <button className="icon-btn edit" title="Editar" onClick={() => openEdit(c)}>
                         <Edit size={13}/>
+                      </button>
+                      <button className="icon-btn enroll" title="Inscribir estudiante" onClick={() => openEnroll(c)}>
+                        <UserPlus size={13}/>
                       </button>
                       <button className="icon-btn del" title="Eliminar" onClick={() => handleDelete(c.id, courseName(c))}>
                         <Trash2 size={13}/>
@@ -218,6 +301,96 @@ useEffect(() => { fetchCourses() }, [])
 
       {courses.length > 0 && <div className="summary">Total: <strong>{courses.length}</strong> cursos registrados</div>}
 
+      {/* ── Modal inscribir estudiante ── */}
+      {showEnroll && enrollCourse && (
+        <div className="overlay" onClick={() => setShowEnroll(false)}>
+          <div className="modal modal-lg" onClick={e => e.stopPropagation()}>
+            <div className="mhead">
+              <div>
+                <h2>Inscribir estudiante</h2>
+                <p style={{fontSize:'12px',color:'#6B8BB0',margin:'2px 0 0'}}>
+                  {levelLabel(enrollCourse.level)} — {courseName(enrollCourse)} · {shiftLabel(enrollCourse.shift)}
+                </p>
+              </div>
+              <button onClick={() => setShowEnroll(false)}><X size={18}/></button>
+            </div>
+            <div className="mbody">
+              {error && <div className="alert err">{error}</div>}
+
+              {/* Buscador */}
+              <div className="search-row">
+                <div className="search-wrap">
+                  <Search size={14} className="sicon"/>
+                  <input
+                    type="text"
+                    placeholder="Buscar por nombre, CI o RUDE..."
+                    value={searchStudent}
+                    onChange={e => setSearchStudent(e.target.value)}
+                    onKeyDown={e => e.key === 'Enter' && handleSearchStudent()}
+                  />
+                </div>
+                <button className="btn-primary" onClick={handleSearchStudent} disabled={loadingStudents}>
+                  {loadingStudents ? <span className="spinsm"/> : <Search size={14}/>}
+                  Buscar
+                </button>
+              </div>
+
+              {/* Lista de estudiantes */}
+              {loadingStudents ? (
+                <div className="center"><div className="spinner"/></div>
+              ) : filteredStudents.length === 0 && searchStudent ? (
+                <div className="no-data">No se encontraron estudiantes</div>
+              ) : filteredStudents.length === 0 ? (
+                <div className="no-data">Busca un estudiante para inscribir</div>
+              ) : (
+                <div className="students-list">
+                  {filteredStudents.map(s => {
+                    const enrolled = isEnrolled(s)
+                    const activeAssignment = s.assignments?.find(a => a.academicYear?.isActive)
+                    return (
+                      <label key={s.id} className={`student-option ${selectedStudent === s.id ? 'selected' : ''} ${enrolled ? 'enrolled' : ''}`}>
+                        <input
+                          type="radio"
+                          name="student"
+                          value={s.id}
+                          checked={selectedStudent === s.id}
+                          onChange={() => setSelectedStudent(s.id)}
+                          disabled={false}
+                        />
+                        <div className="student-data">
+                          <div className="student-name">{s.lastName} {s.firstName}</div>
+                          <div className="student-meta">
+                            {s.ci   && <span>CI: {s.ci}</span>}
+                            {s.rude && <span>RUDE: {s.rude}</span>}
+                            {enrolled && activeAssignment && (
+                              <span className="enrolled-badge">
+                                ⚠️ Ya inscrito en {gradeLabel(activeAssignment.course.grade)} {activeAssignment.course.parallel}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </label>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+            <div className="mfoot">
+              <button className="btn-outline" onClick={() => setShowEnroll(false)}>Cancelar</button>
+              <button
+                className="btn-primary"
+                onClick={handleEnroll}
+                disabled={enrolling || !selectedStudent}
+              >
+                {enrolling ? <span className="spinsm"/> : <UserPlus size={14}/>}
+                {enrolling ? 'Inscribiendo...' : 'Inscribir estudiante'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Modal crear/editar curso ── */}
       {showModal && (
         <div className="overlay" onClick={() => setShowModal(false)}>
           <div className="modal" onClick={e => e.stopPropagation()}>
@@ -311,17 +484,35 @@ useEffect(() => { fetchCourses() }, [])
         .icon-btn{width:28px;height:28px;border:none;border-radius:6px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:opacity .2s}
         .icon-btn.view{background:#E0ECF8;color:#1A3A7C}
         .icon-btn.edit{background:#FAEEDA;color:#633806}
+        .icon-btn.enroll{background:#E1F5EE;color:#0F6E56}
         .icon-btn.del{background:#FFF0F0;color:#C0392B}
         .icon-btn:hover{opacity:.75}
         .summary{padding:12px 4px;font-size:12px;color:#6B8BB0}
         .overlay{position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:500;display:flex;align-items:center;justify-content:center;padding:16px}
-        .modal{background:#fff;border-radius:14px;width:100%;max-width:460px;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,0.15)}
-        .mhead{display:flex;align-items:center;justify-content:space-between;padding:18px 20px;border-bottom:1px solid #CBE0F0}
-        .mhead h2{font-size:16px;font-weight:600;color:#1A3A7C}
-        .mhead button{background:none;border:none;cursor:pointer;color:#6B8BB0;display:flex;padding:4px;border-radius:6px}
+        .modal{background:#fff;border-radius:14px;width:100%;max-width:460px;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,0.15);max-height:90vh;display:flex;flex-direction:column}
+        .modal-lg{max-width:700px;width:95vw}
+        .mhead{display:flex;align-items:flex-start;justify-content:space-between;padding:18px 20px;border-bottom:1px solid #CBE0F0;flex-shrink:0;gap:12px}
+        .mhead h2{font-size:16px;font-weight:600;color:#1A3A7C;margin:0}
+        .mhead button{background:none;border:none;cursor:pointer;color:#6B8BB0;display:flex;padding:4px;border-radius:6px;flex-shrink:0}
         .mhead button:hover{background:#F0F6FC;color:#1A3A7C}
-        .mbody{padding:20px;display:flex;flex-direction:column;gap:16px}
-        .mfoot{display:flex;justify-content:flex-end;gap:10px;padding:16px 20px;border-top:1px solid #CBE0F0}
+        .mbody{padding:20px;display:flex;flex-direction:column;gap:14px;overflow-y:auto;flex:1}
+        .mfoot{display:flex;justify-content:flex-end;gap:10px;padding:16px 20px;border-top:1px solid #CBE0F0;flex-shrink:0}
+        .search-row{display:flex;gap:10px}
+        .search-wrap{position:relative;flex:1}
+        .sicon{position:absolute;left:11px;top:50%;transform:translateY(-50%);color:#4A9FD4;pointer-events:none}
+        .search-wrap input{width:100%;padding:9px 12px 9px 34px;border:1.5px solid #CBE0F0;border-radius:8px;font-size:13px;outline:none;color:#1A3A7C}
+        .search-wrap input:focus{border-color:#4A9FD4}
+        .students-list{display:flex;flex-direction:column;gap:8px;max-height:300px;overflow-y:auto}
+        .student-option{display:flex;align-items:flex-start;gap:10px;padding:12px;border:1.5px solid #CBE0F0;border-radius:8px;cursor:pointer}
+        .student-option:hover{background:#F0F6FC}
+        .student-option.selected{border-color:#1A3A7C;background:#E8F0FB}
+        .student-option.enrolled{border-color:#F5C518;background:#FFFBEA}
+        .student-option input{accent-color:#1A3A7C;cursor:pointer;margin-top:3px;flex-shrink:0}
+        .student-data{display:flex;flex-direction:column;gap:3px}
+        .student-name{font-size:13px;font-weight:600;color:#1A3A7C}
+        .student-meta{display:flex;gap:10px;font-size:11px;color:#6B8BB0;flex-wrap:wrap}
+        .enrolled-badge{color:#BA7517;font-weight:500}
+        .no-data{font-size:13px;color:#6B8BB0;font-style:italic;padding:8px 0}
         .form-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
         .fg-full{grid-column:1/-1}
         .fg{display:flex;flex-direction:column;gap:6px}

@@ -5,8 +5,8 @@ import { useRouter, usePathname } from 'next/navigation'
 import Link from 'next/link'
 import Image from 'next/image'
 import {
-  LayoutDashboard, DollarSign, Bell,
-  LogOut, Menu, X, ChevronRight, BookOpen, Users
+  LayoutDashboard,  Bell,
+  LogOut, Menu, X, ChevronRight, BookOpen, Users,Clock,UserCircle
 } from 'lucide-react'
 
 interface User {
@@ -16,16 +16,21 @@ interface User {
 }
 
 const menuItems = [
-  {
+{
+  label: 'Mi Perfil',
+  href:  '/dashboard/teacher/perfil',  // cambia NOMBRE por teacher, teacher-tutor, junta, admin
+  icon:  <UserCircle size={18}/>,
+},
+  {    
     label: 'Mi Curso',
     href:  '/dashboard/teacher',
     icon:  <LayoutDashboard size={18}/>,
   },
-  {
-    label: 'Estado de Cuenta',
-    href:  '/dashboard/teacher/tesoreria',
-    icon:  <DollarSign size={18}/>,
-  },
+  { 
+    label: 'Carga Horaria',
+    href: '/dashboard/teacher/workload', 
+    icon: <Clock size={18} />,
+  }, 
   {
     label: 'Mis Notas',
     href:  '/dashboard/teacher/notas',
@@ -79,7 +84,7 @@ export default function TeacherLayout({ children }: { children: React.ReactNode 
           </div>
           {!collapsed && (
             <div className="brand-info">
-              <span className="brand-name">Maestro Tutor</span>
+              <span className="brand-name">Maestro</span>
               <span className="brand-loc">U.E. Naciones Unidas</span>
             </div>
           )}
@@ -94,7 +99,7 @@ export default function TeacherLayout({ children }: { children: React.ReactNode 
         {!collapsed && (
           <div className="user-info">
             <span className="user-email">{user.email}</span>
-            <span className="user-role-badge">Maestro Tutor</span>
+            <span className="user-role-badge">Maestro</span>
           </div>
         )}
       </div>
@@ -145,7 +150,7 @@ export default function TeacherLayout({ children }: { children: React.ReactNode 
             <BookOpen size={16} color="#633806"/>
             {menuItems.find(i => pathname === i.href || pathname.startsWith(i.href + '/'))?.label || 'Mi Curso'}
           </div>
-          <div className="header-badge">Maestro Tutor</div>
+          <div className="header-badge">Maestro</div>
         </header>
 
         <main className="main-content">{children}</main>

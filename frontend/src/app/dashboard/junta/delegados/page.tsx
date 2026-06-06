@@ -1,13 +1,9 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { Users, X, Check, UserPlus, UserMinus, BookOpen } from 'lucide-react'
+import { Users, X, Check, UserPlus, UserMinus, BookOpen, RefreshCw, Copy } from 'lucide-react'
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000'
-
-interface Teacher {
-  id: number; firstName: string; lastName: string
-}
 
 interface Course {
   id:            number
@@ -18,12 +14,14 @@ interface Course {
   shift:         string
   delegateId:    number | null
   delegate: {
-    id:        number
-    firstName: string
-    lastName:  string
-    ci?:       string
-    phone?:    string
-    user?:     { email: string; role: string; isActive: boolean }
+    id:             number
+    firstName:      string
+    lastName:       string
+    ci?:            string
+    phone?:         string
+    delegateUserId?: number
+    delegateUser?:  { id: number; email: string; role: string; isActive: boolean }
+    user?:          { id: number; email: string; role: string; isActive: boolean }
   } | null
   tutor: {
     teacher: { id: number; firstName: string; lastName: string }
@@ -39,7 +37,16 @@ interface EligibleParent {
   phone?:       string
   relationType: string
   studentName:  string
-  user?:        { email: string; role: string }
+  delegateUserId?: number
+  delegateUser?:   { email: string; role: string }
+  user?:           { email: string; role: string }
+}
+
+interface Credentials {
+  accessEmail:     string
+  defaultPassword: string
+  delegateName:    string
+  courseLabel:     string
 }
 
 const GRADE_LABELS: Record<string, string> = {
@@ -68,6 +75,9 @@ export default function DelegadosPage() {
   const [selectedParent,  setSelectedParent]  = useState<number | null>(null)
   const [saving,          setSaving]          = useState(false)
   const [filterLevel,     setFilterLevel]     = useState('')
+  const [working,         setWorking]         = useState<number | null>(null)
+  const [creds,           setCreds]           = useState<Credentials | null>(null)
+  const [copied,          setCopied]          = useState(false)
 
   const token = typeof window !== 'undefined' ? localStorage.getItem('token') : ''
 
@@ -89,7 +99,6 @@ export default function DelegadosPage() {
     finally  { setLoading(false) }
   }
 
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { fetchCourses() }, [])
 
   const openAssignModal = async (course: Course) => {
@@ -119,15 +128,24 @@ export default function DelegadosPage() {
       })
       const data = await res.json()
       if (!res.ok) { notify(data.message, 'error'); return }
-      notify(data.message)
       setShowModal(false)
       fetchCourses()
+      if (data.accessEmail) {
+        setCreds({
+          accessEmail:     data.accessEmail,
+          defaultPassword: data.defaultPassword,
+          delegateName:    data.delegateName,
+          courseLabel:     `${GRADE_LABELS[selectedCourse.grade]} "${selectedCourse.parallel}" ${SHIFT_LABELS[selectedCourse.shift]}`,
+        })
+      } else {
+        notify(data.message)
+      }
     } catch { notify('Error de conexión', 'error') }
     finally  { setSaving(false) }
   }
 
   const handleRemove = async (course: Course) => {
-    if (!confirm(`¿Quitar al delegado de ${GRADE_LABELS[course.grade]} ${course.parallel}?`)) return
+    if (!confirm(`¿Quitar al delegado de ${GRADE_LABELS[course.grade]} "${course.parallel}"?`)) return
     try {
       const res  = await fetch(`${API_URL}/api/delegates/course/${course.id}/remove`, {
         method: 'DELETE',
@@ -139,11 +157,37 @@ export default function DelegadosPage() {
     } catch { notify('Error al remover delegado', 'error') }
   }
 
-  const filtered = filterLevel
-    ? courses.filter(c => c.level === filterLevel)
-    : courses
+  const handleResetPassword = async (course: Course) => {
+    if (!confirm(`¿Resetear la contraseña del delegado de ${GRADE_LABELS[course.grade]} "${course.parallel}"?`)) return
+    setWorking(course.id)
+    try {
+      const res  = await fetch(`${API_URL}/api/courses/${course.id}/delegate-user/reset`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` }
+      })
+      const data = await res.json()
+      if (!res.ok) { notify(data.message, 'error'); return }
+      setCreds({
+        accessEmail:     course.delegate?.delegateUser?.email || '',
+        defaultPassword: data.defaultPassword,
+        delegateName:    data.delegateName,
+        courseLabel:     `${GRADE_LABELS[course.grade]} "${course.parallel}" ${SHIFT_LABELS[course.shift]}`,
+      })
+    } catch { notify('Error de conexión', 'error') }
+    finally  { setWorking(null) }
+  }
 
-  const grouped = filtered.reduce((acc, c) => {
+  const copyCreds = () => {
+    if (!creds) return
+    navigator.clipboard.writeText(
+      `Delegado: ${creds.delegateName}\nCurso: ${creds.courseLabel}\nEmail: ${creds.accessEmail}\nContraseña: ${creds.defaultPassword}`
+    )
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
+  }
+
+  const filtered = filterLevel ? courses.filter(c => c.level === filterLevel) : courses
+  const grouped  = filtered.reduce((acc, c) => {
     if (!acc[c.level]) acc[c.level] = []
     acc[c.level].push(c)
     return acc
@@ -157,7 +201,7 @@ export default function DelegadosPage() {
       <div className="page-header">
         <div>
           <h1>Delegados de Curso</h1>
-          <p>Asignación de padres delegados por curso</p>
+          <p>Asignación y gestión de usuarios para delegados</p>
         </div>
         <div className="header-stats">
           <span className="stat-pill green"><Check size={12}/> {withDelegate} asignados</span>
@@ -168,7 +212,7 @@ export default function DelegadosPage() {
       {success && <div className="alert suc">{success}</div>}
       {error   && <div className="alert err">{error}</div>}
 
-      {/* Filtro por nivel */}
+      {/* Filtro */}
       <div className="filters-bar">
         <select value={filterLevel} onChange={e => setFilterLevel(e.target.value)}>
           <option value="">Todos los niveles</option>
@@ -195,67 +239,82 @@ export default function DelegadosPage() {
               <span className="level-count">{list.length} cursos</span>
             </div>
             <div className="courses-grid">
-              {list.map(c => (
-                <div key={c.id} className={`course-card ${c.delegateId ? 'has-delegate' : 'no-delegate'}`}>
-                  <div className="course-top">
-                    <div className="course-name">{GRADE_LABELS[c.grade]} {c.parallel}</div>
-                    <div className="course-meta">
-                      <span className="meta-badge">{SHIFT_LABELS[c.shift]}</span>
-                      {c.educationType === 'BTH' && <span className="meta-badge bth">BTH</span>}
+              {list.map(c => {
+                const isWorking   = working === c.id
+                const hasDelegate = !!c.delegateId
+                const hasUser     = !!c.delegate?.delegateUserId
+
+                return (
+                  <div key={c.id} className={`course-card ${hasDelegate ? 'has-delegate' : 'no-delegate'}`}>
+                    <div className="course-top">
+                      <div className="course-name">{GRADE_LABELS[c.grade]} {c.parallel}</div>
+                      <div className="course-meta">
+                        <span className="meta-badge">{SHIFT_LABELS[c.shift]}</span>
+                        {c.educationType === 'BTH' && <span className="meta-badge bth">BTH</span>}
+                      </div>
                     </div>
-                  </div>
 
-                  <div className="course-stats">
-                    <span className="stat"><Users size={11}/> {c._count.assignments} estudiantes</span>
-                  </div>
+                    <div className="course-stats">
+                      <span className="stat"><Users size={11}/> {c._count.assignments} estudiantes</span>
+                    </div>
 
-                  {/* Delegado */}
-                  <div className="delegate-section">
-                    <div className="delegate-label">Delegado:</div>
-                    {c.delegate ? (
-                      <div className="delegate-info">
-                        <div className="delegate-name">
-                          {c.delegate.lastName} {c.delegate.firstName}
-                        </div>
-                        {c.delegate.ci && <div className="delegate-sub">CI: {c.delegate.ci}</div>}
-                        {c.delegate.phone && <div className="delegate-sub">📱 {c.delegate.phone}</div>}
-                        {c.delegate.user && (
-                          <div className="delegate-access">
-                            <span className={`access-badge ${c.delegate.user.isActive ? 'active' : 'inactive'}`}>
-                              {c.delegate.user.isActive ? '✅ Acceso activo' : '❌ Sin acceso'}
-                            </span>
+                    {/* Delegado */}
+                    <div className="delegate-section">
+                      <div className="delegate-label">Delegado:</div>
+                      {c.delegate ? (
+                        <div className="delegate-info">
+                          <div className="delegate-name">
+                            {c.delegate.lastName} {c.delegate.firstName}
                           </div>
-                        )}
-                      </div>
-                    ) : (
-                      <div className="no-delegate-msg">Sin delegado asignado</div>
-                    )}
-                  </div>
-
-                  {/* Maestro tutor */}
-                  {c.tutor && (
-                    <div className="tutor-section">
-                      <div className="tutor-label">Maestro tutor:</div>
-                      <div className="tutor-name">
-                        {c.tutor.teacher.lastName} {c.tutor.teacher.firstName}
-                      </div>
+                          {c.delegate.ci && <div className="delegate-sub">CI: {c.delegate.ci}</div>}
+                          {c.delegate.phone && <div className="delegate-sub">📱 {c.delegate.phone}</div>}
+                          {c.delegate.delegateUser ? (
+                            <div className="delegate-access">
+                              <span className="access-badge active">✅ Usuario delegado activo</span>
+                              <div className="user-email">{c.delegate.delegateUser.email}</div>
+                            </div>
+                          ) : (
+                            <span className="access-badge inactive">❌ Sin usuario delegado</span>
+                          )}
+                        </div>
+                      ) : (
+                        <div className="no-delegate-msg">Sin delegado asignado</div>
+                      )}
                     </div>
-                  )}
 
-                  {/* Acciones */}
-                  <div className="course-actions">
-                    {c.delegate ? (
-                      <button className="btn-remove" onClick={() => handleRemove(c)}>
-                        <UserMinus size={13}/> Quitar delegado
-                      </button>
-                    ) : (
-                      <button className="btn-assign" onClick={() => openAssignModal(c)}>
-                        <UserPlus size={13}/> Asignar delegado
-                      </button>
+                    {/* Maestro tutor */}
+                    {c.tutor && (
+                      <div className="tutor-section">
+                        <div className="tutor-label">Maestro tutor:</div>
+                        <div className="tutor-name">
+                          {c.tutor.teacher.lastName} {c.tutor.teacher.firstName}
+                        </div>
+                      </div>
                     )}
+
+                    {/* Acciones */}
+                    <div className="course-actions">
+                      {hasDelegate ? (
+                        <>
+                          {hasUser && (
+                            <button className="btn-reset" onClick={() => handleResetPassword(c)} disabled={isWorking}>
+                              {isWorking ? <span className="spinsm"/> : <RefreshCw size={13}/>}
+                              Resetear password
+                            </button>
+                          )}
+                          <button className="btn-remove" onClick={() => handleRemove(c)}>
+                            <UserMinus size={13}/> Quitar delegado
+                          </button>
+                        </>
+                      ) : (
+                        <button className="btn-assign" onClick={() => openAssignModal(c)}>
+                          <UserPlus size={13}/> Asignar delegado
+                        </button>
+                      )}
+                    </div>
                   </div>
-                </div>
-              ))}
+                )
+              })}
             </div>
           </div>
         ))
@@ -292,8 +351,8 @@ export default function DelegadosPage() {
                           {p.phone && <span>📱 {p.phone}</span>}
                           <span className="student-ref">Hijo/a: {p.studentName}</span>
                         </div>
-                        {p.user && (
-                          <div className="parent-role">{p.user.role === 'DELEGATE' ? '👑 Ya es delegado' : `Rol actual: ${p.user.role}`}</div>
+                        {p.delegateUser && (
+                          <div className="parent-role">⚠️ Ya tiene usuario delegado</div>
                         )}
                       </div>
                     </label>
@@ -303,11 +362,45 @@ export default function DelegadosPage() {
             </div>
             <div className="mfoot">
               <button className="btn-outline" onClick={() => setShowModal(false)}>Cancelar</button>
-              <button className="btn-primary" onClick={handleAssign}
-                disabled={saving || !selectedParent}>
+              <button className="btn-primary" onClick={handleAssign} disabled={saving || !selectedParent}>
                 {saving ? <span className="spinsm"/> : <UserPlus size={14}/>}
                 {saving ? 'Asignando...' : 'Confirmar asignación'}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal credenciales */}
+      {creds && (
+        <div className="overlay" onClick={() => setCreds(null)}>
+          <div className="modal" onClick={e => e.stopPropagation()}>
+            <div className="mhead">
+              <h2>✅ Credenciales de acceso</h2>
+              <button onClick={() => setCreds(null)}><X size={18}/></button>
+            </div>
+            <div className="mbody">
+              <div className="info-box">
+                <strong>{creds.delegateName}</strong> — {creds.courseLabel}
+              </div>
+              <div className="cred-row">
+                <span className="cred-label">Email:</span>
+                <span className="cred-value">{creds.accessEmail}</span>
+              </div>
+              <div className="cred-row">
+                <span className="cred-label">Contraseña:</span>
+                <span className="cred-value">{creds.defaultPassword}</span>
+              </div>
+              <div className="cred-note">
+                ⚠️ Anota estas credenciales. El delegado puede cambiar su contraseña desde su perfil.
+              </div>
+            </div>
+            <div className="mfoot">
+              <button className="btn-outline" onClick={copyCreds}>
+                {copied ? <Check size={14}/> : <Copy size={14}/>}
+                {copied ? 'Copiado' : 'Copiar credenciales'}
+              </button>
+              <button className="btn-primary" onClick={() => setCreds(null)}>Entendido</button>
             </div>
           </div>
         </div>
@@ -347,17 +440,21 @@ export default function DelegadosPage() {
         .delegate-label{font-size:10px;font-weight:700;color:#6B8BB0;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px}
         .delegate-name{font-size:13px;font-weight:600;color:#1A3A7C}
         .delegate-sub{font-size:11px;color:#6B8BB0;margin-top:2px}
-        .delegate-access{margin-top:4px}
+        .delegate-access{margin-top:4px;display:flex;flex-direction:column;gap:2px}
         .access-badge{font-size:10px;font-weight:500}
         .access-badge.active{color:#0F6E56}
         .access-badge.inactive{color:#C0392B}
+        .user-email{font-size:10px;color:#6B8BB0;font-family:monospace}
         .no-delegate-msg{font-size:12px;color:#C0392B;font-style:italic}
         .tutor-section{background:#FFFBEA;border:1px solid #F5C518;border-radius:8px;padding:8px}
         .tutor-label{font-size:10px;font-weight:700;color:#7A6000;text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px}
         .tutor-name{font-size:12px;font-weight:500;color:#7A6000}
-        .course-actions{margin-top:4px}
+        .course-actions{display:flex;flex-direction:column;gap:6px;margin-top:4px}
         .btn-assign{display:flex;align-items:center;gap:5px;width:100%;padding:8px 12px;background:#0F6E56;color:#fff;border:none;border-radius:7px;font-size:12px;font-weight:500;cursor:pointer;justify-content:center}
         .btn-assign:hover{background:#0A5040}
+        .btn-reset{display:flex;align-items:center;gap:5px;width:100%;padding:8px 12px;background:#F0F6FC;color:#1A3A7C;border:1.5px solid #CBE0F0;border-radius:7px;font-size:12px;font-weight:500;cursor:pointer;justify-content:center}
+        .btn-reset:hover:not(:disabled){background:#E0ECF8}
+        .btn-reset:disabled{opacity:.6;cursor:not-allowed}
         .btn-remove{display:flex;align-items:center;gap:5px;width:100%;padding:8px 12px;background:#FFF0F0;color:#C0392B;border:1px solid #FFBBBB;border-radius:7px;font-size:12px;font-weight:500;cursor:pointer;justify-content:center}
         .btn-remove:hover{background:#FFE0E0}
         .overlay{position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:500;display:flex;align-items:center;justify-content:center;padding:16px}
@@ -380,14 +477,18 @@ export default function DelegadosPage() {
         .parent-name{font-size:13px;font-weight:600;color:#1A3A7C}
         .parent-meta{display:flex;gap:10px;font-size:11px;color:#6B8BB0;flex-wrap:wrap}
         .student-ref{color:#4A9FD4;font-weight:500}
-        .parent-role{font-size:11px;color:#0F6E56;font-weight:500}
+        .parent-role{font-size:11px;color:#BA7517;font-weight:500}
+        .cred-row{display:flex;align-items:center;gap:10px;background:#F0F6FC;border:1px solid #CBE0F0;border-radius:8px;padding:10px 14px}
+        .cred-label{font-size:12px;font-weight:600;color:#6B8BB0;min-width:80px;text-transform:uppercase;letter-spacing:.5px}
+        .cred-value{font-size:14px;font-weight:600;color:#1A3A7C;font-family:monospace;word-break:break-all}
+        .cred-note{font-size:12px;color:#BA7517;background:#FFFBEA;border:1px solid #F5C518;border-radius:8px;padding:10px;line-height:1.5}
         .btn-primary{display:flex;align-items:center;gap:6px;padding:9px 16px;background:#0F6E56;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:500;cursor:pointer}
         .btn-primary:hover:not(:disabled){background:#0A5040}
         .btn-primary:disabled{opacity:.6;cursor:not-allowed}
         .btn-outline{display:flex;align-items:center;gap:6px;padding:9px 14px;background:#fff;color:#1A3A7C;border:1.5px solid #CBE0F0;border-radius:8px;font-size:13px;cursor:pointer}
         .btn-outline:hover{background:#F0F6FC}
         .spinner{width:24px;height:24px;border:2px solid rgba(15,110,86,.2);border-top-color:#0F6E56;border-radius:50%;animation:spin .7s linear infinite}
-        .spinsm{width:14px;height:14px;border:2px solid rgba(255,255,255,.3);border-top-color:#fff;border-radius:50%;animation:spin .7s linear infinite;display:inline-block}
+        .spinsm{width:12px;height:12px;border:2px solid rgba(255,255,255,.3);border-top-color:currentColor;border-radius:50%;animation:spin .7s linear infinite;display:inline-block}
         @keyframes spin{to{transform:rotate(360deg)}}
         @media(max-width:600px){.courses-grid{grid-template-columns:1fr}}
       `}</style>

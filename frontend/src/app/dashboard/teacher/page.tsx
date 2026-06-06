@@ -2,292 +2,234 @@
 
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Users, DollarSign, AlertCircle, CheckCircle, BookOpen, Phone, MessageCircle, Bell } from 'lucide-react'
+import { BookOpen, Users, Clock, GraduationCap, ChevronRight } from 'lucide-react'
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000'
 
-interface Parent {
-  id:        number
-  firstName: string
-  lastName:  string
-  phone?:    string
-  ci?:       string
-  charges:   { amount: number; paidAmount: number; status: string }[]
-}
-
-interface Student {
-  id:        number
-  firstName: string
-  lastName:  string
-  ci?:       string
-  rude?:     string
-  gender:    string
-  isActive:  boolean
-  parents:   { relationType: string; isTutor: boolean; parent: Parent }[]
-}
-
 interface Assignment {
-  id:      number
-  student: Student
-}
-
-interface Delegate {
-  id:        number
-  firstName: string
-  lastName:  string
-  phone?:    string
-  ci?:       string
-}
-
-interface Meeting {
-  id:          number
-  title:       string
-  date:        string
-  attendances: { present: boolean; parent: { firstName: string; lastName: string } }[]
-}
-
-interface Course {
-  id:            number
-  level:         string
-  grade:         string
-  parallel:      string
+  subjectId:    number
+  subjectName:  string
+  campo:        string | null
+  courseId:     number
+  courseLabel:  string
+  grade:        string
+  parallel:     string
+  shift:        string
   educationType: string
-  shift:         string
-  assignments:   Assignment[]
-  delegate?:     Delegate
-  meetings:      Meeting[]
+  hoursPerWeek: number
 }
 
-const GRADE_LABELS: Record<string, string> = { PRIMERO: '1°', SEGUNDO: '2°', TERCERO: '3°', CUARTO: '4°', QUINTO: '5°', SEXTO: '6°' }
-const LEVEL_LABELS: Record<string, string> = { INICIAL: 'Inicial', PRIMARIA: 'Primaria', SECUNDARIA: 'Secundaria' }
-const SHIFT_LABELS: Record<string, string> = { MORNING: 'Mañana', AFTERNOON: 'Tarde', NIGHT: 'Noche' }
+interface Workload {
+  totalHoursPerWeek: number
+  assignments:       Assignment[]
+}
 
-const fmt     = (n: number) => `Bs. ${n.toFixed(2)}`
-const fmtDate = (d: string) => new Date(d).toLocaleDateString('es-BO', { day: '2-digit', month: 'short', year: 'numeric' })
+const CAMPO_COLORS: Record<string, string> = {
+  VIDA_TIERRA_TERRITORIO:        '#E1F5EE',
+  COMUNIDAD_SOCIEDAD:            '#E0ECF8',
+  COSMOS_PENSAMIENTO:            '#F3E8FF',
+  CIENCIA_TECNOLOGIA_PRODUCCION: '#FFF3E0',
+}
+const CAMPO_TEXT: Record<string, string> = {
+  VIDA_TIERRA_TERRITORIO:        '#0F6E56',
+  COMUNIDAD_SOCIEDAD:            '#1A3A7C',
+  COSMOS_PENSAMIENTO:            '#6B21A8',
+  CIENCIA_TECNOLOGIA_PRODUCCION: '#633806',
+}
+const CAMPO_LABELS: Record<string, string> = {
+  VIDA_TIERRA_TERRITORIO:        'Vida, Tierra y Territorio',
+  COMUNIDAD_SOCIEDAD:            'Comunidad y Sociedad',
+  COSMOS_PENSAMIENTO:            'Cosmos y Pensamiento',
+  CIENCIA_TECNOLOGIA_PRODUCCION: 'Ciencia, Tecnología y Producción',
+}
+const GRADES: Record<string, string> = {
+  PRIMERO: '1°', SEGUNDO: '2°', TERCERO: '3°',
+  CUARTO: '4°', QUINTO: '5°', SEXTO: '6°',
+}
+const SHIFTS: Record<string, string> = {
+  MORNING: 'Mañana', AFTERNOON: 'Tarde', NIGHT: 'Noche',
+}
 
 export default function TeacherDashboard() {
   const router  = useRouter()
-  const [course,  setCourse]  = useState<Course | null>(null)
+  const [data,    setData]    = useState<Workload | null>(null)
   const [loading, setLoading] = useState(true)
   const [error,   setError]   = useState('')
 
   const token = typeof window !== 'undefined' ? localStorage.getItem('token') : ''
 
   useEffect(() => {
-    const fetchCourse = async () => {
+    const fetch_ = async () => {
       setLoading(true)
       try {
-        const res  = await fetch(`${API_URL}/api/teachers/my-course`, {
+        const res  = await fetch(`${API_URL}/api/teachers/my-workload`, {
           headers: { Authorization: `Bearer ${token}` }
         })
-        const data = await res.json()
-        if (res.ok) setCourse(data)
-        else setError(data.message)
+        const d = await res.json()
+        if (res.ok) setData(d)
+        else setError(d.message || 'Error al cargar datos')
       } catch { setError('Error de conexión') }
       finally  { setLoading(false) }
     }
-    fetchCourse()
+    fetch_()
   }, [])
 
   if (loading) return <div className="center"><div className="spinner"/></div>
   if (error)   return <div className="center"><p className="err-msg">{error}</p></div>
-  if (!course) return null
+  if (!data)   return null
 
-  // Calcular resumen
-  const allTutors = new Map<number, Parent>()
-  course.assignments.forEach(a => {
-    a.student.parents.forEach(ps => {
-      if (ps.isTutor && !allTutors.has(ps.parent.id)) {
-        allTutors.set(ps.parent.id, ps.parent)
-      }
-    })
-  })
+  // Agrupar asignaciones por curso
+  const byCourse = data.assignments.reduce<Record<number, { label: string; grade: string; parallel: string; shift: string; educationType: string; items: Assignment[] }>>((acc, a) => {
+    if (!acc[a.courseId]) acc[a.courseId] = {
+      label: a.courseLabel, grade: a.grade,
+      parallel: a.parallel, shift: a.shift,
+      educationType: a.educationType, items: []
+    }
+    acc[a.courseId].items.push(a)
+    return acc
+  }, {})
 
-  const tutors      = Array.from(allTutors.values())
-  const totalDebt   = tutors.reduce((s, p) => s + p.charges.reduce((x, c) => x + c.amount, 0), 0)
-  const totalPaid   = tutors.reduce((s, p) => s + p.charges.reduce((x, c) => x + c.paidAmount, 0), 0)
-  const withDebt    = tutors.filter(p => p.charges.some(c => c.status === 'PENDIENTE' || c.status === 'PARCIAL')).length
-  const varones     = course.assignments.filter(a => a.student.gender === 'MASCULINO').length
-  const mujeres     = course.assignments.filter(a => a.student.gender === 'FEMENINO').length
+  const courses = Object.entries(byCourse)
 
-  const openWhatsApp = (phone: string, name: string) => {
-    const msg = encodeURIComponent(`Estimado/a ${name}, le contactamos desde la U.E. Naciones Unidas.`)
-    window.open(`https://wa.me/591${phone.replace(/\D/g,'')}?text=${msg}`, '_blank')
-  }
+  // Agrupar por materia para el resumen
+  const bySubject = data.assignments.reduce<Record<string, number>>((acc, a) => {
+    acc[a.subjectName] = (acc[a.subjectName] || 0) + 1
+    return acc
+  }, {})
 
   return (
     <div>
-      {/* Header del curso */}
-      <div className="course-header">
-        <div className="course-avatar">{GRADE_LABELS[course.grade]}{course.parallel}</div>
-        <div className="course-info">
-          <h1>{LEVEL_LABELS[course.level]} — {GRADE_LABELS[course.grade]} {course.parallel}</h1>
-          <div className="course-meta">
-            <span className="meta-pill">{SHIFT_LABELS[course.shift]}</span>
-            {course.educationType === 'BTH' && <span className="meta-pill bth">BTH</span>}
-            {course.delegate && (
-              <span className="meta-pill delegate">
-                Delegado: {course.delegate.lastName} {course.delegate.firstName}
-              </span>
-            )}
-          </div>
-        </div>
-      </div>
-
       {/* Resumen */}
       <div className="summary-grid">
-        <div className="sum-card">
-          <div className="sum-icon blue"><Users size={20}/></div>
-          <div><div className="sum-label">Total estudiantes</div><div className="sum-value">{course.assignments.length}</div></div>
-        </div>
-        <div className="sum-card">
-          <div className="sum-icon blue"><Users size={20}/></div>
-          <div><div className="sum-label">Varones / Mujeres</div><div className="sum-value">{varones} / {mujeres}</div></div>
-        </div>
-        <div className="sum-card">
-          <div className="sum-icon red"><AlertCircle size={20}/></div>
-          <div><div className="sum-label">Con deuda</div><div className="sum-value">{withDebt}</div></div>
-        </div>
-        <div className="sum-card">
-          <div className="sum-icon green"><CheckCircle size={20}/></div>
-          <div><div className="sum-label">Recaudado</div><div className="sum-value">{fmt(totalPaid)}</div></div>
-        </div>
-      </div>
-
-      {/* Acciones rápidas */}
-      <div className="quick-actions">
-        <button className="action-btn blue" onClick={() => router.push('/dashboard/teacher/tesoreria')}>
-          <DollarSign size={18}/> Estado de cuentas
-        </button>
-        <button className="action-btn orange" onClick={() => router.push('/dashboard/teacher/reuniones')}>
-          <Users size={18}/> Convocar reunión
-        </button>
-        <button className="action-btn green" onClick={() => router.push('/dashboard/teacher/notificaciones')}>
-          <Bell size={18}/> Notificaciones
-        </button>
-      </div>
-
-      <div className="two-cols">
-        {/* Lista de estudiantes */}
-        <div className="section-card">
-          <div className="section-title"><BookOpen size={15}/> Estudiantes ({course.assignments.length})</div>
-          <div className="students-list">
-            {course.assignments.map((a, i) => {
-              const tutor = a.student.parents.find(ps => ps.isTutor)
-              const pendiente = tutor
-                ? tutor.parent.charges.reduce((s, c) => s + (c.amount - c.paidAmount), 0)
-                : 0
-              return (
-                <div key={a.id} className="student-item">
-                  <div className="student-num">{i + 1}</div>
-                  <div className="student-info">
-                    <div className="student-name">{a.student.lastName} {a.student.firstName}</div>
-                    <div className="student-meta">
-                      <span>{a.student.gender === 'MASCULINO' ? '👦' : '👧'}</span>
-                      {a.student.ci && <span>CI: {a.student.ci}</span>}
-                      {tutor && (
-                        <span className="tutor-ref">
-                          Tutor: {tutor.parent.lastName} {tutor.parent.firstName}
-                          {tutor.parent.phone && (
-                            <button className="wa-btn"
-                              onClick={() => openWhatsApp(tutor.parent.phone!, `${tutor.parent.lastName} ${tutor.parent.firstName}`)}>
-                              <MessageCircle size={11}/> WhatsApp
-                            </button>
-                          )}
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                  <div className={`debt-badge ${pendiente > 0 ? 'red' : 'green'}`}>
-                    {pendiente > 0 ? fmt(pendiente) : '✅'}
-                  </div>
-                </div>
-              )
-            })}
+        <div className="sum-card accent">
+          <Clock size={28} color="#fff"/>
+          <div>
+            <div className="sum-label">Horas / semana</div>
+            <div className="sum-value">{data.totalHoursPerWeek}</div>
           </div>
         </div>
-
-        {/* Últimas reuniones */}
-        <div className="section-card">
-          <div className="section-title"><Users size={15}/> Últimas reuniones</div>
-          {course.meetings.length === 0 ? (
-            <div className="no-data">No hay reuniones registradas</div>
-          ) : (
-            <div className="meetings-list">
-              {course.meetings.map(m => {
-                const pres = m.attendances.filter(a => a.present).length
-                const aus  = m.attendances.length - pres
-                return (
-                  <div key={m.id} className="meeting-item">
-                    <div className="meeting-name">{m.title}</div>
-                    <div className="meeting-date">{fmtDate(m.date)}</div>
-                    <div className="meeting-stats">
-                      <span className="stat green">✅ {pres}</span>
-                      <span className="stat red">❌ {aus}</span>
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
-          )}
+        <div className="sum-card">
+          <GraduationCap size={28} color="#1A3A7C"/>
+          <div>
+            <div className="sum-label">Cursos asignados</div>
+            <div className="sum-value">{courses.length}</div>
+          </div>
         </div>
+        <div className="sum-card">
+          <BookOpen size={28} color="#1A3A7C"/>
+          <div>
+            <div className="sum-label">Materias distintas</div>
+            <div className="sum-value">{Object.keys(bySubject).length}</div>
+          </div>
+        </div>
+        <div className="sum-card">
+          <Users size={28} color="#1A3A7C"/>
+          <div>
+            <div className="sum-label">Asignaciones</div>
+            <div className="sum-value">{data.assignments.length}</div>
+          </div>
+        </div>
+      </div>
+
+      {/* Sin asignaciones */}
+      {courses.length === 0 && (
+        <div className="empty-state">
+          <BookOpen size={40} style={{opacity:.3}}/>
+          <p>No tienes cursos asignados aún.</p>
+          <span>El administrador debe asignarte materias y cursos.</span>
+        </div>
+      )}
+
+      {/* Cursos */}
+      <div className="section-title"><GraduationCap size={16}/> Mis cursos y materias</div>
+
+      <div className="courses-list">
+        {courses.map(([courseId, course]) => (
+          <div key={courseId} className="course-card">
+            {/* Header del curso */}
+            <div className="course-header">
+              <div className="course-avatar">
+                {GRADES[course.grade]}{course.parallel}
+              </div>
+              <div className="course-info">
+                <div className="course-name">
+                  {GRADES[course.grade]} &quot;{course.parallel}&quot;
+                </div>
+                <div className="course-meta">
+                  <span className="meta-pill">{SHIFTS[course.shift]}</span>
+                  {course.educationType === 'BTH' && (
+                    <span className="meta-pill bth">BTH</span>
+                  )}
+                  <span className="meta-pill hrs">
+                    {course.items.reduce((s, i) => s + i.hoursPerWeek, 0)} hrs/sem
+                  </span>
+                </div>
+              </div>
+              <button
+                className="btn-ver"
+                onClick={() => router.push(`/dashboard/teacher/curso/${courseId}`)}
+              >
+                Ver estudiantes <ChevronRight size={14}/>
+              </button>
+            </div>
+
+            {/* Materias del curso */}
+            <div className="subjects-list">
+              {course.items.map((a, i) => (
+                <div key={i} className="subject-row">
+                  <span
+                    className="campo-tag"
+                    style={{
+                      background: CAMPO_COLORS[a.campo || ''] || '#F0F0F0',
+                      color:      CAMPO_TEXT[a.campo  || ''] || '#444',
+                    }}
+                  >
+                    {CAMPO_LABELS[a.campo || ''] || 'Sin campo'}
+                  </span>
+                  <span className="subject-name">{a.subjectName}</span>
+                  <span className="hrs-badge">{a.hoursPerWeek} hrs/sem</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        ))}
       </div>
 
       <style>{`
-        .center{display:flex;justify-content:center;align-items:center;padding:48px;color:#6B8BB0}
+        .center{display:flex;justify-content:center;align-items:center;padding:48px;color:#6B8BB0;flex-direction:column;gap:8px}
         .err-msg{color:#C0392B;font-size:14px}
-        .course-header{display:flex;align-items:center;gap:16px;margin-bottom:24px;background:#fff;border:1px solid #CBE0F0;border-radius:14px;padding:20px}
-        .course-avatar{width:64px;height:64px;border-radius:14px;background:#633806;color:#fff;display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:800;flex-shrink:0}
-        .course-info h1{font-size:20px;font-weight:800;color:#1A3A7C;margin-bottom:8px}
-        .course-meta{display:flex;gap:8px;flex-wrap:wrap}
-        .meta-pill{background:#F0F6FC;color:#633806;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:500}
-        .meta-pill.bth{background:#FFF3CC;color:#7A6000}
-        .meta-pill.delegate{background:#E1F5EE;color:#0F6E56}
-        .summary-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:16px}
+        .summary-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:24px}
         .sum-card{background:#fff;border:1px solid #CBE0F0;border-radius:12px;padding:16px;display:flex;align-items:center;gap:12px}
-        .sum-icon{padding:10px;border-radius:10px;display:flex}
-        .sum-icon.blue{background:#E0ECF8;color:#1A3A7C}
-        .sum-icon.green{background:#E1F5EE;color:#0F6E56}
-        .sum-icon.red{background:#FFF0F0;color:#C0392B}
+        .sum-card.accent{background:#1A3A7C;border-color:#1A3A7C}
+        .sum-card.accent .sum-label{color:rgba(255,255,255,0.7)}
+        .sum-card.accent .sum-value{color:#fff}
         .sum-label{font-size:11px;color:#6B8BB0;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px}
-        .sum-value{font-size:18px;font-weight:700;color:#1A3A7C}
-        .quick-actions{display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap}
-        .action-btn{display:flex;align-items:center;gap:8px;padding:10px 18px;border:none;border-radius:10px;font-size:13px;font-weight:600;cursor:pointer}
-        .action-btn.blue{background:#1A3A7C;color:#fff}
-        .action-btn.blue:hover{background:#4A9FD4}
-        .action-btn.orange{background:#633806;color:#fff}
-        .action-btn.orange:hover{background:#7A4A0A}
-        .action-btn.green{background:#0F6E56;color:#fff}
-        .action-btn.green:hover{background:#0A5040}
-        .two-cols{display:grid;grid-template-columns:1fr 1fr;gap:16px}
-        .section-card{background:#fff;border:1px solid #CBE0F0;border-radius:12px;overflow:hidden}
-        .section-title{display:flex;align-items:center;gap:8px;padding:14px 18px;border-bottom:1px solid #F0F6FC;font-size:13px;font-weight:700;color:#1A3A7C}
-        .students-list{display:flex;flex-direction:column;max-height:400px;overflow-y:auto}
-        .student-item{display:flex;align-items:flex-start;gap:10px;padding:10px 16px;border-bottom:1px solid #F0F6FC}
-        .student-item:last-child{border-bottom:none}
-        .student-num{font-size:11px;color:#6B8BB0;min-width:20px;padding-top:2px}
-        .student-info{flex:1}
-        .student-name{font-size:13px;font-weight:500;color:#1A3A7C;margin-bottom:3px}
-        .student-meta{display:flex;align-items:center;gap:8px;font-size:11px;color:#6B8BB0;flex-wrap:wrap}
-        .tutor-ref{display:flex;align-items:center;gap:5px;color:#4A9FD4}
-        .wa-btn{display:flex;align-items:center;gap:3px;background:#25D366;color:#fff;border:none;border-radius:10px;padding:2px 7px;font-size:10px;cursor:pointer}
-        .wa-btn:hover{background:#1DA851}
-        .debt-badge{font-size:11px;font-weight:600;padding:3px 8px;border-radius:10px;white-space:nowrap}
-        .debt-badge.red{background:#FFF0F0;color:#C0392B}
-        .debt-badge.green{background:#E1F5EE;color:#0F6E56}
-        .no-data{padding:20px;font-size:13px;color:#6B8BB0;font-style:italic}
-        .meetings-list{display:flex;flex-direction:column}
-        .meeting-item{padding:12px 16px;border-bottom:1px solid #F0F6FC;display:flex;flex-direction:column;gap:4px}
-        .meeting-item:last-child{border-bottom:none}
-        .meeting-name{font-size:13px;font-weight:500;color:#1A3A7C}
-        .meeting-date{font-size:11px;color:#6B8BB0}
-        .meeting-stats{display:flex;gap:8px}
-        .stat{font-size:12px;font-weight:500}
-        .stat.green{color:#0F6E56}
-        .stat.red{color:#C0392B}
-        .spinner{width:24px;height:24px;border:2px solid rgba(99,56,6,.2);border-top-color:#633806;border-radius:50%;animation:spin .7s linear infinite}
+        .sum-value{font-size:22px;font-weight:700;color:#1A3A7C}
+        .section-title{display:flex;align-items:center;gap:8px;font-size:14px;font-weight:700;color:#1A3A7C;margin-bottom:12px;text-transform:uppercase;letter-spacing:.5px}
+        .empty-state{text-align:center;padding:48px;color:#6B8BB0;display:flex;flex-direction:column;align-items:center;gap:8px;background:#fff;border:1px dashed #CBE0F0;border-radius:12px;margin-bottom:20px}
+        .empty-state p{font-size:15px;font-weight:500;color:#1A3A7C}
+        .empty-state span{font-size:13px}
+        .courses-list{display:flex;flex-direction:column;gap:14px}
+        .course-card{background:#fff;border:1px solid #CBE0F0;border-radius:12px;overflow:hidden}
+        .course-header{display:flex;align-items:center;gap:14px;padding:14px 18px;background:#F8FBFF;border-bottom:1px solid #CBE0F0}
+        .course-avatar{width:52px;height:52px;border-radius:12px;background:#1A3A7C;color:#fff;display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:800;flex-shrink:0}
+        .course-info{flex:1}
+        .course-name{font-size:16px;font-weight:700;color:#1A3A7C;margin-bottom:6px}
+        .course-meta{display:flex;gap:6px;flex-wrap:wrap}
+        .meta-pill{padding:2px 8px;border-radius:20px;font-size:11px;font-weight:500;background:#E0ECF8;color:#1A3A7C}
+        .meta-pill.bth{background:#FFFBEA;color:#BA7517}
+        .meta-pill.hrs{background:#E1F5EE;color:#0F6E56}
+        .btn-ver{display:flex;align-items:center;gap:4px;padding:7px 12px;background:#1A3A7C;color:#fff;border:none;border-radius:8px;font-size:12px;font-weight:500;cursor:pointer;white-space:nowrap;flex-shrink:0}
+        .btn-ver:hover{background:#4A9FD4}
+        .subjects-list{display:flex;flex-direction:column}
+        .subject-row{display:flex;align-items:center;gap:10px;padding:10px 18px;border-top:1px solid #F0F6FC}
+        .subject-row:hover{background:#FAFCFF}
+        .campo-tag{padding:2px 8px;border-radius:20px;font-size:11px;font-weight:500;white-space:nowrap}
+        .subject-name{flex:1;font-size:13px;color:#1A3A7C;font-weight:500}
+        .hrs-badge{background:#E0ECF8;color:#1A3A7C;border-radius:20px;padding:2px 10px;font-size:11px;font-weight:600;white-space:nowrap}
+        .spinner{width:24px;height:24px;border:2px solid rgba(26,58,124,.2);border-top-color:#1A3A7C;border-radius:50%;animation:spin .7s linear infinite}
         @keyframes spin{to{transform:rotate(360deg)}}
-        @media(max-width:768px){.two-cols{grid-template-columns:1fr}.summary-grid{grid-template-columns:1fr 1fr}}
+        @media(max-width:768px){.summary-grid{grid-template-columns:1fr 1fr}.course-header{flex-wrap:wrap}.btn-ver{width:100%}}
       `}</style>
     </div>
   )
