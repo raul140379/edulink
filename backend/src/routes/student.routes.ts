@@ -11,6 +11,8 @@ import {
   generateCredentials,
   importStudents,
   importTutors,
+  getStudentsByCourse,
+  changeEnrollment,
 } from '../controllers/student.controller'
 import { verifyToken, requirePermission } from '../middlewares/auth.middleware'
 import { Permission } from '../config/permissions'
@@ -33,5 +35,6 @@ router.post('/:id/generate-credentials', requirePermission(Permission.STUDENT_CR
 generateCredentials)
 router.post('/import', verifyToken, upload.single('file'), importStudents)
 router.post('/import-tutors', verifyToken, upload.single('file'), importTutors)
-
+router.get('/by-course/:courseId', requirePermission(Permission.STUDENT_VIEW_ALL), getStudentsByCourse)
+router.put('/:id/enroll', requirePermission(Permission.ENROLLMENT_CREATE), changeEnrollment)
 export default router

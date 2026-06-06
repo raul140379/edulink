@@ -13,6 +13,7 @@ import {
   changeTutor,
   importParents,
   changeRelation,
+  getMe,
 } from '../controllers/parent.controller'
 import { verifyToken, requirePermission } from '../middlewares/auth.middleware'
 import { Permission } from '../config/permissions'
@@ -36,5 +37,6 @@ router.post('/:id/generate-credentials', requirePermission(Permission.PARENT_CRE
 router.patch('/student/:id/change-tutor', requirePermission(Permission.PARENT_CREATE),  changeTutor)
 router.post('/import', verifyToken, upload.single('file'), importParents)
 router.patch('/:id/change-relation/:studentId', verifyToken, changeRelation)
+router.get('/me', verifyToken, getMe)
 
 export default router

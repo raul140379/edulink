@@ -8,6 +8,7 @@ import {
   assignSubjectToCourse,
   removeSubjectFromCourse,
   getCoursePlan,
+  addSubjectToGradePlan,
 } from '../controllers/subject.controller'
 
 const router = Router()
@@ -18,6 +19,7 @@ router.use(verifyToken)
 router.get('/plan/:courseId', getCoursePlan)
 router.post('/assign',        assignSubjectToCourse)
 router.delete('/assign/:id',  removeSubjectFromCourse)
+router.post('/grade-config', addSubjectToGradePlan)
 
 // Rutas genéricas DESPUÉS
 router.get('/',       getSubjects)

@@ -6,6 +6,6 @@ const router = Router()
 
 router.post('/login',           login)
 router.get('/me',               verifyToken, me)
-router.put('/change-password',  verifyToken, changePassword)
+router.put('/change-password',  verifyToken, changePassword) 
 
 export default router

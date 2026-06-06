@@ -259,6 +259,10 @@ export const assignSubjectToCourse = async (req: AuthRequest, res: Response): Pr
 
     if (existing) {
       // Actualizar el maestro (no crear duplicado)
+        if (existing.teacherId === parseInt(teacherId)) {
+    res.status(409).json({ message: 'Este maestro ya está asignado a esa materia en ese curso' })
+    return
+  }
       const updated = await prisma.teacherSubjectCourse.update({
         where: { id: existing.id },
         data:  { teacherId: parseInt(teacherId) },
@@ -308,5 +312,51 @@ export const removeSubjectFromCourse = async (req: AuthRequest, res: Response): 
   } catch (error) {
     console.error('removeSubjectFromCourse error:', error)
     res.status(500).json({ message: 'Error al eliminar asignación' })
+  }
+}
+// POST /api/subjects/grade-config — Agregar materia al plan de un grado
+export const addSubjectToGradePlan = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const { subjectId, grade, educationType, hoursPerWeek } = req.body
+
+    if (!subjectId || !grade || !educationType) {
+      res.status(400).json({ message: 'Materia, grado y tipo de educación son requeridos' })
+      return
+    }
+
+    // Verificar si ya existe
+    const existing = await prisma.subjectGradeConfig.findFirst({
+      where: {
+        subjectId:     parseInt(subjectId),
+        grade:         grade         as any,
+        educationType: educationType as any,
+      }
+    })
+
+    if (existing) {
+      res.status(409).json({ message: 'Esta materia ya está en el plan de este grado' })
+      return
+    }
+
+    const config = await prisma.subjectGradeConfig.create({
+      data: {
+        subjectId:     parseInt(subjectId),
+        grade:         grade         as any,
+        educationType: educationType as any,
+        hoursPerWeek:  hoursPerWeek ? parseInt(hoursPerWeek) : 4,
+      },
+      include: {
+        subject: { select: { id: true, name: true, campo: true } }
+      }
+    })
+
+    res.status(201).json({ message: 'Materia agregada al plan correctamente', config })
+  } catch (error: any) {
+    if (error.code === 'P2002') {
+      res.status(409).json({ message: 'Esta materia ya está en el plan de este grado' })
+      return
+    }
+    console.error('addSubjectToGradePlan error:', error)
+    res.status(500).json({ message: 'Error al agregar materia al plan' })
   }
 }

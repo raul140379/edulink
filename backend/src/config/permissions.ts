@@ -5,7 +5,9 @@ export enum Role {
   REGENTE      = 'REGENTE',
   SECRETARY    = 'SECRETARY',
   TEACHER      = 'TEACHER',
+  TEACHER_TUTOR = 'TEACHER_TUTOR', 
   DELEGATE     = 'DELEGATE',
+   JUNTA_ESCOLAR = 'JUNTA_ESCOLAR',  // ← AGREGA
   PARENT       = 'PARENT',
   STUDENT      = 'STUDENT',
   STUDENT_GOV  = 'STUDENT_GOV',
@@ -150,7 +152,20 @@ export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
     Permission.NOTIFICATION_VIEW,
     Permission.REPORT_VIEW,
   ],
-
+  [Role.TEACHER_TUTOR]: [
+  Permission.USER_EDIT_OWN,
+  Permission.STUDENT_VIEW_ALL,    // Estudiantes de su curso
+  Permission.COURSE_VIEW_OWN,     // Solo su curso asignado
+  Permission.ENROLLMENT_VIEW,
+  Permission.GRADE_CREATE,
+  Permission.GRADE_VIEW_ALL,
+  Permission.ATTENDANCE_CREATE,
+  Permission.ATTENDANCE_VIEW,
+  Permission.SCHEDULE_VIEW_OWN,
+  Permission.NOTIFICATION_SEND,
+  Permission.NOTIFICATION_VIEW,
+  Permission.REPORT_VIEW,
+],
   [Role.DELEGATE]: [
     Permission.USER_EDIT_OWN,
     Permission.PARENT_CREATE,
@@ -162,7 +177,19 @@ export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
     Permission.NOTIFICATION_VIEW,
     Permission.REPORT_VIEW,
   ],
-
+  [Role.JUNTA_ESCOLAR]: [
+  Permission.USER_EDIT_OWN,
+  Permission.PARENT_CREATE,
+  Permission.PARENT_VIEW_ALL,
+  Permission.COURSE_VIEW_ALL,
+  Permission.ENROLLMENT_VIEW,
+  Permission.CHARGE_CREATE,
+  Permission.CHARGE_VIEW_ALL,
+  Permission.NOTIFICATION_SEND,
+  Permission.NOTIFICATION_VIEW,
+  Permission.REPORT_VIEW,
+  Permission.REPORT_GENERATE,
+],
   [Role.PARENT]: [
     Permission.USER_EDIT_OWN,
     Permission.STUDENT_VIEW_OWN,    // Solo sus hijos

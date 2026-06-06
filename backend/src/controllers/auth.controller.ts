@@ -169,4 +169,4 @@ export const changePassword = async (req: AuthRequest, res: Response): Promise<v
     console.error('Change password error:', error)
     res.status(500).json({ message: 'Error interno del servidor' })
   }
-}
+} 

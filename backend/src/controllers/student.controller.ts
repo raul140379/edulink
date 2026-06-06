@@ -753,4 +753,96 @@ export const importTutors = async (req: AuthRequest, res: Response): Promise<voi
     console.error('importTutors error:', error)
     res.status(500).json({ message: 'Error al importar tutores' })
   }
+
+
+
+}
+// GET /api/students/by-course/:courseId — Estudiantes de un curso
+export const getStudentsByCourse = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const { courseId } = req.params
+
+    const activeYear = await prisma.academicYear.findFirst({ where: { isActive: true } })
+    if (!activeYear) {
+      res.status(400).json({ message: 'No hay gestión académica activa' })
+      return
+    }
+
+    const assignments = await prisma.studentAcademicAssignment.findMany({
+      where: {
+        courseId:      parseInt(courseId),
+        academicYearId: activeYear.id,
+      },
+      include: {
+        student: {
+          select: {
+            id: true, firstName: true, lastName: true,
+            ci: true, rude: true, gender: true, isActive: true,
+            parents: {
+              where: { isTutor: true },
+              include: {
+                parent: {
+                  select: {
+                    id: true, firstName: true, lastName: true, phone: true, ci: true
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      orderBy: { student: { lastName: 'asc' } }
+    })
+
+    res.json(assignments)
+  } catch (error) {
+    console.error('getStudentsByCourse error:', error)
+    res.status(500).json({ message: 'Error al obtener estudiantes del curso' })
+  }
+}
+// PUT /api/students/:id/enroll — Cambiar inscripción
+export const changeEnrollment = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const { id }      = req.params
+    const { courseId } = req.body
+
+    if (!courseId) {
+      res.status(400).json({ message: 'El curso es requerido' }); return
+    }
+
+    const activeYear = await prisma.academicYear.findFirst({ where: { isActive: true } })
+    if (!activeYear) {
+      res.status(400).json({ message: 'No hay gestión académica activa' }); return
+    }
+
+    // Eliminar inscripción actual
+    await prisma.studentAcademicAssignment.deleteMany({
+      where: { studentId: parseInt(id), academicYearId: activeYear.id }
+    })
+
+    // Crear nueva inscripción
+    const course = await prisma.course.findUnique({ where: { id: parseInt(courseId) } })
+    if (!course) {
+      res.status(404).json({ message: 'Curso no encontrado' }); return
+    }
+
+    const enrollment = await prisma.studentAcademicAssignment.create({
+      data: {
+        studentId:      parseInt(id),
+        courseId:       parseInt(courseId),
+        academicYearId: activeYear.id,
+        educationType:  course.educationType,
+        year:           activeYear.year,
+      },
+      include: {
+        course:       true,
+        academicYear: { select: { year: true } }
+      }
+    })
+
+    res.json({ message: 'Inscripción actualizada correctamente', enrollment })
+  } catch (error) {
+    console.error('changeEnrollment error:', error)
+    res.status(500).json({ message: 'Error al cambiar inscripción' })
+  }
 }

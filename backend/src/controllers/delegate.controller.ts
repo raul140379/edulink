@@ -1,6 +1,7 @@
 import { Response } from 'express'
 import { AuthRequest } from '../middlewares/auth.middleware'
 import prisma from '../lib/prisma'
+import bcrypt from 'bcryptjs'
 
 // ─────────────────────────────────────────────
 // GET /api/delegates — Listar cursos con su delegado
@@ -12,6 +13,8 @@ export const getDelegates = async (req: AuthRequest, res: Response): Promise<voi
         delegate: {
           select: {
             id: true, firstName: true, lastName: true, ci: true, phone: true,
+            delegateUserId: true,
+            delegateUser: { select: { id: true, email: true, role: true, isActive: true } },
             user: { select: { id: true, email: true, role: true, isActive: true } },
             students: {
               include: {
@@ -39,20 +42,17 @@ export const getDelegates = async (req: AuthRequest, res: Response): Promise<voi
 
 // ─────────────────────────────────────────────
 // GET /api/delegates/course/:courseId/eligible-parents
-// Padres elegibles para ser delegados de un curso
 // ─────────────────────────────────────────────
 export const getEligibleParents = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const { courseId } = req.params
 
-    // Obtener la gestión activa
     const activeYear = await prisma.academicYear.findFirst({ where: { isActive: true } })
     if (!activeYear) {
       res.status(404).json({ message: 'No hay gestión académica activa' })
       return
     }
 
-    // Obtener estudiantes inscritos en este curso en la gestión activa
     const assignments = await prisma.studentAcademicAssignment.findMany({
       where: { courseId: parseInt(courseId), academicYearId: activeYear.id },
       include: {
@@ -63,6 +63,8 @@ export const getEligibleParents = async (req: AuthRequest, res: Response): Promi
                 parent: {
                   select: {
                     id: true, firstName: true, lastName: true, ci: true, phone: true,
+                    delegateUserId: true,
+                    delegateUser: { select: { id: true, email: true, role: true } },
                     user: { select: { id: true, email: true, role: true } }
                   }
                 }
@@ -73,12 +75,11 @@ export const getEligibleParents = async (req: AuthRequest, res: Response): Promi
       }
     })
 
-    // Extraer padres únicos de los estudiantes del curso
     const parentsMap = new Map()
     for (const assignment of assignments) {
       for (const ps of assignment.student.parents) {
         if (ps.isTutor && !parentsMap.has(ps.parent.id)) {
-            parentsMap.set(ps.parent.id, {
+          parentsMap.set(ps.parent.id, {
             ...ps.parent,
             relationType: ps.relationType,
             studentName: `${assignment.student.lastName} ${assignment.student.firstName}`
@@ -96,7 +97,6 @@ export const getEligibleParents = async (req: AuthRequest, res: Response): Promi
 
 // ─────────────────────────────────────────────
 // POST /api/delegates/course/:courseId/assign
-// Asignar delegado a un curso
 // ─────────────────────────────────────────────
 export const assignDelegate = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
@@ -108,24 +108,20 @@ export const assignDelegate = async (req: AuthRequest, res: Response): Promise<v
       return
     }
 
-    // Verificar que el curso existe
     const course = await prisma.course.findUnique({ where: { id: parseInt(courseId) } })
     if (!course) {
       res.status(404).json({ message: 'Curso no encontrado' })
       return
     }
 
-    // Verificar que el padre existe
     const parent = await prisma.parent.findUnique({
       where: { id: parseInt(parentId) },
-      include: { user: true }
     })
     if (!parent) {
       res.status(404).json({ message: 'Padre no encontrado' })
       return
     }
 
-    // Verificar que el padre tiene un hijo en este curso
     const activeYear = await prisma.academicYear.findFirst({ where: { isActive: true } })
     if (!activeYear) {
       res.status(404).json({ message: 'No hay gestión académica activa' })
@@ -134,7 +130,7 @@ export const assignDelegate = async (req: AuthRequest, res: Response): Promise<v
 
     const hasStudentInCourse = await prisma.studentAcademicAssignment.findFirst({
       where: {
-        courseId:      parseInt(courseId),
+        courseId:       parseInt(courseId),
         academicYearId: activeYear.id,
         student: {
           parents: { some: { parentId: parseInt(parentId) } }
@@ -147,34 +143,38 @@ export const assignDelegate = async (req: AuthRequest, res: Response): Promise<v
       return
     }
 
-    // Si el padre ya tiene un usuario con rol DELEGATE, actualizar
-    // Si no tiene usuario, crear uno
-    let userId = parent.userId
-
-    if (!userId) {
-      // Crear usuario para el padre con rol DELEGATE
-      const email    = parent.email || `delegado.${parent.lastName.toLowerCase()}.${parent.firstName.toLowerCase()}@nnuu.edu.bo`
-      const bcrypt   = require('bcryptjs')
-      const password = await bcrypt.hash(`delegado${new Date().getFullYear()}`, 10)
-
-      const newUser = await prisma.user.create({
-        data: { email, password, role: 'DELEGATE', isActive: true }
-      })
-
-      // Vincular usuario al padre
-      await prisma.parent.update({
-        where: { id: parseInt(parentId) },
-        data:  { userId: newUser.id }
-      })
-
-      userId = newUser.id
-    } else {
-      // Actualizar rol del usuario existente a DELEGATE
-      await prisma.user.update({
-        where: { id: userId },
-        data:  { role: 'DELEGATE' }
-      })
+    // Verificar si ya tiene usuario delegado para este curso
+    if (parent.delegateUserId) {
+      res.status(409).json({ message: 'Este padre ya tiene un usuario delegado creado' })
+      return
     }
+
+    // Crear usuario delegado nuevo separado
+    const gradeMap: Record<string, string> = {
+      PRIMERO: '1', SEGUNDO: '2', TERCERO: '3',
+      CUARTO: '4', QUINTO: '5', SEXTO: '6'
+    }
+    const gradeNum  = gradeMap[course.grade] || course.grade.toLowerCase()
+    const parallel  = course.parallel.toLowerCase()
+    let delegateEmail = `delegado.${gradeNum}${parallel}@nnuu.edu.bo`
+    let counter = 2
+    while (await prisma.user.findUnique({ where: { email: delegateEmail } })) {
+      delegateEmail = `delegado.${gradeNum}${parallel}${counter}@nnuu.edu.bo`
+      counter++
+    }
+
+    const rawPassword = `delegado${new Date().getFullYear()}`
+    const hashed      = await bcrypt.hash(rawPassword, 10)
+
+    const delegateUser = await prisma.user.create({
+      data: { email: delegateEmail, password: hashed, role: 'DELEGATE', isActive: true }
+    })
+
+    // Vincular usuario delegado al padre
+    await prisma.parent.update({
+      where: { id: parseInt(parentId) },
+      data:  { delegateUserId: delegateUser.id }
+    })
 
     // Asignar delegado al curso
     const updatedCourse = await prisma.course.update({
@@ -186,8 +186,11 @@ export const assignDelegate = async (req: AuthRequest, res: Response): Promise<v
     })
 
     res.json({
-      message:  `${parent.firstName} ${parent.lastName} asignado como delegado del curso`,
-      course:   updatedCourse,
+      message:         `${parent.lastName} ${parent.firstName} asignado como delegado del curso`,
+      course:          updatedCourse,
+      accessEmail:     delegateEmail,
+      defaultPassword: rawPassword,
+      delegateName:    `${parent.lastName} ${parent.firstName}`,
     })
   } catch (error) {
     console.error('assignDelegate error:', error)
@@ -197,7 +200,6 @@ export const assignDelegate = async (req: AuthRequest, res: Response): Promise<v
 
 // ─────────────────────────────────────────────
 // DELETE /api/delegates/course/:courseId/remove
-// Quitar delegado de un curso
 // ─────────────────────────────────────────────
 export const removeDelegate = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
@@ -205,7 +207,7 @@ export const removeDelegate = async (req: AuthRequest, res: Response): Promise<v
 
     const course = await prisma.course.findUnique({
       where:   { id: parseInt(courseId) },
-      include: { delegate: { include: { user: true } } }
+      include: { delegate: true }
     })
 
     if (!course) {
@@ -218,19 +220,22 @@ export const removeDelegate = async (req: AuthRequest, res: Response): Promise<v
       return
     }
 
+    // Eliminar usuario delegado si existe
+    if (course.delegate?.delegateUserId) {
+      await prisma.parent.update({
+        where: { id: course.delegate.id },
+        data:  { delegateUserId: null }
+      })
+      await prisma.user.delete({
+        where: { id: course.delegate.delegateUserId }
+      })
+    }
+
     // Quitar delegado del curso
     await prisma.course.update({
       where: { id: parseInt(courseId) },
       data:  { delegateId: null }
     })
-
-    // Cambiar rol del usuario de DELEGATE a PARENT
-    if (course.delegate?.user) {
-      await prisma.user.update({
-        where: { id: course.delegate.user.id },
-        data:  { role: 'PARENT' }
-      })
-    }
 
     res.json({ message: 'Delegado removido correctamente' })
   } catch (error) {
@@ -241,22 +246,19 @@ export const removeDelegate = async (req: AuthRequest, res: Response): Promise<v
 
 // ─────────────────────────────────────────────
 // GET /api/delegates/my-course
-// Obtener el curso asignado al delegado logueado
 // ─────────────────────────────────────────────
 export const getMyCourse = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const userId = req.userId
 
-    // Obtener el padre vinculado a este usuario
-    const parent = await prisma.parent.findUnique({
-      where: { userId },
+    // Buscar por delegateUserId (usuario delegado separado)
+    const parent = await prisma.parent.findFirst({
+      where: { delegateUserId: userId },
       include: {
         delegateCourse: {
           include: {
             assignments: {
-              where: {
-                academicYear: { isActive: true }
-              },
+              where: { academicYear: { isActive: true } },
               include: {
                 student: {
                   select: {

@@ -223,3 +223,19 @@ export const resetPassword = async (req: AuthRequest, res: Response): Promise<vo
     res.status(500).json({ message: 'Error al restablecer contraseña' })
   }
 }
+// POST /api/users/reset-by-email
+export const resetByEmail = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const { email, password } = req.body
+    if (!email || !password) {
+      res.status(400).json({ message: 'Email y contraseña son requeridos' }); return
+    }
+    const user = await prisma.user.findUnique({ where: { email } })
+    if (!user) { res.status(404).json({ message: 'Usuario no encontrado' }); return }
+    const hashed = await bcrypt.hash(password, 10)
+    await prisma.user.update({ where: { email }, data: { password: hashed } })
+    res.json({ message: 'Contraseña actualizada correctamente' })
+  } catch (error) {
+    res.status(500).json({ message: 'Error al resetear contraseña' })
+  }
+}

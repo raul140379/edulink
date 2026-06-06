@@ -16,6 +16,7 @@ enum Role {
   DIRECTOR       // Director de turno
   REGENTE        // Regente / subdirector
   TEACHER        // Maestro
+  TEACHER_TUTOR // Maestro tutor
   DELEGATE       // Delegado de curso (padre designado por el curso)
   JUNTA_ESCOLAR  // Directorio de la junta escolar - responsable económico
   SECRETARY      // Secretaria de la U.E
@@ -124,7 +125,6 @@ enum NotificationType {
 // ─────────────────────────────────────────────
 // USUARIOS Y SEGURIDAD
 // ─────────────────────────────────────────────
-
 model User {
   id        Int       @id @default(autoincrement())
   email     String    @unique
@@ -133,8 +133,10 @@ model User {
   isActive  Boolean   @default(true)
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt  
-  parent        Parent?
-  teacher       Teacher?
+  parent         Parent?  @relation("ParentUser")
+  parentDelegate Parent?  @relation("ParentDelegate")
+  teacher        Teacher? @relation("TeacherUser")
+  teacherTutor   Teacher? @relation("TeacherTutor")
   student       Student?
   staff         Staff?
   director      ShiftDirector?
@@ -233,7 +235,9 @@ model Parent {
   createdAt DateTime        @default(now())
   updatedAt DateTime        @updatedAt
   userId    Int?            @unique
-  user      User?           @relation(fields: [userId], references: [id])
+user      User?           @relation("ParentUser", fields: [userId], references: [id])
+delegateUserId  Int?      @unique
+delegateUser    User?     @relation("ParentDelegate", fields: [delegateUserId], references: [id])
   students      ParentStudent[]
   charges       Charge[]
   payments      Payment[]
@@ -275,7 +279,6 @@ model ParentStudent {
   student      Student      @relation(fields: [studentId], references: [id])
   @@unique([parentId, studentId])
 }
-
 model Teacher {
   id        Int       @id @default(autoincrement())
   firstName String
@@ -284,15 +287,17 @@ model Teacher {
   phone     String?
   email     String?   @unique
   specialty String?
-  birthDate DateTime?  // Fecha de nacimiento
-  hoursLoad Int?      // Carga horaria mensual del maestro
-  gender     String?   // MASCULINO | FEMENINO
+  birthDate DateTime?
+  hoursLoad Int?
+  gender     String?
   isActive  Boolean   @default(true)
   createdAt DateTime  @default(now())
   userId      Int       @unique
-  user        User      @relation(fields: [userId], references: [id])
+  user        User      @relation("TeacherUser", fields: [userId], references: [id])
+  tutorUserId Int?      @unique
+  tutorUser   User?     @relation("TeacherTutor", fields: [tutorUserId], references: [id])
   assignments TeacherSubjectCourse[]
-  tutorCourse CourseTutor?           // Maestro tutor de un curso
+  tutorCourse CourseTutor?
   notas     Nota[]
   specialties TeacherSpecialty[]
 }

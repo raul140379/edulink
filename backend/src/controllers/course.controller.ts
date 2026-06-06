@@ -52,11 +52,17 @@ export const getCourseById = async (req: AuthRequest, res: Response): Promise<vo
             subject: { select: { id: true, name: true, code: true } },
           }
         },
-         tutor: {
-            include: {
-            teacher: { select: { id: true, firstName: true, lastName: true } }
-          }
-        },
+       tutor: {
+  include: {
+    teacher: { 
+      select: { 
+        id: true, firstName: true, lastName: true,
+        tutorUserId: true,
+        tutorUser: { select: { email: true, isActive: true } }
+      } 
+    }
+  }
+},
         _count: { select: { assignments: true } }
       }
     })
@@ -346,5 +352,158 @@ export const removeCourseTutor = async (req: AuthRequest, res: Response): Promis
   } catch (error) {
     console.error('removeCourseTutor error:', error)
     res.status(500).json({ message: 'Error al remover tutor' })
+  }
+}
+import bcrypt from 'bcryptjs'
+
+// POST /api/courses/:id/delegate-user
+export const createDelegateUser = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const { id } = req.params
+    const course = await prisma.course.findUnique({
+      where: { id: parseInt(id) },
+      include: { delegate: true }
+    })
+    if (!course) { res.status(404).json({ message: 'Curso no encontrado' }); return }
+    if (!course.delegate) { res.status(400).json({ message: 'Este curso no tiene delegado asignado' }); return }
+    if (course.delegate.delegateUserId) { res.status(409).json({ message: 'Este delegado ya tiene usuario creado' }); return }
+
+    const gradeMap: Record<string, string> = {
+      PRIMERO: '1', SEGUNDO: '2', TERCERO: '3', CUARTO: '4', QUINTO: '5', SEXTO: '6'
+    }
+    const gradeNum = gradeMap[course.grade] || course.grade.toLowerCase()
+    const parallel = course.parallel.toLowerCase()
+    let email = `delegado.${gradeNum}${parallel}@nnuu.edu.bo`
+    let counter = 2
+    while (await prisma.user.findUnique({ where: { email } })) {
+      email = `delegado.${gradeNum}${parallel}${counter}@nnuu.edu.bo`
+      counter++
+    }
+
+    const rawPassword = `delegado${new Date().getFullYear()}`
+    const hashed = await bcrypt.hash(rawPassword, 10)
+    const user = await prisma.user.create({
+      data: { email, password: hashed, role: 'DELEGATE', isActive: true }
+    })
+    await prisma.parent.update({
+      where: { id: course.delegate.id },
+      data: { delegateUserId: user.id }
+    })
+    res.status(201).json({
+      message: 'Usuario delegado creado correctamente',
+      accessEmail: email,
+      defaultPassword: rawPassword,
+      delegateName: `${course.delegate.lastName} ${course.delegate.firstName}`,
+    })
+  } catch (error) {
+    res.status(500).json({ message: 'Error al crear usuario delegado' })
+  }
+}
+
+// POST /api/courses/:id/delegate-user/reset
+export const resetDelegatePassword = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const { id } = req.params
+    const course = await prisma.course.findUnique({
+      where: { id: parseInt(id) },
+      include: { delegate: true }
+    })
+    if (!course) { res.status(404).json({ message: 'Curso no encontrado' }); return }
+    if (!course.delegate) { res.status(400).json({ message: 'Este curso no tiene delegado asignado' }); return }
+    if (!course.delegate.delegateUserId) { res.status(400).json({ message: 'El delegado no tiene usuario creado aún' }); return }
+
+    const rawPassword = `delegado${new Date().getFullYear()}`
+    const hashed = await bcrypt.hash(rawPassword, 10)
+    await prisma.user.update({
+      where: { id: course.delegate.delegateUserId },
+      data: { password: hashed }
+    })
+    res.json({
+      message: 'Contraseña reseteada correctamente',
+      defaultPassword: rawPassword,
+      delegateName: `${course.delegate.lastName} ${course.delegate.firstName}`,
+    })
+  } catch (error) {
+    res.status(500).json({ message: 'Error al resetear contraseña' })
+  }
+}
+// POST /api/courses/:id/tutor-user
+export const createTutorUser = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const { id } = req.params
+    const course = await prisma.course.findUnique({
+      where: { id: parseInt(id) },
+      include: { tutor: { include: { teacher: true } } }
+    })
+    if (!course) { res.status(404).json({ message: 'Curso no encontrado' }); return }
+    if (!course.tutor) { res.status(400).json({ message: 'Este curso no tiene maestro tutor asignado' }); return }
+    if (course.tutor.teacher.tutorUserId) { res.status(409).json({ message: 'Este maestro tutor ya tiene usuario creado' }); return }
+
+    const gradeMap: Record<string, string> = {
+      PRIMERO: '1', SEGUNDO: '2', TERCERO: '3', CUARTO: '4', QUINTO: '5', SEXTO: '6'
+    }
+    const gradeNum  = gradeMap[course.grade] || course.grade.toLowerCase()
+    const parallel  = course.parallel.toLowerCase()
+    let email       = `tutor.${gradeNum}${parallel}@nnuu.edu.bo`
+    let counter     = 2
+    while (await prisma.user.findUnique({ where: { email } })) {
+      email = `tutor.${gradeNum}${parallel}${counter}@nnuu.edu.bo`
+      counter++
+    }
+
+    const rawPassword = `tutor${gradeNum}${course.parallel.toUpperCase()}${new Date().getFullYear()}`
+    const hashed      = await bcrypt.hash(rawPassword, 10)
+    const user        = await prisma.user.create({
+      data: { email, password: hashed, role: 'TEACHER_TUTOR', isActive: true }
+    })
+
+    await prisma.teacher.update({
+      where: { id: course.tutor.teacher.id },
+      data:  { tutorUserId: user.id }
+    })
+
+    res.status(201).json({
+      message:         'Usuario tutor creado correctamente',
+      accessEmail:     email,
+      defaultPassword: rawPassword,
+      tutorName:       `${course.tutor.teacher.lastName} ${course.tutor.teacher.firstName}`,
+    })
+  } catch (error) {
+    res.status(500).json({ message: 'Error al crear usuario tutor' })
+  }
+}
+
+// POST /api/courses/:id/tutor-user/reset
+export const resetTutorPassword = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const { id } = req.params
+    const course = await prisma.course.findUnique({
+      where: { id: parseInt(id) },
+      include: { tutor: { include: { teacher: true } } }
+    })
+    if (!course) { res.status(404).json({ message: 'Curso no encontrado' }); return }
+    if (!course.tutor) { res.status(400).json({ message: 'Este curso no tiene maestro tutor' }); return }
+    if (!course.tutor.teacher.tutorUserId) { res.status(400).json({ message: 'El tutor no tiene usuario creado aún' }); return }
+
+    const gradeMap: Record<string, string> = {
+      PRIMERO: '1', SEGUNDO: '2', TERCERO: '3', CUARTO: '4', QUINTO: '5', SEXTO: '6'
+    }
+    const gradeNum    = gradeMap[course.grade] || course.grade.toLowerCase()
+    const parallel    = course.parallel.toLowerCase()
+    const rawPassword = `tutor${gradeNum}${course.parallel.toUpperCase()}${new Date().getFullYear()}`
+    const hashed      = await bcrypt.hash(rawPassword, 10)
+
+    await prisma.user.update({
+      where: { id: course.tutor.teacher.tutorUserId },
+      data:  { password: hashed }
+    })
+
+    res.json({
+      message:         'Contraseña reseteada correctamente',
+      defaultPassword: rawPassword,
+      tutorName:       `${course.tutor.teacher.lastName} ${course.tutor.teacher.firstName}`,
+    })
+  } catch (error) {
+    res.status(500).json({ message: 'Error al resetear contraseña' })
   }
 }

@@ -886,3 +886,29 @@ export const changeRelation = async (req: AuthRequest, res: Response): Promise<v
     res.status(500).json({ message: 'Error al actualizar relación' })
   }
 }
+///padre logeado
+export const getMe = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const parent = await prisma.parent.findUnique({
+      where: { userId: req.userId },
+      include: {
+        students: {
+          include: {
+            student: {
+              include: {
+                assignments: {
+                  include: { course: true, academicYear: { select: { isActive: true, year: true } } }
+                }
+              }
+            }
+          }
+        },
+        charges: { where: { status: { not: 'ANULADO' } }, orderBy: { createdAt: 'desc' } }
+      }
+    })
+    if (!parent) { res.status(404).json({ message: 'Perfil no encontrado' }); return }
+    res.json(parent)
+  } catch (error) {
+    res.status(500).json({ message: 'Error al obtener perfil' })
+  }
+}

@@ -120,7 +120,8 @@ export const getTeacherById = async (req: AuthRequest, res: Response): Promise<v
         user: { select: { id: true, email: true, role: true, isActive: true } },
         assignments: {
           include: {
-            subject:      { select: { id: true, name: true, code: true } },
+            subject:      { select: { id: true, name: true, code: true, campo: true } },
+            
             course:       { select: { id: true, level: true, grade: true, parallel: true, shift: true, educationType: true } }, 
           }
         }
@@ -138,7 +139,65 @@ export const getTeacherById = async (req: AuthRequest, res: Response): Promise<v
     res.status(500).json({ message: 'Error al obtener maestro' })
   }
 }
+// GET /api/teachers/:id/workload - carga de horas por semana y detalle de asignaciones para un maestro específico
+export const getTeacherWorkloadById = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const teacherId = parseInt(req.params.id);
 
+    const teacher = await prisma.teacher.findUnique({
+      where: { id: teacherId },
+      include: {
+        assignments: {
+          include: {
+            subject: {
+              include: {
+                gradeConfigs: true,
+              },
+            },
+            course: true,
+          },
+        },
+      },
+    });
+
+    if (!teacher) { res.status(404).json({ error: 'Maestro no encontrado' }); return }
+    let totalHours = 0;
+
+    const detail = teacher.assignments.map((a) => {
+      const config = a.subject.gradeConfigs.find(
+        (gc) => gc.grade === a.course.grade && gc.educationType === a.course.educationType
+      );
+      const hours = config?.hoursPerWeek ?? a.subject.hoursPerWeek;
+      totalHours += hours;
+
+      return {
+        subjectId: a.subjectId,
+        subjectName: a.subject.name,
+        campo: a.subject.campo,
+        courseId: a.courseId,
+        courseLabel: `${a.course.grade} "${a.course.parallel}" ${a.course.shift === 'MORNING' ? 'Mañana' : 'Tarde'}`,
+        grade: a.course.grade,
+        parallel: a.course.parallel,
+        shift: a.course.shift,
+        educationType: a.course.educationType,
+        hoursPerWeek: hours,
+      };
+    });
+
+    res.json({
+      teacher: {
+        id: teacher.id,
+        firstName: teacher.firstName,
+        lastName: teacher.lastName,
+        specialty: teacher.specialty,
+      },
+      totalHoursPerWeek: totalHours,
+      assignments: detail,
+    });
+  } catch (error) {
+    res.status(500).json({ error: 'Error al obtener carga horaria' });
+  }
+};
 // ─────────────────────────────────────────────
 // POST /api/teachers — Crear maestro
 // ─────────────────────────────────────────────
@@ -330,7 +389,58 @@ export const deleteTeacher = async (req: AuthRequest, res: Response): Promise<vo
     console.error('deleteTeacher error:', error)
     res.status(500).json({ message: 'Error al eliminar maestro' })
   }
-}
+}// GET /api/teachers/Mi Carga Horaria — Total de horas por semana y detalle de asignaciones
+export const getTeacherWorkload = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+  const userId = req.userId;
+
+    const teacher = await prisma.teacher.findUnique({
+      where: { userId },
+      include: {
+        assignments: {
+          include: {
+            subject: {
+              include: {
+                gradeConfigs: true,
+              },
+            },
+            course: true,
+          },
+        },
+      },
+    });
+
+    if (!teacher) { res.status(404).json({ error: 'Maestro no encontrado' }); return }
+
+    let totalHours = 0;
+
+    const detail = teacher.assignments.map((a) => {
+      const config = a.subject.gradeConfigs.find(
+        (gc) => gc.grade === a.course.grade && gc.educationType === a.course.educationType
+      );
+      const hours = config?.hoursPerWeek ?? a.subject.hoursPerWeek;
+      totalHours += hours;
+
+      return {
+        subjectId: a.subjectId,
+        subjectName: a.subject.name,
+        campo: a.subject.campo,
+        courseId: a.courseId,
+        courseLabel: `${a.course.grade} "${a.course.parallel}" ${a.course.shift === 'MORNING' ? 'Mañana' : 'Tarde'}`,
+        grade: a.course.grade,
+        parallel: a.course.parallel,
+        shift: a.course.shift,
+        educationType: a.course.educationType,
+        hoursPerWeek: hours,
+      };
+    });
+
+    res.json({ totalHoursPerWeek: totalHours, assignments: detail });
+  } catch (error) {
+    res.status(500).json({ error: 'Error al obtener carga horaria' });
+  }
+};
+
 // ─────────────────────────────────────────────
 // GET /api/teachers/my-course — Curso asignado al maestro tutor
 // ─────────────────────────────────────────────
@@ -338,13 +448,23 @@ export const getTeacherMyCourse = async (req: AuthRequest, res: Response): Promi
   try {
     const userId = req.userId
     console.log('Buscando maestro con userId:', userId)
-    const teacher = await prisma.teacher.findUnique({
-      where: { userId },
+    const teacher = await prisma.teacher.findFirst({
+      where: {
+        OR: [
+          { userId },
+          { tutorUserId: userId }
+        ]
+      },
       include: {
         tutorCourse: {
           include: {
             course: {
               include: {
+                tutor: {
+                   include: {
+                        teacher: { select: { id: true, firstName: true, lastName: true } }
+                   }
+              },
                 assignments: {
                   where: { academicYear: { isActive: true } },
                   include: {
