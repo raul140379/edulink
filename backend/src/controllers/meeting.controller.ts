@@ -355,3 +355,73 @@ export const updateMeeting = async (req: AuthRequest, res: Response): Promise<vo
     res.status(500).json({ message: 'Error al actualizar reunión' })
   }
 }
+export const getMeetingsByCourse = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const { courseId } = req.query
+    if (!courseId) { res.status(400).json({ message: 'courseId es requerido' }); return }
+    const meetings = await prisma.meeting.findMany({
+      where: { courseId: parseInt(courseId as string) },
+      include: {
+        attendances: {
+          include: {
+            parent: { select: { id: true, firstName: true, lastName: true, ci: true } }
+          }
+        }
+      },
+      orderBy: { date: 'desc' }
+    })
+    res.json(meetings)
+  } catch (error) {
+    res.status(500).json({ message: 'Error al obtener reuniones' })
+  }
+}
+
+export const createMeetingAsTeacher = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const userId = req.userId
+    const { title, date, courseId } = req.body
+
+    if (!title || !date || !courseId) {
+      res.status(400).json({ message: 'Título, fecha y curso son requeridos' }); return
+    }
+
+    // Obtener tutores del curso
+    const assignments = await prisma.studentAcademicAssignment.findMany({
+      where: { courseId: parseInt(courseId), academicYear: { isActive: true } },
+      include: {
+        student: {
+          include: {
+            parents: { where: { isTutor: true }, include: { parent: { select: { id: true } } } }
+          }
+        }
+      }
+    })
+
+    const tutorIds = new Set<number>()
+    for (const a of assignments) {
+      for (const ps of a.student.parents) tutorIds.add(ps.parent.id)
+    }
+
+    const meeting = await prisma.meeting.create({
+      data: {
+        title,
+        date:        new Date(date),
+        courseId:    parseInt(courseId),
+        createdById: userId!,
+        attendances: {
+          create: Array.from(tutorIds).map(parentId => ({ parentId, present: false }))
+        }
+      },
+      include: {
+        attendances: {
+          include: { parent: { select: { id: true, firstName: true, lastName: true } } }
+        }
+      }
+    })
+
+    res.status(201).json({ message: 'Reunión creada correctamente', meeting })
+  } catch (error) {
+    console.error('createMeetingAsTeacher error:', error)
+    res.status(500).json({ message: 'Error al crear reunión' })
+  }
+} 
