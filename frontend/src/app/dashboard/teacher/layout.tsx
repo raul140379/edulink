@@ -5,9 +5,11 @@ import { useRouter, usePathname } from 'next/navigation'
 import Link from 'next/link'
 import Image from 'next/image'
 import {
-  LayoutDashboard,  Bell,
-  LogOut, Menu, X, ChevronRight, BookOpen, Users,Clock,UserCircle
+  LayoutDashboard, Bell,
+  LogOut, Menu, X, ChevronRight, BookOpen, Users, Clock, UserCircle
 } from 'lucide-react'
+
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000'
 
 interface User {
   id:    number
@@ -16,42 +18,19 @@ interface User {
 }
 
 const menuItems = [
-{
-  label: 'Mi Perfil',
-  href:  '/dashboard/teacher/perfil',  // cambia NOMBRE por teacher, teacher-tutor, junta, admin
-  icon:  <UserCircle size={18}/>,
-},
-  {    
-    label: 'Mi Curso',
-    href:  '/dashboard/teacher',
-    icon:  <LayoutDashboard size={18}/>,
-  },
-  { 
-    label: 'Carga Horaria',
-    href: '/dashboard/teacher/workload', 
-    icon: <Clock size={18} />,
-  }, 
-  {
-    label: 'Mis Notas',
-    href:  '/dashboard/teacher/notas',
-    icon:  <BookOpen size={18}/>,
-  },
-  {
-    label: 'Reuniones',
-    href:  '/dashboard/teacher/reuniones',
-    icon:  <Users size={18}/>,
-  },
-  {
-    label: 'Notificaciones',
-    href:  '/dashboard/teacher/notificaciones',
-    icon:  <Bell size={18}/>,
-  },
+  { label: 'Mi Perfil',       href: '/dashboard/teacher/perfil',         icon: <UserCircle size={18}/> },
+  { label: 'Mi Curso',        href: '/dashboard/teacher',                 icon: <LayoutDashboard size={18}/> },
+  { label: 'Carga Horaria',   href: '/dashboard/teacher/workload',        icon: <Clock size={18}/> },
+  { label: 'Mis Notas',       href: '/dashboard/teacher/notas',           icon: <BookOpen size={18}/> },
+  { label: 'Reuniones',       href: '/dashboard/teacher/reuniones',       icon: <Users size={18}/> },
+  { label: 'Notificaciones',  href: '/dashboard/teacher/notificaciones',  icon: <Bell size={18}/> },
 ]
 
 export default function TeacherLayout({ children }: { children: React.ReactNode }) {
   const router   = useRouter()
   const pathname = usePathname()
   const [user,       setUser]       = useState<User | null>(null)
+  const [teacherName,setTeacherName]= useState('')
   const [collapsed,  setCollapsed]  = useState(false)
   const [mobileOpen, setMobileOpen] = useState(false)
 
@@ -64,6 +43,17 @@ export default function TeacherLayout({ children }: { children: React.ReactNode 
       router.push('/login'); return
     }
     setUser(parsed)
+
+    // Obtener nombre del maestro
+    fetch(`${API_URL}/api/auth/me`, {
+      headers: { Authorization: `Bearer ${token}` }
+    })
+      .then(r => r.json())
+      .then(data => {
+        const t = data.teacher
+        if (t) setTeacherName(`${t.lastName} ${t.firstName}`)
+      })
+      .catch(() => {})
   }, [])
 
   const handleLogout = () => {
@@ -98,6 +88,7 @@ export default function TeacherLayout({ children }: { children: React.ReactNode 
         <div className="user-avatar">{user.email.charAt(0).toUpperCase()}</div>
         {!collapsed && (
           <div className="user-info">
+            {teacherName && <span className="user-name">{teacherName}</span>}
             <span className="user-email">{user.email}</span>
             <span className="user-role-badge">Maestro</span>
           </div>
@@ -133,38 +124,27 @@ export default function TeacherLayout({ children }: { children: React.ReactNode 
     <div className="dashboard-root">
       {mobileOpen && <div className="mobile-overlay" onClick={() => setMobileOpen(false)}/>}
 
-      <aside className={`sidebar ${collapsed ? 'sidebar-collapsed' : ''}`}>
-        {sidebarContent}
-      </aside>
-
-      <aside className={`sidebar-mobile ${mobileOpen ? 'open' : ''}`}>
-        {sidebarContent}
-      </aside>
+      <aside className={`sidebar ${collapsed ? 'sidebar-collapsed' : ''}`}>{sidebarContent}</aside>
+      <aside className={`sidebar-mobile ${mobileOpen ? 'open' : ''}`}>{sidebarContent}</aside>
 
       <div className="main-wrapper">
         <header className="main-header">
-          <button className="mobile-menu-btn" onClick={() => setMobileOpen(true)}>
-            <Menu size={20}/>
-          </button>
+          <button className="mobile-menu-btn" onClick={() => setMobileOpen(true)}><Menu size={20}/></button>
           <div className="header-title">
             <BookOpen size={16} color="#633806"/>
             {menuItems.find(i => pathname === i.href || pathname.startsWith(i.href + '/'))?.label || 'Mi Curso'}
           </div>
-          <div className="header-badge">Maestro</div>
+          <div className="header-info">
+            {teacherName && <span className="header-name">👨‍🏫 {teacherName}</span>}
+            <span className="header-badge">Maestro</span>
+          </div>
         </header>
-
         <main className="main-content">{children}</main>
       </div>
 
       <style>{`
         *, *::before, *::after { margin:0; padding:0; box-sizing:border-box; }
-        :root {
-          --teacher:  #633806;
-          --amarillo: #F5C518;
-          --sidebar-w: 240px;
-          --sidebar-collapsed: 64px;
-          --header-h: 56px;
-        }
+        :root { --teacher:#633806; --amarillo:#F5C518; --sidebar-w:240px; --sidebar-collapsed:64px; --header-h:56px; }
         .dashboard-root { display:flex; min-height:100vh; background:#F0F6FC; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif; }
         .sidebar { width:var(--sidebar-w); background:var(--teacher); display:flex; flex-direction:column; position:fixed; top:0; left:0; bottom:0; z-index:100; transition:width 0.2s ease; overflow:hidden; }
         .sidebar-collapsed { width:var(--sidebar-collapsed); }
@@ -179,7 +159,8 @@ export default function TeacherLayout({ children }: { children: React.ReactNode 
         .collapse-btn:hover { background:rgba(255,255,255,0.2); }
         .user-profile { display:flex; align-items:center; gap:10px; padding:14px 12px; border-bottom:1px solid rgba(255,255,255,0.08); }
         .user-avatar { width:36px; height:36px; border-radius:50%; background:var(--amarillo); color:#3A2F00; font-size:14px; font-weight:700; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
-        .user-info { display:flex; flex-direction:column; gap:4px; overflow:hidden; }
+        .user-info { display:flex; flex-direction:column; gap:3px; overflow:hidden; }
+        .user-name { font-size:12px; font-weight:700; color:#fff; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
         .user-email { font-size:11px; color:rgba(255,255,255,0.6); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
         .user-role-badge { font-size:10px; font-weight:600; padding:2px 7px; border-radius:20px; background:var(--amarillo); color:#3A2F00; width:fit-content; }
         .sidebar-nav { flex:1; padding:12px 8px; overflow-y:auto; display:flex; flex-direction:column; gap:2px; }
@@ -202,7 +183,9 @@ export default function TeacherLayout({ children }: { children: React.ReactNode 
         .mobile-menu-btn { display:none; background:none; border:none; cursor:pointer; color:var(--teacher); padding:6px; border-radius:6px; }
         .mobile-menu-btn:hover { background:#F0F6FC; }
         .header-title { flex:1; font-size:15px; font-weight:600; color:var(--teacher); display:flex; align-items:center; gap:8px; }
-        .header-badge { background:#FDF0E6; color:var(--teacher); padding:4px 12px; border-radius:20px; font-size:11px; font-weight:600; }
+        .header-info { display:flex; flex-direction:column; align-items:flex-end; gap:3px; }
+        .header-name { font-size:13px; font-weight:700; color:#633806; white-space:nowrap; }
+        .header-badge { background:#FDF0E6; color:var(--teacher); padding:3px 10px; border-radius:20px; font-size:10px; font-weight:600; white-space:nowrap; }
         .main-content { flex:1; padding:24px; overflow-y:auto; }
         @media (max-width:768px) {
           .sidebar { display:none; }
@@ -211,6 +194,7 @@ export default function TeacherLayout({ children }: { children: React.ReactNode 
           .main-wrapper { margin-left:0 !important; }
           .mobile-menu-btn { display:flex; }
           .main-content { padding:16px; }
+          .header-name { display:none; }
         }
       `}</style>
     </div>

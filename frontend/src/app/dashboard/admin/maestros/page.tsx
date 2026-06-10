@@ -88,15 +88,16 @@ export default function MaestrosPage() {
   const [form,         setForm]         = useState(emptyForm)
   const [creds,        setCreds]        = useState<Credentials | null>(null)
   const [copied,       setCopied]       = useState(false)
-  const [allSubjects,       setAllSubjects]       = useState<Subject[]>([])
   const [subjectsByCampo, setSubjectsByCampo] = useState<Record<string, Subject[]>>({})
 
   const [showSpecialties,   setShowSpecialties]   = useState(false)
   const [specTeacher,       setSpecTeacher]       = useState<Teacher | null>(null)
   const [specialties,       setSpecialties]       = useState<Specialty[]>([])
   const [selectedSubjectId, setSelectedSubjectId] = useState('')
+  const [specSearch,        setSpecSearch]        = useState('')
   const [addingSpec,        setAddingSpec]        = useState(false)
   const [loadingSpec,       setLoadingSpec]       = useState(false)
+  const [allSubjectsForSpec, setAllSubjectsForSpec] = useState<Subject[]>([])
 
   const [workloadModal, setWorkloadModal] = useState<{ open: boolean; teacherId: number | null; data: any }>({
     open: false, teacherId: null, data: null
@@ -131,14 +132,6 @@ export default function MaestrosPage() {
     } catch { notify('Error al cargar carga horaria', 'error') }
   }
 
-  const fetchSubjects = async () => {
-    try {
-      const res  = await fetch(`${API_URL}/api/subjects?level=SECUNDARIA`, { headers: { Authorization: `Bearer ${token}` } })
-      const data = await res.json()
-      if (res.ok) setAllSubjects(data)
-    } catch { console.error('Error al cargar materias') }
-  }
-
   const fetchSpecialties = async (teacherId: number) => {
     setLoadingSpec(true)
     try {
@@ -167,6 +160,14 @@ export default function MaestrosPage() {
     } catch (e) { console.error('Error cargando materias', e) }
   }
 
+  const loadSubjectsForSpec = async () => {
+    try {
+      const res  = await fetch(`${API_URL}/api/subjects`, { headers: { Authorization: `Bearer ${token}` } })
+      const data = await res.json()
+      if (res.ok) setAllSubjectsForSpec(Array.isArray(data) ? data : [])
+    } catch { console.error('Error al cargar materias') }
+  }
+
   const toggleSubject = (subjectId: number) => {
     setForm(prev => ({
       ...prev,
@@ -177,8 +178,8 @@ export default function MaestrosPage() {
   }
 
   const openSpecialties = async (teacher: Teacher) => {
-    setSpecTeacher(teacher); setSelectedSubjectId(''); setShowSpecialties(true)
-    await Promise.all([fetchSpecialties(teacher.id), fetchSubjects()])
+    setSpecTeacher(teacher); setSelectedSubjectId(''); setSpecSearch(''); setShowSpecialties(true)
+    await Promise.all([fetchSpecialties(teacher.id), loadSubjectsForSpec()])
   }
 
   const handleAddSpecialty = async () => {
@@ -320,7 +321,12 @@ export default function MaestrosPage() {
     return Math.floor((Date.now() - new Date(birthDate).getTime()) / (1000 * 60 * 60 * 24 * 365.25))
   }
 
-  const availableSubjects = allSubjects.filter(s => !specialties.some(sp => sp.subject.id === s.id))
+  // Materias disponibles para agregar (no asignadas aún)
+  const availableSubjects = allSubjectsForSpec.filter(s =>
+    !specialties.some(sp => sp.subject.id === s.id) &&
+    (specSearch === '' || s.name.toLowerCase().includes(specSearch.toLowerCase()))
+  )
+
   const specialtiesByCampo = specialties.reduce((acc: Record<string, Specialty[]>, sp) => {
     const campo = sp.subject.campo || 'SIN_CAMPO'
     if (!acc[campo]) acc[campo] = []
@@ -441,22 +447,18 @@ export default function MaestrosPage() {
       {/* ── Modal crear/editar ── */}
       {showModal && (
         <div className="overlay" onClick={() => setShowModal(false)}>
-          <div className="modal modal-lg" onClick={e => e.stopPropagation()} style={{overflow:'hidden'}}>
+          <div className="modal modal-lg" onClick={e => e.stopPropagation()}>
             <div className="mhead">
               <h2>{editMode ? 'Editar Maestro' : 'Nuevo Maestro'}</h2>
               <button onClick={() => setShowModal(false)}><X size={18}/></button>
             </div>
-            <div className="mbody" style={{overflowY:'auto',maxHeight:'70vh'}}>
+            <div className="mbody">
               {error && <div className="alert err">{error}</div>}
               {loadingEdit ? (
                 <div className="center-state"><div className="spinner"/><p>Cargando datos...</p></div>
               ) : (
                 <>
-                  {!editMode && (
-                    <div className="info-box">
-                      🔑 El sistema generará automáticamente un email y contraseña de acceso.
-                    </div>
-                  )}
+                  {!editMode && <div className="info-box">🔑 El sistema generará automáticamente un email y contraseña de acceso.</div>}
                   <div className="section-lbl">Datos personales</div>
                   <div className="form-grid">
                     <div className="fg"><label>Nombres *</label><input type="text" placeholder="Ej: Juan Carlos" value={form.firstName} onChange={e => setForm({...form, firstName: e.target.value})}/></div>
@@ -510,7 +512,7 @@ export default function MaestrosPage() {
         </div>
       )}
 
-      {/* ── Modal especialidades ── */}
+      {/* ── Modal especialidades mejorado ── */}
       {showSpecialties && specTeacher && (
         <div className="overlay" onClick={() => setShowSpecialties(false)}>
           <div className="modal modal-spec" onClick={e => e.stopPropagation()}>
@@ -522,36 +524,64 @@ export default function MaestrosPage() {
               <button onClick={() => setShowSpecialties(false)}><X size={18}/></button>
             </div>
             <div className="mbody">
-              <div className="spec-add-row">
-                <select value={selectedSubjectId} onChange={e => setSelectedSubjectId(e.target.value)} className="spec-select">
-                  <option value="">— Agregar materia —</option>
-                  {availableSubjects.map(s => (
-                    <option key={s.id} value={s.id}>{s.name}{s.campo ? ` · ${CAMPO_LABELS[s.campo] || s.campo}` : ''}</option>
-                  ))}
-                </select>
-                <button className="btn-primary" onClick={handleAddSpecialty} disabled={!selectedSubjectId || addingSpec}>
-                  {addingSpec ? <span className="spinsm"/> : <Plus size={14}/>} Agregar
+
+              {/* Buscador + lista para agregar */}
+              <div className="fg">
+                <label>Agregar materia</label>
+                <div className="sw">
+                  <Search size={12} className="sw-icon"/>
+                  <input type="text" placeholder="Buscar materia..." value={specSearch}
+                    onChange={e => { setSpecSearch(e.target.value); setSelectedSubjectId('') }}/>
+                </div>
+                <div className="option-list">
+                  {availableSubjects.length === 0 ? (
+                    <div className="no-opt">
+                      {specSearch ? 'No se encontraron materias' : 'Todas las materias ya están asignadas'}
+                    </div>
+                  ) : availableSubjects.map(s => {
+                    const sel = selectedSubjectId === String(s.id)
+                    return (
+                      <label key={s.id} className={`opt-item ${sel ? 'sel' : ''}`}>
+                        <input type="radio" name="spec-subj" value={s.id} checked={sel}
+                          onChange={() => setSelectedSubjectId(String(s.id))}/>
+                        <div className="opt-info">
+                          <span className="opt-name">{s.name}</span>
+                          {s.campo && <span className="opt-sub">{CAMPO_LABELS[s.campo] || s.campo}</span>}
+                        </div>
+                      </label>
+                    )
+                  })}
+                </div>
+                <button className="btn-primary" style={{justifyContent:'center'}}
+                  onClick={handleAddSpecialty} disabled={!selectedSubjectId || addingSpec}>
+                  {addingSpec ? <span className="spinsm"/> : <Plus size={14}/>}
+                  {addingSpec ? 'Agregando...' : 'Agregar materia seleccionada'}
                 </button>
               </div>
+
+              {/* Materias ya asignadas */}
               {loadingSpec ? (
                 <div className="center-state"><div className="spinner"/></div>
               ) : specialties.length === 0 ? (
-                <div className="spec-empty"><BookOpen size={28} className="spec-empty-icon"/><p>Sin materias asignadas aún.</p></div>
+                <div className="spec-empty"><BookOpen size={28} style={{opacity:.3}}/><p>Sin materias asignadas aún.</p></div>
               ) : (
-                <div className="spec-list">
-                  {Object.entries(specialtiesByCampo).map(([campo, items]) => (
-                    <div key={campo} className="spec-campo-group">
-                      <div className="spec-campo-label" style={{ background: CAMPO_COLORS[campo] || '#F5F5F5', color: CAMPO_TEXT[campo] || '#444' }}>
-                        {CAMPO_LABELS[campo] || campo}
-                      </div>
-                      {items.map(sp => (
-                        <div key={sp.id} className="spec-item">
-                          <span className="spec-name">{sp.subject.name}</span>
-                          <button className="spec-remove" onClick={() => handleRemoveSpecialty(sp.id)}><X size={12}/></button>
+                <div className="fg">
+                  <label>Materias asignadas ({specialties.length})</label>
+                  <div className="spec-list">
+                    {Object.entries(specialtiesByCampo).map(([campo, items]) => (
+                      <div key={campo} className="spec-campo-group">
+                        <div className="spec-campo-label" style={{ background: CAMPO_COLORS[campo] || '#F5F5F5', color: CAMPO_TEXT[campo] || '#444' }}>
+                          {CAMPO_LABELS[campo] || campo}
                         </div>
-                      ))}
-                    </div>
-                  ))}
+                        {items.map(sp => (
+                          <div key={sp.id} className="spec-item">
+                            <span className="spec-name">{sp.subject.name}</span>
+                            <button className="spec-remove" onClick={() => handleRemoveSpecialty(sp.id)}><X size={12}/></button>
+                          </div>
+                        ))}
+                      </div>
+                    ))}
+                  </div>
                 </div>
               )}
             </div>
@@ -598,7 +628,6 @@ export default function MaestrosPage() {
               <button onClick={() => setWorkloadModal({ open: false, teacherId: null, data: null })}><X size={18}/></button>
             </div>
             <div className="mbody">
-              {/* Resumen */}
               <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:'12px'}}>
                 <div style={{background:'#1A3A7C',color:'#fff',borderRadius:'12px',padding:'20px',textAlign:'center'}}>
                   <div style={{fontSize:'36px',fontWeight:'800',lineHeight:1}}>{workloadModal.data.totalHoursPerWeek}</div>
@@ -615,8 +644,6 @@ export default function MaestrosPage() {
                   <div style={{fontSize:'11px',opacity:.8,marginTop:'6px',textTransform:'uppercase',letterSpacing:'.5px'}}>cursos</div>
                 </div>
               </div>
-
-              {/* Tabla detalle */}
               <div style={{background:'#fff',border:'1px solid #CBE0F0',borderRadius:'10px',overflow:'hidden'}}>
                 <div style={{padding:'12px 16px',background:'#F8FBFF',borderBottom:'1px solid #CBE0F0',fontSize:'12px',fontWeight:'700',color:'#1A3A7C',textTransform:'uppercase',letterSpacing:'.5px'}}>
                   Detalle de asignaciones
@@ -645,9 +672,7 @@ export default function MaestrosPage() {
                   <tfoot>
                     <tr style={{borderTop:'2px solid #CBE0F0',background:'#F8FBFF'}}>
                       <td colSpan={2} style={{padding:'12px 14px',fontWeight:'700',color:'#1A3A7C',fontSize:'13px'}}>Total hrs/mes</td>
-                      <td style={{padding:'12px 14px',textAlign:'right',fontWeight:'800',color:'#1A3A7C',fontSize:'18px'}}>
-                        {workloadModal.data.totalHoursPerWeek}
-                      </td>
+                      <td style={{padding:'12px 14px',textAlign:'right',fontWeight:'800',color:'#1A3A7C',fontSize:'18px'}}>{workloadModal.data.totalHoursPerWeek}</td>
                     </tr>
                   </tfoot>
                 </table>
@@ -718,39 +743,50 @@ export default function MaestrosPage() {
         .overlay{position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:500;display:flex;align-items:center;justify-content:center;padding:16px}
         .modal{background:#fff;border-radius:14px;width:100%;max-width:440px;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,0.15);max-height:90vh;display:flex;flex-direction:column}
         .modal-lg{max-width:580px}
-        .modal-spec{max-width:480px}
+        .modal-spec{max-width:460px}
         .mhead{display:flex;align-items:flex-start;justify-content:space-between;padding:18px 20px;border-bottom:1px solid #CBE0F0;flex-shrink:0;gap:12px}
         .mhead h2{font-size:16px;font-weight:600;color:#1A3A7C;margin:0}
         .mhead-sub{font-size:12px;color:#6B8BB0;margin-top:2px}
         .mhead button{background:none;border:none;cursor:pointer;color:#6B8BB0;display:flex;padding:4px;border-radius:6px;flex-shrink:0}
         .mhead button:hover{background:#F0F6FC;color:#1A3A7C}
-        .mbody{padding:20px;display:flex;flex-direction:column;gap:14px;overflow-y:auto}
+        .mbody{padding:20px;display:flex;flex-direction:column;gap:14px;overflow-y:auto;flex:1}
         .mfoot{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:16px 20px;border-top:1px solid #CBE0F0;flex-shrink:0}
         .section-lbl{font-size:12px;font-weight:700;color:#1A3A7C;text-transform:uppercase;letter-spacing:.6px;padding-bottom:4px;border-bottom:1px solid #F0F6FC}
         .form-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
-        .fg{display:flex;flex-direction:column;gap:5px}
-        .fg label{font-size:11px;font-weight:600;color:#1A3A7C;text-transform:uppercase;letter-spacing:.5px}
+        .fg{display:flex;flex-direction:column;gap:6px}
+        .fg label{font-size:11px;font-weight:700;color:#1A3A7C;text-transform:uppercase;letter-spacing:.5px}
         .fg input,.fg-select{padding:9px 12px;border:1.5px solid #CBE0F0;border-radius:8px;font-size:13px;color:#1A3A7C;outline:none;width:100%}
         .fg input:focus,.fg-select:focus{border-color:#4A9FD4;box-shadow:0 0 0 3px rgba(74,159,212,.12)}
         .info-box{background:#F0F6FC;border:1px solid #CBE0F0;border-radius:8px;padding:12px;font-size:12px;color:#6B8BB0;line-height:1.6}
         .subject-checks{display:flex;flex-wrap:wrap;gap:8px}
-        .check-item{display:flex;align-items:center;gap:6px;padding:7px 12px;border:1.5px solid #CBE0F0;border-radius:8px;font-size:13px;color:#1A3A7C;cursor:pointer;transition:all .15s;user-select:none}
+        .check-item{display:flex;align-items:center;gap:6px;padding:6px 10px;border:1.5px solid #CBE0F0;border-radius:8px;font-size:12px;color:#1A3A7C;cursor:pointer;transition:all .15s;user-select:none}
         .check-item:hover{border-color:#4A9FD4;background:#F0F6FC}
         .check-item.checked{border-color:#1A3A7C;background:#E8F0FB;font-weight:500}
-        .check-item input{accent-color:#1A3A7C;width:14px;height:14px;flex-shrink:0}
-        .spec-add-row{display:flex;gap:10px;align-items:center}
-        .spec-select{flex:1;padding:9px 12px;border:1.5px solid #CBE0F0;border-radius:8px;font-size:13px;color:#1A3A7C;outline:none}
-        .spec-select:focus{border-color:#4A9FD4}
-        .spec-list{display:flex;flex-direction:column;gap:8px}
-        .spec-campo-group{border:1px solid #E8EFF8;border-radius:10px;overflow:hidden}
-        .spec-campo-label{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;padding:7px 12px}
-        .spec-item{display:flex;align-items:center;justify-content:space-between;padding:9px 12px;border-top:1px solid #F0F6FC;background:#fff}
+        .check-item input{accent-color:#1A3A7C;width:13px;height:13px;flex-shrink:0}
+        /* Especialidades modal */
+        .sw{position:relative}
+        .sw-icon{position:absolute;left:9px;top:50%;transform:translateY(-50%);color:#4A9FD4;pointer-events:none}
+        .sw input{padding:7px 10px 7px 28px;border:1.5px solid #CBE0F0;border-radius:8px;font-size:13px;color:#1A3A7C;outline:none;width:100%}
+        .sw input:focus{border-color:#4A9FD4}
+        .option-list{border:1.5px solid #CBE0F0;border-radius:8px;max-height:150px;overflow-y:auto}
+        .opt-item{display:flex;align-items:center;gap:8px;padding:6px 10px;cursor:pointer;border-bottom:1px solid #F0F6FC;transition:background .12s}
+        .opt-item:last-child{border-bottom:none}
+        .opt-item:hover{background:#F8FBFF}
+        .opt-item.sel{background:#E8F0FB;border-left:3px solid #1A3A7C}
+        .opt-item input{accent-color:#1A3A7C;width:13px;height:13px;flex-shrink:0;cursor:pointer}
+        .opt-info{flex:1;display:flex;flex-direction:column;gap:1px}
+        .opt-name{font-size:12px;font-weight:500;color:#1A3A7C}
+        .opt-sub{font-size:10px;color:#6B8BB0}
+        .no-opt{padding:12px;text-align:center;font-size:12px;color:#6B8BB0;font-style:italic}
+        .spec-list{display:flex;flex-direction:column;gap:6px}
+        .spec-campo-group{border:1px solid #E8EFF8;border-radius:8px;overflow:hidden}
+        .spec-campo-label{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;padding:6px 12px}
+        .spec-item{display:flex;align-items:center;justify-content:space-between;padding:8px 12px;border-top:1px solid #F0F6FC;background:#fff}
         .spec-item:hover{background:#FAFCFF}
-        .spec-name{font-size:13px;color:#1A3A7C;font-weight:500}
-        .spec-remove{width:24px;height:24px;border:none;border-radius:6px;background:#FFF0F0;color:#C0392B;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+        .spec-name{font-size:12px;color:#1A3A7C;font-weight:500}
+        .spec-remove{width:22px;height:22px;border:none;border-radius:5px;background:#FFF0F0;color:#C0392B;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0}
         .spec-remove:hover{opacity:.75}
-        .spec-empty{text-align:center;padding:24px 16px;color:#6B8BB0;font-size:13px;display:flex;flex-direction:column;align-items:center;gap:8px}
-        .spec-empty-icon{opacity:.3}
+        .spec-empty{text-align:center;padding:20px;color:#6B8BB0;font-size:13px;display:flex;flex-direction:column;align-items:center;gap:8px}
         .spec-count{font-size:12px;color:#6B8BB0}
         .cred-box{display:flex;flex-direction:column;gap:10px}
         .cred-title{font-size:13px;color:#6B8BB0;margin:0}

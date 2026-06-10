@@ -637,12 +637,12 @@ export default function CourseDetailPage() {
         .search-wrap{position:relative}
         .s-icon{position:absolute;left:10px;top:50%;transform:translateY(-50%);color:#4A9FD4;pointer-events:none}
         .search-wrap input{padding-left:32px!important}
-        .subject-list{border:1.5px solid #CBE0F0;border-radius:8px;max-height:180px;overflow-y:auto}
-        .subject-option{display:flex;align-items:center;gap:8px;padding:7px 10px;cursor:pointer;border-bottom:1px solid #F0F6FC}
-        .subject-option:last-child{border-bottom:none}
-        .subject-option:hover{background:#F8FBFF}
-        .subject-option.selected{background:#E8F0FB;border-left:3px solid #1A3A7C}
-        .subject-option input{accent-color:#1A3A7C;cursor:pointer;flex-shrink:0}
+        ..subject-list{border:1.5px solid #CBE0F0;border-radius:8px;max-height:180px;overflow-y:auto}
+.subject-option{display:flex;align-items:center;gap:8px;padding:5px 10px;cursor:pointer;border-bottom:1px solid #F0F6FC}
+.subject-option:last-child{border-bottom:none}
+.subject-option:hover{background:#F8FBFF}
+.subject-option.selected{background:#E8F0FB;border-left:3px solid #1A3A7C}
+.subject-option input{accent-color:#1A3A7C;cursor:pointer;flex-shrink:0;width:14px;height:14px}
         .cred-row{display:flex;align-items:center;gap:10px;background:#F0F6FC;border:1px solid #CBE0F0;border-radius:8px;padding:10px 14px}
         .cred-label{font-size:12px;font-weight:600;color:#6B8BB0;min-width:80px;text-transform:uppercase;letter-spacing:.5px}
         .cred-value{font-size:13px;font-weight:600;color:#1A3A7C;font-family:monospace;word-break:break-all}

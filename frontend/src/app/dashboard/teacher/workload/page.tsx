@@ -1,124 +1,185 @@
-'use client';
-import { useEffect, useState } from 'react';
-import { BookOpen, Clock, Layers } from 'lucide-react';
+'use client'
+
+import { useEffect, useState } from 'react'
+import { BookOpen, Clock, Layers } from 'lucide-react'
+
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000'
 
 interface Assignment {
-  subjectName: string;
-  campo: string | null;
-  courseLabel: string;
-  hoursPerWeek: number;
-  educationType: string;
+  subjectName:   string
+  campo:         string | null
+  courseLabel:   string
+  hoursPerWeek:  number
+  educationType: string
 }
 
 interface Workload {
-  totalHoursPerWeek: number;
-  assignments: Assignment[];
+  totalHoursPerWeek: number
+  assignments:       Assignment[]
 }
 
-const CAMPO_COLORS: Record<string, string> = {
-  VIDA_TIERRA_TERRITORIO: 'bg-green-100 text-green-800',
-  COMUNIDAD_SOCIEDAD: 'bg-blue-100 text-blue-800',
-  COSMOS_PENSAMIENTO: 'bg-purple-100 text-purple-800',
-  CIENCIA_TECNOLOGIA_PRODUCCION: 'bg-orange-100 text-orange-800',
-};
+const CAMPO_COLORS: Record<string, { bg: string; text: string }> = {
+  VIDA_TIERRA_TERRITORIO:        { bg: '#E8F5F0', text: '#0F6E56' },
+  COMUNIDAD_SOCIEDAD:            { bg: '#E0ECF8', text: '#1A3A7C' },
+  COSMOS_PENSAMIENTO:            { bg: '#F3E8FF', text: '#6B21A8' },
+  CIENCIA_TECNOLOGIA_PRODUCCION: { bg: '#FFF3E0', text: '#633806' },
+}
 
-const CAMPO_LABEL: Record<string, string> = {
-  VIDA_TIERRA_TERRITORIO: 'Vida, Tierra y Territorio',
-  COMUNIDAD_SOCIEDAD: 'Comunidad y Sociedad',
-  COSMOS_PENSAMIENTO: 'Cosmos y Pensamiento',
-  CIENCIA_TECNOLOGIA_PRODUCCION: 'Ciencia, Tecnología y Producción',
-};
+const CAMPO_LABELS: Record<string, string> = {
+  VIDA_TIERRA_TERRITORIO:        '🌿 Vida, Tierra y Territorio',
+  COMUNIDAD_SOCIEDAD:            '🌐 Comunidad y Sociedad',
+  COSMOS_PENSAMIENTO:            '✨ Cosmos y Pensamiento',
+  CIENCIA_TECNOLOGIA_PRODUCCION: '⚙️ Ciencia, Tecnología y Producción',
+}
 
-export default function WorkloadPage() {
-  const [data, setData] = useState<Workload | null>(null);
-  const [loading, setLoading] = useState(true);
+export default function TeacherWorkloadPage() {
+  const [data,    setData]    = useState<Workload | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error,   setError]   = useState('')
+
+  const token = typeof window !== 'undefined' ? localStorage.getItem('token') : ''
 
   useEffect(() => {
-    fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/teachers/my-workload`, {
-      headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
+    fetch(`${API_URL}/api/teachers/my-workload`, {
+      headers: { Authorization: `Bearer ${token}` },
     })
-      .then((r) => r.json())
-      .then(setData)
-      .finally(() => setLoading(false));
-  }, []);
+      .then(r => r.json())
+      .then(d => { setData(d); setLoading(false) })
+      .catch(() => { setError('Error al cargar datos'); setLoading(false) })
+  }, [])
 
-  if (loading) return <div className="p-8 text-gray-500">Cargando carga horaria...</div>;
-  if (!data) return <div className="p-8 text-red-500">Error al cargar datos.</div>;
+  if (loading) return <div className="center"><div className="spinner"/></div>
+  if (error)   return <div className="center"><p className="err-msg">{error}</p></div>
+  if (!data)   return null
 
   // Agrupar por materia
   const grouped = data.assignments.reduce<Record<string, Assignment[]>>((acc, a) => {
-    if (!acc[a.subjectName]) acc[a.subjectName] = [];
-    acc[a.subjectName].push(a);
-    return acc;
-  }, {});
+    if (!acc[a.subjectName]) acc[a.subjectName] = []
+    acc[a.subjectName].push(a)
+    return acc
+  }, {})
+
+  const totalCursos   = data.assignments.length
+  const totalMaterias = Object.keys(grouped).length
 
   return (
-    <div className="p-6 max-w-4xl mx-auto">
-      <h1 className="text-2xl font-bold text-[#1A3A7C] mb-6">Mi Carga Horaria</h1>
+    <div>
+      <div className="page-header">
+        <div>
+          <h1>Mi Carga Horaria</h1>
+          <p>Resumen de materias y cursos asignados</p>
+        </div>
+      </div>
 
       {/* Resumen */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
-        <div className="bg-[#1A3A7C] text-white rounded-xl p-5 flex items-center gap-4">
-          <Clock size={32} />
+      <div className="stats-grid">
+        <div className="stat-card accent">
+          <Clock size={28} color="#fff"/>
           <div>
-            <p className="text-sm opacity-80">Total horas/semana</p>
-            <p className="text-3xl font-bold">{data.totalHoursPerWeek}</p>
+            <div className="stat-label">Total hrs/mes</div>
+            <div className="stat-value">{data.totalHoursPerWeek}</div>
           </div>
         </div>
-        <div className="bg-[#4A9FD4] text-white rounded-xl p-5 flex items-center gap-4">
-          <BookOpen size={32} />
+        <div className="stat-card">
+          <BookOpen size={28} color="#1A3A7C"/>
           <div>
-            <p className="text-sm opacity-80">Materias asignadas</p>
-            <p className="text-3xl font-bold">{Object.keys(grouped).length}</p>
+            <div className="stat-label">Materias</div>
+            <div className="stat-value">{totalMaterias}</div>
           </div>
         </div>
-        <div className="bg-[#0F6E56] text-white rounded-xl p-5 flex items-center gap-4">
-          <Layers size={32} />
+        <div className="stat-card">
+          <Layers size={28} color="#1A3A7C"/>
           <div>
-            <p className="text-sm opacity-80">Cursos asignados</p>
-            <p className="text-3xl font-bold">{data.assignments.length}</p>
+            <div className="stat-label">Cursos</div>
+            <div className="stat-value">{totalCursos}</div>
           </div>
         </div>
       </div>
 
+      {/* Sin asignaciones */}
+      {totalMaterias === 0 && (
+        <div className="empty-state">
+          <BookOpen size={40} color="#CBE0F0"/>
+          <p>No tienes materias asignadas aún.</p>
+          <span>El administrador debe asignarte materias y cursos.</span>
+        </div>
+      )}
+
       {/* Detalle agrupado por materia */}
-      <div className="space-y-4">
+      <div className="subjects-list">
         {Object.entries(grouped).map(([subject, items]) => {
-          const campo = items[0].campo;
-          const totalSubject = items.reduce((s, i) => s + i.hoursPerWeek, 0);
+          const campo      = items[0].campo
+          const col        = CAMPO_COLORS[campo || ''] || { bg: '#F5F5F5', text: '#444' }
+          const totalHrs   = items.reduce((s, i) => s + i.hoursPerWeek, 0)
+
           return (
-            <div key={subject} className="bg-white rounded-xl shadow border border-gray-100">
-              <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
-                <div className="flex items-center gap-3">
-                  <BookOpen size={18} className="text-[#1A3A7C]" />
-                  <span className="font-semibold text-[#1A3A7C] text-lg">{subject}</span>
+            <div key={subject} className="subject-card">
+              {/* Header de la materia */}
+              <div className="subject-header">
+                <div className="subject-left">
+                  <BookOpen size={16} color="#1A3A7C"/>
+                  <span className="subject-name">{subject}</span>
                   {campo && (
-                    <span className={`text-xs px-2 py-1 rounded-full font-medium ${CAMPO_COLORS[campo] ?? 'bg-gray-100 text-gray-600'}`}>
-                      {CAMPO_LABEL[campo] ?? campo}
+                    <span className="campo-tag" style={{ background: col.bg, color: col.text }}>
+                      {CAMPO_LABELS[campo] || campo}
                     </span>
                   )}
                 </div>
-                <span className="text-sm font-bold text-[#1A3A7C]">{totalSubject} hrs/sem</span>
+                <span className="subject-hrs">{totalHrs} hrs/mes</span>
               </div>
-              <div className="divide-y divide-gray-50">
+
+              {/* Cursos */}
+              <div className="courses-list">
                 {items.map((item, i) => (
-                  <div key={i} className="flex items-center justify-between px-5 py-3">
-                    <div className="flex items-center gap-2">
-                      <span className="text-gray-700">{item.courseLabel}</span>
+                  <div key={i} className="course-row">
+                    <div className="course-label">
+                      <span>{item.courseLabel}</span>
                       {item.educationType === 'BTH' && (
-                        <span className="text-xs bg-yellow-100 text-yellow-700 px-2 py-0.5 rounded-full">BTH</span>
+                        <span className="bth-badge">BTH</span>
                       )}
                     </div>
-                    <span className="text-sm font-medium text-gray-600">
-                      {item.hoursPerWeek} hrs/sem
-                    </span>
+                    <span className="course-hrs">{item.hoursPerWeek} hrs/mes</span>
                   </div>
                 ))}
               </div>
             </div>
-          );
+          )
         })}
       </div>
+
+      <style>{`
+        .center{display:flex;justify-content:center;align-items:center;padding:48px;color:#6B8BB0;flex-direction:column;gap:8px}
+        .err-msg{color:#C0392B;font-size:14px}
+        .page-header{margin-bottom:24px}
+        .page-header h1{font-size:20px;font-weight:700;color:#633806;margin-bottom:4px}
+        .page-header p{font-size:13px;color:#6B8BB0}
+        .stats-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:24px}
+        .stat-card{background:#fff;border:1px solid #CBE0F0;border-radius:12px;padding:18px;display:flex;align-items:center;gap:14px}
+        .stat-card.accent{background:#633806;border-color:#633806}
+        .stat-card.accent .stat-label{color:rgba(255,255,255,0.7)}
+        .stat-card.accent .stat-value{color:#fff}
+        .stat-label{font-size:11px;color:#6B8BB0;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px}
+        .stat-value{font-size:28px;font-weight:800;color:#1A3A7C}
+        .empty-state{text-align:center;padding:48px;color:#6B8BB0;display:flex;flex-direction:column;align-items:center;gap:8px;background:#fff;border:1px dashed #CBE0F0;border-radius:12px}
+        .empty-state p{font-size:15px;font-weight:500;color:#1A3A7C}
+        .empty-state span{font-size:13px}
+        .subjects-list{display:flex;flex-direction:column;gap:14px}
+        .subject-card{background:#fff;border:1px solid #CBE0F0;border-radius:12px;overflow:hidden}
+        .subject-header{display:flex;align-items:center;justify-content:space-between;padding:14px 18px;background:#F8FBFF;border-bottom:1px solid #CBE0F0;gap:12px;flex-wrap:wrap}
+        .subject-left{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+        .subject-name{font-size:15px;font-weight:700;color:#1A3A7C}
+        .campo-tag{padding:3px 10px;border-radius:20px;font-size:11px;font-weight:500;white-space:nowrap}
+        .subject-hrs{font-size:13px;font-weight:700;color:#633806;white-space:nowrap;background:#FDF0E6;padding:4px 12px;border-radius:20px;border:1px solid #F5C518}
+        .courses-list{display:flex;flex-direction:column}
+        .course-row{display:flex;align-items:center;justify-content:space-between;padding:11px 18px;border-top:1px solid #F0F6FC}
+        .course-row:hover{background:#FAFCFF}
+        .course-label{display:flex;align-items:center;gap:8px;font-size:13px;color:#1A3A7C;font-weight:500}
+        .bth-badge{background:#FFFBEA;color:#BA7517;border:1px solid #F5C518;padding:2px 8px;border-radius:20px;font-size:11px;font-weight:500}
+        .course-hrs{font-size:12px;font-weight:600;color:#6B8BB0;background:#F0F6FC;padding:3px 10px;border-radius:20px}
+        .spinner{width:24px;height:24px;border:2px solid rgba(99,56,6,.2);border-top-color:#633806;border-radius:50%;animation:spin .7s linear infinite}
+        @keyframes spin{to{transform:rotate(360deg)}}
+        @media(max-width:600px){.stats-grid{grid-template-columns:1fr 1fr}}
+      `}</style>
     </div>
-  );
+  )
 }
