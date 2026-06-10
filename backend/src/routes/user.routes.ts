@@ -7,6 +7,8 @@ import {
   toggleUserStatus,
   resetPassword,
   resetByEmail,
+  deleteUser,
+  getJuntaParents,
 } from '../controllers/user.controller'
 import { verifyToken, requirePermission } from '../middlewares/auth.middleware'
 import { Permission } from '../config/permissions'
@@ -22,5 +24,7 @@ router.post('/',                   requirePermission(Permission.USER_CREATE),   
 router.put('/:id',                 requirePermission(Permission.USER_CREATE),   updateUser)
 router.patch('/:id/toggle',       requirePermission(Permission.USER_CREATE),   toggleUserStatus)
 router.post('/:id/reset-password', requirePermission(Permission.USER_CREATE),   resetPassword)
+router.delete('/:id', requirePermission(Permission.USER_CREATE), deleteUser)
+router.get('/junta-parents', requirePermission(Permission.USER_VIEW_ALL), getJuntaParents)
 
 export default router

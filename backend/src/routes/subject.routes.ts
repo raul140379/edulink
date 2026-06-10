@@ -9,6 +9,7 @@ import {
   removeSubjectFromCourse,
   getCoursePlan,
   addSubjectToGradePlan,
+  removeSubjectFromGradePlan,
 } from '../controllers/subject.controller'
 
 const router = Router()
@@ -20,6 +21,7 @@ router.get('/plan/:courseId', getCoursePlan)
 router.post('/assign',        assignSubjectToCourse)
 router.delete('/assign/:id',  removeSubjectFromCourse)
 router.post('/grade-config', addSubjectToGradePlan)
+router.delete('/grade-config/:id', removeSubjectFromGradePlan)
 
 // Rutas genéricas DESPUÉS
 router.get('/',       getSubjects)

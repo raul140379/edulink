@@ -7,7 +7,7 @@ import {
   getCourseSummary,
   getTeacherSubjects,
   getCourseStudents,
-} from '../controllers/nota'
+} from '../controllers/nota.controller'
 import { verifyToken, requirePermission } from '../middlewares/auth.middleware'
 
 const router = Router()

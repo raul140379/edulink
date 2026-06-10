@@ -230,3 +230,128 @@ export const deleteMeeting = async (req: AuthRequest, res: Response): Promise<vo
     res.status(500).json({ message: 'Error al eliminar reunión' })
   }
 }
+// GET /api/meetings/my-course — Reuniones del curso del maestro tutor
+export const getMyMeetingsAsTutor = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const userId = req.userId
+
+    const teacher = await prisma.teacher.findFirst({
+      where: { tutorUserId: userId },
+      include: { tutorCourse: true }
+    })
+
+    if (!teacher || !teacher.tutorCourse) {
+      res.status(404).json({ message: 'No tienes un curso asignado como tutor' })
+      return
+    }
+
+    const meetings = await prisma.meeting.findMany({
+      where: { courseId: teacher.tutorCourse.courseId },
+      include: {
+        attendances: {
+          include: {
+            parent: { select: { id: true, firstName: true, lastName: true } }
+          }
+        }
+      },
+      orderBy: { date: 'desc' }
+    })
+
+    res.json(meetings)
+  } catch (error) {
+    console.error('getMyMeetingsAsTutor error:', error)
+    res.status(500).json({ message: 'Error al obtener reuniones' })
+  }
+}
+// POST /api/meetings/my-course — Crear reunión como maestro tutor
+export const createMeetingAsTutor = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const userId = req.userId
+    const { title, date } = req.body
+
+    if (!title || !date) {
+      res.status(400).json({ message: 'Título y fecha son requeridos' })
+      return
+    }
+
+    const teacher = await prisma.teacher.findFirst({
+      where: { tutorUserId: userId },
+      include: {
+        tutorCourse: {
+          include: {
+            course: {
+              include: {
+                assignments: {
+                  where: { academicYear: { isActive: true } },
+                  include: {
+                    student: {
+                      include: {
+                        parents: {
+                          where: { isTutor: true },
+                          include: { parent: { select: { id: true } } }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    })
+
+    if (!teacher || !teacher.tutorCourse) {
+      res.status(404).json({ message: 'No tienes un curso asignado como tutor' })
+      return
+    }
+
+    const tutorIds = new Set<number>()
+    for (const a of teacher.tutorCourse.course.assignments) {
+      for (const ps of a.student.parents) {
+        tutorIds.add(ps.parent.id)
+      }
+    }
+
+    const meeting = await prisma.meeting.create({
+      data: {
+        title,
+        date:        new Date(date),
+        courseId:    teacher.tutorCourse.courseId,
+        createdById: userId!,
+        attendances: {
+          create: Array.from(tutorIds).map(parentId => ({
+            parentId,
+            present: false,
+          }))
+        }
+      },
+      include: {
+        attendances: {
+          include: {
+            parent: { select: { id: true, firstName: true, lastName: true } }
+          }
+        }
+      }
+    })
+
+    res.status(201).json({ message: 'Reunión creada correctamente', meeting })
+  } catch (error) {
+    console.error('createMeetingAsTutor error:', error)
+    res.status(500).json({ message: 'Error al crear reunión' })
+  }
+}
+export const updateMeeting = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const { id } = req.params
+    const { title, date } = req.body
+    if (!title || !date) { res.status(400).json({ message: 'Título y fecha son requeridos' }); return }
+    const meeting = await prisma.meeting.update({
+      where: { id: parseInt(id) },
+      data:  { title, date: new Date(date) }
+    })
+    res.json({ message: 'Reunión actualizada correctamente', meeting })
+  } catch (error) {
+    res.status(500).json({ message: 'Error al actualizar reunión' })
+  }
+}

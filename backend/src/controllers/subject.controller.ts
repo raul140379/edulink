@@ -12,15 +12,11 @@ export const getSubjects = async (req: AuthRequest, res: Response): Promise<void
     const subjects = await prisma.subject.findMany({
       where: {
         ...(level ? { level: level as any } : {}),
-        ...(grade ? {
-          gradeConfigs: { some: { grade: grade as any } }
-        } : {}),
+        ...(grade ? { gradeConfigs: { some: { grade: grade as any } } } : {}),
       },
       include: {
         _count: { select: { teacherSubjects: true } },
-        ...(grade ? {
-          gradeConfigs: { where: { grade: grade as any } }
-        } : {}),
+        ...(grade ? { gradeConfigs: { where: { grade: grade as any } } } : {}),
       },
       orderBy: [{ campo: 'asc' }, { name: 'asc' }]
     })
@@ -34,10 +30,6 @@ export const getSubjects = async (req: AuthRequest, res: Response): Promise<void
 
 // ─────────────────────────────────────────────
 // GET /api/subjects/plan/:courseId
-// Plan de estudios del grado del curso
-// Retorna todas las materias del grado (SubjectGradeConfig)
-// con indicación de si tienen maestro asignado,
-// agrupadas por Campo de Saber
 // ─────────────────────────────────────────────
 export const getCoursePlan = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
@@ -60,7 +52,6 @@ export const getCoursePlan = async (req: AuthRequest, res: Response): Promise<vo
       return
     }
 
-    // Obtener el plan del grado desde SubjectGradeConfig
     const gradeConfigs = await prisma.subjectGradeConfig.findMany({
       where: {
         grade:         course.grade         as any,
@@ -73,23 +64,22 @@ export const getCoursePlan = async (req: AuthRequest, res: Response): Promise<vo
       },
       orderBy: [
         { subject: { campo: 'asc' } },
-        { subject: { name: 'asc'  } }
+        { subject: { name:  'asc' } }
       ]
     })
 
-    // Combinar plan del grado con asignaciones actuales del curso
     const plan = gradeConfigs.map(gc => {
       const assigned = course.teacherSubjects.find(ts => ts.subjectId === gc.subjectId)
       return {
-        subjectId:    gc.subjectId,
-        subject:      gc.subject,
-        hoursPerWeek: gc.hoursPerWeek,
-        teacher:      assigned ? assigned.teacher      : null,
-        assignmentId: assigned ? assigned.id           : null,
+        gradeConfigId: gc.id,
+        subjectId:     gc.subjectId,
+        subject:       gc.subject,
+        hoursPerWeek:  gc.hoursPerWeek,
+        teacher:       assigned ? assigned.teacher : null,
+        assignmentId:  assigned ? assigned.id      : null,
       }
     })
 
-    // Agrupar por Campo de Saber
     const campoOrder = [
       'VIDA_TIERRA_TERRITORIO',
       'COMUNIDAD_SOCIEDAD',
@@ -109,10 +99,10 @@ export const getCoursePlan = async (req: AuthRequest, res: Response): Promise<vo
 
     res.json({
       course: {
-        id:       course.id,
-        grade:    course.grade,
-        parallel: course.parallel,
-        level:    course.level,
+        id:            course.id,
+        grade:         course.grade,
+        parallel:      course.parallel,
+        level:         course.level,
         educationType: course.educationType,
       },
       totalHours,
@@ -171,10 +161,10 @@ export const updateSubject = async (req: AuthRequest, res: Response): Promise<vo
     const subject = await prisma.subject.update({
       where: { id: parseInt(id) },
       data: {
-        ...(name         !== undefined ? { name }                       : {}),
-        ...(code         !== undefined ? { code: code || null }         : {}),
-        ...(level        !== undefined ? { level: level as any }        : {}),
-        ...(hoursPerWeek !== undefined ? { hoursPerWeek }               : {}),
+        ...(name         !== undefined ? { name }                : {}),
+        ...(code         !== undefined ? { code: code || null }  : {}),
+        ...(level        !== undefined ? { level: level as any } : {}),
+        ...(hoursPerWeek !== undefined ? { hoursPerWeek }        : {}),
       },
     })
 
@@ -186,7 +176,7 @@ export const updateSubject = async (req: AuthRequest, res: Response): Promise<vo
 }
 
 // ─────────────────────────────────────────────
-// DELETE /api/subjects/:id — Eliminar materia
+// DELETE /api/subjects/:id — Eliminar materia global
 // ─────────────────────────────────────────────
 export const deleteSubject = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
@@ -217,8 +207,6 @@ export const deleteSubject = async (req: AuthRequest, res: Response): Promise<vo
 
 // ─────────────────────────────────────────────
 // POST /api/subjects/assign — Asignar materia + maestro a curso
-// Valida que la materia pertenezca al plan del grado.
-// Si la materia ya tiene maestro en ese curso, lo actualiza.
 // ─────────────────────────────────────────────
 export const assignSubjectToCourse = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
@@ -229,40 +217,34 @@ export const assignSubjectToCourse = async (req: AuthRequest, res: Response): Pr
       return
     }
 
-    // 1. Verificar que el curso existe
     const course = await prisma.course.findUnique({ where: { id: parseInt(courseId) } })
     if (!course) {
       res.status(404).json({ message: 'Curso no encontrado' })
       return
     }
 
-    // 2. Validar que la materia está en el plan del grado (SubjectGradeConfig)
     const gradeConfig = await prisma.subjectGradeConfig.findFirst({
       where: {
-        subjectId:    parseInt(subjectId),
-        grade:        course.grade         as any,
-        educationType:course.educationType as any,
+        subjectId:     parseInt(subjectId),
+        grade:         course.grade         as any,
+        educationType: course.educationType as any,
       }
     })
 
     if (!gradeConfig) {
-      res.status(400).json({
-        message: 'Esta materia no pertenece al plan de estudios de este grado'
-      })
+      res.status(400).json({ message: 'Esta materia no pertenece al plan de estudios de este grado' })
       return
     }
 
-    // 3. Verificar si la materia ya tiene maestro en este curso
     const existing = await prisma.teacherSubjectCourse.findFirst({
       where: { subjectId: parseInt(subjectId), courseId: parseInt(courseId) }
     })
 
     if (existing) {
-      // Actualizar el maestro (no crear duplicado)
-        if (existing.teacherId === parseInt(teacherId)) {
-    res.status(409).json({ message: 'Este maestro ya está asignado a esa materia en ese curso' })
-    return
-  }
+      if (existing.teacherId === parseInt(teacherId)) {
+        res.status(409).json({ message: 'Este maestro ya está asignado a esa materia en ese curso' })
+        return
+      }
       const updated = await prisma.teacherSubjectCourse.update({
         where: { id: existing.id },
         data:  { teacherId: parseInt(teacherId) },
@@ -276,7 +258,6 @@ export const assignSubjectToCourse = async (req: AuthRequest, res: Response): Pr
       return
     }
 
-    // 4. Crear la asignación nueva
     const assignment = await prisma.teacherSubjectCourse.create({
       data: {
         subjectId: parseInt(subjectId),
@@ -302,7 +283,7 @@ export const assignSubjectToCourse = async (req: AuthRequest, res: Response): Pr
 }
 
 // ─────────────────────────────────────────────
-// DELETE /api/subjects/assign/:id — Quitar asignación
+// DELETE /api/subjects/assign/:id — Quitar maestro de materia
 // ─────────────────────────────────────────────
 export const removeSubjectFromCourse = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
@@ -314,7 +295,10 @@ export const removeSubjectFromCourse = async (req: AuthRequest, res: Response): 
     res.status(500).json({ message: 'Error al eliminar asignación' })
   }
 }
-// POST /api/subjects/grade-config — Agregar materia al plan de un grado
+
+// ─────────────────────────────────────────────
+// POST /api/subjects/grade-config — Agregar materia al plan del grado
+// ─────────────────────────────────────────────
 export const addSubjectToGradePlan = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const { subjectId, grade, educationType, hoursPerWeek } = req.body
@@ -324,7 +308,6 @@ export const addSubjectToGradePlan = async (req: AuthRequest, res: Response): Pr
       return
     }
 
-    // Verificar si ya existe
     const existing = await prisma.subjectGradeConfig.findFirst({
       where: {
         subjectId:     parseInt(subjectId),
@@ -358,5 +341,42 @@ export const addSubjectToGradePlan = async (req: AuthRequest, res: Response): Pr
     }
     console.error('addSubjectToGradePlan error:', error)
     res.status(500).json({ message: 'Error al agregar materia al plan' })
+  }
+}
+
+// ─────────────────────────────────────────────
+// DELETE /api/subjects/grade-config/:id — Quitar materia del plan del grado
+// ─────────────────────────────────────────────
+export const removeSubjectFromGradePlan = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const { id } = req.params
+
+    const config = await prisma.subjectGradeConfig.findUnique({
+      where: { id: parseInt(id) }
+    })
+
+    if (!config) {
+      res.status(404).json({ message: 'Configuración no encontrada' })
+      return
+    }
+
+    // Eliminar asignaciones de maestros en cursos de ese grado primero
+    await prisma.teacherSubjectCourse.deleteMany({
+      where: {
+        subjectId: config.subjectId,
+        course: {
+          grade:         config.grade,
+          educationType: config.educationType,
+        }
+      }
+    })
+
+    // Eliminar del plan del grado
+    await prisma.subjectGradeConfig.delete({ where: { id: parseInt(id) } })
+
+    res.json({ message: 'Materia eliminada del plan correctamente' })
+  } catch (error) {
+    console.error('removeSubjectFromGradePlan error:', error)
+    res.status(500).json({ message: 'Error al eliminar materia del plan' })
   }
 }

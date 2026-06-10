@@ -239,3 +239,38 @@ export const resetByEmail = async (req: AuthRequest, res: Response): Promise<voi
     res.status(500).json({ message: 'Error al resetear contraseña' })
   }
 }
+
+// DELETE /api/users/:id
+export const deleteUser = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const { id } = req.params
+    const userId = parseInt(id)
+
+    // Desvincular de parent, teacher, student, staff antes de eliminar
+    await prisma.parent.updateMany({ where: { userId },        data: { userId: null } })
+    await prisma.parent.updateMany({ where: { delegateUserId: userId }, data: { delegateUserId: null } })
+    await prisma.teacher.updateMany({ where: { tutorUserId: userId }, data: { tutorUserId: null } })
+    await prisma.student.updateMany({ where: { userId },       data: { userId: null } })
+
+    await prisma.user.delete({ where: { id: userId } })
+    res.json({ message: 'Usuario eliminado correctamente' })
+  } catch (error) {
+    console.error('deleteUser error:', error)
+    res.status(500).json({ message: 'Error al eliminar usuario' })
+  }
+}
+// GET /api/users/junta-parents
+export const getJuntaParents = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const juntaUsers = await prisma.user.findMany({
+      where: { role: 'JUNTA_ESCOLAR', isActive: true },
+      select: {
+        parent: { select: { id: true, firstName: true, lastName: true } }
+      }
+    })
+    const parents = juntaUsers.map(u => u.parent).filter(p => p !== null)
+    res.json(parents)
+  } catch (error) {
+    res.status(500).json({ message: 'Error al obtener junta escolar' })
+  }
+}
