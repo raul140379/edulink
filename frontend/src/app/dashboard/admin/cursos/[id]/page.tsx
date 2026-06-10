@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
-import { ArrowLeft, Users, BookOpen, Clock, GraduationCap, CheckCircle2, AlertCircle, Trash2, Plus, RefreshCw, Copy, Check, X } from 'lucide-react'
+import { ArrowLeft, Users, BookOpen, Clock, GraduationCap, CheckCircle2, AlertCircle, Trash2, Plus, RefreshCw, Copy, Check, X, Search } from 'lucide-react'
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000'
 
@@ -20,15 +20,16 @@ interface Course {
 }
 
 interface PlanItem {
-  subjectId:    number
-  subject:      { id: number; name: string; code: string; campo: string | null }
-  hoursPerWeek: number
-  teacher:      { id: number; firstName: string; lastName: string } | null
-  assignmentId: number | null
+  gradeConfigId: number
+  subjectId:     number
+  subject:       { id: number; name: string; code: string; campo: string | null }
+  hoursPerWeek:  number
+  teacher:       { id: number; firstName: string; lastName: string } | null
+  assignmentId:  number | null
 }
 
 interface CoursePlan {
-  course:        { id: number; grade: string; parallel: string; level: string }
+  course:        { id: number; grade: string; parallel: string; level: string; educationType: string }
   totalHours:    number
   totalSubjects: number
   assignedCount: number
@@ -46,6 +47,10 @@ interface Credentials {
   accessEmail:     string
   defaultPassword: string
   name:            string
+}
+
+interface Subject {
+  id: number; name: string; code?: string; campo?: string
 }
 
 const LEVELS = { INICIAL:'Inicial', PRIMARIA:'Primaria', SECUNDARIA:'Secundaria' } as Record<string,string>
@@ -86,11 +91,20 @@ export default function CourseDetailPage() {
   const [assignments, setAssignments] = useState<Assignment[]>([])
   const [loading,     setLoading]     = useState(true)
   const [removing,    setRemoving]    = useState<number | null>(null)
+  const [removingPlan,setRemovingPlan]= useState<number | null>(null)
   const [working,     setWorking]     = useState(false)
   const [creds,       setCreds]       = useState<Credentials | null>(null)
   const [copied,      setCopied]      = useState(false)
   const [success,     setSuccess]     = useState('')
   const [error,       setError]       = useState('')
+
+  // Modal agregar materia al plan
+  const [showAddSubject,  setShowAddSubject]  = useState(false)
+  const [allSubjects,     setAllSubjects]     = useState<Subject[]>([])
+  const [subjectSearch,   setSubjectSearch]   = useState('')
+  const [selectedSubject, setSelectedSubject] = useState<number | null>(null)
+  const [hoursPerWeek,    setHoursPerWeek]    = useState('4')
+  const [addingSubject,   setAddingSubject]   = useState(false)
 
   const token   = typeof window !== 'undefined' ? localStorage.getItem('token') : ''
   const userRole = typeof window !== 'undefined'
@@ -120,6 +134,14 @@ export default function CourseDetailPage() {
     finally     { setLoading(false) }
   }
 
+  const fetchAllSubjects = async () => {
+    try {
+      const res  = await fetch(`${API_URL}/api/subjects`, { headers: { Authorization: `Bearer ${token}` } })
+      const data = await res.json()
+      if (res.ok) setAllSubjects(data)
+    } catch { console.error('Error al cargar materias') }
+  }
+
   useEffect(() => { fetchData() }, [id])
 
   const handleRemoveAssignment = async (assignmentId: number) => {
@@ -129,9 +151,48 @@ export default function CourseDetailPage() {
       const res = await fetch(`${API_URL}/api/subjects/assign/${assignmentId}`, {
         method: 'DELETE', headers: { Authorization: `Bearer ${token}` }
       })
-      if (res.ok) fetchData()
+      if (res.ok) { notify('Maestro quitado correctamente'); fetchData() }
     } catch { console.error('Error al quitar asignación') }
     finally  { setRemoving(null) }
+  }
+
+  const handleRemoveFromPlan = async (gradeConfigId: number, subjectName: string) => {
+    if (!confirm(`¿Eliminar "${subjectName}" del plan de estudios? Esto también quitará al maestro asignado.`)) return
+    setRemovingPlan(gradeConfigId)
+    try {
+      const res  = await fetch(`${API_URL}/api/subjects/grade-config/${gradeConfigId}`, {
+        method: 'DELETE', headers: { Authorization: `Bearer ${token}` }
+      })
+      const data = await res.json()
+      if (res.ok) { notify(data.message); fetchData() }
+      else notify(data.message, 'err')
+    } catch { notify('Error de conexión', 'err') }
+    finally  { setRemovingPlan(null) }
+  }
+
+  const handleAddSubjectToPlan = async () => {
+    if (!selectedSubject || !plan) return
+    setAddingSubject(true)
+    try {
+      const res  = await fetch(`${API_URL}/api/subjects/grade-config`, {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body:    JSON.stringify({
+          subjectId:     selectedSubject,
+          grade:         plan.course.grade,
+          educationType: plan.course.educationType,
+          hoursPerWeek:  parseInt(hoursPerWeek) || 4,
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok) { notify(data.message, 'err'); return }
+      notify(data.message)
+      setShowAddSubject(false)
+      setSelectedSubject(null)
+      setHoursPerWeek('4')
+      fetchData()
+    } catch { notify('Error de conexión', 'err') }
+    finally  { setAddingSubject(false) }
   }
 
   const handleCreateTutorUser = async () => {
@@ -180,8 +241,18 @@ export default function CourseDetailPage() {
     ? [...plan.campoOrder, 'SIN_CAMPO'].filter(c => plan.grouped[c]?.length > 0)
     : []
 
-  const hasTutor    = !!course.tutor
+  const hasTutor     = !!course.tutor
   const hasTutorUser = !!course.tutor?.teacher.tutorUserId
+
+  // Materias que ya están en el plan (para excluirlas del selector)
+  const planSubjectIds = plan
+    ? Object.values(plan.grouped).flat().map(i => i.subjectId)
+    : []
+
+  const availableSubjects = allSubjects.filter(s =>
+    !planSubjectIds.includes(s.id) &&
+    (subjectSearch === '' || s.name.toLowerCase().includes(subjectSearch.toLowerCase()))
+  )
 
   return (
     <div>
@@ -213,26 +284,17 @@ export default function CourseDetailPage() {
       <div className="stats-row">
         <div className="stat-card">
           <Users size={20} color="#1A3A7C"/>
-          <div>
-            <div className="stat-num">{course._count.assignments}</div>
-            <div className="stat-lbl">Estudiantes inscritos</div>
-          </div>
+          <div><div className="stat-num">{course._count.assignments}</div><div className="stat-lbl">Estudiantes inscritos</div></div>
         </div>
         {plan && (
           <>
             <div className="stat-card">
               <BookOpen size={20} color="#4A9FD4"/>
-              <div>
-                <div className="stat-num">{plan.totalSubjects}</div>
-                <div className="stat-lbl">Materias del grado</div>
-              </div>
+              <div><div className="stat-num">{plan.totalSubjects}</div><div className="stat-lbl">Materias del grado</div></div>
             </div>
             <div className="stat-card">
               <Clock size={20} color="#0F6E56"/>
-              <div>
-                <div className="stat-num">{plan.totalHours}</div>
-                <div className="stat-lbl">Horas / semana</div>
-              </div>
+              <div><div className="stat-num">{plan.totalHours}</div><div className="stat-lbl">Horas / Mes</div></div>
             </div>
             <div className="stat-card">
               <CheckCircle2 size={20} color={plan.pendingCount === 0 ? '#0F6E56' : '#BA7517'}/>
@@ -260,28 +322,22 @@ export default function CourseDetailPage() {
                 {hasTutorUser ? (
                   <div style={{marginTop:'4px'}}>
                     <span style={{fontSize:'11px',color:'#0F6E56'}}>✅ Usuario tutor activo</span>
-                    <div style={{fontSize:'11px',color:'#6B8BB0',fontFamily:'monospace'}}>
-                      {course.tutor!.teacher.tutorUser?.email}
-                    </div>
+                    <div style={{fontSize:'11px',color:'#6B8BB0',fontFamily:'monospace'}}>{course.tutor!.teacher.tutorUser?.email}</div>
                   </div>
                 ) : (
                   <span style={{fontSize:'11px',color:'#C0392B'}}>❌ Sin usuario tutor</span>
                 )}
               </div>
               <div style={{display:'flex',gap:'8px',flexWrap:'wrap'}}>
-                <button className="btn-outline-sm" onClick={() => router.push(`/dashboard/admin/cursos/${id}/asignar-tutor`)}>
-                  Cambiar tutor
-                </button>
+                <button className="btn-outline-sm" onClick={() => router.push(`/dashboard/admin/cursos/${id}/asignar-tutor`)}>Cambiar tutor</button>
                 {isDirector && !hasTutorUser && (
                   <button className="btn-primary-sm" onClick={handleCreateTutorUser} disabled={working}>
-                    {working ? <span className="spinsm"/> : <Plus size={12}/>}
-                    Crear usuario
+                    {working ? <span className="spinsm"/> : <Plus size={12}/>} Crear usuario
                   </button>
                 )}
                 {isDirector && hasTutorUser && (
                   <button className="btn-outline-sm" onClick={handleResetTutorPassword} disabled={working}>
-                    {working ? <span className="spinsm"/> : <RefreshCw size={12}/>}
-                    Resetear password
+                    {working ? <span className="spinsm"/> : <RefreshCw size={12}/>} Resetear password
                   </button>
                 )}
               </div>
@@ -289,9 +345,7 @@ export default function CourseDetailPage() {
           ) : (
             <div style={{display:'flex',alignItems:'center',justifyContent:'space-between'}}>
               <span style={{fontSize:'13px',color:'#6B8BB0',fontStyle:'italic'}}>Sin maestro tutor asignado</span>
-              <button className="btn-primary-sm" onClick={() => router.push(`/dashboard/admin/cursos/${id}/asignar-tutor`)}>
-                + Asignar tutor
-              </button>
+              <button className="btn-primary-sm" onClick={() => router.push(`/dashboard/admin/cursos/${id}/asignar-tutor`)}>+ Asignar tutor</button>
             </div>
           )}
         </div>
@@ -302,15 +356,16 @@ export default function CourseDetailPage() {
         <div className="section-title" style={{justifyContent:'space-between'}}>
           <span style={{display:'flex',alignItems:'center',gap:'8px'}}>
             <BookOpen size={15}/> Plan de Estudios · {GRADES[course.grade]} {course.parallel}
-            {plan && (
-              <span style={{fontSize:'12px',fontWeight:400,color:'#6B8BB0'}}>
-                {plan.totalHours} hrs/sem
-              </span>
-            )}
+            {plan && <span style={{fontSize:'12px',fontWeight:400,color:'#6B8BB0'}}>{plan.totalHours} hrs/mes</span>}
           </span>
-          <button className="btn-primary-sm" onClick={() => router.push(`/dashboard/admin/cursos/${id}/asignar-materia`)}>
-            + Asignar maestro
-          </button>
+          <div style={{display:'flex',gap:'8px'}}>
+            <button className="btn-outline-sm" onClick={() => { setShowAddSubject(true); fetchAllSubjects(); setSubjectSearch(''); setSelectedSubject(null); setHoursPerWeek('4') }}>
+              <Plus size={12}/> Agregar materia
+            </button>
+            <button className="btn-primary-sm" onClick={() => router.push(`/dashboard/admin/cursos/${id}/asignar-materia`)}>
+              + Asignar maestro
+            </button>
+          </div>
         </div>
 
         {!plan ? (
@@ -318,15 +373,9 @@ export default function CourseDetailPage() {
         ) : (
           <div style={{padding:'12px 16px',display:'flex',flexDirection:'column',gap:'16px'}}>
             {plan.pendingCount > 0 ? (
-              <div className="alert-warn">
-                <AlertCircle size={14}/>
-                {plan.pendingCount} {plan.pendingCount === 1 ? 'materia sin' : 'materias sin'} maestro asignado
-              </div>
+              <div className="alert-warn"><AlertCircle size={14}/>{plan.pendingCount} {plan.pendingCount === 1 ? 'materia sin' : 'materias sin'} maestro asignado</div>
             ) : (
-              <div className="alert-ok">
-                <CheckCircle2 size={14}/>
-                Todas las materias tienen maestro asignado ✓
-              </div>
+              <div className="alert-ok"><CheckCircle2 size={14}/>Todas las materias tienen maestro asignado ✓</div>
             )}
 
             {camposOrden.map(campo => {
@@ -340,11 +389,9 @@ export default function CourseDetailPage() {
                 <div key={campo}>
                   <div className="campo-header" style={{background:col.bg,borderColor:col.border}}>
                     <span style={{fontSize:'14px'}}>{icon}</span>
-                    <span style={{fontWeight:700,color:col.text,fontSize:'12px',textTransform:'uppercase',letterSpacing:'.5px'}}>
-                      {label}
-                    </span>
+                    <span style={{fontWeight:700,color:col.text,fontSize:'12px',textTransform:'uppercase',letterSpacing:'.5px'}}>{label}</span>
                     <span style={{marginLeft:'auto',fontSize:'12px',color:col.text,fontWeight:500}}>
-                      {horasCampo} hrs/sem · {items.length} {items.length === 1 ? 'materia' : 'materias'}
+                      {horasCampo} hrs/mes · {items.length} {items.length === 1 ? 'materia' : 'materias'}
                     </span>
                   </div>
                   <table style={{width:'100%',borderCollapse:'collapse'}}>
@@ -352,9 +399,9 @@ export default function CourseDetailPage() {
                       <tr style={{background:'#F8FBFF'}}>
                         <th className="th">Materia</th>
                         <th className="th">Código</th>
-                        <th className="th" style={{textAlign:'center'}}>Hrs/sem</th>
+                        <th className="th" style={{textAlign:'center'}}>Hrs/Mes</th>
                         <th className="th">Maestro</th>
-                        <th className="th" style={{width:'40px'}}></th>
+                        <th className="th" style={{width:'80px',textAlign:'center'}}>Acciones</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -378,14 +425,23 @@ export default function CourseDetailPage() {
                               </span>
                             )}
                           </td>
-                          <td className="td">
-                            {item.assignmentId && (
-                              <button className="icon-del" title="Quitar maestro"
-                                disabled={removing === item.assignmentId}
-                                onClick={() => handleRemoveAssignment(item.assignmentId!)}>
-                                <Trash2 size={12}/>
+                          <td className="td" style={{textAlign:'center'}}>
+                            <div style={{display:'flex',gap:'6px',justifyContent:'center'}}>
+                              {item.assignmentId && (
+                                <button className="icon-btn-sm" title="Quitar maestro"
+                                  style={{background:'#FFFBEA',color:'#BA7517',border:'1px solid #F5C518'}}
+                                  disabled={removing === item.assignmentId}
+                                  onClick={() => handleRemoveAssignment(item.assignmentId!)}>
+                                  <Trash2 size={11}/>
+                                </button>
+                              )}
+                              <button className="icon-btn-sm" title="Eliminar materia del plan"
+                                style={{background:'#FFF0F0',color:'#C0392B',border:'1px solid #FFBBBB'}}
+                                disabled={removingPlan === item.gradeConfigId}
+                                onClick={() => handleRemoveFromPlan(item.gradeConfigId, item.subject.name)}>
+                                <X size={11}/>
                               </button>
-                            )}
+                            </div>
                           </td>
                         </tr>
                       ))}
@@ -402,18 +458,13 @@ export default function CourseDetailPage() {
       <div className="section-card">
         <div className="section-title"><Users size={15}/> Estudiantes inscritos ({assignments.length})</div>
         {assignments.length === 0 ? (
-          <div className="empty-state">
-            <Users size={32} color="#CBE0F0"/>
-            <p>No hay estudiantes inscritos en este curso</p>
-          </div>
+          <div className="empty-state"><Users size={32} color="#CBE0F0"/><p>No hay estudiantes inscritos en este curso</p></div>
         ) : (
           <table>
             <thead>
               <tr>
-                <th className="th">#</th>
-                <th className="th">Nombre completo</th>
-                <th className="th">CI</th>
-                <th className="th">RUDE</th>
+                <th className="th">#</th><th className="th">Nombre completo</th>
+                <th className="th">CI</th><th className="th">RUDE</th>
               </tr>
             </thead>
             <tbody>
@@ -430,7 +481,83 @@ export default function CourseDetailPage() {
         )}
       </div>
 
-      {/* Modal credenciales tutor */}
+      {/* ── Modal agregar materia al plan ── */}
+      {showAddSubject && (
+        <div className="overlay" onClick={() => setShowAddSubject(false)}>
+          <div className="modal" onClick={e => e.stopPropagation()}>
+            <div className="mhead">
+              <div>
+                <h2>Agregar materia al plan</h2>
+                <p style={{fontSize:'12px',color:'#6B8BB0',margin:'2px 0 0'}}>
+                  {GRADES[course.grade]} {course.parallel} · {LEVELS[course.level]}
+                </p>
+              </div>
+              <button onClick={() => setShowAddSubject(false)}><X size={18}/></button>
+            </div>
+            <div className="mbody">
+              <div className="info-box">
+                📋 La materia se agregará al plan del grado <strong>{GRADES[course.grade]}</strong> y estará disponible en todos los cursos de ese grado.
+              </div>
+
+              {/* Buscador */}
+              <div className="fg">
+                <label>Buscar materia</label>
+                <div className="search-wrap">
+                  <Search size={13} className="s-icon"/>
+                  <input type="text" placeholder="Buscar por nombre..." value={subjectSearch}
+                    onChange={e => setSubjectSearch(e.target.value)}/>
+                </div>
+              </div>
+
+              {/* Lista de materias */}
+              <div className="fg">
+                <label>Seleccionar materia *</label>
+                <div className="subject-list">
+                  {availableSubjects.length === 0 ? (
+                    <div style={{padding:'16px',textAlign:'center',fontSize:'13px',color:'#6B8BB0',fontStyle:'italic'}}>
+                      {subjectSearch ? 'No se encontraron materias' : 'Todas las materias ya están en el plan'}
+                    </div>
+                  ) : (
+                    availableSubjects.map(s => (
+                      <label key={s.id} className={`subject-option ${selectedSubject === s.id ? 'selected' : ''}`}>
+                        <input type="radio" name="subject" value={s.id}
+                          checked={selectedSubject === s.id}
+                          onChange={() => setSelectedSubject(s.id)}/>
+                        <div style={{flex:1}}>
+                          <div style={{fontSize:'13px',fontWeight:'500',color:'#1A3A7C'}}>{s.name}</div>
+                          {s.campo && (
+                            <div style={{fontSize:'11px',color:'#6B8BB0',marginTop:'2px'}}>
+                              {CAMPO_LABELS[s.campo] || s.campo}
+                            </div>
+                          )}
+                        </div>
+                      </label>
+                    ))
+                  )}
+                </div>
+              </div>
+
+              {/* Hrs/mes */}
+              <div className="fg">
+                <label>Horas por mes *</label>
+                <input type="number" min={1} max={200} value={hoursPerWeek}
+                  onChange={e => setHoursPerWeek(e.target.value)}
+                  placeholder="Ej: 16"/>
+              </div>
+            </div>
+            <div className="mfoot">
+              <button className="btn-outline-sm" onClick={() => setShowAddSubject(false)}>Cancelar</button>
+              <button className="btn-primary-sm" onClick={handleAddSubjectToPlan}
+                disabled={addingSubject || !selectedSubject}>
+                {addingSubject ? <span className="spinsm"/> : <Plus size={13}/>}
+                {addingSubject ? 'Agregando...' : 'Agregar al plan'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Modal credenciales tutor ── */}
       {creds && (
         <div className="overlay" onClick={() => setCreds(null)}>
           <div className="modal" onClick={e => e.stopPropagation()}>
@@ -440,22 +567,13 @@ export default function CourseDetailPage() {
             </div>
             <div className="mbody">
               <div className="info-box"><strong>{creds.name}</strong></div>
-              <div className="cred-row">
-                <span className="cred-label">Email:</span>
-                <span className="cred-value">{creds.accessEmail}</span>
-              </div>
-              <div className="cred-row">
-                <span className="cred-label">Contraseña:</span>
-                <span className="cred-value">{creds.defaultPassword}</span>
-              </div>
-              <div className="cred-note">
-                ⚠️ Anota estas credenciales. El maestro puede cambiar su contraseña desde su perfil.
-              </div>
+              <div className="cred-row"><span className="cred-label">Email:</span><span className="cred-value">{creds.accessEmail}</span></div>
+              <div className="cred-row"><span className="cred-label">Contraseña:</span><span className="cred-value">{creds.defaultPassword}</span></div>
+              <div className="cred-note">⚠️ Anota estas credenciales. El maestro puede cambiar su contraseña desde su perfil.</div>
             </div>
             <div className="mfoot">
               <button className="btn-outline-sm" onClick={copyCreds}>
-                {copied ? <Check size={14}/> : <Copy size={14}/>}
-                {copied ? 'Copiado' : 'Copiar'}
+                {copied ? <Check size={14}/> : <Copy size={14}/>} {copied ? 'Copiado' : 'Copiar'}
               </button>
               <button className="btn-primary-sm" onClick={() => setCreds(null)}>Entendido</button>
             </div>
@@ -500,18 +618,31 @@ export default function CourseDetailPage() {
         .btn-outline-sm{display:flex;align-items:center;gap:5px;padding:6px 14px;background:#fff;color:#1A3A7C;border:1.5px solid #CBE0F0;border-radius:6px;font-size:12px;cursor:pointer;white-space:nowrap}
         .btn-outline-sm:hover:not(:disabled){background:#F0F6FC}
         .btn-outline-sm:disabled{opacity:.6;cursor:not-allowed}
-        .icon-del{width:26px;height:26px;border:none;border-radius:6px;background:#FFF0F0;color:#C0392B;cursor:pointer;display:flex;align-items:center;justify-content:center}
-        .icon-del:hover:not(:disabled){background:#FFD5D5}
-        .icon-del:disabled{opacity:.5;cursor:not-allowed}
+        .icon-btn-sm{width:24px;height:24px;border:none;border-radius:5px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:opacity .2s}
+        .icon-btn-sm:hover:not(:disabled){opacity:.75}
+        .icon-btn-sm:disabled{opacity:.4;cursor:not-allowed}
         .overlay{position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:500;display:flex;align-items:center;justify-content:center;padding:16px}
-        .modal{background:#fff;border-radius:14px;width:100%;max-width:420px;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,0.15)}
-        .mhead{display:flex;align-items:center;justify-content:space-between;padding:18px 20px;border-bottom:1px solid #CBE0F0}
+        .modal{background:#fff;border-radius:14px;width:100%;max-width:460px;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,0.15);max-height:90vh;display:flex;flex-direction:column}
+        .mhead{display:flex;align-items:flex-start;justify-content:space-between;padding:18px 20px;border-bottom:1px solid #CBE0F0;flex-shrink:0;gap:12px}
         .mhead h2{font-size:16px;font-weight:600;color:#1A3A7C;margin:0}
-        .mhead button{background:none;border:none;cursor:pointer;color:#6B8BB0;display:flex;padding:4px;border-radius:6px}
+        .mhead button{background:none;border:none;cursor:pointer;color:#6B8BB0;display:flex;padding:4px;border-radius:6px;flex-shrink:0}
         .mhead button:hover{background:#F0F6FC}
-        .mbody{padding:20px;display:flex;flex-direction:column;gap:12px}
-        .mfoot{display:flex;justify-content:flex-end;gap:10px;padding:16px 20px;border-top:1px solid #CBE0F0}
-        .info-box{background:#F0F6FC;border:1px solid #CBE0F0;border-radius:8px;padding:12px;font-size:13px;color:#1A3A7C}
+        .mbody{padding:20px;display:flex;flex-direction:column;gap:14px;overflow-y:auto;flex:1}
+        .mfoot{display:flex;justify-content:flex-end;gap:10px;padding:16px 20px;border-top:1px solid #CBE0F0;flex-shrink:0}
+        .fg{display:flex;flex-direction:column;gap:5px}
+        .fg label{font-size:11px;font-weight:600;color:#1A3A7C;text-transform:uppercase;letter-spacing:.5px}
+        .fg input{padding:9px 12px;border:1.5px solid #CBE0F0;border-radius:8px;font-size:13px;color:#1A3A7C;outline:none;width:100%}
+        .fg input:focus{border-color:#4A9FD4;box-shadow:0 0 0 3px rgba(74,159,212,.12)}
+        .info-box{background:#F0F6FC;border:1px solid #CBE0F0;border-radius:8px;padding:12px;font-size:12px;color:#6B8BB0;line-height:1.6}
+        .search-wrap{position:relative}
+        .s-icon{position:absolute;left:10px;top:50%;transform:translateY(-50%);color:#4A9FD4;pointer-events:none}
+        .search-wrap input{padding-left:32px!important}
+        .subject-list{border:1.5px solid #CBE0F0;border-radius:8px;max-height:180px;overflow-y:auto}
+        .subject-option{display:flex;align-items:center;gap:8px;padding:7px 10px;cursor:pointer;border-bottom:1px solid #F0F6FC}
+        .subject-option:last-child{border-bottom:none}
+        .subject-option:hover{background:#F8FBFF}
+        .subject-option.selected{background:#E8F0FB;border-left:3px solid #1A3A7C}
+        .subject-option input{accent-color:#1A3A7C;cursor:pointer;flex-shrink:0}
         .cred-row{display:flex;align-items:center;gap:10px;background:#F0F6FC;border:1px solid #CBE0F0;border-radius:8px;padding:10px 14px}
         .cred-label{font-size:12px;font-weight:600;color:#6B8BB0;min-width:80px;text-transform:uppercase;letter-spacing:.5px}
         .cred-value{font-size:13px;font-weight:600;color:#1A3A7C;font-family:monospace;word-break:break-all}

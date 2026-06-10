@@ -187,7 +187,7 @@ export default function MateriasPage() {
                   <th>#</th>
                   <th>Materia</th>
                   <th>Código</th>
-                  <th>Hrs/Semana</th>
+                  <th>Hrs/Plan</th>
                   <th>Cursos asignados</th>
                   <th>Acciones</th>
                 </tr>
@@ -244,7 +244,7 @@ export default function MateriasPage() {
                     value={form.code} onChange={e => setForm({...form, code: e.target.value})}/>
                 </div>
                 <div className="fg">
-                  <label>Horas por semana</label>
+                  <label>Horas Plan</label>
                   <input type="number" min="1" max="20" value={form.hoursPerWeek}
                     onChange={e => setForm({...form, hoursPerWeek: e.target.value})}/>
                 </div>

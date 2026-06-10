@@ -1,407 +1,277 @@
 'use client'
 
-import { useState, useEffect } from 'react'
-import { Save, BookOpen, Users, CheckCircle, AlertCircle } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import { BookOpen, Users, CheckCircle, AlertCircle, ChevronDown, ChevronUp } from 'lucide-react'
 
-const API = process.env.NEXT_PUBLIC_API_URL
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000'
 
 interface Trimester { id: number; number: number; name: string | null }
-interface TeacherSubject { id: number; subjectId: number; courseId: number; subject: { id: number; name: string }; course: { id: number; grade: string; parallel: string; level: string } }
-interface Student { id: number; firstName: string; lastName: string; kardex: string | null }
+interface Subject   { id: number; name: string }
+interface Student   {
+  id: number; firstName: string; lastName: string; kardex: string | null
+  subjects: Record<number, { t1?: number; t2?: number; t3?: number; promedio: number }>
+  promedioGeneral: number
+}
 
-export default function TeacherNotasPage() {
-  const [teacherId, setTeacherId] = useState<number | null>(null)
-  const [trimestres, setTrimestres] = useState<Trimester[]>([])
-  const [materias, setMaterias] = useState<TeacherSubject[]>([])
-  const [selectedTrimestre, setSelectedTrimestre] = useState<Trimester | null>(null)
-  const [selectedMateria, setSelectedMateria] = useState<TeacherSubject | null>(null)
-  const [students, setStudents] = useState<Student[]>([])
-  const [grades, setGrades] = useState<Record<number, string>>({})
-  const [loadingStudents, setLoadingStudents] = useState(false)
-  const [saving, setSaving] = useState(false)
-  const [toast, setToast] = useState<{ type: 'ok' | 'err'; text: string } | null>(null)
+interface Summary {
+  academicYear: { id: number; year: number }
+  trimesters:   Trimester[]
+  subjects:     Subject[]
+  students:     { student: Student; subjects: Record<number, { t1?: number; t2?: number; t3?: number; promedio: number }>; promedioGeneral: number }[]
+}
+
+const statusBadge = (val?: number) => {
+  if (val === undefined) return <span className="nd">—</span>
+  const apr = val >= 51
+  return <span className={`nbadge ${apr ? 'apr' : 'rep'}`}>{val.toFixed(1)}</span>
+}
+
+export default function TeacherTutorNotasPage() {
+  const [courseId,   setCourseId]   = useState<number | null>(null)
+  const [summary,    setSummary]    = useState<Summary | null>(null)
+  const [loading,    setLoading]    = useState(true)
+  const [error,      setError]      = useState('')
+  const [selTrim,    setSelTrim]    = useState<number | null>(null)
+  const [expanded,   setExpanded]   = useState<Record<number, boolean>>({})
   const year = new Date().getFullYear()
 
-  const token = () => localStorage.getItem('token')
+  const token = typeof window !== 'undefined' ? localStorage.getItem('token') : ''
 
-  const showToast = (type: 'ok' | 'err', text: string) => {
-    setToast({ type, text })
-    setTimeout(() => setToast(null), 4000)
-  }
-
-  // 1. Cargar datos iniciales
   useEffect(() => {
     const init = async () => {
+      setLoading(true)
       try {
-        // Obtener teacher del usuario logueado
-        const meRes = await fetch(`${API}/auth/me`, {
-          headers: { Authorization: `Bearer ${token()}` },
+        // Obtener curso del maestro tutor
+        const cRes  = await fetch(`${API_URL}/api/teachers/my-course`, {
+          headers: { Authorization: `Bearer ${token}` }
         })
-        const me = await meRes.json()
-        const tid = me.teacher?.id
-        if (!tid) return
-        setTeacherId(tid)
+        const cData = await cRes.json()
+        if (!cRes.ok) { setError(cData.message || 'No se encontró el curso'); return }
+        const cid = cData.id
+        setCourseId(cid)
 
-        // Trimestres y materias en paralelo
-        const [trimRes, matRes] = await Promise.all([
-          fetch(`${API}/notas/trimestres?year=${year}`, {
-            headers: { Authorization: `Bearer ${token()}` },
-          }),
-          fetch(`${API}/notas/teacher-subjects/${tid}`, {
-            headers: { Authorization: `Bearer ${token()}` },
-          }),
-        ])
-
-        const trimData = await trimRes.json()
-        const matData = await matRes.json()
-
-        setTrimestres(Array.isArray(trimData) ? trimData : [])
-        setMaterias(Array.isArray(matData) ? matData : [])
-
-        // Pre-seleccionar el trimestre activo (según fecha)
-        if (Array.isArray(trimData) && trimData.length > 0) {
-          setSelectedTrimestre(trimData[0])
-        }
-      } catch (err) {
-        console.error(err)
-        showToast('err', 'Error al cargar datos iniciales')
-      }
+        // Obtener resumen de notas
+        const sRes  = await fetch(`${API_URL}/api/notas/summary/${cid}?year=${year}`, {
+          headers: { Authorization: `Bearer ${token}` }
+        })
+        const sData = await sRes.json()
+        if (!sRes.ok) { setError(sData.error || 'Error al cargar notas'); return }
+        setSummary(sData)
+        if (sData.trimesters?.length > 0) setSelTrim(sData.trimesters[0].id)
+      } catch { setError('Error de conexión') }
+      finally  { setLoading(false) }
     }
     init()
   }, [])
 
-  // 2. Cargar estudiantes y notas existentes cuando cambia materia o trimestre
-  useEffect(() => {
-    if (!selectedMateria || !selectedTrimestre) return
+  if (loading) return <div className="center"><div className="spinner"/></div>
+  if (error)   return <div className="center"><p className="err-msg">{error}</p></div>
+  if (!summary) return null
 
-    const load = async () => {
-      setLoadingStudents(true)
-      setStudents([])
-      setGrades({})
-      try {
-        const [studRes, notasRes] = await Promise.all([
-          fetch(`${API}/notas/course-students/${selectedMateria.courseId}?year=${year}`, {
-            headers: { Authorization: `Bearer ${token()}` },
-          }),
-          fetch(`${API}/notas/course/${selectedMateria.courseId}?trimesterId=${selectedTrimestre.id}`, {
-            headers: { Authorization: `Bearer ${token()}` },
-          }),
-        ])
+  const trimLabel = (t: Trimester) => t.name || `${t.number}° Trimestre`
+  const selTrimNum = summary.trimesters.find(t => t.id === selTrim)?.number
 
-        const studData = await studRes.json()
-        const notasData = await notasRes.json()
-
-        setStudents(Array.isArray(studData) ? studData : [])
-
-        // Pre-llenar notas existentes de esta materia
-        const map: Record<number, string> = {}
-        if (Array.isArray(notasData)) {
-          notasData
-            .filter((n: any) => n.subjectId === selectedMateria.subjectId)
-            .forEach((n: any) => { map[n.studentId] = String(n.value) })
-        }
-        setGrades(map)
-      } catch (err) {
-        console.error(err)
-        showToast('err', 'Error al cargar estudiantes')
-      } finally {
-        setLoadingStudents(false)
-      }
-    }
-
-    load()
-  }, [selectedMateria, selectedTrimestre])
-
-  const handleGradeChange = (studentId: number, val: string) => {
-    if (val !== '' && val !== '-') {
-      const num = parseFloat(val)
-      if (isNaN(num) || num < 0 || num > 100) return
-    }
-    setGrades((prev) => ({ ...prev, [studentId]: val }))
-  }
-
-  const handleSave = async () => {
-    if (!selectedMateria || !selectedTrimestre || !teacherId) return
-
-    const payload = students
-      .filter((s) => grades[s.id] !== undefined && grades[s.id] !== '')
-      .map((s) => ({
-        studentId: s.id,
-        subjectId: selectedMateria.subjectId,
-        courseId: selectedMateria.courseId,
-        teacherId,
-        trimesterId: selectedTrimestre.id,
-        value: parseFloat(grades[s.id]),
-      }))
-
-    if (payload.length === 0) {
-      showToast('err', 'No hay notas para guardar')
-      return
-    }
-
-    setSaving(true)
-    try {
-      const res = await fetch(`${API}/notas/bulk`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token()}`,
-        },
-        body: JSON.stringify({ notas: payload }),
-      })
-      const data = await res.json()
-      if (res.ok) {
-        showToast('ok', `${data.saved} notas guardadas correctamente`)
-      } else {
-        showToast('err', data.error || 'Error al guardar')
-      }
-    } catch {
-      showToast('err', 'Error de conexión')
-    } finally {
-      setSaving(false)
-    }
-  }
-
-  // Estadísticas rápidas
-  const notasIngresadas = students.filter((s) => grades[s.id] !== undefined && grades[s.id] !== '').length
-  const aprobados = students.filter((s) => {
-    const v = parseFloat(grades[s.id])
-    return !isNaN(v) && v >= 51
-  }).length
-  const reprobados = notasIngresadas - aprobados
-
-  const courseLabel = selectedMateria
-    ? `${selectedMateria.course.grade} "${selectedMateria.course.parallel}" — ${selectedMateria.course.level}`
-    : ''
+  // Stats
+  const totalStudents = summary.students.length
+  const aprobados = summary.students.filter(s => s.promedioGeneral >= 51).length
+  const reprobados = totalStudents - aprobados
 
   return (
-    <div className="p-6 max-w-5xl mx-auto">
-      {/* Header */}
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold" style={{ color: '#633806' }}>
-          Registro de Notas
-        </h1>
-        <p className="text-gray-500 text-sm mt-1">
-          Gestión {year} · Escala 0–100 · Aprobado ≥ 51
-        </p>
+    <div>
+      <div className="page-header">
+        <div>
+          <h1>Notas del Curso</h1>
+          <p>Vista de calificaciones — Gestión {year} · Solo lectura</p>
+        </div>
+        <span className="readonly-badge">👁 Solo lectura</span>
       </div>
 
-      {/* Toast */}
-      {toast && (
-        <div
-          className={`mb-4 flex items-center gap-2 px-4 py-3 rounded-lg text-sm font-medium ${
-            toast.type === 'ok'
-              ? 'bg-green-50 text-green-700 border border-green-200'
-              : 'bg-red-50 text-red-700 border border-red-200'
-          }`}
-        >
-          {toast.type === 'ok'
-            ? <CheckCircle size={16} />
-            : <AlertCircle size={16} />}
-          {toast.text}
+      {/* Stats */}
+      <div className="stats-grid">
+        <div className="stat-card">
+          <div className="stat-icon blue"><Users size={18}/></div>
+          <div><div className="stat-num">{totalStudents}</div><div className="stat-lbl">Estudiantes</div></div>
         </div>
-      )}
+        <div className="stat-card">
+          <div className="stat-icon green"><CheckCircle size={18}/></div>
+          <div><div className="stat-num" style={{color:'#0F6E56'}}>{aprobados}</div><div className="stat-lbl">Aprobados</div></div>
+        </div>
+        <div className="stat-card">
+          <div className="stat-icon red"><AlertCircle size={18}/></div>
+          <div><div className="stat-num" style={{color:'#C0392B'}}>{reprobados}</div><div className="stat-lbl">Reprobados</div></div>
+        </div>
+        <div className="stat-card">
+          <div className="stat-icon blue"><BookOpen size={18}/></div>
+          <div><div className="stat-num">{summary.subjects.length}</div><div className="stat-lbl">Materias</div></div>
+        </div>
+      </div>
 
-      {/* Filtros */}
-      <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5 mb-6">
-        <div className="flex flex-wrap gap-6">
+      {/* Selector trimestre */}
+      <div className="trim-bar">
+        <span className="trim-label">Trimestre:</span>
+        {summary.trimesters.map(t => (
+          <button key={t.id} className={`trim-btn ${selTrim === t.id ? 'active' : ''}`}
+            onClick={() => setSelTrim(t.id)}>
+            {trimLabel(t)}
+          </button>
+        ))}
+        <button className={`trim-btn ${selTrim === null ? 'active' : ''}`}
+          onClick={() => setSelTrim(null)}>
+          Promedio general
+        </button>
+      </div>
 
-          {/* Selector de trimestre */}
-          <div>
-            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
-              Trimestre
-            </p>
-            <div className="flex gap-2">
-              {trimestres.length === 0 && (
-                <span className="text-sm text-gray-400">Sin trimestres configurados</span>
-              )}
-              {trimestres.map((t) => (
-                <button
-                  key={t.id}
-                  onClick={() => setSelectedTrimestre(t)}
-                  className={`px-4 py-2 rounded-lg text-sm font-semibold border transition-all ${
-                    selectedTrimestre?.id === t.id
-                      ? 'text-white border-transparent shadow-sm'
-                      : 'bg-white text-gray-600 border-gray-200 hover:border-blue-300'
-                  }`}
-                  style={
-                    selectedTrimestre?.id === t.id
-                      ? { background: '#1A3A7C' }
-                      : {}
-                  }
-                >
-                  {t.name || `${t.number}° Trimestre`}
+      {/* Tabla de notas por estudiante */}
+      <div className="table-card">
+        <div className="table-header">
+          <BookOpen size={14}/>
+          <span>
+            {selTrim === null
+              ? 'Promedio General de todas las materias'
+              : `Notas del ${trimLabel(summary.trimesters.find(t => t.id === selTrim)!)}`}
+          </span>
+          <span className="count-badge">{totalStudents} estudiantes · {summary.subjects.length} materias</span>
+        </div>
+
+        {summary.students.map((row, i) => {
+          const isOpen = expanded[row.student.id]
+          const prom   = row.promedioGeneral
+          const apr    = prom >= 51
+
+          // Contar reprobados en este trimestre
+          const repCount = selTrim !== null
+            ? summary.subjects.filter(s => {
+                const val = selTrimNum === 1 ? row.subjects[s.id]?.t1
+                          : selTrimNum === 2 ? row.subjects[s.id]?.t2
+                          : row.subjects[s.id]?.t3
+                return val !== undefined && val < 51
+              }).length
+            : summary.subjects.filter(s => row.subjects[s.id]?.promedio < 51 && row.subjects[s.id]?.promedio !== undefined).length
+
+          return (
+            <div key={row.student.id} className="student-block">
+              {/* Fila resumen del estudiante */}
+              <div className={`student-row ${isOpen ? 'open' : ''}`}
+                onClick={() => setExpanded(prev => ({ ...prev, [row.student.id]: !isOpen }))}>
+                <div className="student-num">{i + 1}</div>
+                <div className="student-name">
+                  {row.student.lastName} {row.student.firstName}
+                  {row.student.kardex && <span className="kardex">Kardex: {row.student.kardex}</span>}
+                </div>
+                <div className="student-stats">
+                  {repCount > 0 && (
+                    <span className="rep-count">{repCount} rep.</span>
+                  )}
+                  <span className={`prom-badge ${apr ? 'apr' : 'rep'}`}>
+                    Prom: {prom.toFixed(1)}
+                  </span>
+                </div>
+                <button className="expand-btn">
+                  {isOpen ? <ChevronUp size={14}/> : <ChevronDown size={14}/>}
                 </button>
-              ))}
-            </div>
-          </div>
+              </div>
 
-          {/* Selector de materia */}
-          <div className="flex-1 min-w-[240px]">
-            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
-              Materia
-            </p>
-            <select
-              value={selectedMateria?.id ?? ''}
-              onChange={(e) => {
-                const ts = materias.find((m) => m.id === parseInt(e.target.value))
-                setSelectedMateria(ts ?? null)
-              }}
-              className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300"
-            >
-              <option value="">— Seleccionar materia —</option>
-              {materias.map((m) => (
-                <option key={m.id} value={m.id}>
-                  {m.subject.name} · {m.course.grade} "{m.course.parallel}"
-                </option>
-              ))}
-            </select>
-            {materias.length === 0 && (
-              <p className="text-xs text-amber-600 mt-1">
-                No tienes materias asignadas aún.
-              </p>
-            )}
-          </div>
-        </div>
+              {/* Detalle de materias */}
+              {isOpen && (
+                <div className="subject-detail">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Materia</th>
+                        {selTrim === null ? (
+                          <>
+                            <th style={{textAlign:'center'}}>T1</th>
+                            <th style={{textAlign:'center'}}>T2</th>
+                            <th style={{textAlign:'center'}}>T3</th>
+                            <th style={{textAlign:'center'}}>Promedio</th>
+                          </>
+                        ) : (
+                          <th style={{textAlign:'center'}}>Nota</th>
+                        )}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {summary.subjects.map(s => {
+                        const sData = row.subjects[s.id]
+                        return (
+                          <tr key={s.id}>
+                            <td>{s.name}</td>
+                            {selTrim === null ? (
+                              <>
+                                <td style={{textAlign:'center'}}>{statusBadge(sData?.t1)}</td>
+                                <td style={{textAlign:'center'}}>{statusBadge(sData?.t2)}</td>
+                                <td style={{textAlign:'center'}}>{statusBadge(sData?.t3)}</td>
+                                <td style={{textAlign:'center'}}>{statusBadge(sData?.promedio)}</td>
+                              </>
+                            ) : (
+                              <td style={{textAlign:'center'}}>
+                                {statusBadge(
+                                  selTrimNum === 1 ? sData?.t1 :
+                                  selTrimNum === 2 ? sData?.t2 : sData?.t3
+                                )}
+                              </td>
+                            )}
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          )
+        })}
       </div>
 
-      {/* Estado vacío — sin selección */}
-      {!selectedMateria && (
-        <div className="text-center py-20 text-gray-300">
-          <BookOpen size={48} className="mx-auto mb-3" />
-          <p className="text-gray-400">Selecciona un trimestre y una materia para comenzar</p>
-        </div>
-      )}
-
-      {/* Cargando estudiantes */}
-      {selectedMateria && loadingStudents && (
-        <div className="text-center py-16 text-gray-400 text-sm">
-          Cargando estudiantes...
-        </div>
-      )}
-
-      {/* Tabla de notas */}
-      {selectedMateria && !loadingStudents && students.length > 0 && (
-        <>
-          {/* Stats rápidas */}
-          <div className="grid grid-cols-3 gap-4 mb-4">
-            {[
-              { label: 'Estudiantes', value: students.length, color: '#1A3A7C' },
-              { label: 'Aprobados', value: aprobados, color: '#0F6E56' },
-              { label: 'Reprobados', value: reprobados, color: '#dc2626' },
-            ].map((s) => (
-              <div key={s.label} className="bg-white rounded-xl border border-gray-100 shadow-sm p-4 text-center">
-                <p className="text-2xl font-bold" style={{ color: s.color }}>{s.value}</p>
-                <p className="text-xs text-gray-500 mt-1">{s.label}</p>
-              </div>
-            ))}
-          </div>
-
-          {/* Tabla */}
-          <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
-            <div className="flex items-center justify-between px-5 py-3 border-b border-gray-100">
-              <div className="flex items-center gap-2 text-sm text-gray-600">
-                <Users size={15} className="text-gray-400" />
-                <span className="font-semibold">{courseLabel}</span>
-                <span className="text-gray-300 mx-1">·</span>
-                <span>{selectedMateria.subject.name}</span>
-                <span className="text-gray-300 mx-1">·</span>
-                <span>{selectedTrimestre?.name || `${selectedTrimestre?.number}° Trimestre`}</span>
-              </div>
-              <button
-                onClick={handleSave}
-                disabled={saving}
-                className="flex items-center gap-2 px-4 py-1.5 rounded-lg text-white text-sm font-semibold disabled:opacity-60 transition-opacity"
-                style={{ background: '#0F6E56' }}
-              >
-                <Save size={14} />
-                {saving ? 'Guardando...' : 'Guardar'}
-              </button>
-            </div>
-
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="bg-gray-50 text-xs text-gray-400 uppercase tracking-wide">
-                  <th className="text-left px-5 py-3 font-medium w-8">#</th>
-                  <th className="text-left px-5 py-3 font-medium">Estudiante</th>
-                  <th className="text-left px-3 py-3 font-medium w-24">Kardex</th>
-                  <th className="text-center px-3 py-3 font-medium w-36">Nota (0–100)</th>
-                  <th className="text-center px-3 py-3 font-medium w-28">Estado</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-50">
-                {students.map((student, i) => {
-                  const val = grades[student.id] ?? ''
-                  const num = parseFloat(val)
-                  const tieneNota = val !== ''
-                  const aprobado = tieneNota && !isNaN(num) && num >= 51
-                  const reprobado = tieneNota && !isNaN(num) && num < 51
-
-                  return (
-                    <tr key={student.id} className="hover:bg-blue-50/30 transition-colors">
-                      <td className="px-5 py-3 text-gray-300 text-xs">{i + 1}</td>
-                      <td className="px-5 py-3 font-medium text-gray-800">
-                        {student.lastName} {student.firstName}
-                      </td>
-                      <td className="px-3 py-3 font-mono text-xs text-gray-400">
-                        {student.kardex ?? '—'}
-                      </td>
-                      <td className="px-3 py-3">
-                        <input
-                          type="number"
-                          min={0}
-                          max={100}
-                          step={0.5}
-                          value={val}
-                          onChange={(e) => handleGradeChange(student.id, e.target.value)}
-                          placeholder="—"
-                          className="w-full text-center border border-gray-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-300 focus:border-transparent"
-                        />
-                      </td>
-                      <td className="px-3 py-3 text-center">
-                        {!tieneNota ? (
-                          <span className="text-gray-200 text-xs">—</span>
-                        ) : aprobado ? (
-                          <span className="inline-block px-2 py-0.5 rounded-full text-xs font-semibold bg-green-100 text-green-700">
-                            Aprobado
-                          </span>
-                        ) : (
-                          <span className="inline-block px-2 py-0.5 rounded-full text-xs font-semibold bg-red-100 text-red-700">
-                            Reprobado
-                          </span>
-                        )}
-                      </td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-
-            <div className="px-5 py-3 bg-gray-50 border-t border-gray-100 flex items-center justify-between">
-              <span className="text-xs text-gray-400">
-                {notasIngresadas} de {students.length} notas ingresadas
-              </span>
-              <button
-                onClick={handleSave}
-                disabled={saving}
-                className="flex items-center gap-2 px-5 py-2 rounded-lg text-white text-sm font-semibold disabled:opacity-60"
-                style={{ background: '#0F6E56' }}
-              >
-                <Save size={14} />
-                {saving ? 'Guardando...' : 'Guardar todas las notas'}
-              </button>
-            </div>
-          </div>
-        </>
-      )}
-
-      {/* Sin estudiantes */}
-      {selectedMateria && !loadingStudents && students.length === 0 && (
-        <div className="text-center py-16 text-gray-400">
-          <Users size={36} className="mx-auto mb-3 opacity-30" />
-          <p>No hay estudiantes inscritos en este curso para la gestión {year}.</p>
-        </div>
-      )}
+      <style>{`
+        .center{display:flex;justify-content:center;align-items:center;padding:48px;flex-direction:column;gap:12px;color:#6B8BB0}
+        .err-msg{color:#C0392B;font-size:14px}
+        .page-header{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:24px;gap:16px;flex-wrap:wrap}
+        .page-header h1{font-size:20px;font-weight:700;color:#0F6E56;margin-bottom:4px}
+        .page-header p{font-size:13px;color:#6B8BB0}
+        .readonly-badge{background:#E1F5EE;color:#0F6E56;border:1px solid #9FE1CB;padding:6px 14px;border-radius:20px;font-size:12px;font-weight:600;white-space:nowrap}
+        .stats-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-bottom:20px}
+        .stat-card{background:#fff;border:1px solid #CBE0F0;border-radius:12px;padding:16px;display:flex;align-items:center;gap:12px}
+        .stat-icon{width:38px;height:38px;border-radius:10px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+        .stat-icon.blue{background:#E0ECF8;color:#1A3A7C}
+        .stat-icon.green{background:#E1F5EE;color:#0F6E56}
+        .stat-icon.red{background:#FFF0F0;color:#C0392B}
+        .stat-num{font-size:22px;font-weight:700;color:#1A3A7C}
+        .stat-lbl{font-size:11px;color:#6B8BB0}
+        .trim-bar{display:flex;align-items:center;gap:8px;margin-bottom:16px;flex-wrap:wrap}
+        .trim-label{font-size:12px;font-weight:600;color:#6B8BB0;text-transform:uppercase;letter-spacing:.5px}
+        .trim-btn{padding:6px 14px;border-radius:8px;font-size:12px;font-weight:500;border:1.5px solid #CBE0F0;background:#fff;color:#1A3A7C;cursor:pointer;transition:all .15s}
+        .trim-btn:hover{border-color:#4A9FD4;background:#F0F6FC}
+        .trim-btn.active{background:#0F6E56;color:#fff;border-color:#0F6E56}
+        .table-card{background:#fff;border:1px solid #CBE0F0;border-radius:12px;overflow:hidden}
+        .table-header{display:flex;align-items:center;gap:8px;padding:14px 18px;border-bottom:1px solid #F0F6FC;font-size:13px;font-weight:600;color:#1A3A7C}
+        .count-badge{margin-left:auto;font-size:11px;color:#6B8BB0;font-weight:400}
+        .student-block{border-top:1px solid #F0F6FC}
+        .student-row{display:flex;align-items:center;gap:12px;padding:12px 18px;cursor:pointer;transition:background .15s}
+        .student-row:hover{background:#F8FBFF}
+        .student-row.open{background:#F0F6FC}
+        .student-num{font-size:11px;color:#6B8BB0;min-width:22px}
+        .student-name{flex:1;font-size:13px;font-weight:500;color:#1A3A7C;display:flex;flex-direction:column;gap:2px}
+        .kardex{font-size:11px;color:#6B8BB0;font-weight:400}
+        .student-stats{display:flex;align-items:center;gap:8px}
+        .rep-count{font-size:11px;background:#FFF0F0;color:#C0392B;padding:2px 8px;border-radius:10px;font-weight:500}
+        .prom-badge{font-size:12px;padding:3px 10px;border-radius:20px;font-weight:600}
+        .prom-badge.apr{background:#E1F5EE;color:#0F6E56}
+        .prom-badge.rep{background:#FFF0F0;color:#C0392B}
+        .expand-btn{background:none;border:none;cursor:pointer;color:#6B8BB0;display:flex;padding:4px;border-radius:6px}
+        .expand-btn:hover{background:#E0ECF8;color:#1A3A7C}
+        .subject-detail{padding:0 18px 14px;background:#F8FBFF}
+        .subject-detail table{width:100%;border-collapse:collapse;border:1px solid #CBE0F0;border-radius:8px;overflow:hidden}
+        .subject-detail th{padding:8px 12px;text-align:left;font-size:11px;font-weight:600;color:#1A3A7C;text-transform:uppercase;letter-spacing:.5px;background:#F0F6FC}
+        .subject-detail td{padding:9px 12px;font-size:12px;color:#1A3A7C;border-top:1px solid #F0F6FC}
+        .nbadge{padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600}
+        .nbadge.apr{background:#E1F5EE;color:#0F6E56}
+        .nbadge.rep{background:#FFF0F0;color:#C0392B}
+        .nd{color:#CBD5E0;font-size:12px}
+        .spinner{width:24px;height:24px;border:2px solid rgba(15,110,86,.2);border-top-color:#0F6E56;border-radius:50%;animation:spin .7s linear infinite}
+        @keyframes spin{to{transform:rotate(360deg)}}
+        @media(max-width:600px){.stats-grid{grid-template-columns:1fr 1fr}}
+      `}</style>
     </div>
   )
 }
