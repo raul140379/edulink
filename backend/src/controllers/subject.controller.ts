@@ -41,7 +41,7 @@ export const getCoursePlan = async (req: AuthRequest, res: Response): Promise<vo
         teacherSubjects: {
           include: {
             subject: { select: { id: true, name: true, code: true, campo: true } },
-            teacher: { select: { id: true, firstName: true, lastName: true } },
+            teacher: { select: { id: true, firstName: true, lastName: true, phone: true } },
           }
         }
       }

@@ -14,6 +14,7 @@ import {
   importParents,
   changeRelation,
   getMe,
+  updateMe,
 } from '../controllers/parent.controller'
 import { verifyToken, requirePermission } from '../middlewares/auth.middleware'
 import { Permission } from '../config/permissions'
@@ -25,6 +26,8 @@ const router = Router()
 router.use(verifyToken)
 
 router.get('/',                           requirePermission(Permission.PARENT_VIEW_ALL), getParents)
+router.get('/me', verifyToken, getMe)
+router.put('/me', verifyToken, updateMe)
 router.get('/:id',                        requirePermission(Permission.PARENT_VIEW_ALL), getParentById)
 router.get('/:id/students',               requirePermission(Permission.PARENT_VIEW_ALL), getParentStudents)
 router.post('/',                          requirePermission(Permission.PARENT_CREATE),   createParent)
@@ -37,6 +40,6 @@ router.post('/:id/generate-credentials', requirePermission(Permission.PARENT_CRE
 router.patch('/student/:id/change-tutor', requirePermission(Permission.PARENT_CREATE),  changeTutor)
 router.post('/import', verifyToken, upload.single('file'), importParents)
 router.patch('/:id/change-relation/:studentId', verifyToken, changeRelation)
-router.get('/me', verifyToken, getMe)
+
 
 export default router

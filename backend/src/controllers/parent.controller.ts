@@ -912,3 +912,23 @@ export const getMe = async (req: AuthRequest, res: Response): Promise<void> => {
     res.status(500).json({ message: 'Error al obtener perfil' })
   }
 }
+export const updateMe = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const parent = await prisma.parent.findUnique({ where: { userId: req.userId } })
+    if (!parent) { res.status(404).json({ message: 'Perfil no encontrado' }); return }
+
+    const { phone, email, address } = req.body
+
+    const updated = await prisma.parent.update({
+      where: { id: parent.id },
+      data: {
+        phone:   phone   || null,
+        email:   email   || null,
+        address: address || null,
+      }
+    })
+    res.json({ message: 'Datos actualizados correctamente', parent: updated })
+  } catch (error) {
+    res.status(500).json({ message: 'Error al actualizar perfil' })
+  }
+}
