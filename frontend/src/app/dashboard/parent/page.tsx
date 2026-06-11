@@ -2,99 +2,69 @@
 
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Users, DollarSign, BookOpen, Bell, AlertCircle, CheckCircle, MessageCircle } from 'lucide-react'
+import { Users, DollarSign, BookOpen, Bell, CheckCircle } from 'lucide-react'
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000'
 
 interface Student {
-  id:        number
-  firstName: string
-  lastName:  string
-  ci?:       string
-  rude?:     string
-  gender?:   string
+  id: number; firstName: string; lastName: string
+  ci?: string; rude?: string; gender?: string
   assignments: {
-    course: {
-      id:       number
-      grade:    string
-      parallel: string
-      level:    string
-      shift:    string
-    }
+    course: { id: number; grade: string; parallel: string; level: string; shift: string }
     academicYear: { isActive: boolean; year: number }
   }[]
 }
 
 interface Charge {
-  id:        number
-  amount:    number
-  paidAmount:number
-  status:    string
-  type:      string
-  description?: string
-  dueDate?:  string
+  id: number; amount: number; paidAmount: number
+  status: string; type: string; description?: string; dueDate?: string
 }
 
 interface Notification {
-  id:        number
-  title:     string
-  message:   string
-  type:      string
-  isRead:    boolean
-  createdAt: string
+  id: number; title: string; message: string
+  type: string; isRead: boolean; createdAt: string
 }
 
 interface ParentData {
-  id:        number
-  firstName: string
-  lastName:  string
-  students:  { isTutor: boolean; student: Student }[]
-  charges:   Charge[]
+  id: number; firstName: string; lastName: string
+  students: { isTutor: boolean; student: Student }[]
+  charges:  Charge[]
 }
 
-const GRADES: Record<string, string> = {
-  PRIMERO: '1°', SEGUNDO: '2°', TERCERO: '3°',
-  CUARTO: '4°', QUINTO: '5°', SEXTO: '6°',
-}
-const SHIFTS: Record<string, string> = {
-  MORNING: 'Mañana', AFTERNOON: 'Tarde', NIGHT: 'Noche',
-}
-const LEVELS: Record<string, string> = {
-  INICIAL: 'Inicial', PRIMARIA: 'Primaria', SECUNDARIA: 'Secundaria',
-}
-const TYPE_LABELS: Record<string, string> = {
-  CUOTA_INICIAL: 'Cuota Inicial', DEUDA_ANTERIOR: 'Deuda Anterior',
-  MULTA_ASAMBLEA: 'Multa Asamblea', MINGA: 'Minga',
-  MULTA_REUNION: 'Multa Reunión', ACTIVIDAD: 'Actividad',
-  MATERIAL_ESCOLAR: 'Material Escolar', OTRO: 'Otro',
+const GRADES: Record<string,string> = { PRIMERO:'1°', SEGUNDO:'2°', TERCERO:'3°', CUARTO:'4°', QUINTO:'5°', SEXTO:'6°' }
+const SHIFTS: Record<string,string> = { MORNING:'Mañana', AFTERNOON:'Tarde', NIGHT:'Noche' }
+const LEVELS: Record<string,string> = { INICIAL:'Inicial', PRIMARIA:'Primaria', SECUNDARIA:'Secundaria' }
+const TYPE_LABELS: Record<string,string> = {
+  CUOTA_INICIAL:'Cuota Inicial', DEUDA_ANTERIOR:'Deuda Anterior',
+  MULTA_ASAMBLEA:'Multa Asamblea', MINGA:'Minga',
+  MULTA_REUNION:'Multa Reunión', ACTIVIDAD:'Actividad',
+  MATERIAL_ESCOLAR:'Material Escolar', OTRO:'Otro',
 }
 
 const fmt     = (n: number) => `Bs. ${n.toFixed(2)}`
-const fmtDate = (d: string) => new Date(d).toLocaleDateString('es-BO', {
-  day: '2-digit', month: 'short', year: 'numeric'
-})
+const fmtDate = (d: string) => new Date(d).toLocaleDateString('es-BO', { day:'2-digit', month:'short', year:'numeric' })
 
 export default function ParentDashboard() {
-  const router  = useRouter()
+  const router = useRouter()
   const [parent,        setParent]        = useState<ParentData | null>(null)
   const [notifications, setNotifications] = useState<Notification[]>([])
   const [loading,       setLoading]       = useState(true)
   const [error,         setError]         = useState('')
 
-  const token = typeof window !== 'undefined' ? localStorage.getItem('token') : ''
-
   useEffect(() => {
     const fetchData = async () => {
+      const token = localStorage.getItem('token')
+      if (!token) { setError('No autenticado'); setLoading(false); return }
       setLoading(true)
       try {
         const [pRes, nRes] = await Promise.all([
-          fetch(`${API_URL}/api/parents/me`,            { headers: { Authorization: `Bearer ${token}` } }),
-          fetch(`${API_URL}/api/notifications/received`,{ headers: { Authorization: `Bearer ${token}` } }),
+          fetch(`${API_URL}/api/parents/me`,       { headers: { Authorization: `Bearer ${token}` } }),
+          fetch(`${API_URL}/api/notifications`,    { headers: { Authorization: `Bearer ${token}` } }),
         ])
         const [pData, nData] = await Promise.all([pRes.json(), nRes.json()])
         if (pRes.ok) setParent(pData)
         else setError(pData.message || 'Error al cargar datos')
-        if (nRes.ok) setNotifications(nData.slice(0, 5))
+        if (nRes.ok) setNotifications(Array.isArray(nData) ? nData.slice(0, 5) : [])
       } catch { setError('Error de conexión') }
       finally  { setLoading(false) }
     }
@@ -105,18 +75,16 @@ export default function ParentDashboard() {
   if (error)   return <div className="center"><p className="err">{error}</p></div>
   if (!parent) return null
 
-  const myStudents  = parent.students.filter(ps => ps.isTutor).map(ps => ps.student)
-  const totalDebt   = parent.charges.reduce((s, c) => s + (c.amount - c.paidAmount), 0)
-  const totalPaid   = parent.charges.reduce((s, c) => s + c.paidAmount, 0)
-  const withDebt    = parent.charges.filter(c => c.status === 'PENDIENTE' || c.status === 'PARCIAL')
-  const unread      = notifications.filter(n => !n.isRead).length
+  const myStudents = parent.students.filter(ps => ps.isTutor).map(ps => ps.student)
+  const totalDebt  = parent.charges.reduce((s, c) => s + (c.amount - c.paidAmount), 0)
+  const totalPaid  = parent.charges.reduce((s, c) => s + c.paidAmount, 0)
+  const withDebt   = parent.charges.filter(c => c.status === 'PENDIENTE' || c.status === 'PARCIAL')
+  const unread     = notifications.filter(n => !n.isRead).length
 
-  const getActiveAssignment = (s: Student) =>
-    s.assignments?.find(a => a.academicYear?.isActive)
+  const getActiveAssignment = (s: Student) => s.assignments?.find(a => a.academicYear?.isActive)
 
   return (
     <div>
-      {/* Header */}
       <div className="welcome-header">
         <div className="welcome-avatar">{parent.lastName.charAt(0)}</div>
         <div>
@@ -125,32 +93,21 @@ export default function ParentDashboard() {
         </div>
       </div>
 
-      {/* Stats */}
       <div className="stats-grid">
         <div className="stat-card">
           <div className="stat-icon green"><Users size={20}/></div>
-          <div>
-            <div className="stat-label">Mis hijos</div>
-            <div className="stat-value">{myStudents.length}</div>
-          </div>
+          <div><div className="stat-label">Mis hijos</div><div className="stat-value">{myStudents.length}</div></div>
         </div>
         <div className="stat-card" style={{cursor:'pointer'}} onClick={() => router.push('/dashboard/parent/tesoreria')}>
-          <div className={`stat-icon ${totalDebt > 0 ? 'red' : 'green'}`}>
-            <DollarSign size={20}/>
-          </div>
+          <div className={`stat-icon ${totalDebt > 0 ? 'red' : 'green'}`}><DollarSign size={20}/></div>
           <div>
             <div className="stat-label">Deuda pendiente</div>
-            <div className="stat-value" style={{color: totalDebt > 0 ? '#C0392B' : '#0F6E56'}}>
-              {fmt(totalDebt)}
-            </div>
+            <div className="stat-value" style={{color: totalDebt > 0 ? '#C0392B' : '#0F6E56'}}>{fmt(totalDebt)}</div>
           </div>
         </div>
         <div className="stat-card" style={{cursor:'pointer'}} onClick={() => router.push('/dashboard/parent/tesoreria')}>
           <div className="stat-icon green"><CheckCircle size={20}/></div>
-          <div>
-            <div className="stat-label">Total pagado</div>
-            <div className="stat-value">{fmt(totalPaid)}</div>
-          </div>
+          <div><div className="stat-label">Total pagado</div><div className="stat-value">{fmt(totalPaid)}</div></div>
         </div>
         <div className="stat-card" style={{cursor:'pointer'}} onClick={() => router.push('/dashboard/parent/notificaciones')}>
           <div className={`stat-icon ${unread > 0 ? 'yellow' : 'blue'}`}><Bell size={20}/></div>
@@ -172,10 +129,8 @@ export default function ParentDashboard() {
               const assignment = getActiveAssignment(s)
               return (
                 <div key={s.id} className="student-card"
-                  onClick={() => assignment && router.push(`/dashboard/parent/calificaciones?studentId=${s.id}`)}>
-                  <div className="student-avatar">
-                    {s.gender === 'MASCULINO' ? '👦' : '👧'}
-                  </div>
+                  onClick={() => router.push(`/dashboard/parent/calificaciones?studentId=${s.id}`)}>
+                  <div className="student-avatar">{s.gender === 'MASCULINO' ? '👦' : '👧'}</div>
                   <div className="student-info">
                     <div className="student-name">{s.lastName} {s.firstName}</div>
                     {s.ci && <div className="student-sub">CI: {s.ci}</div>}
@@ -183,9 +138,7 @@ export default function ParentDashboard() {
                       <div className="course-pill">
                         📚 {LEVELS[assignment.course.level]} — {GRADES[assignment.course.grade]} &quot;{assignment.course.parallel}&quot; {SHIFTS[assignment.course.shift]}
                       </div>
-                    ) : (
-                      <div className="no-course">Sin curso inscrito</div>
-                    )}
+                    ) : <div className="no-course">Sin curso inscrito</div>}
                   </div>
                   <div className="student-arrow">→</div>
                 </div>
@@ -196,13 +149,10 @@ export default function ParentDashboard() {
       </div>
 
       <div className="two-cols">
-        {/* Deudas pendientes */}
         <div className="section-card">
           <div className="section-title">
             <DollarSign size={15}/> Estado de cuenta
-            <button className="ver-mas" onClick={() => router.push('/dashboard/parent/tesoreria')}>
-              Ver todo →
-            </button>
+            <button className="ver-mas" onClick={() => router.push('/dashboard/parent/tesoreria')}>Ver todo →</button>
           </div>
           {withDebt.length === 0 ? (
             <div className="no-data">🎉 ¡Estás al día con todos los pagos!</div>
@@ -225,13 +175,10 @@ export default function ParentDashboard() {
           )}
         </div>
 
-        {/* Notificaciones recientes */}
         <div className="section-card">
           <div className="section-title">
             <Bell size={15}/> Notificaciones recientes
-            <button className="ver-mas" onClick={() => router.push('/dashboard/parent/notificaciones')}>
-              Ver todas →
-            </button>
+            <button className="ver-mas" onClick={() => router.push('/dashboard/parent/notificaciones')}>Ver todas →</button>
           </div>
           {notifications.length === 0 ? (
             <div className="no-data">No tienes notificaciones</div>

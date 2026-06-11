@@ -9,6 +9,8 @@ import {
   LogOut, Menu, X, ChevronRight, Users, UserCircle
 } from 'lucide-react'
 
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000'
+
 interface User {
   id:    number
   email: string
@@ -16,20 +18,21 @@ interface User {
 }
 
 const menuItems = [
-  { label: 'Inicio',          href: '/dashboard/parent',               icon: <LayoutDashboard size={18}/> },
-  { label: 'Calificaciones',  href: '/dashboard/parent/calificaciones', icon: <BookOpen size={18}/> },
-  { label: 'Estado de Cuenta',href: '/dashboard/parent/tesoreria',      icon: <DollarSign size={18}/> },
-  { label: 'Maestros',        href: '/dashboard/parent/maestros',        icon: <Users size={18}/> },
-  { label: 'Notificaciones',  href: '/dashboard/parent/notificaciones',  icon: <Bell size={18}/> },
-  { label: 'Mi Perfil',       href: '/dashboard/parent/perfil',          icon: <UserCircle size={18}/> },
+  { label: 'Inicio',           href: '/dashboard/parent',                icon: <LayoutDashboard size={18}/> },
+  { label: 'Calificaciones',   href: '/dashboard/parent/calificaciones',  icon: <BookOpen size={18}/> },
+  { label: 'Estado de Cuenta', href: '/dashboard/parent/tesoreria',       icon: <DollarSign size={18}/> },
+  { label: 'Maestros',         href: '/dashboard/parent/maestros',         icon: <Users size={18}/> },
+  { label: 'Notificaciones',   href: '/dashboard/parent/notificaciones',   icon: <Bell size={18}/> },
+  { label: 'Mi Perfil',        href: '/dashboard/parent/perfil',           icon: <UserCircle size={18}/> },
 ]
 
 export default function ParentLayout({ children }: { children: React.ReactNode }) {
   const router   = useRouter()
   const pathname = usePathname()
-  const [user,       setUser]       = useState<User | null>(null)
-  const [collapsed,  setCollapsed]  = useState(false)
-  const [mobileOpen, setMobileOpen] = useState(false)
+  const [user,        setUser]        = useState<User | null>(null)
+  const [parentName,  setParentName]  = useState('')
+  const [collapsed,   setCollapsed]   = useState(false)
+  const [mobileOpen,  setMobileOpen]  = useState(false)
 
   useEffect(() => {
     const userData = localStorage.getItem('user')
@@ -40,6 +43,15 @@ export default function ParentLayout({ children }: { children: React.ReactNode }
       router.push('/login'); return
     }
     setUser(parsed)
+
+    // Obtener nombre del padre
+    fetch(`${API_URL}/api/auth/me`, { headers: { Authorization: `Bearer ${token}` } })
+      .then(r => r.json())
+      .then(data => {
+        const p = data.parent
+        if (p) setParentName(`${p.lastName} ${p.firstName}`)
+      })
+      .catch(() => {})
   }, [])
 
   const handleLogout = () => {
@@ -74,6 +86,7 @@ export default function ParentLayout({ children }: { children: React.ReactNode }
         <div className="user-avatar">{user.email.charAt(0).toUpperCase()}</div>
         {!collapsed && (
           <div className="user-info">
+            {parentName && <span className="user-name">{parentName}</span>}
             <span className="user-email">{user.email}</span>
             <span className="user-role-badge">Padre / Tutor</span>
           </div>
@@ -118,7 +131,10 @@ export default function ParentLayout({ children }: { children: React.ReactNode }
             <BookOpen size={16} color="#27500A"/>
             {menuItems.find(i => pathname === i.href || pathname.startsWith(i.href + '/'))?.label || 'Mi Familia'}
           </div>
-          <div className="header-badge">Padre / Tutor</div>
+          <div className="header-info">
+            {parentName && <span className="header-name">👨‍👩‍👧 {parentName}</span>}
+            <span className="header-badge">Padre / Tutor</span>
+          </div>
         </header>
         <main className="main-content">{children}</main>
       </div>
@@ -140,7 +156,8 @@ export default function ParentLayout({ children }: { children: React.ReactNode }
         .collapse-btn:hover{background:rgba(255,255,255,0.2)}
         .user-profile{display:flex;align-items:center;gap:10px;padding:14px 12px;border-bottom:1px solid rgba(255,255,255,0.08)}
         .user-avatar{width:36px;height:36px;border-radius:50%;background:var(--amarillo);color:#3A2F00;font-size:14px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0}
-        .user-info{display:flex;flex-direction:column;gap:4px;overflow:hidden}
+        .user-info{display:flex;flex-direction:column;gap:3px;overflow:hidden}
+        .user-name{font-size:12px;font-weight:700;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
         .user-email{font-size:11px;color:rgba(255,255,255,0.6);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
         .user-role-badge{font-size:10px;font-weight:600;padding:2px 7px;border-radius:20px;background:var(--amarillo);color:#3A2F00;width:fit-content}
         .sidebar-nav{flex:1;padding:12px 8px;overflow-y:auto;display:flex;flex-direction:column;gap:2px}
@@ -163,9 +180,11 @@ export default function ParentLayout({ children }: { children: React.ReactNode }
         .mobile-menu-btn{display:none;background:none;border:none;cursor:pointer;color:var(--parent);padding:6px;border-radius:6px}
         .mobile-menu-btn:hover{background:#F0F6FC}
         .header-title{flex:1;font-size:15px;font-weight:600;color:var(--parent);display:flex;align-items:center;gap:8px}
-        .header-badge{background:#E8F5E0;color:var(--parent);padding:4px 12px;border-radius:20px;font-size:11px;font-weight:600}
+        .header-info{display:flex;flex-direction:column;align-items:flex-end;gap:3px}
+        .header-name{font-size:13px;font-weight:700;color:#27500A;white-space:nowrap}
+        .header-badge{background:#E8F5E0;color:var(--parent);padding:3px 10px;border-radius:20px;font-size:10px;font-weight:600;white-space:nowrap}
         .main-content{flex:1;padding:24px;overflow-y:auto}
-        @media(max-width:768px){.sidebar{display:none}.sidebar-mobile{display:flex;flex-direction:column}.mobile-overlay{display:block}.main-wrapper{margin-left:0!important}.mobile-menu-btn{display:flex}.main-content{padding:16px}}
+        @media(max-width:768px){.sidebar{display:none}.sidebar-mobile{display:flex;flex-direction:column}.mobile-overlay{display:block}.main-wrapper{margin-left:0!important}.mobile-menu-btn{display:flex}.main-content{padding:16px}.header-name{display:none}}
       `}</style>
     </div>
   )
