@@ -247,11 +247,11 @@ export const removeDelegate = async (req: AuthRequest, res: Response): Promise<v
 // ─────────────────────────────────────────────
 // GET /api/delegates/my-course
 // ─────────────────────────────────────────────
+
 export const getMyCourse = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const userId = req.userId
 
-    // Buscar por delegateUserId (usuario delegado separado)
     const parent = await prisma.parent.findFirst({
       where: { delegateUserId: userId },
       include: {
@@ -295,7 +295,20 @@ export const getMyCourse = async (req: AuthRequest, res: Response): Promise<void
       return
     }
 
-    res.json(parent.delegateCourse)
+    // Incluir datos del delegado en la respuesta
+    const courseData = JSON.parse(JSON.stringify(parent.delegateCourse))
+
+res.json({
+  ...courseData,
+  tutor:    courseData.tutor ?? null,
+  delegate: {
+    id:        parent.id,
+    firstName: parent.firstName,
+    lastName:  parent.lastName,
+    phone:     parent.phone,
+    ci:        parent.ci,
+  }
+})
   } catch (error) {
     console.error('getMyCourse error:', error)
     res.status(500).json({ message: 'Error al obtener curso' })

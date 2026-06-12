@@ -6,8 +6,10 @@ import Link from 'next/link'
 import Image from 'next/image'
 import {
   LayoutDashboard, DollarSign, ClipboardList,
-  Users, LogOut, Menu, X, ChevronRight, BookOpen,UserCircle
+  Users, LogOut, Menu, X, ChevronRight, BookOpen, UserCircle
 } from 'lucide-react'
+
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000'
 
 interface User {
   id:    number
@@ -16,39 +18,25 @@ interface User {
 }
 
 const menuItems = [
-   {
-    label: 'Mi Perfil',
-    href:  '/dashboard/delegate/perfil',
-    icon:  <UserCircle size={18}/>,
-  },
-  {
-    label: 'Mi Curso',
-    href:  '/dashboard/delegate',
-    icon:  <LayoutDashboard size={18}/>,
-  },
-  {
-    label: 'Estado de Cuenta',
-    href:  '/dashboard/delegate/tesoreria',
-    icon:  <DollarSign size={18}/>,
-  },
-  {
-    label: 'Nuevo Cargo',
-    href:  '/dashboard/delegate/cargos/nuevo',
-    icon:  <ClipboardList size={18}/>,
-  },
-  {
-    label: 'Asistencia',
-    href:  '/dashboard/delegate/asistencia',
-    icon:  <Users size={18}/>,
-  },
+  { label: 'Mi Perfil',      href: '/dashboard/delegate/perfil',        icon: <UserCircle size={18}/> },
+  { label: 'Mi Curso',       href: '/dashboard/delegate',               icon: <LayoutDashboard size={18}/> },
+  { label: 'Estado de Cuenta', href: '/dashboard/delegate/tesoreria',   icon: <DollarSign size={18}/> },
+  { label: 'Nuevo Cargo',    href: '/dashboard/delegate/cargos/nuevo',  icon: <ClipboardList size={18}/> },
+  { label: 'Asistencia',     href: '/dashboard/delegate/asistencia',    icon: <Users size={18}/> },
 ]
+
+const GRADE_LABEL: Record<string, string> = {
+  PRIMERO:'1°', SEGUNDO:'2°', TERCERO:'3°', CUARTO:'4°', QUINTO:'5°', SEXTO:'6°',
+}
 
 export default function DelegateLayout({ children }: { children: React.ReactNode }) {
   const router   = useRouter()
   const pathname = usePathname()
-  const [user,       setUser]       = useState<User | null>(null)
-  const [collapsed,  setCollapsed]  = useState(false)
-  const [mobileOpen, setMobileOpen] = useState(false)
+  const [user,         setUser]         = useState<User | null>(null)
+  const [delegateName, setDelegateName] = useState('')
+  const [courseLabel,  setCourseLabel]  = useState('')
+  const [collapsed,    setCollapsed]    = useState(false)
+  const [mobileOpen,   setMobileOpen]   = useState(false)
 
   useEffect(() => {
     const userData = localStorage.getItem('user')
@@ -59,7 +47,18 @@ export default function DelegateLayout({ children }: { children: React.ReactNode
       router.push('/login'); return
     }
     setUser(parsed)
-  }, [])
+
+    // Obtener perfil del delegado desde my-course
+    fetch(`${API_URL}/api/delegates/my-course`, {
+      headers: { Authorization: `Bearer ${token}` }
+    })
+      .then(r => r.json())
+      .then(d => {
+        if (d.delegate?.firstName) setDelegateName(`${d.delegate.lastName} ${d.delegate.firstName}`)
+        if (d.grade) setCourseLabel(`${GRADE_LABEL[d.grade] || d.grade} "${d.parallel}"`)
+      })
+      .catch(() => {})
+  }, [router])
 
   const handleLogout = () => {
     localStorage.removeItem('token')
@@ -92,11 +91,17 @@ export default function DelegateLayout({ children }: { children: React.ReactNode
 
       {/* Perfil */}
       <div className="user-profile">
-        <div className="user-avatar">{user.email.charAt(0).toUpperCase()}</div>
+        <div className="user-avatar">
+          {delegateName ? delegateName[0].toUpperCase() : user.email.charAt(0).toUpperCase()}
+        </div>
         {!collapsed && (
           <div className="user-info">
+            {delegateName && <span className="user-name">{delegateName}</span>}
             <span className="user-email">{user.email}</span>
-            <span className="user-role-badge">Delegado</span>
+            <div style={{ display:'flex', gap:4, flexWrap:'wrap', marginTop:2 }}>
+              <span className="user-role-badge">Delegado</span>
+              {courseLabel && <span className="user-course-badge">{courseLabel}</span>}
+            </div>
           </div>
         )}
       </div>
@@ -149,7 +154,13 @@ export default function DelegateLayout({ children }: { children: React.ReactNode
             <BookOpen size={16} color="#444441"/>
             {menuItems.find(i => pathname === i.href || pathname.startsWith(i.href + '/'))?.label || 'Mi Curso'}
           </div>
-          <div className="header-badge">Delegado de Curso</div>
+          <div className="header-info">
+            {delegateName && <span className="header-name">👤 {delegateName}</span>}
+            <div style={{ display:'flex', gap:6, alignItems:'center' }}>
+              <span className="header-badge">Delegado</span>
+              {courseLabel && <span className="header-course">{courseLabel}</span>}
+            </div>
+          </div>
         </header>
 
         <main className="main-content">{children}</main>
@@ -179,9 +190,11 @@ export default function DelegateLayout({ children }: { children: React.ReactNode
         .collapse-btn:hover { background:rgba(255,255,255,0.2); }
         .user-profile { display:flex; align-items:center; gap:10px; padding:14px 12px; border-bottom:1px solid rgba(255,255,255,0.08); }
         .user-avatar { width:36px; height:36px; border-radius:50%; background:var(--amarillo); color:#3A2F00; font-size:14px; font-weight:700; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
-        .user-info { display:flex; flex-direction:column; gap:4px; overflow:hidden; }
+        .user-info { display:flex; flex-direction:column; gap:3px; overflow:hidden; }
+        .user-name { font-size:12px; font-weight:700; color:#fff; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
         .user-email { font-size:11px; color:rgba(255,255,255,0.6); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
         .user-role-badge { font-size:10px; font-weight:600; padding:2px 7px; border-radius:20px; background:var(--amarillo); color:#3A2F00; width:fit-content; }
+        .user-course-badge { font-size:10px; font-weight:600; padding:2px 7px; border-radius:20px; background:rgba(255,255,255,0.2); color:#fff; width:fit-content; }
         .sidebar-nav { flex:1; padding:12px 8px; overflow-y:auto; display:flex; flex-direction:column; gap:2px; }
         .nav-section-label { font-size:10px; font-weight:600; color:rgba(255,255,255,0.35); text-transform:uppercase; letter-spacing:0.8px; padding:4px 8px 8px; }
         .nav-item { display:flex; align-items:center; gap:10px; padding:9px 10px; border-radius:8px; color:rgba(255,255,255,0.7); text-decoration:none; font-size:13px; transition:background 0.15s,color 0.15s; cursor:pointer; border:none; background:none; width:100%; text-align:left; white-space:nowrap; }
@@ -202,7 +215,10 @@ export default function DelegateLayout({ children }: { children: React.ReactNode
         .mobile-menu-btn { display:none; background:none; border:none; cursor:pointer; color:var(--delegate); padding:6px; border-radius:6px; }
         .mobile-menu-btn:hover { background:#F0F6FC; }
         .header-title { flex:1; font-size:15px; font-weight:600; color:var(--delegate); display:flex; align-items:center; gap:8px; }
-        .header-badge { background:#F0F0EE; color:var(--delegate); padding:4px 12px; border-radius:20px; font-size:11px; font-weight:600; }
+        .header-info { display:flex; flex-direction:column; align-items:flex-end; gap:3px; }
+        .header-name { font-size:13px; font-weight:700; color:#444441; white-space:nowrap; }
+        .header-badge { background:#F0F0EE; color:var(--delegate); padding:3px 10px; border-radius:20px; font-size:10px; font-weight:600; white-space:nowrap; }
+        .header-course { background:#E3F2FD; color:#1A3A7C; padding:3px 10px; border-radius:20px; font-size:10px; font-weight:700; white-space:nowrap; }
         .main-content { flex:1; padding:24px; overflow-y:auto; }
         @media (max-width:768px) {
           .sidebar { display:none; }
@@ -211,6 +227,7 @@ export default function DelegateLayout({ children }: { children: React.ReactNode
           .main-wrapper { margin-left:0 !important; }
           .mobile-menu-btn { display:flex; }
           .main-content { padding:16px; }
+          .header-name { display:none; }
         }
       `}</style>
     </div>

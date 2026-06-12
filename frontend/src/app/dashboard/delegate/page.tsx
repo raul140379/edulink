@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Users, DollarSign, AlertCircle, CheckCircle, BookOpen, Phone, CreditCard } from 'lucide-react'
+import { Users, DollarSign, AlertCircle, CheckCircle, BookOpen, Phone, CreditCard, UserCircle } from 'lucide-react'
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000'
 
@@ -34,6 +34,14 @@ interface CourseTutor {
   teacher: { firstName: string; lastName: string }
 }
 
+interface Delegate {
+  id:        number
+  firstName: string
+  lastName:  string
+  phone?:    string | null
+  ci?:       string | null
+}
+
 interface Course {
   id:            number
   level:         string
@@ -43,6 +51,7 @@ interface Course {
   shift:         string
   assignments:   Assignment[]
   tutor?:        CourseTutor
+  delegate?:     Delegate
 }
 
 const GRADE_LABELS: Record<string, string> = { PRIMERO: '1°', SEGUNDO: '2°', TERCERO: '3°', CUARTO: '4°', QUINTO: '5°', SEXTO: '6°' }
@@ -67,7 +76,10 @@ export default function DelegateDashboard() {
           headers: { Authorization: `Bearer ${token}` }
         })
         const data = await res.json()
-        if (res.ok) setCourse(data)
+       if (res.ok) {
+  setCourse(data) 
+}
+          
         else setError(data.message)
       } catch { setError('Error de conexión') }
       finally  { setLoading(false) }
@@ -79,7 +91,6 @@ export default function DelegateDashboard() {
   if (error)   return <div className="center"><p className="err">{error}</p></div>
   if (!course) return null
 
-  // Calcular resumen económico
   const allParents = new Map<number, Parent>()
   course.assignments.forEach(a => {
     a.student.parents.forEach(ps => {
@@ -89,11 +100,11 @@ export default function DelegateDashboard() {
     })
   })
 
-  const parents       = Array.from(allParents.values())
-  const totalDebt     = parents.reduce((sum, p) => sum + p.charges.reduce((s, c) => s + c.amount, 0), 0)
-  const totalPaid     = parents.reduce((sum, p) => sum + p.charges.reduce((s, c) => s + c.paidAmount, 0), 0)
-  const totalPending  = totalDebt - totalPaid
-  const withDebt      = parents.filter(p => p.charges.some(c => c.status === 'PENDIENTE' || c.status === 'PARCIAL')).length
+  const parents      = Array.from(allParents.values())
+  const totalDebt    = parents.reduce((sum, p) => sum + p.charges.reduce((s, c) => s + c.amount, 0), 0)
+  const totalPaid    = parents.reduce((sum, p) => sum + p.charges.reduce((s, c) => s + c.paidAmount, 0), 0)
+  const totalPending = totalDebt - totalPaid
+  const withDebt     = parents.filter(p => p.charges.some(c => c.status === 'PENDIENTE' || c.status === 'PARCIAL')).length
 
   return (
     <div>
@@ -102,8 +113,8 @@ export default function DelegateDashboard() {
         <div className="course-avatar">
           {GRADE_LABELS[course.grade]}{course.parallel}
         </div>
-        <div>
-          <h1>{LEVEL_LABELS[course.level]} — {GRADE_LABELS[course.grade]} {course.parallel}</h1>
+        <div style={{ flex:1 }}>
+          <h1>{LEVEL_LABELS[course.level]} — {GRADE_LABELS[course.grade]} "{course.parallel}"</h1>
           <div className="course-meta">
             <span className="meta-pill">{SHIFT_LABELS[course.shift]}</span>
             {course.educationType === 'BTH' && <span className="meta-pill bth">BTH</span>}
@@ -113,6 +124,19 @@ export default function DelegateDashboard() {
               </span>
             )}
           </div>
+          {/* Delegado */}
+          {course.delegate && (
+            <div className="delegate-info">
+              <UserCircle size={14} color="#444441"/>
+              <span>Delegado/a:</span>
+              <strong>{course.delegate.lastName} {course.delegate.firstName}</strong>
+              {course.delegate.phone && (
+                <span style={{ display:'flex', alignItems:'center', gap:3 }}>
+                  <Phone size={11}/> {course.delegate.phone}
+                </span>
+              )}
+            </div>
+          )}
         </div>
       </div>
 
@@ -195,7 +219,7 @@ export default function DelegateDashboard() {
                     </td>
                     <td className="muted">
                       {tutor?.parent.phone
-                        ? <span><Phone size={11}/> {tutor.parent.phone}</span>
+                        ? <span style={{ display:'flex', alignItems:'center', gap:3 }}><Phone size={11}/> {tutor.parent.phone}</span>
                         : '—'}
                     </td>
                     <td>
@@ -215,13 +239,15 @@ export default function DelegateDashboard() {
       <style>{`
         .center{display:flex;justify-content:center;align-items:center;padding:48px;color:#6B8BB0}
         .err{color:#C0392B;font-size:14px}
-        .course-header{display:flex;align-items:center;gap:16px;margin-bottom:24px;background:#fff;border:1px solid #CBE0F0;border-radius:14px;padding:20px}
+        .course-header{display:flex;align-items:flex-start;gap:16px;margin-bottom:24px;background:#fff;border:1px solid #CBE0F0;border-radius:14px;padding:20px}
         .course-avatar{width:64px;height:64px;border-radius:14px;background:#444441;color:#fff;display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:800;flex-shrink:0}
         .course-header h1{font-size:20px;font-weight:800;color:#1A3A7C;margin-bottom:8px}
-        .course-meta{display:flex;gap:8px;flex-wrap:wrap}
+        .course-meta{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px}
         .meta-pill{background:#F0F6FC;color:#444441;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:500}
         .meta-pill.bth{background:#FFF3CC;color:#7A6000}
         .meta-pill.tutor{background:#E1F5EE;color:#0F6E56}
+        .delegate-info{display:flex;align-items:center;gap:6px;font-size:12px;color:#444441;background:#F5F5F4;border-radius:8px;padding:6px 10px;width:fit-content;flex-wrap:wrap}
+        .delegate-info strong{font-weight:700;color:#1A3A7C}
         .summary-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:16px}
         .sum-card{background:#fff;border:1px solid #CBE0F0;border-radius:12px;padding:16px;display:flex;align-items:center;gap:12px}
         .sum-icon{padding:10px;border-radius:10px;display:flex;align-items:center;justify-content:center}
