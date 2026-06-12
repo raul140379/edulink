@@ -175,23 +175,51 @@ export const resetCredentials = async (req: AuthRequest, res: Response): Promise
     if (doTeachers) {
       const teachers = await prisma.teacher.findMany({
         where: { isActive: true },
-        include: { user: { select: { id: true, email: true, role: true } } },
+        include: {
+          user:      { select: { id: true, email: true, role: true } },
+          tutorUser: { select: { id: true, email: true, role: true } },
+        },
         orderBy: [{ lastName: 'asc' }, { firstName: 'asc' }],
       })
+
+      const processedUserIds = new Set<number>()
+
       for (const t of teachers) {
-        const pwd    = defaultPwd(t.lastName, t.ci)
-        const hashed = await bcrypt.hash(pwd, 10)
-        await prisma.user.update({ where: { id: t.userId }, data: { password: hashed } })
-        maestrosData.push({
-          'Rol':        t.user?.role === 'TEACHER_TUTOR' ? 'Maestro Tutor' : 'Maestro',
-          'Apellidos':  t.lastName,
-          'Nombres':    t.firstName,
-          'CI':         t.ci    || '',
-          'Teléfono':   t.phone || '',
-          'Email':      t.user?.email || '',
-          'Contraseña': pwd,
-          'Hint':       t.ci ? 'CI del maestro' : `4 letras apellido + ${year}`,
-        })
+        // Resetear usuario principal (TEACHER)
+        if (t.userId && !processedUserIds.has(t.userId)) {
+          const pwd    = defaultPwd(t.lastName, t.ci)
+          const hashed = await bcrypt.hash(pwd, 10)
+          await prisma.user.update({ where: { id: t.userId }, data: { password: hashed } })
+          processedUserIds.add(t.userId)
+          maestrosData.push({
+            'Rol':        'Maestro',
+            'Apellidos':  t.lastName,
+            'Nombres':    t.firstName,
+            'CI':         t.ci    || '',
+            'Teléfono':   t.phone || '',
+            'Email':      t.user?.email || '',
+            'Contraseña': pwd,
+            'Hint':       t.ci ? 'CI del maestro' : `4 letras apellido + ${year}`,
+          })
+        }
+
+        // Resetear usuario tutor (TEACHER_TUTOR) si existe y es diferente
+        if (t.tutorUserId && t.tutorUser && !processedUserIds.has(t.tutorUserId)) {
+          const pwd    = defaultPwd(t.lastName, t.ci)
+          const hashed = await bcrypt.hash(pwd, 10)
+          await prisma.user.update({ where: { id: t.tutorUserId }, data: { password: hashed } })
+          processedUserIds.add(t.tutorUserId)
+          maestrosData.push({
+            'Rol':        'Maestro Tutor',
+            'Apellidos':  t.lastName,
+            'Nombres':    t.firstName,
+            'CI':         t.ci    || '',
+            'Teléfono':   t.phone || '',
+            'Email':      t.tutorUser.email || '',
+            'Contraseña': pwd,
+            'Hint':       t.ci ? 'CI del maestro' : `4 letras apellido + ${year}`,
+          })
+        }
       }
     }
 
