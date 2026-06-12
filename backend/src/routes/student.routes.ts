@@ -12,7 +12,13 @@ import {
   importStudents,
   importTutors,
   getStudentsByCourse,
-  changeEnrollment,
+  changeEnrollment, 
+  getMyProfile,
+  getMyGrades,
+  getMyTasks,
+  getMyNotifications,
+  markNotificationRead,
+  getMySubjects,
 } from '../controllers/student.controller'
 import { verifyToken, requirePermission } from '../middlewares/auth.middleware'
 import { Permission } from '../config/permissions'
@@ -21,7 +27,14 @@ const upload = multer({ storage: multer.memoryStorage() })
 
 const router = Router()
 
-router.use(verifyToken)
+router.use(verifyToken) 
+// ── Rutas del estudiante autenticado (antes de /:id) ──
+router.get('/me',        getMyProfile)
+router.get('/my-grades', getMyGrades)
+router.get('/my-tasks', getMyTasks)
+router.get('/my-notifications',          getMyNotifications)
+router.patch('/my-notifications/:id/read', markNotificationRead)
+router.get('/my-subjects', getMySubjects)
 
 router.get('/',                           requirePermission(Permission.STUDENT_VIEW_ALL),  getStudents)
 router.get('/:id',                        requirePermission(Permission.STUDENT_VIEW_ALL),  getStudentById)
@@ -37,4 +50,6 @@ router.post('/import', verifyToken, upload.single('file'), importStudents)
 router.post('/import-tutors', verifyToken, upload.single('file'), importTutors)
 router.get('/by-course/:courseId', requirePermission(Permission.STUDENT_VIEW_ALL), getStudentsByCourse)
 router.put('/:id/enroll', requirePermission(Permission.ENROLLMENT_CREATE), changeEnrollment)
+
+
 export default router

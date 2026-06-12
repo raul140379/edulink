@@ -846,3 +846,397 @@ export const changeEnrollment = async (req: AuthRequest, res: Response): Promise
     res.status(500).json({ message: 'Error al cambiar inscripción' })
   }
 }
+// GET /api/students/me
+export const getMyProfile = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const userId = req.userId
+
+    const student = await prisma.student.findUnique({
+      where: { userId },
+      include: {
+        assignments: {
+          where: { academicYear: { isActive: true } },
+          include: {
+            course:       { select: { id: true, grade: true, parallel: true, level: true, shift: true } },
+            academicYear: { select: { id: true, year: true } },
+          },
+          orderBy: { createdAt: 'desc' },
+          take: 1,
+        },
+        parents: {
+          where: { isTutor: true },
+          include: {
+            parent: { select: { firstName: true, lastName: true, phone: true } },
+          },
+          take: 1,
+        },
+      },
+    })
+
+    if (!student) { res.status(404).json({ message: 'Estudiante no encontrado' }); return }
+
+    const assignment = student.assignments[0]
+
+    res.json({
+      id:           student.id,
+      firstName:    student.firstName,
+      lastName:     student.lastName,
+      ci:           student.ci,
+      rude:         student.rude,
+      kardex:       student.kardex,
+      birthDate:    student.birthDate,
+      gender:       student.gender,
+      phone:        student.phone,
+      email:        student.email,
+      address:      student.address,
+      course:       assignment?.course       ?? null,
+      academicYear: assignment?.academicYear ?? null,
+      tutor:        student.parents[0]?.parent ?? null,
+    })
+  } catch (err) {
+    console.error('getMyProfile:', err)
+    res.status(500).json({ message: 'Error al obtener perfil' })
+  }
+}
+
+// GET /api/students/my-grades
+export const getMyGrades = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const userId = req.userId 
+
+    const student = await prisma.student.findUnique({
+      where: { userId },
+      include: {
+        assignments: {
+          where: { academicYear: { isActive: true } },
+          include: {
+            course:       { select: { id: true, grade: true, parallel: true, level: true, shift: true } },
+            academicYear: { select: { id: true, year: true } },
+          },
+          orderBy: { createdAt: 'desc' },
+          take: 1,
+        },
+      },
+    })
+
+    if (!student) { res.status(404).json({ message: 'Estudiante no encontrado' }); return }
+
+    const assignment = student.assignments[0]
+    if (!assignment) { res.json({ notas: [], course: null, academicYear: null, trimestres: [] }); return }
+
+    const trimestres = await prisma.trimester.findMany({
+      where: { academicYearId: assignment.academicYearId },
+      orderBy: { number: 'asc' },
+    })
+
+    const notas = await prisma.nota.findMany({
+      where: {
+        studentId:   student.id,
+        courseId:    assignment.courseId,
+        trimesterId: { in: trimestres.map(t => t.id) },
+      },
+      include: {
+        subject:   { select: { id: true, name: true, campo: true } },
+        trimester: { select: { id: true, number: true, name: true } },
+        teacher:   { select: { firstName: true, lastName: true } },
+      },
+      orderBy: [{ subject: { name: 'asc' } }, { trimester: { number: 'asc' } }],
+    })
+
+    const bySubject: Record<number, {
+      subjectId:   number
+      subjectName: string
+      campo:       string | null
+      teacher:     string
+      trimestres:  Record<number, number>
+      avg:         number | null
+    }> = {}
+
+    for (const n of notas) {
+      if (!bySubject[n.subjectId]) {
+        bySubject[n.subjectId] = {
+          subjectId:   n.subjectId,
+          subjectName: n.subject.name,
+          campo:       n.subject.campo,
+          teacher:     `${n.teacher.firstName} ${n.teacher.lastName}`,
+          trimestres:  {},
+          avg:         null,
+        }
+      }
+      bySubject[n.subjectId].trimestres[n.trimesterId] = n.value
+    }
+
+    for (const s of Object.values(bySubject)) {
+      const vals = Object.values(s.trimestres)
+      if (vals.length > 0) {
+        s.avg = parseFloat((vals.reduce((a, b) => a + b, 0) / vals.length).toFixed(2))
+      }
+    }
+
+    res.json({
+      course:       assignment.course,
+      academicYear: assignment.academicYear,
+      trimestres,
+      notas:        Object.values(bySubject),
+    })
+  } catch (err) {
+    console.error('getMyGrades:', err)
+    res.status(500).json({ message: 'Error al obtener calificaciones' })
+  }
+}
+// ─────────────────────────────────────────────────────────────
+// Agregar al final de: backend/src/controllers/student.controller.ts
+// ─────────────────────────────────────────────────────────────
+
+// GET /api/students/my-tasks
+// Retorna las tareas del curso del estudiante con su calificación
+export const getMyTasks = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const userId = req.userId
+
+    const student = await prisma.student.findUnique({
+      where: { userId },
+      include: {
+        assignments: {
+          where: { academicYear: { isActive: true } },
+          include: {
+            academicYear: { select: { id: true } },
+          },
+          orderBy: { createdAt: 'desc' },
+          take: 1,
+        },
+      },
+    })
+
+    if (!student) { res.status(404).json({ message: 'Estudiante no encontrado' }); return }
+
+    const assignment = student.assignments[0]
+    if (!assignment) { res.json([]); return }
+
+    // Obtener todas las tareas del curso activo
+    const tasks = await prisma.task.findMany({
+      where: {
+        courseId: assignment.courseId,
+        trimester: { academicYearId: assignment.academicYearId },
+      },
+      include: {
+        subject:  { select: { id: true, name: true } },
+        teacher:  { select: { firstName: true, lastName: true } },
+        trimester: { select: { id: true, number: true, name: true } },
+        submissions: {
+          where: { studentId: student.id },
+          select: { score: true, status: true, note: true, updatedAt: true },
+        },
+      },
+      orderBy: { createdAt: 'desc' },
+    })
+
+    // Aplanar submissions al nivel de la tarea
+    const result = tasks.map(t => ({
+      id:          t.id,
+      title:       t.title,
+      description: t.description,
+      type:        t.type,
+      maxScore:    t.maxScore,
+      dueDate:     t.dueDate,
+      subject:     t.subject,
+      teacher:     `${t.teacher.firstName} ${t.teacher.lastName}`,
+      trimester:   t.trimester,
+      score:       t.submissions[0]?.score   ?? null,
+      status:      t.submissions[0]?.status  ?? 'PENDIENTE',
+      note:        t.submissions[0]?.note    ?? null,
+      gradedAt:    t.submissions[0]?.updatedAt ?? null,
+    }))
+
+    res.json(result)
+  } catch (err) {
+    console.error('getMyTasks:', err)
+    res.status(500).json({ message: 'Error al obtener tareas' })
+  }
+}
+
+// ─────────────────────────────────────────────────────────────
+// Agregar al final de: backend/src/controllers/student.controller.ts
+// ─────────────────────────────────────────────────────────────
+
+// GET /api/students/my-notifications
+// Retorna las notificaciones del tutor legal del estudiante autenticado
+export const getMyNotifications = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const userId = req.userId
+
+    const student = await prisma.student.findUnique({
+      where: { userId },
+      include: {
+        parents: {
+          where: { isTutor: true },
+          select: { parentId: true },
+          take: 1,
+        },
+      },
+    })
+
+    if (!student) { res.status(404).json({ message: 'Estudiante no encontrado' }); return }
+
+    const tutorId = student.parents[0]?.parentId
+    if (!tutorId) { res.json([]); return }
+
+    const notifications = await prisma.notification.findMany({
+      where: { parentId: tutorId },
+      include: {
+        sentBy: { select: { teacher: { select: { firstName: true, lastName: true } } } },
+      },
+      orderBy: { createdAt: 'desc' },
+    })
+
+    res.json(notifications)
+  } catch (err) {
+    console.error('getMyNotifications:', err)
+    res.status(500).json({ message: 'Error al obtener notificaciones' })
+  }
+}
+
+// PATCH /api/students/my-notifications/:id/read
+// Marca una notificación como leída
+export const markNotificationRead = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const userId = req.userId
+    const { id } = req.params
+
+    const student = await prisma.student.findUnique({
+      where: { userId },
+      include: {
+        parents: { where: { isTutor: true }, select: { parentId: true }, take: 1 },
+      },
+    })
+
+    if (!student) { res.status(404).json({ message: 'Estudiante no encontrado' }); return }
+
+    const tutorId = student.parents[0]?.parentId
+    if (!tutorId) { res.status(403).json({ message: 'Sin tutor asignado' }); return }
+
+    // Verificar que la notificación pertenece al tutor
+    const notif = await prisma.notification.findFirst({
+      where: { id: parseInt(id), parentId: tutorId },
+    })
+
+    if (!notif) { res.status(404).json({ message: 'Notificación no encontrada' }); return }
+
+    const updated = await prisma.notification.update({
+      where: { id: parseInt(id) },
+      data:  { isRead: true },
+    })
+
+    res.json(updated)
+  } catch (err) {
+    console.error('markNotificationRead:', err)
+    res.status(500).json({ message: 'Error al marcar notificación' })
+  }
+}
+// ─────────────────────────────────────────────────────────────
+// Agregar al final de: backend/src/controllers/student.controller.ts
+// ─────────────────────────────────────────────────────────────
+
+// GET /api/students/my-subjects
+// Retorna las materias del curso del estudiante con maestro, horas y notas
+export const getMySubjects = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const userId = req.userId
+
+    const student = await prisma.student.findUnique({
+      where: { userId },
+      include: {
+        assignments: {
+          where: { academicYear: { isActive: true } },
+          include: {
+            course:       { select: { id: true, grade: true, parallel: true, level: true, shift: true, educationType: true } },
+            academicYear: { select: { id: true, year: true } },
+          },
+          orderBy: { createdAt: 'desc' },
+          take: 1,
+        },
+      },
+    })
+
+    if (!student) { res.status(404).json({ message: 'Estudiante no encontrado' }); return }
+
+    const assignment = student.assignments[0]
+    if (!assignment) { res.json([]); return }
+
+    // Obtener materias asignadas al curso con sus maestros
+    const teacherSubjects = await prisma.teacherSubjectCourse.findMany({
+      where: { courseId: assignment.courseId },
+      include: {
+        subject: {
+          select: {
+            id: true, name: true, campo: true,
+            gradeConfigs: {
+              where: { grade: assignment.course.grade, educationType: assignment.course.educationType },
+              select: { hoursPerWeek: true },
+            },
+          },
+        },
+        teacher: { select: { id: true, firstName: true, lastName: true, specialty: true } },
+      },
+      orderBy: { subject: { name: 'asc' } },
+    })
+
+    // Obtener trimestres del año activo
+    const trimestres = await prisma.trimester.findMany({
+      where: { academicYearId: assignment.academicYearId },
+      orderBy: { number: 'asc' },
+    })
+
+    // Obtener notas del estudiante
+    const notas = await prisma.nota.findMany({
+      where: {
+        studentId:   student.id,
+        courseId:    assignment.courseId,
+        trimesterId: { in: trimestres.map(t => t.id) },
+      },
+      select: { subjectId: true, trimesterId: true, value: true },
+    })
+
+    // Agrupar notas por materia
+    const notasBySubject: Record<number, Record<number, number>> = {}
+    for (const n of notas) {
+      if (!notasBySubject[n.subjectId]) notasBySubject[n.subjectId] = {}
+      notasBySubject[n.subjectId][n.trimesterId] = n.value
+    }
+
+    // Construir respuesta
+    const result = teacherSubjects.map(ts => {
+      const subjectNotas = notasBySubject[ts.subjectId] || {}
+      const vals = Object.values(subjectNotas)
+      const avg  = vals.length ? parseFloat((vals.reduce((a, b) => a + b, 0) / vals.length).toFixed(2)) : null
+
+      return {
+        subjectId:   ts.subjectId,
+        subjectName: ts.subject.name,
+        campo:       ts.subject.campo,
+        hoursPerWeek: ts.subject.gradeConfigs[0]?.hoursPerWeek ?? ts.subject.gradeConfigs[0]?.hoursPerWeek ?? 0,
+        teacher: {
+          id:        ts.teacher.id,
+          firstName: ts.teacher.firstName,
+          lastName:  ts.teacher.lastName,
+          specialty: ts.teacher.specialty,
+        },
+        trimestres,
+        notas:     subjectNotas,
+        avg,
+        aprobado:  avg !== null ? avg >= 51 : null,
+      }
+    })
+
+    res.json(result)
+  } catch (err) {
+    console.error('getMySubjects:', err)
+    res.status(500).json({ message: 'Error al obtener materias' })
+  }
+}
+
+// ─────────────────────────────────────────────────────────────
+// Agregar en: backend/src/routes/student.routes.ts
+// ─────────────────────────────────────────────────────────────
+// import { ..., getMySubjects } from '../controllers/student.controller'
+// router.get('/my-subjects', getMySubjects)

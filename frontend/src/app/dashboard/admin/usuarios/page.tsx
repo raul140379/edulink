@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { Plus, Search, RefreshCw, UserCheck, UserX, EyeOff, Eye, X, KeyRound, Copy, Check, Edit, Trash2 } from 'lucide-react'
+import { Plus, Search, RefreshCw, UserCheck, UserX, EyeOff, Eye, X, KeyRound, Copy, Check, Edit, Trash2, Download, AlertTriangle } from 'lucide-react'
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000'
 
@@ -30,6 +30,13 @@ const roleColors: Record<string, string> = {
   JUNTA_ESCOLAR: '#0F6E56',
   PARENT: '#27500A', STUDENT: '#791F1F', STUDENT_GOV: '#185FA5', STAFF: '#4A4A4A',
 }
+
+const RESET_OPTIONS = [
+  { key: 'ALL',     label: 'Todos',            desc: 'Estudiantes + Padres + Maestros',     color: '#1A3A7C' },
+  { key: 'STUDENT', label: 'Solo Estudiantes', desc: 'RUDE o 4 letras apellido + año',      color: '#791F1F' },
+  { key: 'PARENT',  label: 'Solo Padres',      desc: 'CI o 4 letras apellido + año',        color: '#27500A' },
+  { key: 'TEACHER', label: 'Solo Maestros',    desc: 'CI o 4 letras apellido + año',        color: '#633806' },
+]
 
 const getUserName = (u: User): string => {
   if (u.parent)  return `${u.parent.firstName} ${u.parent.lastName}`
@@ -66,13 +73,20 @@ export default function UsuariosPage() {
   const [duplicateEmail, setDuplicateEmail] = useState<string | null>(null)
   const [form,           setForm]           = useState({ email: '', password: '', role: 'PARENT' })
   const [editForm,       setEditForm]       = useState({ id: 0, email: '', role: '' })
-
   const [showResetModal,   setShowResetModal]   = useState(false)
   const [resetCredentials, setResetCredentials] = useState<{ email: string; password: string } | null>(null)
   const [copied,           setCopied]           = useState(false)
   const [showNewCreds,     setShowNewCreds]     = useState(false)
   const [newCredentials,   setNewCredentials]   = useState<{ email: string; password: string } | null>(null)
   const [copiedNew,        setCopiedNew]        = useState(false)
+
+  // ── Reset masivo ──
+  const [showMassReset, setShowMassReset] = useState(false)
+  const [massResetting, setMassResetting] = useState(false)
+  const [massSuccess,   setMassSuccess]   = useState(false)
+  const [massError,     setMassError]     = useState('')
+  const [confirmMass,   setConfirmMass]   = useState(false)
+  const [selectedRole,  setSelectedRole]  = useState<string | null>(null)  // null = sin selección aún
 
   const token = typeof window !== 'undefined' ? localStorage.getItem('token') : ''
 
@@ -194,6 +208,39 @@ export default function UsuariosPage() {
     } catch { notify('Error al restablecer contraseña', 'error') }
   }
 
+  const handleMassReset = async () => {
+    if (!selectedRole) return
+    setMassResetting(true); setMassError(''); setMassSuccess(false)
+    try {
+      const body = selectedRole === 'ALL'
+        ? { roles: 'ALL' }
+        : { roles: [selectedRole] }
+
+      const res = await fetch(`${API_URL}/api/admin/reset-credentials`, {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body:    JSON.stringify(body),
+      })
+      if (!res.ok) {
+        const d = await res.json()
+        setMassError(d.message || 'Error al resetear credenciales'); return
+      }
+      const blob = await res.blob()
+      const url  = window.URL.createObjectURL(blob)
+      const a    = document.createElement('a')
+      a.href     = url
+      a.download = `credenciales_${selectedRole.toLowerCase()}_${new Date().getFullYear()}.xlsx`
+      document.body.appendChild(a); a.click()
+      document.body.removeChild(a)
+      window.URL.revokeObjectURL(url)
+      setMassSuccess(true); setConfirmMass(false)
+    } catch {
+      setMassError('Error de conexión con el servidor')
+    } finally {
+      setMassResetting(false)
+    }
+  }
+
   const copyReset = () => {
     if (!resetCredentials) return
     navigator.clipboard.writeText(`Email: ${resetCredentials.email}\nContraseña: ${resetCredentials.password}`)
@@ -212,6 +259,8 @@ export default function UsuariosPage() {
     return name.includes(q) || u.email.toLowerCase().includes(q)
   })
 
+  const selectedOpt = RESET_OPTIONS.find(o => o.key === selectedRole)
+
   return (
     <div>
       <div className="page-header">
@@ -219,7 +268,15 @@ export default function UsuariosPage() {
           <h1>Gestión de Usuarios</h1>
           <p>Administra los usuarios y roles del sistema</p>
         </div>
-        <button className="btn-primary" onClick={openCreate}><Plus size={16}/> Nuevo usuario</button>
+        <div style={{ display:'flex', gap:10 }}>
+          <button className="btn-reset-all" onClick={() => {
+            setShowMassReset(true); setConfirmMass(false)
+            setMassSuccess(false); setMassError(''); setSelectedRole(null)
+          }}>
+            <Download size={16}/> Resetear Credenciales
+          </button>
+          <button className="btn-primary" onClick={openCreate}><Plus size={16}/> Nuevo usuario</button>
+        </div>
       </div>
 
       {success && <div className="alert suc">{success}</div>}
@@ -263,18 +320,12 @@ export default function UsuariosPage() {
                   <td className="muted">{new Date(u.createdAt).toLocaleDateString('es-BO')}</td>
                   <td>
                     <div className="actions">
-                      <button className="abtn btn-edit" title="Editar" onClick={() => openEdit(u)}>
-                        <Edit size={14}/>
-                      </button>
-                      <button className="abtn btn-reset" title="Restablecer contraseña" onClick={() => handleResetPassword(u.id)}>
-                        <KeyRound size={14}/>
-                      </button>
+                      <button className="abtn btn-edit" title="Editar" onClick={() => openEdit(u)}><Edit size={14}/></button>
+                      <button className="abtn btn-reset" title="Restablecer contraseña" onClick={() => handleResetPassword(u.id)}><KeyRound size={14}/></button>
                       <button className={`abtn ${u.isActive ? 'dng' : 'suc'}`} title={u.isActive ? 'Desactivar' : 'Activar'} onClick={() => handleToggle(u.id)}>
                         {u.isActive ? <UserX size={14}/> : <UserCheck size={14}/>}
                       </button>
-                      <button className="abtn btn-del" title="Eliminar" onClick={() => handleDelete(u)}>
-                        <Trash2 size={14}/>
-                      </button>
+                      <button className="abtn btn-del" title="Eliminar" onClick={() => handleDelete(u)}><Trash2 size={14}/></button>
                     </div>
                   </td>
                 </tr>
@@ -285,14 +336,121 @@ export default function UsuariosPage() {
       </div>
       <div className="tfooter">Total: <strong>{filtered.length}</strong> usuarios</div>
 
+      {/* ── Modal Reset Masivo ── */}
+      {showMassReset && (
+        <div className="overlay" onClick={() => !massResetting && setShowMassReset(false)}>
+          <div className="modal" onClick={e => e.stopPropagation()}>
+            <div className="mhead">
+              <h2>🔄 Resetear Credenciales</h2>
+              {!massResetting && <button onClick={() => setShowMassReset(false)}><X size={18}/></button>}
+            </div>
+            <div className="mbody">
+              {massSuccess ? (
+                <div className="alert suc" style={{ margin:0 }}>
+                  ✅ Credenciales reseteadas correctamente. El Excel se descargó automáticamente.
+                </div>
+              ) : (
+                <>
+                  <div style={{ fontSize:13, fontWeight:600, color:'#1A3A7C', marginBottom:4 }}>
+                    ¿A qué usuarios deseas resetear la contraseña?
+                  </div>
+
+                  {/* Opciones de rol */}
+                  <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+                    {RESET_OPTIONS.map(opt => (
+                      <button key={opt.key}
+                        onClick={() => { setSelectedRole(opt.key); setConfirmMass(false) }}
+                        style={{
+                          display:'flex', alignItems:'center', gap:12,
+                          padding:'12px 14px', borderRadius:10, cursor:'pointer',
+                          border: selectedRole === opt.key
+                            ? `2px solid ${opt.color}`
+                            : '2px solid #CBE0F0',
+                          backgroundColor: selectedRole === opt.key ? `${opt.color}10` : '#fff',
+                          textAlign:'left', width:'100%',
+                        }}>
+                        <div style={{
+                          width:12, height:12, borderRadius:'50%',
+                          backgroundColor: opt.color, flexShrink:0,
+                        }}/>
+                        <div style={{ flex:1 }}>
+                          <div style={{ fontSize:13, fontWeight:700, color: selectedRole === opt.key ? opt.color : '#1A3A7C' }}>
+                            {opt.label}
+                          </div>
+                          <div style={{ fontSize:11, color:'#6B8BB0', marginTop:1 }}>{opt.desc}</div>
+                        </div>
+                        {selectedRole === opt.key && (
+                          <Check size={16} color={opt.color}/>
+                        )}
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* Advertencia */}
+                  <div style={{
+                    display:'flex', alignItems:'flex-start', gap:8,
+                    padding:'10px 12px', borderRadius:8,
+                    backgroundColor:'#FFFBEA', border:'1px solid #F5C518',
+                    fontSize:12, color:'#BA7517', lineHeight:1.6,
+                  }}>
+                    <AlertTriangle size={14} style={{ flexShrink:0, marginTop:2 }}/>
+                    <span>Los usuarios <strong>SUPER_ADMIN, Director, Regente y Secretaria NO serán afectados</strong>.</span>
+                  </div>
+
+                  {massError && <div className="alert err" style={{ margin:0 }}>{massError}</div>}
+
+                  {/* Botón continuar */}
+                  {selectedRole && !confirmMass && (
+                    <button className="btn-primary" style={{ width:'100%', justifyContent:'center' }}
+                      onClick={() => setConfirmMass(true)}>
+                      <Download size={16}/>
+                      Resetear "{selectedOpt?.label}" y Descargar Excel
+                    </button>
+                  )}
+
+                  {/* Confirmación final */}
+                  {confirmMass && selectedRole && (
+                    <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
+                      <div style={{
+                        fontSize:13, fontWeight:600, color:'#c0392b',
+                        textAlign:'center', padding:'8px',
+                        backgroundColor:'#FDE8E8', borderRadius:8,
+                      }}>
+                        ⚠️ ¿Confirmas resetear contraseñas de <strong>{selectedOpt?.label}</strong>?
+                      </div>
+                      <div style={{ display:'flex', gap:10 }}>
+                        <button onClick={handleMassReset} disabled={massResetting}
+                          className="btn-primary"
+                          style={{ flex:1, justifyContent:'center', backgroundColor: massResetting ? '#6B8BB0' : '#c0392b' }}>
+                          {massResetting
+                            ? <><span className="spinsm"/> Procesando...</>
+                            : <><Download size={15}/> Sí, confirmar</>
+                          }
+                        </button>
+                        <button className="btn-outline" onClick={() => setConfirmMass(false)}
+                          disabled={massResetting} style={{ flex:1, justifyContent:'center' }}>
+                          Cancelar
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+            {massSuccess && (
+              <div className="mfoot">
+                <button className="btn-primary" onClick={() => setShowMassReset(false)}>Cerrar</button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* ── Modal nuevo usuario ── */}
       {showModal && (
         <div className="overlay" onClick={() => setShowModal(false)}>
           <div className="modal" onClick={e => e.stopPropagation()}>
-            <div className="mhead">
-              <h2>Nuevo Usuario</h2>
-              <button onClick={() => setShowModal(false)}><X size={18}/></button>
-            </div>
+            <div className="mhead"><h2>Nuevo Usuario</h2><button onClick={() => setShowModal(false)}><X size={18}/></button></div>
             <div className="mbody">
               {error && <div className="alert err">{error}</div>}
               <div className="fg">
@@ -317,17 +475,14 @@ export default function UsuariosPage() {
                 </div>
                 <button type="button" className="gen-pwd-btn" onClick={() => {
                   if (!form.email) { notify('Ingresa el correo primero', 'error'); return }
-                  setForm({...form, password: generatePassword(form.email, form.role)})
-                  setShowPass(true)
+                  setForm({...form, password: generatePassword(form.email, form.role)}); setShowPass(true)
                 }}>
                   <RefreshCw size={12}/> Generar contraseña automática
                 </button>
                 {form.password && (
                   <div className="pwd-strength">
                     <span className={`strength-bar ${form.password.length >= 8 ? 'good' : 'weak'}`}/>
-                    <span className="strength-label">
-                      {form.password.length < 6 ? 'Muy corta' : form.password.length < 8 ? 'Aceptable' : 'Segura'}
-                    </span>
+                    <span className="strength-label">{form.password.length < 6 ? 'Muy corta' : form.password.length < 8 ? 'Aceptable' : 'Segura'}</span>
                   </div>
                 )}
               </div>
@@ -337,15 +492,12 @@ export default function UsuariosPage() {
                   <button className="link-btn" onClick={handleResetByEmail}>Sí, resetear contraseña →</button>
                 </div>
               )}
-              <div className="infobox">
-                💡 Después de crear el usuario podrás vincularle el perfil desde el módulo respectivo.
-              </div>
+              <div className="infobox">💡 Después de crear el usuario podrás vincularle el perfil desde el módulo respectivo.</div>
             </div>
             <div className="mfoot">
               <button className="btn-outline" onClick={() => setShowModal(false)}>Cancelar</button>
               <button className="btn-primary" onClick={handleCreate} disabled={saving || !form.email || !form.password}>
-                {saving ? <span className="spinsm"/> : <Plus size={14}/>}
-                {saving ? 'Guardando...' : 'Crear usuario'}
+                {saving ? <span className="spinsm"/> : <Plus size={14}/>}{saving ? 'Guardando...' : 'Crear usuario'}
               </button>
             </div>
           </div>
@@ -356,16 +508,12 @@ export default function UsuariosPage() {
       {showEditModal && (
         <div className="overlay" onClick={() => setShowEditModal(false)}>
           <div className="modal" onClick={e => e.stopPropagation()}>
-            <div className="mhead">
-              <h2>Editar Usuario</h2>
-              <button onClick={() => setShowEditModal(false)}><X size={18}/></button>
-            </div>
+            <div className="mhead"><h2>Editar Usuario</h2><button onClick={() => setShowEditModal(false)}><X size={18}/></button></div>
             <div className="mbody">
               {error && <div className="alert err">{error}</div>}
               <div className="fg">
                 <label>Correo electrónico *</label>
-                <input type="email" value={editForm.email}
-                  onChange={e => setEditForm({...editForm, email: e.target.value})}/>
+                <input type="email" value={editForm.email} onChange={e => setEditForm({...editForm, email: e.target.value})}/>
               </div>
               <div className="fg">
                 <label>Rol *</label>
@@ -373,15 +521,12 @@ export default function UsuariosPage() {
                   {Object.entries(roleLabels).map(([k,v]) => <option key={k} value={k}>{v}</option>)}
                 </select>
               </div>
-              <div className="infobox">
-                💡 Para cambiar la contraseña usa el botón de restablecer en la lista.
-              </div>
+              <div className="infobox">💡 Para cambiar la contraseña usa el botón de restablecer en la lista.</div>
             </div>
             <div className="mfoot">
               <button className="btn-outline" onClick={() => setShowEditModal(false)}>Cancelar</button>
               <button className="btn-primary" onClick={handleEdit} disabled={saving}>
-                {saving ? <span className="spinsm"/> : <Edit size={14}/>}
-                {saving ? 'Guardando...' : 'Actualizar'}
+                {saving ? <span className="spinsm"/> : <Edit size={14}/>}{saving ? 'Guardando...' : 'Actualizar'}
               </button>
             </div>
           </div>
@@ -409,7 +554,7 @@ export default function UsuariosPage() {
         </div>
       )}
 
-      {/* ── Modal resetear contraseña ── */}
+      {/* ── Modal resetear contraseña individual ── */}
       {showResetModal && resetCredentials && (
         <div className="overlay">
           <div className="modal" onClick={e => e.stopPropagation()}>
@@ -447,6 +592,8 @@ export default function UsuariosPage() {
         .btn-primary:disabled{opacity:.6;cursor:not-allowed}
         .btn-outline{display:flex;align-items:center;gap:6px;padding:9px 14px;background:#fff;color:#1A3A7C;border:1.5px solid #CBE0F0;border-radius:8px;font-size:13px;cursor:pointer;white-space:nowrap}
         .btn-outline:hover{background:#F0F6FC}
+        .btn-reset-all{display:flex;align-items:center;gap:6px;padding:9px 16px;background:#0F6E56;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:500;cursor:pointer;white-space:nowrap}
+        .btn-reset-all:hover{background:#0a5240}
         .table-card{background:#fff;border:1px solid #CBE0F0;border-radius:12px;overflow:hidden}
         table{width:100%;border-collapse:collapse}
         thead tr{background:#F0F6FC}

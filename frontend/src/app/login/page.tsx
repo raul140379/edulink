@@ -53,8 +53,9 @@ export default function LoginPage() {
         case 'PARENT':
           router.push('/dashboard/parent')
           break
-        case 'STUDENT':
-          router.push('/dashboard/student')
+        case 'STUDENT': 
+            router.push('/dashboard/estudiantes')
+             break
         case 'DELEGATE':
           router.push('/dashboard/delegate')          
           break

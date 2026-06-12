@@ -73,7 +73,7 @@ enum RelationType {
   TUTOR_LEGAL   // Tutor legal (no es padre ni madre)
   OTRO
 }
-
+//ROL DE PERSONAL
 enum StaffRole {
   PORTERO
   SECRETARIA
@@ -87,7 +87,7 @@ enum ChargeTarget {
   TUTOR      // Cargo general al tutor legal (cuota inicial, minga, multa asamblea)
   ESTUDIANTE // Cargo por estudiante específico (reunión de curso, actividades, materiales)
 }
-
+// TIPO DE CARGOS DE PAGO
 enum ChargeType {
   CUOTA_INICIAL     // Monto de inicio de año — por TUTOR
   DEUDA_ANTERIOR    // Saldo pendiente del año anterior — por TUTOR
@@ -98,14 +98,14 @@ enum ChargeType {
   MATERIAL_ESCOLAR  // Venta de materiales — por ESTUDIANTE
   OTRO              // Cobros eventuales
 }
-
+//ESTADO DEL CARGO
 enum ChargeStatus {
   PENDIENTE
   PARCIAL
   PAGADO
   ANULADO
 }
-
+//METODO DE PAGO
 enum PaymentMethod {
   EFECTIVO
   DEPOSITO_BANCARIO
@@ -113,7 +113,7 @@ enum PaymentMethod {
   TRANSFERENCIA
   OTRO
 }
-
+//TIPO DE NOTIFICACION
 enum NotificationType {
   REUNION         // Convocatoria a reunión
   ACTIVIDAD       // Actividad programada
@@ -210,6 +210,7 @@ model Trimester {
   academicYear   AcademicYear @relation(fields: [academicYearId], references: [id])
   @@unique([academicYearId, number])
   notas     Nota[]
+  tasks  Task[]
 }
 
 model Holiday {
@@ -265,6 +266,7 @@ model Student {
   user        User?     @relation(fields: [userId], references: [id])
   parents     ParentStudent[]
   assignments StudentAcademicAssignment[]
+  taskSubmissions  TaskSubmission[]
   charges     Charge[]   // Cargos asignados a este estudiante específico
   notas     Nota[]
 }
@@ -299,6 +301,7 @@ model Teacher {
   assignments TeacherSubjectCourse[]
   tutorCourse CourseTutor?
   notas     Nota[]
+  tasks  Task[]
   specialties TeacherSpecialty[]
 }
 model TeacherSpecialty {
@@ -341,6 +344,7 @@ model Course {
   delegate    Parent? @relation("CourseDelegate", fields: [delegateId], references: [id])
   assignments     StudentAcademicAssignment[]
   schedules       Schedule[]
+  tasks  Task[]
   teacherSubjects TeacherSubjectCourse[]
   tutor           CourseTutor?
   @@unique([level, grade, parallel, educationType, shift])
@@ -368,6 +372,7 @@ model Subject {
   teacherSubjects TeacherSubjectCourse[]
   gradeConfigs    SubjectGradeConfig[]   // Horas y disponibilidad por grado
   notas           Nota[]
+  tasks  Task[]
   @@unique([name, level])
   teacherSpecialties TeacherSpecialty[]
 }
@@ -395,7 +400,53 @@ model TeacherSubjectCourse {
   schedules Schedule[]
   @@unique([teacherId, subjectId, courseId])
 }
-
+//TIPOS TAREAS ESTUDIANTES
+enum TaskType {
+  EVALUACION   // Campo SABER — hasta 45 pts
+  TRABAJO      // Campo HACER — hasta 40 pts
+  SER          // Campo SER — hasta 10 pts
+  DECIDIR      // Campo DECIDIR — hasta 5 pts
+}
+//ESTADOS TAREAS ESTUDIANTES
+enum TaskStatus {
+  PENDIENTE
+  CALIFICADO
+}
+// TAREAS DEL ESTUDIANTES
+model Task {
+  id          Int        @id @default(autoincrement())
+  title       String
+  description String?
+  type        TaskType
+  maxScore    Float      // Máximo según tipo
+  dueDate     DateTime?
+  courseId    Int
+  subjectId   Int
+  teacherId   Int
+  trimesterId Int?
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+  course      Course     @relation(fields: [courseId], references: [id])
+  subject     Subject    @relation(fields: [subjectId], references: [id])
+  teacher     Teacher    @relation(fields: [teacherId], references: [id])
+  trimester   Trimester? @relation(fields: [trimesterId], references: [id])
+  submissions TaskSubmission[]
+}
+// TAREAS ENVIADAS DEL ESTUDIANTES
+model TaskSubmission {
+  id        Int        @id @default(autoincrement())
+  taskId    Int
+  studentId Int
+  score     Float?     // Nota asignada por el maestro
+  note      String?    // Comentario
+  status    TaskStatus @default(PENDIENTE)
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+  task      Task       @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  student   Student    @relation(fields: [studentId], references: [id])
+  @@unique([taskId, studentId])
+}
+//Tarea académica del estudiante
 model StudentAcademicAssignment {
   id             Int           @id @default(autoincrement())
   educationType  EducationType
@@ -409,7 +460,7 @@ model StudentAcademicAssignment {
   academicYear AcademicYear @relation(fields: [academicYearId], references: [id])
   @@unique([studentId, academicYearId, educationType])
 }
-
+//CRONOGRAMA
 model Schedule {
   id                     Int                  @id @default(autoincrement())
   dayOfWeek              Int
@@ -450,7 +501,7 @@ model Charge {
   student     Student?     @relation(fields: [studentId], references: [id])
   payments    Payment[]
 }
-
+//LOS PAGOS
 model Payment {
   id        Int           @id @default(autoincrement())
   amount    Float
