@@ -340,6 +340,7 @@ export const deleteStudent = async (req: AuthRequest, res: Response): Promise<vo
       return
     }
 
+    // Bloquear si tiene inscripciones
     if (student._count.assignments > 0) {
       res.status(400).json({
         message: `No se puede eliminar porque tiene ${student._count.assignments} inscripción(es). Desactívalo en su lugar.`
@@ -347,6 +348,13 @@ export const deleteStudent = async (req: AuthRequest, res: Response): Promise<vo
       return
     }
 
+    // Sin inscripciones — eliminar todas las relaciones
+    await prisma.taskSubmission.deleteMany({ where: { studentId: parseInt(id) } })
+    await prisma.nota.deleteMany({ where: { studentId: parseInt(id) } })
+    await prisma.charge.deleteMany({ where: { studentId: parseInt(id) } })
+    await prisma.parentStudent.deleteMany({ where: { studentId: parseInt(id) } })
+
+    // Desvincular y eliminar usuario
     if (student.userId) {
       const savedUserId = student.userId
       await prisma.$executeRaw`UPDATE "Student" SET "userId" = NULL WHERE id = ${parseInt(id)}`
