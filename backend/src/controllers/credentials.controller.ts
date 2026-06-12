@@ -14,14 +14,11 @@ const normalize = (str: string) =>
     .replace(/[\u0300-\u036f]/g, '')
     .replace(/[^A-Z]/g, '')
 
+const defaultPwd = (lastName: string, ci?: string | null) =>
+  ci?.trim() || `${normalize(lastName.split(' ')[0]).slice(0, 4)}${year}`
+
 const studentPwd = (lastName: string, rude?: string | null) =>
   rude?.trim() || `${normalize(lastName.split(' ')[0]).slice(0, 4)}${year}`
-
-const parentPwd = (lastName: string, ci?: string | null) =>
-  ci?.trim() || `${normalize(lastName.split(' ')[0]).slice(0, 4)}${year}`
-
-const teacherPwd = (lastName: string, ci?: string | null) =>
-  ci?.trim() || `${normalize(lastName.split(' ')[0]).slice(0, 4)}${year}`
 
 const GRADE_ORDER: Record<string, number> = {
   PRIMERO:1, SEGUNDO:2, TERCERO:3, CUARTO:4, QUINTO:5, SEXTO:6,
@@ -33,21 +30,28 @@ const PARALLEL_ORDER: Record<string, number> = { A:1, B:2, C:3 }
 const SHIFT_LABEL: Record<string, string> = {
   MORNING:'Mañana', AFTERNOON:'Tarde', NIGHT:'Noche',
 }
-const EXCLUDED = ['SUPER_ADMIN', 'DIRECTOR', 'REGENTE', 'SECRETARY']
+
+// Roles que NUNCA se resetean
+const EXCLUDED = ['SUPER_ADMIN', 'DIRECTOR', 'JUNTA_ESCOLAR']
 
 export const resetCredentials = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-     console.log('Body recibido:', req.body)  // ← agrega aquí
+    console.log('Body recibido:', req.body)
     const { roles } = req.body as { roles: string[] | 'ALL' }
     const resetAll  = roles === 'ALL' || !roles
 
-    const doStudents = resetAll || (Array.isArray(roles) && roles.includes('STUDENT'))
-    const doParents  = resetAll || (Array.isArray(roles) && roles.includes('PARENT'))
-    const doTeachers = resetAll || (Array.isArray(roles) && roles.includes('TEACHER'))
+    const doStudents  = resetAll || (Array.isArray(roles) && roles.includes('STUDENT'))
+    const doParents   = resetAll || (Array.isArray(roles) && roles.includes('PARENT'))
+    const doTeachers  = resetAll || (Array.isArray(roles) && roles.includes('TEACHER'))
+    const doSecretary = resetAll || (Array.isArray(roles) && roles.includes('SECRETARY'))
+    const doRegente   = resetAll || (Array.isArray(roles) && roles.includes('REGENTE'))
+    const doDelegate  = resetAll || (Array.isArray(roles) && roles.includes('DELEGATE'))
+    const doStaff     = resetAll || (Array.isArray(roles) && roles.includes('STAFF'))
 
     const estudiantesData: any[] = []
     const padresData:      any[] = []
     const maestrosData:    any[] = []
+    const otrosData:       any[] = []
 
     // ── ESTUDIANTES ──
     if (doStudents) {
@@ -144,15 +148,13 @@ export const resetCredentials = async (req: AuthRequest, res: Response): Promise
       })
 
       for (const p of parents) {
-        const pwd    = parentPwd(p.lastName, p.ci)
+        const pwd    = defaultPwd(p.lastName, p.ci)
         const hashed = await bcrypt.hash(pwd, 10)
         await prisma.user.update({ where: { id: p.userId! }, data: { password: hashed } })
-
         const hijos = p.students.map(ps => {
           const course = ps.student.assignments[0]?.course
           return `${ps.student.lastName} ${ps.student.firstName}${course ? ` (${GRADE_LABEL[course.grade] || course.grade} "${course.parallel}")` : ''}`
         }).join(' | ')
-
         const primerCurso = p.students[0]?.student?.assignments[0]?.course
         padresData.push({
           'Grado':         primerCurso ? GRADE_LABEL[primerCurso.grade] || primerCurso.grade : 'Sin curso',
@@ -172,21 +174,16 @@ export const resetCredentials = async (req: AuthRequest, res: Response): Promise
     // ── MAESTROS ──
     if (doTeachers) {
       const teachers = await prisma.teacher.findMany({
-        where: {
-          isActive: true,
-          user:     { role: { notIn: ['SUPER_ADMIN'] as any } },
-        },
-        include: {
-          user: { select: { id: true, email: true } },
-        },
+        where: { isActive: true },
+        include: { user: { select: { id: true, email: true, role: true } } },
         orderBy: [{ lastName: 'asc' }, { firstName: 'asc' }],
       })
-
       for (const t of teachers) {
-        const pwd    = teacherPwd(t.lastName, t.ci)
+        const pwd    = defaultPwd(t.lastName, t.ci)
         const hashed = await bcrypt.hash(pwd, 10)
         await prisma.user.update({ where: { id: t.userId }, data: { password: hashed } })
         maestrosData.push({
+          'Rol':        t.user?.role === 'TEACHER_TUTOR' ? 'Maestro Tutor' : 'Maestro',
           'Apellidos':  t.lastName,
           'Nombres':    t.firstName,
           'CI':         t.ci    || '',
@@ -194,6 +191,52 @@ export const resetCredentials = async (req: AuthRequest, res: Response): Promise
           'Email':      t.user?.email || '',
           'Contraseña': pwd,
           'Hint':       t.ci ? 'CI del maestro' : `4 letras apellido + ${year}`,
+        })
+      }
+    }
+
+    // ── OTROS ROLES (Secretaria, Regente, Delegado, Staff) ──
+    const otherRoles: string[] = []
+    if (doSecretary) otherRoles.push('SECRETARY')
+    if (doRegente)   otherRoles.push('REGENTE')
+    if (doDelegate)  otherRoles.push('DELEGATE')
+    if (doStaff)     otherRoles.push('STAFF')
+
+    if (otherRoles.length > 0) {
+      const otherUsers = await prisma.user.findMany({
+        where: { role: { in: otherRoles as any }, isActive: true },
+        include: {
+          parent:  { select: { firstName: true, lastName: true, ci: true, phone: true } },
+          staff:   { select: { firstName: true, lastName: true, ci: true, phone: true, staffRole: true } },
+        },
+        orderBy: [{ role: 'asc' }],
+      })
+
+      const ROLE_LABEL: Record<string, string> = {
+        SECRETARY:'Secretaria', REGENTE:'Regente',
+        DELEGATE:'Delegado', STAFF:'Personal',
+      }
+
+      for (const u of otherUsers) {
+        const profile  = u.parent || u.staff
+        const lastName  = (profile as any)?.lastName  || u.email.split('@')[0]
+        const firstName = (profile as any)?.firstName || ''
+        const ci        = (profile as any)?.ci        || null
+        const phone     = (profile as any)?.phone     || ''
+
+        const pwd    = defaultPwd(lastName, ci)
+        const hashed = await bcrypt.hash(pwd, 10)
+        await prisma.user.update({ where: { id: u.id }, data: { password: hashed } })
+
+        otrosData.push({
+          'Rol':        ROLE_LABEL[u.role] || u.role,
+          'Apellidos':  lastName,
+          'Nombres':    firstName,
+          'CI':         ci    || '',
+          'Teléfono':   phone || '',
+          'Email':      u.email,
+          'Contraseña': pwd,
+          'Hint':       ci ? 'CI del usuario' : `4 letras apellido + ${year}`,
         })
       }
     }
@@ -213,8 +256,13 @@ export const resetCredentials = async (req: AuthRequest, res: Response): Promise
     }
     if (maestrosData.length > 0) {
       const ws = XLSX.utils.json_to_sheet(maestrosData)
-      ws['!cols'] = [{wch:20},{wch:20},{wch:12},{wch:14},{wch:30},{wch:20},{wch:25}]
+      ws['!cols'] = [{wch:14},{wch:20},{wch:20},{wch:12},{wch:14},{wch:30},{wch:20},{wch:25}]
       XLSX.utils.book_append_sheet(wb, ws, 'Maestros')
+    }
+    if (otrosData.length > 0) {
+      const ws = XLSX.utils.json_to_sheet(otrosData)
+      ws['!cols'] = [{wch:14},{wch:20},{wch:20},{wch:12},{wch:14},{wch:30},{wch:20},{wch:25}]
+      XLSX.utils.book_append_sheet(wb, ws, 'Otros')
     }
 
     if (wb.SheetNames.length === 0) {

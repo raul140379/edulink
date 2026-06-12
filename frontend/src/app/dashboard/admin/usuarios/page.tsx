@@ -32,10 +32,14 @@ const roleColors: Record<string, string> = {
 }
 
 const RESET_OPTIONS = [
-  { key: 'ALL',     label: 'Todos',            desc: 'Estudiantes + Padres + Maestros',     color: '#1A3A7C' },
-  { key: 'STUDENT', label: 'Solo Estudiantes', desc: 'RUDE o 4 letras apellido + año',      color: '#791F1F' },
-  { key: 'PARENT',  label: 'Solo Padres',      desc: 'CI o 4 letras apellido + año',        color: '#27500A' },
-  { key: 'TEACHER', label: 'Solo Maestros',    desc: 'CI o 4 letras apellido + año',        color: '#633806' },
+  { key: 'ALL',       label: 'Todos',          desc: 'Todos los roles permitidos',          color: '#1A3A7C' },
+  { key: 'STUDENT',   label: 'Estudiantes',    desc: 'RUDE o 4 letras apellido + año',      color: '#791F1F' },
+  { key: 'PARENT',    label: 'Padres/Tutores', desc: 'CI o 4 letras apellido + año',        color: '#27500A' },
+  { key: 'TEACHER',   label: 'Maestros',       desc: 'CI o 4 letras apellido + año',        color: '#633806' },
+  { key: 'SECRETARY', label: 'Secretaria',     desc: 'CI o 4 letras apellido + año',        color: '#712B13' },
+  { key: 'REGENTE',   label: 'Regente',        desc: 'CI o 4 letras apellido + año',        color: '#3C3489' },
+  { key: 'DELEGATE',  label: 'Delegados',      desc: 'CI o 4 letras apellido + año',        color: '#444441' },
+  { key: 'STAFF',     label: 'Personal',       desc: 'CI o 4 letras apellido + año',        color: '#4A4A4A' },
 ]
 
 const getUserName = (u: User): string => {
@@ -86,7 +90,7 @@ export default function UsuariosPage() {
   const [massSuccess,   setMassSuccess]   = useState(false)
   const [massError,     setMassError]     = useState('')
   const [confirmMass,   setConfirmMass]   = useState(false)
-  const [selectedRole,  setSelectedRole]  = useState<string | null>(null)  // null = sin selección aún
+  const [selectedRole,  setSelectedRole]  = useState<string | null>(null)
 
   const token = typeof window !== 'undefined' ? localStorage.getItem('token') : ''
 
@@ -212,18 +216,15 @@ export default function UsuariosPage() {
     if (!selectedRole) return
     setMassResetting(true); setMassError(''); setMassSuccess(false)
     try {
-      const body = selectedRole === 'ALL'
-        ? { roles: 'ALL' }
-        : { roles: [selectedRole] }
-
-      const res = await fetch(`${API_URL}/api/admin/reset-credentials`, {
+      const body = selectedRole === 'ALL' ? { roles: 'ALL' } : { roles: [selectedRole] }
+      const res  = await fetch(`${API_URL}/api/admin/reset-credentials`, {
         method:  'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
         body:    JSON.stringify(body),
       })
       if (!res.ok) {
         const d = await res.json()
-        setMassError(d.message || 'Error al resetear credenciales'); return
+        setMassError(d.message || 'Error al resetear'); return
       }
       const blob = await res.blob()
       const url  = window.URL.createObjectURL(blob)
@@ -231,11 +232,10 @@ export default function UsuariosPage() {
       a.href     = url
       a.download = `credenciales_${selectedRole.toLowerCase()}_${new Date().getFullYear()}.xlsx`
       document.body.appendChild(a); a.click()
-      document.body.removeChild(a)
-      window.URL.revokeObjectURL(url)
+      document.body.removeChild(a); window.URL.revokeObjectURL(url)
       setMassSuccess(true); setConfirmMass(false)
     } catch {
-      setMassError('Error de conexión con el servidor')
+      setMassError('Error de conexión')
     } finally {
       setMassResetting(false)
     }
@@ -246,7 +246,6 @@ export default function UsuariosPage() {
     navigator.clipboard.writeText(`Email: ${resetCredentials.email}\nContraseña: ${resetCredentials.password}`)
     setCopied(true); setTimeout(() => setCopied(false), 2000)
   }
-
   const copyNew = () => {
     if (!newCredentials) return
     navigator.clipboard.writeText(`Email: ${newCredentials.email}\nContraseña: ${newCredentials.password}`)
@@ -311,11 +310,7 @@ export default function UsuariosPage() {
                   <td className="muted">{i+1}</td>
                   <td><strong>{getUserName(u)}</strong></td>
                   <td className="muted">{u.email}</td>
-                  <td>
-                    <span className="rbadge" style={{ background: roleColors[u.role]+'18', color: roleColors[u.role] }}>
-                      {roleLabels[u.role] || u.role}
-                    </span>
-                  </td>
+                  <td><span className="rbadge" style={{ background: roleColors[u.role]+'18', color: roleColors[u.role] }}>{roleLabels[u.role] || u.role}</span></td>
                   <td><span className={`sbadge ${u.isActive ? 'act' : 'ina'}`}>{u.isActive ? 'Activo' : 'Inactivo'}</span></td>
                   <td className="muted">{new Date(u.createdAt).toLocaleDateString('es-BO')}</td>
                   <td>
@@ -339,7 +334,7 @@ export default function UsuariosPage() {
       {/* ── Modal Reset Masivo ── */}
       {showMassReset && (
         <div className="overlay" onClick={() => !massResetting && setShowMassReset(false)}>
-          <div className="modal" onClick={e => e.stopPropagation()}>
+          <div className="modal" style={{ maxWidth:480 }} onClick={e => e.stopPropagation()}>
             <div className="mhead">
               <h2>🔄 Resetear Credenciales</h2>
               {!massResetting && <button onClick={() => setShowMassReset(false)}><X size={18}/></button>}
@@ -347,46 +342,39 @@ export default function UsuariosPage() {
             <div className="mbody">
               {massSuccess ? (
                 <div className="alert suc" style={{ margin:0 }}>
-                  ✅ Credenciales reseteadas correctamente. El Excel se descargó automáticamente.
+                  ✅ Credenciales reseteadas. El Excel se descargó automáticamente.
                 </div>
               ) : (
                 <>
-                  <div style={{ fontSize:13, fontWeight:600, color:'#1A3A7C', marginBottom:4 }}>
+                  <div style={{ fontSize:13, fontWeight:600, color:'#1A3A7C' }}>
                     ¿A qué usuarios deseas resetear la contraseña?
                   </div>
 
-                  {/* Opciones de rol */}
-                  <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+                  <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8 }}>
                     {RESET_OPTIONS.map(opt => (
                       <button key={opt.key}
                         onClick={() => { setSelectedRole(opt.key); setConfirmMass(false) }}
                         style={{
-                          display:'flex', alignItems:'center', gap:12,
-                          padding:'12px 14px', borderRadius:10, cursor:'pointer',
-                          border: selectedRole === opt.key
-                            ? `2px solid ${opt.color}`
-                            : '2px solid #CBE0F0',
-                          backgroundColor: selectedRole === opt.key ? `${opt.color}10` : '#fff',
-                          textAlign:'left', width:'100%',
+                          display:'flex', alignItems:'center', gap:8,
+                          padding:'10px 12px', borderRadius:10, cursor:'pointer',
+                          border: selectedRole === opt.key ? `2px solid ${opt.color}` : '2px solid #CBE0F0',
+                          backgroundColor: selectedRole === opt.key ? `${opt.color}12` : '#fff',
+                          textAlign:'left',
                         }}>
-                        <div style={{
-                          width:12, height:12, borderRadius:'50%',
-                          backgroundColor: opt.color, flexShrink:0,
-                        }}/>
-                        <div style={{ flex:1 }}>
-                          <div style={{ fontSize:13, fontWeight:700, color: selectedRole === opt.key ? opt.color : '#1A3A7C' }}>
+                        <div style={{ width:10, height:10, borderRadius:'50%', backgroundColor:opt.color, flexShrink:0 }}/>
+                        <div style={{ flex:1, minWidth:0 }}>
+                          <div style={{ fontSize:12, fontWeight:700, color: selectedRole === opt.key ? opt.color : '#1A3A7C' }}>
                             {opt.label}
                           </div>
-                          <div style={{ fontSize:11, color:'#6B8BB0', marginTop:1 }}>{opt.desc}</div>
+                          <div style={{ fontSize:10, color:'#6B8BB0', marginTop:1, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>
+                            {opt.desc}
+                          </div>
                         </div>
-                        {selectedRole === opt.key && (
-                          <Check size={16} color={opt.color}/>
-                        )}
+                        {selectedRole === opt.key && <Check size={14} color={opt.color}/>}
                       </button>
                     ))}
                   </div>
 
-                  {/* Advertencia */}
                   <div style={{
                     display:'flex', alignItems:'flex-start', gap:8,
                     padding:'10px 12px', borderRadius:8,
@@ -394,21 +382,18 @@ export default function UsuariosPage() {
                     fontSize:12, color:'#BA7517', lineHeight:1.6,
                   }}>
                     <AlertTriangle size={14} style={{ flexShrink:0, marginTop:2 }}/>
-                    <span>Los usuarios <strong>SUPER_ADMIN, Director, Regente y Secretaria NO serán afectados</strong>.</span>
+                    <span><strong>Super Admin, Director y Junta Escolar NO serán afectados.</strong></span>
                   </div>
 
                   {massError && <div className="alert err" style={{ margin:0 }}>{massError}</div>}
 
-                  {/* Botón continuar */}
                   {selectedRole && !confirmMass && (
                     <button className="btn-primary" style={{ width:'100%', justifyContent:'center' }}
                       onClick={() => setConfirmMass(true)}>
-                      <Download size={16}/>
-                      Resetear "{selectedOpt?.label}" y Descargar Excel
+                      <Download size={16}/> Resetear "{selectedOpt?.label}" y Descargar Excel
                     </button>
                   )}
 
-                  {/* Confirmación final */}
                   {confirmMass && selectedRole && (
                     <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
                       <div style={{
@@ -419,13 +404,9 @@ export default function UsuariosPage() {
                         ⚠️ ¿Confirmas resetear contraseñas de <strong>{selectedOpt?.label}</strong>?
                       </div>
                       <div style={{ display:'flex', gap:10 }}>
-                        <button onClick={handleMassReset} disabled={massResetting}
-                          className="btn-primary"
+                        <button onClick={handleMassReset} disabled={massResetting} className="btn-primary"
                           style={{ flex:1, justifyContent:'center', backgroundColor: massResetting ? '#6B8BB0' : '#c0392b' }}>
-                          {massResetting
-                            ? <><span className="spinsm"/> Procesando...</>
-                            : <><Download size={15}/> Sí, confirmar</>
-                          }
+                          {massResetting ? <><span className="spinsm"/> Procesando...</> : <><Download size={15}/> Sí, confirmar</>}
                         </button>
                         <button className="btn-outline" onClick={() => setConfirmMass(false)}
                           disabled={massResetting} style={{ flex:1, justifyContent:'center' }}>
@@ -453,19 +434,16 @@ export default function UsuariosPage() {
             <div className="mhead"><h2>Nuevo Usuario</h2><button onClick={() => setShowModal(false)}><X size={18}/></button></div>
             <div className="mbody">
               {error && <div className="alert err">{error}</div>}
-              <div className="fg">
-                <label>Correo electrónico *</label>
+              <div className="fg"><label>Correo electrónico *</label>
                 <input type="email" placeholder="usuario@nnuu.edu.bo" value={form.email}
                   onChange={e => { setForm({...form, email: e.target.value}); setDuplicateEmail(null) }}/>
               </div>
-              <div className="fg">
-                <label>Rol *</label>
+              <div className="fg"><label>Rol *</label>
                 <select value={form.role} onChange={e => setForm({...form, role: e.target.value})}>
                   {Object.entries(roleLabels).map(([k,v]) => <option key={k} value={k}>{v}</option>)}
                 </select>
               </div>
-              <div className="fg">
-                <label>Contraseña *</label>
+              <div className="fg"><label>Contraseña *</label>
                 <div className="pwrap">
                   <input type={showPass ? 'text' : 'password'} placeholder="Escribe o genera automáticamente"
                     value={form.password} onChange={e => setForm({...form, password: e.target.value})}/>
@@ -476,9 +454,7 @@ export default function UsuariosPage() {
                 <button type="button" className="gen-pwd-btn" onClick={() => {
                   if (!form.email) { notify('Ingresa el correo primero', 'error'); return }
                   setForm({...form, password: generatePassword(form.email, form.role)}); setShowPass(true)
-                }}>
-                  <RefreshCw size={12}/> Generar contraseña automática
-                </button>
+                }}><RefreshCw size={12}/> Generar contraseña automática</button>
                 {form.password && (
                   <div className="pwd-strength">
                     <span className={`strength-bar ${form.password.length >= 8 ? 'good' : 'weak'}`}/>
@@ -487,8 +463,7 @@ export default function UsuariosPage() {
                 )}
               </div>
               {duplicateEmail && (
-                <div className="warn-box">
-                  ⚠️ Este correo ya está registrado. ¿Deseas resetear su contraseña?
+                <div className="warn-box">⚠️ Este correo ya está registrado. ¿Deseas resetear su contraseña?
                   <button className="link-btn" onClick={handleResetByEmail}>Sí, resetear contraseña →</button>
                 </div>
               )}
@@ -511,12 +486,10 @@ export default function UsuariosPage() {
             <div className="mhead"><h2>Editar Usuario</h2><button onClick={() => setShowEditModal(false)}><X size={18}/></button></div>
             <div className="mbody">
               {error && <div className="alert err">{error}</div>}
-              <div className="fg">
-                <label>Correo electrónico *</label>
+              <div className="fg"><label>Correo electrónico *</label>
                 <input type="email" value={editForm.email} onChange={e => setEditForm({...editForm, email: e.target.value})}/>
               </div>
-              <div className="fg">
-                <label>Rol *</label>
+              <div className="fg"><label>Rol *</label>
                 <select value={editForm.role} onChange={e => setEditForm({...editForm, role: e.target.value})}>
                   {Object.entries(roleLabels).map(([k,v]) => <option key={k} value={k}>{v}</option>)}
                 </select>
@@ -535,43 +508,39 @@ export default function UsuariosPage() {
 
       {/* ── Modal credenciales nuevo usuario ── */}
       {showNewCreds && newCredentials && (
-        <div className="overlay">
-          <div className="modal" onClick={e => e.stopPropagation()}>
-            <div className="mhead"><h2>✅ Credenciales del usuario</h2></div>
-            <div className="mbody">
-              <div className="cred-box">
-                <div className="cred-note green">✅ Operación realizada. Anota estas credenciales.</div>
-                <div className="cred-row"><span className="cred-label">Email:</span><span className="cred-value">{newCredentials.email}</span></div>
-                <div className="cred-row"><span className="cred-label">Contraseña:</span><span className="cred-value">{newCredentials.password}</span></div>
-                <div className="cred-note">⚠️ Esta es la única vez que verás la contraseña.</div>
-              </div>
-            </div>
-            <div className="mfoot">
-              <button className="btn-outline" onClick={copyNew}>{copiedNew ? <Check size={14}/> : <Copy size={14}/>} {copiedNew ? 'Copiado' : 'Copiar'}</button>
-              <button className="btn-primary" onClick={() => setShowNewCreds(false)}>Entendido</button>
+        <div className="overlay"><div className="modal" onClick={e => e.stopPropagation()}>
+          <div className="mhead"><h2>✅ Credenciales del usuario</h2></div>
+          <div className="mbody">
+            <div className="cred-box">
+              <div className="cred-note green">✅ Operación realizada. Anota estas credenciales.</div>
+              <div className="cred-row"><span className="cred-label">Email:</span><span className="cred-value">{newCredentials.email}</span></div>
+              <div className="cred-row"><span className="cred-label">Contraseña:</span><span className="cred-value">{newCredentials.password}</span></div>
+              <div className="cred-note">⚠️ Esta es la única vez que verás la contraseña.</div>
             </div>
           </div>
-        </div>
+          <div className="mfoot">
+            <button className="btn-outline" onClick={copyNew}>{copiedNew ? <Check size={14}/> : <Copy size={14}/>} {copiedNew ? 'Copiado' : 'Copiar'}</button>
+            <button className="btn-primary" onClick={() => setShowNewCreds(false)}>Entendido</button>
+          </div>
+        </div></div>
       )}
 
       {/* ── Modal resetear contraseña individual ── */}
       {showResetModal && resetCredentials && (
-        <div className="overlay">
-          <div className="modal" onClick={e => e.stopPropagation()}>
-            <div className="mhead"><h2>🔑 Nueva contraseña generada</h2></div>
-            <div className="mbody">
-              <div className="cred-box">
-                <div className="cred-row"><span className="cred-label">Email:</span><span className="cred-value">{resetCredentials.email}</span></div>
-                <div className="cred-row"><span className="cred-label">Contraseña:</span><span className="cred-value">{resetCredentials.password}</span></div>
-                <div className="cred-note">⚠️ Comunica esta contraseña al usuario.</div>
-              </div>
-            </div>
-            <div className="mfoot">
-              <button className="btn-outline" onClick={copyReset}>{copied ? <Check size={14}/> : <Copy size={14}/>} {copied ? 'Copiado' : 'Copiar'}</button>
-              <button className="btn-primary" onClick={() => setShowResetModal(false)}>Entendido</button>
+        <div className="overlay"><div className="modal" onClick={e => e.stopPropagation()}>
+          <div className="mhead"><h2>🔑 Nueva contraseña generada</h2></div>
+          <div className="mbody">
+            <div className="cred-box">
+              <div className="cred-row"><span className="cred-label">Email:</span><span className="cred-value">{resetCredentials.email}</span></div>
+              <div className="cred-row"><span className="cred-label">Contraseña:</span><span className="cred-value">{resetCredentials.password}</span></div>
+              <div className="cred-note">⚠️ Comunica esta contraseña al usuario.</div>
             </div>
           </div>
-        </div>
+          <div className="mfoot">
+            <button className="btn-outline" onClick={copyReset}>{copied ? <Check size={14}/> : <Copy size={14}/>} {copied ? 'Copiado' : 'Copiar'}</button>
+            <button className="btn-primary" onClick={() => setShowResetModal(false)}>Entendido</button>
+          </div>
+        </div></div>
       )}
 
       <style>{`
