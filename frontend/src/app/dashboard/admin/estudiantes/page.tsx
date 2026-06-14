@@ -44,6 +44,8 @@ const LEVEL_LABELS: Record<string, string> = { INICIAL: 'Inicial', PRIMARIA: 'Pr
 
 const emptyForm = { firstName: '', lastName: '', ci: '', rude: '', birthDate: '', phone: '', email: '', address: '', gender: '' }
 
+const getToken = () => localStorage.getItem('token') || ''
+
 export default function EstudiantesPage() {
   const router = useRouter()
   const [students,     setStudents]     = useState<Student[]>([])
@@ -71,8 +73,6 @@ export default function EstudiantesPage() {
   const [importResult,    setImportResult]    = useState<any>(null)
   const [importType, setImportType] = useState<'students' | 'tutors'>('students')
 
-  const token = typeof window !== 'undefined' ? localStorage.getItem('token') : ''
-
   const notify = (msg: string, type: 'success' | 'error' = 'success') => {
     if (type === 'success') { setSuccess(msg); setTimeout(() => setSuccess(''), 3000) }
     else                    { setError(msg);   setTimeout(() => setError(''),   4000) }
@@ -84,7 +84,7 @@ export default function EstudiantesPage() {
       const params = new URLSearchParams()
       if (search)       params.set('search', search)
       if (filterActive) params.set('isActive', filterActive)
-      const res  = await fetch(`${API_URL}/api/students?${params}`, { headers: { Authorization: `Bearer ${token}` } })
+      const res  = await fetch(`${API_URL}/api/students?${params}`, { headers: { Authorization: `Bearer ${getToken()}` } })
       const data = await res.json()
       if (res.ok) setStudents(data)
       else notify('Error al cargar estudiantes', 'error')
@@ -94,13 +94,12 @@ export default function EstudiantesPage() {
 
   const fetchCourses = async () => {
     try {
-      const res  = await fetch(`${API_URL}/api/courses`, { headers: { Authorization: `Bearer ${token}` } })
+      const res  = await fetch(`${API_URL}/api/courses`, { headers: { Authorization: `Bearer ${getToken()}` } })
       const data = await res.json()
       if (res.ok) setCourses(data)
     } catch { console.error('Error cargando cursos') }
   }
 
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { fetchStudents(); fetchCourses() }, [])
 
   const openCreate = () => { setEditMode(false); setEditId(null); setForm(emptyForm); setError(''); setShowModal(true) }
@@ -111,7 +110,7 @@ export default function EstudiantesPage() {
       firstName: s.firstName, lastName: s.lastName,
       ci: s.ci || '', rude: s.rude || '',
       birthDate: s.birthDate ? s.birthDate.split('T')[0] : '',
-      phone: s.phone || '', email: s.email || '', address: s.address || '',gender: s.gender || '',
+      phone: s.phone || '', email: s.email || '', address: s.address || '', gender: s.gender || '',
     })
     setError(''); setShowModal(true)
   }
@@ -126,7 +125,7 @@ export default function EstudiantesPage() {
       const method = editMode ? 'PUT' : 'POST'
       const res    = await fetch(url, {
         method,
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${getToken()}` },
         body: JSON.stringify(form),
       })
       const data = await res.json()
@@ -149,7 +148,7 @@ export default function EstudiantesPage() {
     try {
       const res  = await fetch(`${API_URL}/api/students/${enrollId}/enroll`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${getToken()}` },
         body: JSON.stringify({ courseId: parseInt(enrollCourseId) }),
       })
       const data = await res.json()
@@ -161,7 +160,7 @@ export default function EstudiantesPage() {
 
   const handleToggle = async (id: number) => {
     try {
-      const res  = await fetch(`${API_URL}/api/students/${id}/toggle`, { method: 'PATCH', headers: { Authorization: `Bearer ${token}` } })
+      const res  = await fetch(`${API_URL}/api/students/${id}/toggle`, { method: 'PATCH', headers: { Authorization: `Bearer ${getToken()}` } })
       const data = await res.json()
       if (res.ok) { notify(data.message); fetchStudents() }
       else notify(data.message, 'error')
@@ -171,7 +170,7 @@ export default function EstudiantesPage() {
   const handleDelete = async (id: number, name: string) => {
     if (!confirm(`¿Eliminar a ${name}? Esta acción no se puede deshacer.`)) return
     try {
-      const res  = await fetch(`${API_URL}/api/students/${id}`, { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } })
+      const res  = await fetch(`${API_URL}/api/students/${id}`, { method: 'DELETE', headers: { Authorization: `Bearer ${getToken()}` } })
       const data = await res.json()
       if (res.ok) { notify(data.message); fetchStudents() }
       else notify(data.message, 'error')
@@ -180,7 +179,7 @@ export default function EstudiantesPage() {
 
   const handleGenerateCredentials = async (id: number, name: string) => {
     try {
-      const res  = await fetch(`${API_URL}/api/students/${id}/generate-credentials`, { method: 'POST', headers: { Authorization: `Bearer ${token}` } })
+      const res  = await fetch(`${API_URL}/api/students/${id}/generate-credentials`, { method: 'POST', headers: { Authorization: `Bearer ${getToken()}` } })
       const data = await res.json()
       if (!res.ok) { notify(data.message, 'error'); return }
       setCredentials({ accessEmail: data.accessEmail, defaultPassword: data.defaultPassword, studentName: name })
@@ -203,9 +202,8 @@ export default function EstudiantesPage() {
   }
 
   const formatDate = (d?: string) => {
-    if (!d) return "—"
-    const dt = new Date(d)
-    return dt.toLocaleDateString("es-BO", { day:"2-digit", month:"2-digit", year:"numeric" })
+    if (!d) return '—'
+    return new Date(d).toLocaleDateString('es-BO', { day:'2-digit', month:'2-digit', year:'numeric' })
   }
 
   const filteredStudents = students.filter(s => {
@@ -218,38 +216,39 @@ export default function EstudiantesPage() {
   })
 
   const handleImport = async (file: File) => {
-  setImporting(true)
-  try {
-    const formData = new FormData()
-    formData.append('file', file)
-    const res  = await fetch(`${API_URL}/api/students/import`, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${token}` },
-      body: formData,
-    })
-    const data = await res.json()
-    setImportResult(data)
-    if (res.ok) fetchStudents()
-  } catch { notify('Error al importar', 'error') }
-  finally  { setImporting(false) }
-}
+    setImporting(true)
+    try {
+      const formData = new FormData()
+      formData.append('file', file)
+      const res  = await fetch(`${API_URL}/api/students/import`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${getToken()}` },
+        body: formData,
+      })
+      const data = await res.json()
+      setImportResult(data)
+      if (res.ok) fetchStudents()
+    } catch { notify('Error al importar', 'error') }
+    finally  { setImporting(false) }
+  }
 
-const handleImportTutors = async (file: File) => {
-  setImporting(true)
-  try {
-    const formData = new FormData()
-    formData.append('file', file)
-    const res  = await fetch(`${API_URL}/api/students/import-tutors`, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${token}` },
-      body: formData,
-    })
-    const data = await res.json()
-    setImportResult(data)
-    if (res.ok) fetchStudents()
-  } catch { notify('Error al importar tutores', 'error') }
-  finally  { setImporting(false) }
-}
+  const handleImportTutors = async (file: File) => {
+    setImporting(true)
+    try {
+      const formData = new FormData()
+      formData.append('file', file)
+      const res  = await fetch(`${API_URL}/api/students/import-tutors`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${getToken()}` },
+        body: formData,
+      })
+      const data = await res.json()
+      setImportResult(data)
+      if (res.ok) fetchStudents()
+    } catch { notify('Error al importar tutores', 'error') }
+    finally  { setImporting(false) }
+  }
+
   return (
     <div>
       <div className="page-header">
@@ -258,8 +257,8 @@ const handleImportTutors = async (file: File) => {
           <p>Registro, edición e inscripción de estudiantes</p>
         </div>
         <button className="btn-outline" onClick={() => { setShowImportModal(true); setImportResult(null) }}>
-  📥 Importar Excel
-</button>
+          📥 Importar Excel
+        </button>
         <button className="btn-primary" onClick={openCreate}><Plus size={16}/> Nuevo estudiante</button>
       </div>
 
@@ -323,11 +322,11 @@ const handleImportTutors = async (file: File) => {
                     }
                   </td>
                   <td className="muted">{s.ci || '—'}</td>
-                  <td className="muted">{s.rude || "—"}</td>
+                  <td className="muted">{s.rude || '—'}</td>
                   <td className="muted">
                     <div>{formatDate(s.birthDate)}</div>
                     {s.birthDate && (
-                      <div style={{fontSize:'11px',color:'#4A9FD4'}}>
+                      <div style={{ fontSize:'11px', color:'#4A9FD4' }}>
                         {Math.floor((Date.now() - new Date(s.birthDate).getTime()) / (365.25 * 24 * 60 * 60 * 1000))} años
                       </div>
                     )}
@@ -357,14 +356,14 @@ const handleImportTutors = async (file: File) => {
         )}
       </div>
       <div className="tfooter">
-        <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',flexWrap:'wrap',gap:'8px'}}>
+        <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', flexWrap:'wrap', gap:'8px' }}>
           <span>Mostrando <strong>{filteredStudents.length}</strong> de <strong>{students.length}</strong> estudiantes</span>
-          <div style={{display:'flex',gap:'12px'}}>
-            <span style={{display:'flex',alignItems:'center',gap:'5px'}}>
+          <div style={{ display:'flex', gap:'12px' }}>
+            <span style={{ display:'flex', alignItems:'center', gap:'5px' }}>
               <span className="sbadge gen-m">♂ M</span>
               <strong>{filteredStudents.filter(s => s.gender === 'MASCULINO').length}</strong> masculinos
             </span>
-            <span style={{display:'flex',alignItems:'center',gap:'5px'}}>
+            <span style={{ display:'flex', alignItems:'center', gap:'5px' }}>
               <span className="sbadge gen-f">♀ F</span>
               <strong>{filteredStudents.filter(s => s.gender === 'FEMENINO').length}</strong> femeninas
             </span>
@@ -372,6 +371,7 @@ const handleImportTutors = async (file: File) => {
         </div>
       </div>
 
+      {/* Modal crear/editar */}
       {showModal && (
         <div className="overlay" onClick={() => setShowModal(false)}>
           <div className="modal modal-lg" onClick={e => e.stopPropagation()}>
@@ -388,19 +388,19 @@ const handleImportTutors = async (file: File) => {
                   <input type="text" placeholder="Ej: Juan Carlos" value={form.firstName} onChange={e => setForm({...form, firstName: e.target.value})}/></div>
                 <div className="fg"><label>Apellidos *</label>
                   <input type="text" placeholder="Ej: García López" value={form.lastName} onChange={e => setForm({...form, lastName: e.target.value})}/></div>
-                <div className="fg"><label>CI (Cédula de Identidad)</label>
+                <div className="fg"><label>CI</label>
                   <input type="text" placeholder="Ej: 12345678" value={form.ci} onChange={e => setForm({...form, ci: e.target.value})}/></div>
-                <div className="fg"><label>RUDE (Código nacional)</label>
+                <div className="fg"><label>RUDE</label>
                   <input type="text" placeholder="Ej: 00123456789" value={form.rude} onChange={e => setForm({...form, rude: e.target.value})}/></div>
                 <div className="fg"><label>Fecha de nacimiento</label>
                   <input type="date" value={form.birthDate} onChange={e => setForm({...form, birthDate: e.target.value})}/></div>
-                  <div className="fg"><label>Género *</label>
-                    <select value={form.gender} onChange={e => setForm({...form, gender: e.target.value})}>
-                       <option value="">-- Selecciona género --</option>
-                      <option value="MASCULINO">Masculino</option>
-                      <option value="FEMENINO">Femenino</option>
-                    </select>
-                  </div>
+                <div className="fg"><label>Género *</label>
+                  <select value={form.gender} onChange={e => setForm({...form, gender: e.target.value})}>
+                    <option value="">-- Selecciona género --</option>
+                    <option value="MASCULINO">Masculino</option>
+                    <option value="FEMENINO">Femenino</option>
+                  </select>
+                </div>
                 <div className="fg"><label>Teléfono</label>
                   <input type="text" placeholder="Ej: 70012345" value={form.phone} onChange={e => setForm({...form, phone: e.target.value})}/></div>
                 <div className="fg"><label>Correo personal</label>
@@ -420,6 +420,7 @@ const handleImportTutors = async (file: File) => {
         </div>
       )}
 
+      {/* Modal credenciales */}
       {showCredentials && credentials && (
         <div className="overlay">
           <div className="modal" onClick={e => e.stopPropagation()}>
@@ -444,6 +445,7 @@ const handleImportTutors = async (file: File) => {
         </div>
       )}
 
+      {/* Modal inscribir */}
       {showEnrollModal && (
         <div className="overlay" onClick={() => setShowEnrollModal(false)}>
           <div className="modal" onClick={e => e.stopPropagation()}>
@@ -474,112 +476,105 @@ const handleImportTutors = async (file: File) => {
           </div>
         </div>
       )}
-      {/* Modal importar Excel */} 
+
+      {/* Modal importar Excel */}
       {showImportModal && (
-  <div className="overlay" onClick={() => setShowImportModal(false)}>
-    <div className="modal modal-lg" onClick={e => e.stopPropagation()}>
-      <div className="mhead">
-        <h2>📥 Importar desde Excel</h2>
-        <button onClick={() => setShowImportModal(false)}><X size={18}/></button>
-      </div>
-      <div className="mbody">
-        {!importResult ? (
-          <>
-            {/* Selector de tipo */}
-            <div className="mode-toggle">
-              <button className={`mode-btn ${importType === 'students' ? 'active' : ''}`}
-                onClick={() => setImportType('students')}>
-                Estudiantes
-              </button>
-              <button className={`mode-btn ${importType === 'tutors' ? 'active' : ''}`}
-                onClick={() => setImportType('tutors')}>
-                Tutores Legales
-              </button>
+        <div className="overlay" onClick={() => setShowImportModal(false)}>
+          <div className="modal modal-lg" onClick={e => e.stopPropagation()}>
+            <div className="mhead">
+              <h2>📥 Importar desde Excel</h2>
+              <button onClick={() => setShowImportModal(false)}><X size={18}/></button>
             </div>
-            <div className="info-box">
-              {importType === 'students' ? (
-                <>Columnas requeridas:<br/><strong>RUDE · NROKARDEX · NOMBRESCOMPLETO · APELLIDOS · GENERO</strong><br/>Género: <strong>M</strong> o <strong>F</strong></>
+            <div className="mbody">
+              {!importResult ? (
+                <>
+                  <div className="mode-toggle">
+                    <button className={`mode-btn ${importType === 'students' ? 'active' : ''}`} onClick={() => setImportType('students')}>Estudiantes</button>
+                    <button className={`mode-btn ${importType === 'tutors' ? 'active' : ''}`} onClick={() => setImportType('tutors')}>Tutores Legales</button>
+                  </div>
+                  <div className="info-box">
+                    {importType === 'students' ? (
+                      <>Columnas requeridas:<br/><strong>RUDE · NROKARDEX · NOMBRESCOMPLETO · APELLIDOS · GENERO</strong><br/>Género: <strong>M</strong> o <strong>F</strong></>
+                    ) : (
+                      <>Columnas requeridas:<br/><strong>RUDE · NROKARDEX · TUTORLEGAL</strong><br/>Si no tiene tutor escribe: <strong>SIN REGISTRO</strong></>
+                    )}
+                  </div>
+                  <div className="fg">
+                    <label>Seleccionar archivo Excel *</label>
+                    <input type="file" accept=".xlsx,.xls"
+                      onChange={e => {
+                        const file = e.target.files?.[0]
+                        if (file) importType === 'students' ? handleImport(file) : handleImportTutors(file)
+                      }}/>
+                  </div>
+                  {importing && (
+                    <div className="center-state">
+                      <div className="spinner"/>
+                      <p>Importando... esto puede tomar varios minutos</p>
+                    </div>
+                  )}
+                </>
               ) : (
-                <>Columnas requeridas:<br/><strong>RUDE · NROKARDEX · TUTORLEGAL</strong><br/>Si no tiene tutor escribe: <strong>SIN REGISTRO</strong></>
+                <div style={{ display:'flex', flexDirection:'column', gap:'12px' }}>
+                  <div className="alert suc">{importResult.message}</div>
+                  {importResult.created?.length > 0 && (
+                    <div>
+                      <div className="section-lbl">✅ Creados ({importResult.created.length})</div>
+                      <div style={{ maxHeight:'200px', overflowY:'auto', marginTop:'8px' }}>
+                        {importResult.created.map((s: any, i: number) => (
+                          <div key={i} style={{ padding:'6px 0', borderBottom:'1px solid #F0F6FC', fontSize:'12px' }}>
+                            <strong>{s.name}</strong> — {s.email} / {s.password}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {importResult.assigned?.length > 0 && (
+                    <div>
+                      <div className="section-lbl">✅ Tutores asignados ({importResult.assigned.length})</div>
+                      <div style={{ maxHeight:'200px', overflowY:'auto', marginTop:'8px' }}>
+                        {importResult.assigned.map((s: any, i: number) => (
+                          <div key={i} style={{ padding:'6px 0', borderBottom:'1px solid #F0F6FC', fontSize:'12px' }}>
+                            <strong>{s.student}</strong> → Tutor: {s.tutor}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {importResult.skipped?.length > 0 && (
+                    <div>
+                      <div className="section-lbl">⚠️ Omitidos ({importResult.skipped.length})</div>
+                      <div style={{ maxHeight:'150px', overflowY:'auto', marginTop:'4px' }}>
+                        {importResult.skipped.map((s: any, i: number) => (
+                          <div key={i} style={{ fontSize:'12px', color:'#7A6000', padding:'4px 0' }}>
+                            {s.name || `Kardex ${s.kardex}`} — {s.reason}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {importResult.errors?.length > 0 && (
+                    <div>
+                      <div className="section-lbl">❌ Errores ({importResult.errors.length})</div>
+                      <div style={{ maxHeight:'150px', overflowY:'auto', marginTop:'4px' }}>
+                        {importResult.errors.map((e: any, i: number) => (
+                          <div key={i} style={{ fontSize:'12px', color:'#C0392B', padding:'4px 0' }}>
+                            {e.name || e.tutorNombre || `Kardex ${e.kardex}`} — {e.reason}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
               )}
             </div>
-            <div className="fg">
-              <label>Seleccionar archivo Excel *</label>
-              <input type="file" accept=".xlsx,.xls"
-                onChange={e => {
-                  const file = e.target.files?.[0]
-                  if (file) importType === 'students' ? handleImport(file) : handleImportTutors(file)
-                }}/>
+            <div className="mfoot">
+              <button className="btn-primary" onClick={() => { setShowImportModal(false); setImportResult(null) }}>Cerrar</button>
             </div>
-            {importing && (
-              <div className="center-state">
-                <div className="spinner"/>
-                <p>Importando... esto puede tomar varios minutos</p>
-              </div>
-            )}
-          </>
-        ) : (
-          <div style={{display:'flex',flexDirection:'column',gap:'12px'}}>
-            <div className="alert suc">{importResult.message}</div>
-            {/* Resultados de estudiantes */}
-            {importResult.created?.length > 0 && (
-              <div>
-                <div className="section-lbl">✅ Creados ({importResult.created.length})</div>
-                <div style={{maxHeight:'200px',overflowY:'auto',marginTop:'8px'}}>
-                  {importResult.created.map((s: any, i: number) => (
-                    <div key={i} style={{padding:'6px 0',borderBottom:'1px solid #F0F6FC',fontSize:'12px'}}>
-                      <strong>{s.name}</strong> — {s.email} / {s.password}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-            {/* Resultados de tutores asignados */}
-            {importResult.assigned?.length > 0 && (
-              <div>
-                <div className="section-lbl">✅ Tutores asignados ({importResult.assigned.length})</div>
-                <div style={{maxHeight:'200px',overflowY:'auto',marginTop:'8px'}}>
-                  {importResult.assigned.map((s: any, i: number) => (
-                    <div key={i} style={{padding:'6px 0',borderBottom:'1px solid #F0F6FC',fontSize:'12px'}}>
-                      <strong>{s.student}</strong> → Tutor: {s.tutor}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-            {importResult.skipped?.length > 0 && (
-              <div>
-                <div className="section-lbl">⚠️ Omitidos ({importResult.skipped.length})</div>
-                <div style={{maxHeight:'150px',overflowY:'auto',marginTop:'4px'}}>
-                  {importResult.skipped.map((s: any, i: number) => (
-                    <div key={i} style={{fontSize:'12px',color:'#7A6000',padding:'4px 0'}}>
-                      {s.name || `Kardex ${s.kardex}`} — {s.reason}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-            {importResult.errors?.length > 0 && (
-              <div>
-                <div className="section-lbl">❌ Errores ({importResult.errors.length})</div>
-                <div style={{maxHeight:'150px',overflowY:'auto',marginTop:'4px'}}>
-                  {importResult.errors.map((e: any, i: number) => (
-                    <div key={i} style={{fontSize:'12px',color:'#C0392B',padding:'4px 0'}}>
-                      {e.name || e.tutorNombre || `Kardex ${e.kardex}`} — {e.reason}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
           </div>
-        )}
-      </div>
-      <div className="mfoot">
-        <button className="btn-primary" onClick={() => { setShowImportModal(false); setImportResult(null) }}>Cerrar</button>
-      </div>
-    </div>
-  </div>
-)}
+        </div>
+      )}
+
       <style>{`
         .page-header{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:24px;gap:16px}
         .page-header h1{font-size:20px;font-weight:700;color:#1A3A7C;margin-bottom:4px}
@@ -653,8 +648,8 @@ const handleImportTutors = async (file: File) => {
         @keyframes spin{to{transform:rotate(360deg)}}
         @media(max-width:600px){.page-header{flex-direction:column}.form-grid{grid-template-columns:1fr}th:nth-child(4),td:nth-child(4){display:none}}
         .mode-toggle{display:flex;background:#F0F6FC;border-radius:10px;padding:4px;gap:4px}
-.mode-btn{flex:1;padding:8px;border:none;border-radius:8px;font-size:13px;cursor:pointer;background:transparent;color:#6B8BB0;transition:all .15s}
-.mode-btn.active{background:#fff;color:#1A3A7C;font-weight:600;box-shadow:0 1px 4px rgba(0,0,0,.1)}
+        .mode-btn{flex:1;padding:8px;border:none;border-radius:8px;font-size:13px;cursor:pointer;background:transparent;color:#6B8BB0;transition:all .15s}
+        .mode-btn.active{background:#fff;color:#1A3A7C;font-weight:600;box-shadow:0 1px 4px rgba(0,0,0,.1)}
       `}</style>
     </div>
   )

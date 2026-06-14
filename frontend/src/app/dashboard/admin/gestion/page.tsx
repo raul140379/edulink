@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { Plus, X, Calendar, BookOpen, CheckCircle, XCircle, ChevronDown, ChevronUp, Trash2 } from 'lucide-react'
+import { Plus, X, Calendar, BookOpen, CheckCircle, XCircle, ChevronDown, ChevronUp, Trash2, Lock, Unlock } from 'lucide-react'
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000'
 
@@ -20,6 +20,7 @@ interface Trimester {
   name:      string
   startDate: string
   endDate:   string
+  isClosed:  boolean
 }
 
 interface Holiday {
@@ -29,20 +30,18 @@ interface Holiday {
 }
 
 export default function GestionPage() {
-  const [years, setYears]           = useState<AcademicYear[]>([])
-  const [loading, setLoading]       = useState(true)
-  const [expanded, setExpanded]     = useState<number | null>(null)
-  const [trimesters, setTrimesters] = useState<Record<number, Trimester[]>>({})
-  const [holidays, setHolidays]     = useState<Record<number, Holiday[]>>({})
-  const [success, setSuccess]       = useState('')
-  const [error, setError]           = useState('')
-
+  const [years,       setYears]       = useState<AcademicYear[]>([])
+  const [loading,     setLoading]     = useState(true)
+  const [expanded,    setExpanded]    = useState<number | null>(null)
+  const [trimesters,  setTrimesters]  = useState<Record<number, Trimester[]>>({})
+  const [holidays,    setHolidays]    = useState<Record<number, Holiday[]>>({})
+  const [success,     setSuccess]     = useState('')
+  const [error,       setError]       = useState('')
   const [showYearModal, setShowYearModal] = useState(false)
   const [showTrimModal, setShowTrimModal] = useState(false)
   const [showHolModal,  setShowHolModal]  = useState(false)
   const [selectedYear,  setSelectedYear]  = useState<number | null>(null)
   const [saving,        setSaving]        = useState(false)
-
   const [yearForm, setYearForm] = useState({ year: new Date().getFullYear().toString(), startDate: '', endDate: '' })
   const [trimForm, setTrimForm] = useState({ number: '1', name: '', startDate: '', endDate: '' })
   const [holForm,  setHolForm]  = useState({ date: '', description: '' })
@@ -58,9 +57,7 @@ export default function GestionPage() {
   const fetchYears = async () => {
     setLoading(true)
     try {
-      const res  = await fetch(`${API_URL}/api/academic`, {
-        headers: { Authorization: `Bearer ${token}` }
-      })
+      const res  = await fetch(`${API_URL}/api/academic`, { headers: { Authorization: `Bearer ${token}` } })
       const data = await res.json()
       if (res.ok) setYears(data)
     } catch { notify('Error al cargar gestiones', 'error') }
@@ -69,6 +66,12 @@ export default function GestionPage() {
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { fetchYears() }, [])
+
+  const fetchTrimesters = async (yearId: number) => {
+    const tRes  = await fetch(`${API_URL}/api/academic/${yearId}/trimesters`, { headers: { Authorization: `Bearer ${token}` } })
+    const tData = await tRes.json()
+    if (tRes.ok) setTrimesters(p => ({ ...p, [yearId]: tData }))
+  }
 
   const handleExpand = async (yearId: number) => {
     if (expanded === yearId) { setExpanded(null); return }
@@ -112,6 +115,21 @@ export default function GestionPage() {
     } catch { notify('Error al cambiar estado', 'error') }
   }
 
+  const handleToggleCloseTrimester = async (yearId: number, trimId: number) => {
+    const trim = trimesters[yearId]?.find(t => t.id === trimId)
+    const accion = trim?.isClosed ? 'reabrir' : 'cerrar'
+    if (!confirm(`¿Deseas ${accion} este trimestre? ${!trim?.isClosed ? 'Una vez cerrado, los maestros no podrán modificar notas.' : ''}`)) return
+    try {
+      const res  = await fetch(`${API_URL}/api/academic/${yearId}/trimesters/${trimId}/toggle-close`, {
+        method: 'PATCH', headers: { Authorization: `Bearer ${token}` }
+      })
+      const data = await res.json()
+      if (!res.ok) { notify(data.message, 'error'); return }
+      notify(data.message)
+      fetchTrimesters(yearId)
+    } catch { notify('Error al cerrar trimestre', 'error') }
+  }
+
   const handleCreateTrim = async () => {
     if (!selectedYear) return
     setError(''); setSaving(true)
@@ -126,9 +144,7 @@ export default function GestionPage() {
       notify('Trimestre creado')
       setShowTrimModal(false)
       setTrimForm({ number: '1', name: '', startDate: '', endDate: '' })
-      const tRes  = await fetch(`${API_URL}/api/academic/${selectedYear}/trimesters`, { headers: { Authorization: `Bearer ${token}` } })
-      const tData = await tRes.json()
-      if (tRes.ok) setTrimesters(p => ({ ...p, [selectedYear]: tData }))
+      fetchTrimesters(selectedYear)
     } catch { notify('Error de conexión', 'error') }
     finally  { setSaving(false) }
   }
@@ -227,6 +243,7 @@ export default function GestionPage() {
 
               {expanded === y.id && (
                 <div className="year-detail">
+                  {/* Trimestres */}
                   <div className="detail-section">
                     <div className="detail-header">
                       <span><BookOpen size={14}/> Trimestres</span>
@@ -239,18 +256,37 @@ export default function GestionPage() {
                     ) : (
                       <div className="trim-grid">
                         {trimesters[y.id].map(t => (
-                          <div key={t.id} className="trim-card">
-                            <div className="trim-num">{t.number}°</div>
-                            <div>
+                          <div key={t.id} className={`trim-card ${t.isClosed ? 'trim-closed' : ''}`}>
+                            <div className="trim-num" style={{color: t.isClosed ? '#E67E22' : '#4A9FD4'}}>
+                              {t.number}°
+                            </div>
+                            <div style={{flex:1}}>
                               <div className="trim-name">{t.name}</div>
                               <div className="trim-dates">{fmt(t.startDate)} — {fmt(t.endDate)}</div>
+                              {t.isClosed
+                                ? <span className="trim-status closed"><Lock size={10}/> Cerrado</span>
+                                : <span className="trim-status open"><CheckCircle size={10}/> Abierto</span>}
                             </div>
+                            <button
+                              className={`btn-trim-close ${t.isClosed ? 'reopen' : 'close'}`}
+                              onClick={() => handleToggleCloseTrimester(y.id, t.id)}
+                              title={t.isClosed ? 'Reabrir trimestre' : 'Cerrar trimestre'}>
+                              {t.isClosed ? <Unlock size={14}/> : <Lock size={14}/>}
+                              {t.isClosed ? 'Reabrir' : 'Cerrar'}
+                            </button>
                           </div>
                         ))}
                       </div>
                     )}
                   </div>
 
+                  {/* Leyenda */}
+                  <div className="trim-legend">
+                    <span><Lock size={11} color="#E67E22"/> Cerrado = maestros no pueden modificar notas</span>
+                    <span><Unlock size={11} color="#0F6E56"/> Abierto = maestros pueden registrar y editar notas</span>
+                  </div>
+
+                  {/* Feriados */}
                   <div className="detail-section">
                     <div className="detail-header">
                       <span><Calendar size={14}/> Días feriados</span>
@@ -279,6 +315,7 @@ export default function GestionPage() {
         </div>
       )}
 
+      {/* Modal Nueva Gestión */}
       {showYearModal && (
         <div className="overlay" onClick={() => setShowYearModal(false)}>
           <div className="modal" onClick={e => e.stopPropagation()}>
@@ -307,6 +344,7 @@ export default function GestionPage() {
         </div>
       )}
 
+      {/* Modal Trimestre */}
       {showTrimModal && (
         <div className="overlay" onClick={() => setShowTrimModal(false)}>
           <div className="modal" onClick={e => e.stopPropagation()}>
@@ -341,6 +379,7 @@ export default function GestionPage() {
         </div>
       )}
 
+      {/* Modal Feriado */}
       {showHolModal && (
         <div className="overlay" onClick={() => setShowHolModal(false)}>
           <div className="modal" onClick={e => e.stopPropagation()}>
@@ -400,11 +439,22 @@ export default function GestionPage() {
         .btn-sm{display:flex;align-items:center;gap:4px;padding:5px 10px;background:#1A3A7C;color:#fff;border:none;border-radius:6px;font-size:12px;cursor:pointer}
         .btn-sm:hover{background:#4A9FD4}
         .no-data{font-size:12px;color:#6B8BB0;font-style:italic;padding:8px 0}
-        .trim-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:10px}
+        .trim-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:10px}
         .trim-card{background:#fff;border:1px solid #CBE0F0;border-radius:8px;padding:12px;display:flex;align-items:center;gap:10px}
-        .trim-num{font-size:20px;font-weight:800;color:#4A9FD4;min-width:32px;text-align:center}
+        .trim-closed{border-color:#F39C12;background:#FFFBF5}
+        .trim-num{font-size:20px;font-weight:800;min-width:32px;text-align:center}
         .trim-name{font-size:13px;font-weight:500;color:#1A3A7C}
         .trim-dates{font-size:11px;color:#6B8BB0;margin-top:2px}
+        .trim-status{display:inline-flex;align-items:center;gap:3px;font-size:10px;font-weight:600;padding:2px 7px;border-radius:20px;margin-top:4px}
+        .trim-status.closed{background:#FFF3E0;color:#E67E22}
+        .trim-status.open{background:#E1F5EE;color:#0F6E56}
+        .btn-trim-close{display:inline-flex;align-items:center;gap:4px;padding:5px 10px;border:none;border-radius:7px;font-size:11px;font-weight:500;cursor:pointer;white-space:nowrap}
+        .btn-trim-close.close{background:#FFF3E0;color:#E67E22}
+        .btn-trim-close.close:hover{background:#E67E22;color:#fff}
+        .btn-trim-close.reopen{background:#E1F5EE;color:#0F6E56}
+        .btn-trim-close.reopen:hover{background:#0F6E56;color:#fff}
+        .trim-legend{display:flex;gap:20px;flex-wrap:wrap;font-size:11px;color:#6B8BB0;padding:8px 0;border-top:1px dashed #CBE0F0}
+        .trim-legend span{display:flex;align-items:center;gap:4px}
         .hol-list{display:flex;flex-direction:column;gap:6px}
         .hol-item{display:flex;align-items:center;gap:10px;background:#fff;border:1px solid #CBE0F0;border-radius:8px;padding:10px 12px}
         .hol-date{font-size:12px;font-weight:600;color:#1A3A7C;white-space:nowrap;min-width:110px}
