@@ -6,6 +6,11 @@ const globalForPrisma = globalThis as unknown as {
 
 const prisma = globalForPrisma.prisma ?? new PrismaClient({
   log: ['error'],
+  datasources: {
+    db: {
+      url: process.env.SUPABASE_URL || process.env.DATABASE_URL,
+    }
+  }
 })
 
 if (process.env.NODE_ENV !== 'production') globalForPrisma.prisma = prisma
