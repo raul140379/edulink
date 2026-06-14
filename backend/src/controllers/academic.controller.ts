@@ -191,13 +191,14 @@ export const createTrimester = async (req: AuthRequest, res: Response): Promise<
       return
     }
 
-    const trimester = await prisma.trimester.create({
+     const trimester = await prisma.trimester.create({
       data: {
-        number:        parseInt(number),
-        name:          name || `Trimestre ${number}`,
-        startDate:     new Date(startDate),
-        endDate:       new Date(endDate),
+        number:         parseInt(number),
+        name:           name || `Trimestre ${number}`,
+        startDate:      new Date(startDate),
+        endDate:        new Date(endDate),
         academicYearId: parseInt(yearId),
+        isClosed:       parseInt(number) !== 1,
       }
     })
 
@@ -274,39 +275,65 @@ export const toggleCloseTrimester = async (req: AuthRequest, res: Response): Pro
   try {
     const { id } = req.params
 
-    const trimester = await prisma.trimester.findUnique({ where: { id: parseInt(id) } })
-    if (!trimester) {
-      res.status(404).json({ message: 'Trimestre no encontrado' })
-      return
-    }
+    const trimestre = await prisma.trimester.findUnique({
+      where: { id: parseInt(id) },
+      include: { academicYear: { include: { trimesters: { orderBy: { number: 'asc' } } } } }
+    })
+    if (!trimestre) { res.status(404).json({ message: 'Trimestre no encontrado' }); return }
 
-    // Si se va a cerrar, verificar que todos los anteriores estén cerrados
-    if (!trimester.isClosed && trimester.number > 1) {
-      const trimAnterior = await prisma.trimester.findUnique({
-        where: {
-          academicYearId_number: {
-            academicYearId: trimester.academicYearId,
-            number: trimester.number - 1
-          }
-        }
-      })
-      if (trimAnterior && !trimAnterior.isClosed) {
-        res.status(400).json({ message: `Debes cerrar el ${trimester.number - 1}° Trimestre antes de cerrar este.` })
+    const todosTrimesters = trimestre.academicYear.trimesters
+
+    if (trimestre.isClosed) {
+      // ── REABRIR ──────────────────────────────────────────────────
+      // Solo se puede reabrir si el siguiente está cerrado o no existe
+      const siguiente = todosTrimesters.find(t => t.number === trimestre.number + 1)
+      if (siguiente && !siguiente.isClosed) {
+        res.status(400).json({ message: `El ${trimestre.number + 1}° Trimestre está abierto. Ciérralo antes de reabrir este.` })
         return
       }
+
+      await prisma.trimester.update({
+        where: { id: parseInt(id) },
+        data:  { isClosed: false },
+      })
+
+      res.json({ message: `${trimestre.name || `${trimestre.number}° Trimestre`} reabierto` })
+
+    } else {
+      // ── CERRAR ───────────────────────────────────────────────────
+      // Verificar que el trimestre anterior esté cerrado (excepto el 1°)
+      if (trimestre.number > 1) {
+        const anterior = todosTrimesters.find(t => t.number === trimestre.number - 1)
+        if (anterior && !anterior.isClosed) {
+          res.status(400).json({ message: `Debes cerrar el ${trimestre.number - 1}° Trimestre antes.` })
+          return
+        }
+      }
+
+      // Cerrar este trimestre
+      await prisma.trimester.update({
+        where: { id: parseInt(id) },
+        data:  { isClosed: true },
+      })
+
+      // Abrir automáticamente el siguiente si existe
+      const siguiente = todosTrimesters.find(t => t.number === trimestre.number + 1)
+      if (siguiente) {
+        await prisma.trimester.update({
+          where: { id: siguiente.id },
+          data:  { isClosed: false },
+        })
+        res.json({
+          message: `${trimestre.name || `${trimestre.number}° Trimestre`} cerrado. Se abrió automáticamente el ${siguiente.number}° Trimestre.`,
+          trimestre: trimestre,
+          siguiente: siguiente,
+        })
+      } else {
+        res.json({
+          message: `${trimestre.name || `${trimestre.number}° Trimestre`} cerrado. Fin de la gestión académica.`,
+        })
+      }
     }
-
-    const updated = await prisma.trimester.update({
-      where: { id: parseInt(id) },
-      data:  { isClosed: !trimester.isClosed },
-    })
-
-    res.json({
-      message: updated.isClosed
-        ? `${updated.name || `Trimestre ${updated.number}`} cerrado correctamente`
-        : `${updated.name || `Trimestre ${updated.number}`} reabierto`,
-      trimester: updated,
-    })
   } catch (error) {
     console.error('toggleCloseTrimester error:', error)
     res.status(500).json({ message: 'Error al cerrar trimestre' })
