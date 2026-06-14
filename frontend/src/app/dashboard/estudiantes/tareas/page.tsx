@@ -12,7 +12,7 @@ interface Task {
   type:        string
   maxScore:    number
   dueDate:     string | null
-  subject:     { id: number; name: string }
+  subject:     { id: number; name: string; campo?: string | null }
   teacher:     string
   trimester:   { id: number; number: number; name?: string } | null
   score:       number | null
@@ -69,11 +69,16 @@ export default function TareasPage() {
        tasks.filter(t => t.score !== null).length).toFixed(1)
     : '—'
 
-  const tareasFiltradas = tasks.filter(t => {
+const tareasFiltradas = tasks.filter(t => {
     if (filterStatus  !== 'todos' && t.status       !== filterStatus)      return false
     if (filterType    !== 'todos' && t.type         !== filterType)        return false
     if (filterSubject !== 'todos' && t.subject.name !== filterSubject)     return false
     return true
+  }).sort((a, b) => {
+    const campoA = a.subject.campo || 'ZZZ'
+    const campoB = b.subject.campo || 'ZZZ'
+    if (campoA !== campoB) return campoA.localeCompare(campoB)
+    return a.subject.name.localeCompare(b.subject.name)
   })
 
   const formatDate = (d?: string | null) => {

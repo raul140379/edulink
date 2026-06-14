@@ -466,22 +466,14 @@ function DetalleNota({
           {total!=null && <span className={`badge ${aprobado?'apr':'rep'}`}>{aprobado?'Aprobado':'Reprobado'}</span>}
         </div>
       </div>
+ 
+      {/* SABER — siempre solo lectura, se alimenta desde Tareas y Exámenes */}
+      <ItemsReadOnly label="Saber" color="#1A3A7C" items={itemsSaber} maxPts={45}
+        hint="Los ítems de Saber se registran automáticamente desde el módulo de Tareas y Exámenes."/>
 
-      {/* SABER */}
-      {!nota.cerrado
-        ? <ItemsSection label="Saber" color="#1A3A7C" bgColor="#EAF0FF" dimension="SABER" maxPts={45}
-            items={itemsSaber} editItem={editItem} setEditItem={setEditItem}
-            onDelete={deleteItem} onSaveEdit={saveEdit} saving={saving}
-            newItem={newSaber} setNewItem={setNewSaber} onAdd={()=>addItem('SABER')}/>
-        : <ItemsReadOnly label="Saber" color="#1A3A7C" items={itemsSaber} maxPts={45}/>}
-
-      {/* HACER */}
-      {!nota.cerrado
-        ? <ItemsSection label="Hacer" color="#0F6E56" bgColor="#E6F4F1" dimension="HACER" maxPts={40}
-            items={itemsHacer} editItem={editItem} setEditItem={setEditItem}
-            onDelete={deleteItem} onSaveEdit={saveEdit} saving={saving}
-            newItem={newHacer} setNewItem={setNewHacer} onAdd={()=>addItem('HACER')}/>
-        : <ItemsReadOnly label="Hacer" color="#0F6E56" items={itemsHacer} maxPts={40}/>}
+      {/* HACER — siempre solo lectura, se alimenta desde Tareas y Exámenes */}
+      <ItemsReadOnly label="Hacer" color="#0F6E56" items={itemsHacer} maxPts={40}
+        hint="Los ítems de Hacer se registran automáticamente desde el módulo de Tareas y Exámenes."/>
 
       {/* SER */}
       <div className="section-card">
@@ -629,12 +621,20 @@ function ItemsSection({label,color,bgColor,dimension,maxPts,items,editItem,setEd
   )
 }
 
-function ItemsReadOnly({label,color,items,maxPts}:{label:string;color:string;items:NotaItem[];maxPts:number}) {
+function ItemsReadOnly({label, color, items, maxPts, hint}: {
+  label: string; color: string; items: NotaItem[]; maxPts: number; hint?: string
+}) {
   return (
     <div className="section-card">
-      <div className="section-title" style={{color}}>{label} <Lock size={12} color="#E67E22"/></div>
-      {items.length===0
-        ? <p className="dim-hint">Sin ítems registrados.</p>
+      <div className="section-title" style={{color}}>
+        {label}
+        <span className="dim-badge" style={{background:'#F0F6FC',color:'#6B8BB0',fontSize:10,marginLeft:6}}>
+          Solo lectura
+        </span>
+      </div>
+      {hint && <p className="dim-hint" style={{marginBottom:10,color:'#6B8BB0',fontStyle:'italic'}}>{hint}</p>}
+      {items.length === 0
+        ? <p className="dim-hint">Sin ítems registrados. Crea tareas o exámenes desde el módulo correspondiente.</p>
         : <table className="items-table">
             <thead><tr><th>Título</th><th>Fecha</th><th>Puntaje</th><th>Máx</th><th>→ pts</th></tr></thead>
             <tbody>

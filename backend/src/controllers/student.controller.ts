@@ -1028,7 +1028,7 @@ export const getMyTasks = async (req: AuthRequest, res: Response): Promise<void>
         trimester: { academicYearId: assignment.academicYearId },
       },
       include: {
-        subject:  { select: { id: true, name: true } },
+        subject:  { select: { id: true, name: true, campo: true } },
         teacher:  { select: { firstName: true, lastName: true } },
         trimester: { select: { id: true, number: true, name: true } },
         submissions: {
