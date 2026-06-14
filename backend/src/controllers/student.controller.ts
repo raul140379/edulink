@@ -1243,10 +1243,49 @@ export const getMySubjects = async (req: AuthRequest, res: Response): Promise<vo
   }
 }
 
-// ─────────────────────────────────────────────────────────────
-// Agregar en: backend/src/routes/student.routes.ts
-// ─────────────────────────────────────────────────────────────
-// import { ..., getMySubjects } from '../controllers/student.controller'
-// router.get('/my-subjects', getMySubjects)
+// PUT /api/students/my-autoevaluacion
+// Estudiante ingresa su autoevaluación (0-5 pts)
+// Body: { notaId, autoEvaluacion }
+export const saveMyAutoEvaluacion = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const userId = req.userId
+    const { notaId, autoEvaluacion } = req.body
 
+    if (autoEvaluacion < 0 || autoEvaluacion > 5) {
+      res.status(400).json({ message: 'Autoevaluación debe estar entre 0 y 5' }); return
+    }
 
+    // Verificar que la nota pertenece al estudiante
+    const student = await prisma.student.findUnique({ where: { userId } })
+    if (!student) { res.status(404).json({ message: 'Estudiante no encontrado' }); return }
+
+    const nota = await prisma.nota.findUnique({ where: { id: parseInt(notaId) } })
+    if (!nota) { res.status(404).json({ message: 'Nota no encontrada' }); return }
+    if (nota.studentId !== student.id) { res.status(403).json({ message: 'No tienes permiso' }); return }
+    if (nota.cerrado) { res.status(400).json({ message: 'El trimestre está cerrado' }); return }
+
+    // Verificar que el trimestre no está cerrado por el director
+    const trimestre = await prisma.trimester.findUnique({ where: { id: nota.trimesterId } })
+    if (trimestre?.isClosed) {
+      res.status(400).json({ message: 'El trimestre fue cerrado por la dirección' }); return
+    }
+
+    const calcTotal = (saber: number|null, hacer: number|null, ser: number|null, autoEval: number|null) => {
+      const vals = [saber, hacer, ser, autoEval].filter(v => v !== null) as number[]
+      return vals.length > 0 ? Math.round(vals.reduce((a, b) => a + b, 0) * 100) / 100 : null
+    }
+
+    const updated = await prisma.nota.update({
+      where: { id: parseInt(notaId) },
+      data: {
+        autoEvaluacion: parseFloat(autoEvaluacion),
+        total: calcTotal(nota.saber, nota.hacer, nota.ser, parseFloat(autoEvaluacion)),
+      }
+    })
+
+    res.json({ message: 'Autoevaluación guardada correctamente', nota: updated })
+  } catch (err) {
+    console.error('saveMyAutoEvaluacion:', err)
+    res.status(500).json({ message: 'Error al guardar autoevaluación' })
+  }
+}
