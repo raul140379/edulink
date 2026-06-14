@@ -198,7 +198,7 @@ export const createTrimester = async (req: AuthRequest, res: Response): Promise<
         startDate:      new Date(startDate),
         endDate:        new Date(endDate),
         academicYearId: parseInt(yearId),
-        isClosed:       parseInt(number) !== 1,
+        isClosed:       parseInt(number) > 1, // T2 y T3 nacen cerrados
       }
     })
 
