@@ -10,6 +10,7 @@ import {
   createHoliday,
   getHolidays,
   deleteHoliday,
+  toggleCloseTrimester,
 } from '../controllers/academic.controller'
 import { verifyToken, requirePermission } from '../middlewares/auth.middleware'
 import { Permission } from '../config/permissions'
@@ -26,8 +27,9 @@ router.put('/:id',           requirePermission(Permission.USER_CREATE), updateAc
 router.patch('/:id/toggle',  requirePermission(Permission.USER_CREATE), toggleAcademicYear)
 
 // Trimestres
-router.get('/:yearId/trimesters',        getTrimesters)
-router.post('/:yearId/trimesters',       requirePermission(Permission.USER_CREATE), createTrimester)
+router.get('/:yearId/trimesters',                       getTrimesters)
+router.post('/:yearId/trimesters',                      requirePermission(Permission.USER_CREATE), createTrimester)
+router.patch('/:yearId/trimesters/:id/toggle-close',    requirePermission(Permission.USER_CREATE), toggleCloseTrimester)
 
 // Feriados
 router.get('/:yearId/holidays',          getHolidays)

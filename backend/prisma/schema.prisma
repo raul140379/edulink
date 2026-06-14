@@ -206,6 +206,7 @@ model Trimester {
   name           String?
   startDate      DateTime
   endDate        DateTime
+   isClosed       Boolean      @default(false)
   academicYearId Int
   academicYear   AcademicYear @relation(fields: [academicYearId], references: [id])
   @@unique([academicYearId, number])
@@ -388,6 +389,7 @@ model SubjectGradeConfig {
 
   @@unique([subjectId, grade, educationType])
 }
+
 //PROFESOR MATERIA Y CURSO
 model TeacherSubjectCourse {
   id        Int     @id @default(autoincrement())
@@ -400,6 +402,7 @@ model TeacherSubjectCourse {
   schedules Schedule[]
   @@unique([teacherId, subjectId, courseId])
 }
+
 //TIPOS TAREAS ESTUDIANTES
 enum TaskType {
   EVALUACION   // Campo SABER — hasta 45 pts
@@ -407,11 +410,13 @@ enum TaskType {
   SER          // Campo SER — hasta 10 pts
   DECIDIR      // Campo DECIDIR — hasta 5 pts
 }
+
 //ESTADOS TAREAS ESTUDIANTES
 enum TaskStatus {
   PENDIENTE
   CALIFICADO
 }
+
 // TAREAS DEL ESTUDIANTES
 model Task {
   id          Int        @id @default(autoincrement())
@@ -420,6 +425,7 @@ model Task {
   type        TaskType
   maxScore    Float      // Máximo según tipo
   dueDate     DateTime?
+  attachmentUrl String?  // ← agregar esta línea
   courseId    Int
   subjectId   Int
   teacherId   Int
@@ -431,7 +437,9 @@ model Task {
   teacher     Teacher    @relation(fields: [teacherId], references: [id])
   trimester   Trimester? @relation(fields: [trimesterId], references: [id])
   submissions TaskSubmission[]
+  notaItems   NotaItem[]   // ← agregar esta línea
 }
+
 // TAREAS ENVIADAS DEL ESTUDIANTES
 model TaskSubmission {
   id        Int        @id @default(autoincrement())
@@ -446,6 +454,7 @@ model TaskSubmission {
   student   Student    @relation(fields: [studentId], references: [id])
   @@unique([taskId, studentId])
 }
+
 //Tarea académica del estudiante
 model StudentAcademicAssignment {
   id             Int           @id @default(autoincrement())
@@ -460,6 +469,7 @@ model StudentAcademicAssignment {
   academicYear AcademicYear @relation(fields: [academicYearId], references: [id])
   @@unique([studentId, academicYearId, educationType])
 }
+
 //CRONOGRAMA
 model Schedule {
   id                     Int                  @id @default(autoincrement())
@@ -501,6 +511,7 @@ model Charge {
   student     Student?     @relation(fields: [studentId], references: [id])
   payments    Payment[]
 }
+
 //LOS PAGOS
 model Payment {
   id        Int           @id @default(autoincrement())
@@ -566,22 +577,51 @@ model Attendance {
 }// ─────────────────────────────────────────────
 // NOTAS Y CALIFICACIONES
 // ─────────────────────────────────────────────
-
 model Nota {
-  id          Int      @id @default(autoincrement())
-  value       Float    // 0 a 100, aprobado >= 51
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id              Int      @id @default(autoincrement())
+  // Notas finales de cada dimensión (calculadas o ingresadas)
+  saber           Float?   // 0-45 — promedio de ítems SABER
+  hacer           Float?   // 0-40 — promedio de ítems HACER  
+  ser             Float?   // 0-10 — ingresado por maestro al cerrar trimestre
+  autoEvaluacion  Float?   // 0-5  — ingresado por el estudiante
+  total           Float?   // suma de las 4 dimensiones (calculado)
+  cerrado         Boolean  @default(false) // true = trimestre cerrado, no editable
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
   studentId   Int
   subjectId   Int
   courseId    Int
   teacherId   Int
   trimesterId Int
+
   student   Student   @relation(fields: [studentId], references: [id], onDelete: Cascade)
   subject   Subject   @relation(fields: [subjectId], references: [id])
   course    Course    @relation(fields: [courseId], references: [id])
   teacher   Teacher   @relation(fields: [teacherId], references: [id])
   trimester Trimester @relation(fields: [trimesterId], references: [id])
+  items     NotaItem[]
+
   @@unique([studentId, subjectId, courseId, trimesterId])
+}
+
+enum NotaDimension {
+  SABER  // máx 45 pts
+  HACER  // máx 40 pts
+}
+
+// Ítem individual: cada examen, trabajo, actividad
+model NotaItem {
+  id          Int           @id @default(autoincrement())
+  dimension   NotaDimension // SABER o HACER
+  titulo      String        // "Examen parcial 1", "Trabajo grupal", etc.
+  puntaje     Float         // Nota obtenida (sobre maxPuntaje)
+  maxPuntaje  Float         // Puntaje máximo de este ítem
+  fecha       DateTime?
+  createdAt   DateTime      @default(now())
+  notaId      Int
+  nota        Nota          @relation(fields: [notaId], references: [id], onDelete: Cascade)
+  taskId      Int?          // opcional: si viene de una Task formal
+  task        Task?         @relation(fields: [taskId], references: [id])
 }
 

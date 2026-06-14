@@ -266,3 +266,49 @@ export const deleteHoliday = async (req: AuthRequest, res: Response): Promise<vo
     res.status(500).json({ message: 'Error al eliminar feriado' })
   }
 }
+// ─────────────────────────────────────────────
+// PATCH /api/academic/:yearId/trimesters/:id/toggle-close
+// Cierra o reabre un trimestre (solo DIRECTOR/SUPER_ADMIN)
+// ─────────────────────────────────────────────
+export const toggleCloseTrimester = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const { id } = req.params
+
+    const trimester = await prisma.trimester.findUnique({ where: { id: parseInt(id) } })
+    if (!trimester) {
+      res.status(404).json({ message: 'Trimestre no encontrado' })
+      return
+    }
+
+    // Si se va a cerrar, verificar que todos los anteriores estén cerrados
+    if (!trimester.isClosed && trimester.number > 1) {
+      const trimAnterior = await prisma.trimester.findUnique({
+        where: {
+          academicYearId_number: {
+            academicYearId: trimester.academicYearId,
+            number: trimester.number - 1
+          }
+        }
+      })
+      if (trimAnterior && !trimAnterior.isClosed) {
+        res.status(400).json({ message: `Debes cerrar el ${trimester.number - 1}° Trimestre antes de cerrar este.` })
+        return
+      }
+    }
+
+    const updated = await prisma.trimester.update({
+      where: { id: parseInt(id) },
+      data:  { isClosed: !trimester.isClosed },
+    })
+
+    res.json({
+      message: updated.isClosed
+        ? `${updated.name || `Trimestre ${updated.number}`} cerrado correctamente`
+        : `${updated.name || `Trimestre ${updated.number}`} reabierto`,
+      trimester: updated,
+    })
+  } catch (error) {
+    console.error('toggleCloseTrimester error:', error)
+    res.status(500).json({ message: 'Error al cerrar trimestre' })
+  }
+}

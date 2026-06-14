@@ -971,7 +971,7 @@ export const getMyGrades = async (req: AuthRequest, res: Response): Promise<void
           avg:         null,
         }
       }
-      bySubject[n.subjectId].trimestres[n.trimesterId] = n.value
+      bySubject[n.subjectId].trimestres[n.trimesterId] = n.total ?? 0
     }
 
     for (const s of Object.values(bySubject)) {
@@ -1202,14 +1202,14 @@ export const getMySubjects = async (req: AuthRequest, res: Response): Promise<vo
         courseId:    assignment.courseId,
         trimesterId: { in: trimestres.map(t => t.id) },
       },
-      select: { subjectId: true, trimesterId: true, value: true },
+      select: { subjectId: true, trimesterId: true, total: true },
     })
 
     // Agrupar notas por materia
     const notasBySubject: Record<number, Record<number, number>> = {}
     for (const n of notas) {
       if (!notasBySubject[n.subjectId]) notasBySubject[n.subjectId] = {}
-      notasBySubject[n.subjectId][n.trimesterId] = n.value
+      notasBySubject[n.subjectId][n.trimesterId] = n.total ?? 0
     }
 
     // Construir respuesta
@@ -1248,3 +1248,5 @@ export const getMySubjects = async (req: AuthRequest, res: Response): Promise<vo
 // ─────────────────────────────────────────────────────────────
 // import { ..., getMySubjects } from '../controllers/student.controller'
 // router.get('/my-subjects', getMySubjects)
+
+
