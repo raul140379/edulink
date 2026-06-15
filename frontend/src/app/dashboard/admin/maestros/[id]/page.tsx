@@ -240,6 +240,29 @@ const fetchTeacher = async () => {
               }}
             />
             <button
+              onClick={async () => {
+                setSavingCode(true)
+                try {
+                  const res  = await fetch(`${API_URL}/api/teachers/${id}/generate-attendance-code`, {
+                    method: 'POST', headers: { Authorization: `Bearer ${token}` }
+                  })
+                  const data = await res.json()
+                  if (!res.ok) { notify(data.message, 'err'); return }
+                  setAttCode(data.teacher.attendanceCode)
+                  setTeacher(prev => prev ? {...prev, attendanceCode: data.teacher.attendanceCode} : prev)
+                  notify('Código generado correctamente')
+                } catch { notify('Error de conexión', 'err') }
+                finally { setSavingCode(false) }
+              }}
+              disabled={savingCode}
+              style={{
+                display:'flex',alignItems:'center',gap:5,padding:'6px 12px',
+                background:'#0F6E56',color:'#fff',border:'none',borderRadius:7,
+                fontSize:12,cursor:'pointer',opacity:savingCode?0.6:1,whiteSpace:'nowrap'
+              }}>
+              🔄 Generar
+            </button>
+            <button
               onClick={handleSaveCode}
               disabled={savingCode}
               style={{

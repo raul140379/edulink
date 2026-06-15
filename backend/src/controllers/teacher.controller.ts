@@ -565,3 +565,58 @@ export const setAttendanceCode = async (req: AuthRequest, res: Response): Promis
     res.status(500).json({ message: 'Error al asignar código' })
   }
 }
+// ─────────────────────────────────────────────
+// Helper: generar código de asistencia único
+// ─────────────────────────────────────────────
+const generateAttendanceCode = async (lastName: string): Promise<string> => {
+  const normalize = (str: string) =>
+    str.toUpperCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/[^A-Z]/g, '')
+
+  const parts   = lastName.trim().split(/\s+/)
+  const initial1 = normalize(parts[0]?.[0] || 'X')
+  const initial2 = normalize(parts[1]?.[0] || parts[0]?.[1] || 'X')
+  const month   = String(new Date().getMonth() + 1).padStart(2, '0')
+
+  let code = ''
+  let attempts = 0
+  while (attempts < 20) {
+    const digits = String(Math.floor(10 + Math.random() * 90))
+    code = `${initial1}${initial2}${digits}${month}`
+    const existing = await prisma.teacher.findFirst({ where: { attendanceCode: code } })
+    if (!existing) break
+    attempts++
+  }
+  return code
+}
+
+// ─────────────────────────────────────────────
+// POST /api/teachers/:id/generate-attendance-code
+// Generar código automáticamente
+// ─────────────────────────────────────────────
+export const generateAttendanceCode_endpoint = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const { id } = req.params
+
+    const teacher = await prisma.teacher.findUnique({
+      where: { id: parseInt(id) },
+      select: { id: true, firstName: true, lastName: true }
+    })
+    if (!teacher) { res.status(404).json({ message: 'Maestro no encontrado' }); return }
+
+    const code = await generateAttendanceCode(teacher.lastName)
+
+    const updated = await prisma.teacher.update({
+      where: { id: parseInt(id) },
+      data:  { attendanceCode: code },
+      select: { id: true, firstName: true, lastName: true, attendanceCode: true }
+    })
+
+    res.json({ message: 'Código generado correctamente', teacher: updated })
+  } catch (error) {
+    console.error('generateAttendanceCode error:', error)
+    res.status(500).json({ message: 'Error al generar código' })
+  }
+}
