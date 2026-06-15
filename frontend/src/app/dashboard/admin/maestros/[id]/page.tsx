@@ -256,10 +256,10 @@ const fetchTeacher = async () => {
             )}
           </div>
         </div>
-      </div>
-      </div>
+      </div> 
 
       {/* Asignaciones */}
+
       <div className="section-title"><BookOpen size={16}/> Cursos y materias asignadas</div>
 
       {grouped.length === 0 ? (
