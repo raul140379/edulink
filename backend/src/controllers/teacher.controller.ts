@@ -529,3 +529,39 @@ export const getTeacherMyCourse = async (req: AuthRequest, res: Response): Promi
     res.status(500).json({ message: 'Error al obtener curso' })
   }
 }
+
+// ─────────────────────────────────────────────
+// PATCH /api/teachers/:id/attendance-code
+// Asignar o resetear código de asistencia
+// ─────────────────────────────────────────────
+export const setAttendanceCode = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const { id }   = req.params
+    const { code } = req.body
+
+    if (!code || code.trim().length < 3) {
+      res.status(400).json({ message: 'El código debe tener al menos 3 caracteres' }); return
+    }
+
+    const codeUpper = code.trim().toUpperCase()
+
+    // Verificar que no esté en uso por otro maestro
+    const existing = await prisma.teacher.findFirst({
+      where: { attendanceCode: codeUpper, NOT: { id: parseInt(id) } }
+    })
+    if (existing) {
+      res.status(409).json({ message: `El código ${codeUpper} ya está en uso por otro maestro` }); return
+    }
+
+    const teacher = await prisma.teacher.update({
+      where: { id: parseInt(id) },
+      data:  { attendanceCode: codeUpper },
+      select: { id: true, firstName: true, lastName: true, attendanceCode: true }
+    })
+
+    res.json({ message: 'Código asignado correctamente', teacher })
+  } catch (error) {
+    console.error('setAttendanceCode error:', error)
+    res.status(500).json({ message: 'Error al asignar código' })
+  }
+}

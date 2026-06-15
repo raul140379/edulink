@@ -17,6 +17,7 @@ import notificationRoutes from './routes/notification.routes'
 import notaRoutes from './routes/nota.routes'
 import taskRoutes from './routes/task.routes'
 import adminRoutes from './routes/admin.routes'
+import teacherAttendanceRoutes from './routes/teacherAttendance.routes'
 
 dotenv.config()
 
@@ -51,6 +52,7 @@ app.use('/api/notifications', notificationRoutes)
 app.use('/api/notas', notaRoutes)
 app.use('/api/tasks', taskRoutes)
 app.use('/api/admin',         adminRoutes)   
+app.use('/api/teacher-attendance', teacherAttendanceRoutes)
 
 
 app.get('/', (req, res) => {

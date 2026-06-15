@@ -9,6 +9,7 @@ import {
   getTeacherMyCourse,
   getTeacherWorkload,
   getTeacherWorkloadById, 
+  setAttendanceCode,
 } from '../controllers/teacher.controller'
 import { verifyToken, requirePermission } from '../middlewares/auth.middleware'
 import { Permission } from '../config/permissions'
@@ -31,6 +32,7 @@ router.get('/:id',                                requirePermission(Permission.S
 router.post('/',                                  requirePermission(Permission.STUDENT_CREATE),   createTeacher)
 router.put('/:id',                                requirePermission(Permission.STUDENT_CREATE),   updateTeacher)
 router.patch('/:id/toggle',                       requirePermission(Permission.STUDENT_CREATE), toggleTeacherStatus)
+router.patch('/:id/attendance-code', requirePermission(Permission.STUDENT_CREATE), setAttendanceCode)
 router.delete('/:id',                             requirePermission(Permission.STUDENT_CREATE),   deleteTeacher)
 router.get('/:id/specialties',                    getTeacherSpecialties)
 router.post('/:id/specialties',                   addTeacherSpecialty)

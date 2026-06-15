@@ -13,6 +13,7 @@ interface Teacher {
   id: number; firstName: string; lastName: string
   ci?: string; phone?: string; email?: string
   specialty?: string; hoursLoad?: number; gender?: string; isActive: boolean
+  attendanceCode?: string  // ← agregar
   user?: { email: string; role: string }
   assignments: Assignment[]
 }
@@ -72,6 +73,8 @@ export default function TeacherDetailPage() {
   const [removing,     setRemoving]     = useState<number | null>(null)
   const [success,      setSuccess]      = useState('')
   const [error,        setError]        = useState('')
+  const [attCode,    setAttCode]    = useState('')
+  const [savingCode, setSavingCode] = useState(false)
 
   const token = typeof window !== 'undefined' ? localStorage.getItem('token') : ''
 
@@ -79,13 +82,15 @@ export default function TeacherDetailPage() {
     if (type === 'ok') { setSuccess(msg); setTimeout(() => setSuccess(''), 3000) }
     else               { setError(msg);   setTimeout(() => setError(''),   4000) }
   }
-
-  const fetchTeacher = async () => {
+const fetchTeacher = async () => {
     setLoading(true)
     try {
       const res  = await fetch(`${API_URL}/api/teachers/${id}`, { headers: { Authorization: `Bearer ${token}` } })
       const data = await res.json()
-      if (res.ok) setTeacher(data)
+      if (res.ok) {
+        setTeacher(data)
+        setAttCode(data.attendanceCode || '')
+      }
       else notify('Error al cargar maestro', 'err')
     } catch { notify('Error de conexión', 'err') }
     finally  { setLoading(false) }
@@ -114,6 +119,23 @@ export default function TeacherDetailPage() {
     setSubjectSearch(''); setCourseSearch('')
     setShowModal(true)
     await Promise.all([fetchSpecialties(), fetchCourses()])
+  }
+
+  const handleSaveCode = async () => {
+    if (!attCode.trim()) { notify('Ingresa un código', 'err'); return }
+    setSavingCode(true)
+    try {
+      const res  = await fetch(`${API_URL}/api/teachers/${id}/attendance-code`, {
+        method:  'PATCH',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body:    JSON.stringify({ code: attCode.trim() })
+      })
+      const data = await res.json()
+      if (!res.ok) { notify(data.message, 'err'); return }
+      notify('Código asignado correctamente')
+      setAttCode(data.teacher.attendanceCode)
+    } catch { notify('Error de conexión', 'err') }
+    finally  { setSavingCode(false) }
   }
 
   const handleAssign = async () => {
@@ -186,7 +208,9 @@ export default function TeacherDetailPage() {
 
       {/* Info */}
       <div className="info-card">
+
         <div className="info-row"><User size={15} className="info-icon"/><span className="info-label">CI:</span><span className="info-val">{teacher.ci || '—'}</span></div>
+
         <div className="info-row"><span className="info-label">Teléfono:</span><span className="info-val">{teacher.phone || '—'}</span></div>
         <div className="info-row"><span className="info-label">Email:</span><span className="info-val">{teacher.user?.email || teacher.email || '—'}</span></div>
         <div className="info-row">
@@ -194,11 +218,45 @@ export default function TeacherDetailPage() {
           <span className="info-label">Carga hrs/mes:</span>
           <span className="info-val">{teacher.hoursLoad ? <span className="hrs-badge">{teacher.hoursLoad} hrs</span> : '—'}</span>
         </div>
-        <div className="info-row">
+       <div className="info-row">
           <GraduationCap size={15} className="info-icon"/>
           <span className="info-label">Asignaciones:</span>
           <span className="info-val"><strong>{grouped.length}</strong> cursos · <strong>{totalMaterias}</strong> materias</span>
         </div>
+
+        <div className="info-row" style={{width:'100%',marginTop:8,paddingTop:8,borderTop:'1px solid #F0F6FC'}}>
+          <span className="info-label">Código de Asistencia:</span>
+          <div style={{display:'flex',alignItems:'center',gap:8,flex:1}}>
+            <input
+              type="text"
+              value={attCode}
+              onChange={e=>setAttCode(e.target.value.toUpperCase())}
+              placeholder="Ej: MGOM01"
+              maxLength={10}
+              style={{
+                padding:'6px 10px',border:'1.5px solid #CBE0F0',borderRadius:7,
+                fontSize:13,color:'#1A3A7C',outline:'none',width:120,
+                fontWeight:700,letterSpacing:2,textAlign:'center'
+              }}
+            />
+            <button
+              onClick={handleSaveCode}
+              disabled={savingCode}
+              style={{
+                display:'flex',alignItems:'center',gap:5,padding:'6px 12px',
+                background:'#1A3A7C',color:'#fff',border:'none',borderRadius:7,
+                fontSize:12,cursor:'pointer',opacity:savingCode?0.6:1
+              }}>
+              <Save size={12}/> {savingCode?'Guardando...':'Guardar'}
+            </button>
+            {teacher.attendanceCode && (
+              <span style={{fontSize:11,color:'#0F6E56',background:'#E1F5EE',padding:'2px 8px',borderRadius:20,fontWeight:600}}>
+                ✅ Activo: {teacher.attendanceCode}
+              </span>
+            )}
+          </div>
+        </div>
+      </div>
       </div>
 
       {/* Asignaciones */}

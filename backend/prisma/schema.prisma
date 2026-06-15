@@ -293,6 +293,7 @@ model Teacher {
   birthDate DateTime?
   hoursLoad Int?
   gender     String?
+  attendanceCode String?  @unique  // código para marcar asistencia sin login
   isActive  Boolean   @default(true)
   createdAt DateTime  @default(now())
   userId      Int       @unique
@@ -304,7 +305,9 @@ model Teacher {
   notas     Nota[]
   tasks  Task[]
   specialties TeacherSpecialty[]
+  attendances TeacherAttendance[]
 }
+
 model TeacherSpecialty {
   id        Int     @id @default(autoincrement())
   teacherId Int
@@ -314,6 +317,29 @@ model TeacherSpecialty {
 
   @@unique([teacherId, subjectId])
 }
+///TIPO DE ASISTENCIA
+enum AttendanceStatus {
+  PRESENTE
+  AUSENTE
+  TARDANZA
+  LICENCIA
+}
+//ASISTENCIA DEL MAESTRO
+model TeacherAttendance {
+  id          Int              @id @default(autoincrement())
+  teacherId   Int
+  date        DateTime         @default(now())
+  checkIn     DateTime?        // hora de entrada
+  checkOut    DateTime?        // hora de salida
+  status      AttendanceStatus @default(PRESENTE)
+  note        String?          // observación (motivo de licencia, etc.)
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+  teacher     Teacher          @relation(fields: [teacherId], references: [id])
+
+  @@unique([teacherId, date]) // un registro por día por maestro
+}
+
 model Staff {
   id        Int       @id @default(autoincrement())
   firstName String
