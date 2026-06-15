@@ -52,7 +52,7 @@ export default function TeacherTareasPage() {
   const [showModal,  setShowModal]  = useState(false)
   const [editTask,   setEditTask]   = useState<Task|null>(null)
   const [form, setForm] = useState({
-    title:'', description:'', type:'EVALUACION', maxScore:'100',
+    title:'', description:'', type:'EVALUACION', maxScore:'40',
     dueDate:'', attachmentUrl:'', assignToAll: true, studentIds:[] as number[]
   })
   const [saving, setSaving] = useState(false)
@@ -165,7 +165,7 @@ export default function TeacherTareasPage() {
         title:         form.title,
         description:   form.description||null,
         type:          form.type,
-        maxScore:      parseFloat(form.maxScore)||100,
+        maxScore:      form.type==='EVALUACION' ? 45 : 40,
         dueDate:       form.dueDate||null,
         attachmentUrl: form.attachmentUrl||null,
         courseId:      selMateria.courseId,
@@ -214,7 +214,7 @@ export default function TeacherTareasPage() {
   }
 
   const resetForm = () => setForm({
-    title:'', description:'', type:'EVALUACION', maxScore:'100',
+    title:'', description:'', type:'EVALUACION', maxScore:'45',
     dueDate:'', attachmentUrl:'', assignToAll:true, studentIds:[]
   })
 
@@ -434,7 +434,7 @@ export default function TeacherTareasPage() {
                     <button key={t.value}
                       className={`type-btn${form.type===t.value?' selected':''}`}
                       style={form.type===t.value?{background:t.color,color:'#fff',borderColor:t.color}:{}}
-                      onClick={()=>setForm(p=>({...p,type:t.value}))}>
+                     onClick={()=>setForm(p=>({...p,type:t.value,maxScore:String(t.value==='EVALUACION'?45:40)}))}>
                       {t.label} <span style={{fontSize:10,opacity:.8}}>→ {t.dim}</span>
                     </button>
                   ))}
@@ -452,10 +452,15 @@ export default function TeacherTareasPage() {
               </div>
               <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
                 <div className="fg">
-                  <label>Puntaje máximo *</label>
-                  <input type="number" min={1} max={100} value={form.maxScore}
-                    onChange={e=>setForm(p=>({...p,maxScore:e.target.value}))}/>
-                </div>
+                <label>Puntaje máximo</label>
+                <input type="number" 
+                  value={form.type==='EVALUACION'?45:40}
+                  readOnly
+                  style={{background:'#F0F6FC',cursor:'not-allowed',color:'#6B8BB0'}}/>
+                <span style={{fontSize:11,color:'#6B8BB0'}}>
+                  {form.type==='EVALUACION'?'Examen → Saber (máx 45 pts)':'Tarea → Hacer (máx 40 pts)'}
+                </span>
+              </div>
                 <div className="fg">
                   <label>Fecha de entrega</label>
                   <input type="date" value={form.dueDate}
