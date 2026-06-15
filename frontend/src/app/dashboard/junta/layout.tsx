@@ -6,7 +6,7 @@ import Link from 'next/link'
 import Image from 'next/image'
 import {
   LayoutDashboard, DollarSign, FileBarChart,
-  Bell, LogOut, Menu, X,Users, ChevronRight, ClipboardList,UserCircle
+  Bell, LogOut, Menu, X,Users, ChevronRight, ClipboardList,UserCircle,  ClipboardCheck
     } from 'lucide-react'
 
 
@@ -32,6 +32,9 @@ const menuItems = [
     href:  '/dashboard/junta/tesoreria',
     icon:  <DollarSign size={18}/>,
   },
+  { label: 'Asistencia Maestros', 
+    href: '/dashboard/junta/asistencia', 
+    icon: <ClipboardCheck size={18}/> },
   {
     label: 'Cargos',
     href:  '/dashboard/junta/cargos/nuevo',

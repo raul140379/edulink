@@ -8,7 +8,7 @@ import {
   LayoutDashboard, Users, GraduationCap, BookOpen,
   ClipboardList, Clock, DollarSign, Bell, FileBarChart,
   Settings, LogOut, Menu, X, ShieldCheck, ChevronRight,
-  Calendar, UserCircle, ChevronDown, ChevronUp
+  Calendar, UserCircle, ChevronDown, ChevronUp, ClipboardCheck
 } from 'lucide-react'
 
 interface User {
@@ -64,6 +64,8 @@ const menuGroups: MenuGroup[] = [
       { label: 'Estudiantes',     href: '/dashboard/admin/estudiantes', icon: <GraduationCap size={16}/>, roles: ['SUPER_ADMIN','DIRECTOR','REGENTE','SECRETARY'] },
       { label: 'Padres / Tutores',href: '/dashboard/admin/padres',      icon: <Users size={16}/>,         roles: ['SUPER_ADMIN','DIRECTOR','REGENTE','SECRETARY'] },
       { label: 'Maestros',        href: '/dashboard/admin/maestros',    icon: <GraduationCap size={16}/>, roles: ['SUPER_ADMIN','DIRECTOR','SECRETARY'] },
+      { label: 'Asistencia', href: '/dashboard/admin/asistencia', icon: <ClipboardCheck size={16}/>, roles: ['SUPER_ADMIN','DIRECTOR','SECRETARY'] },
+      
     ]
   },
   {
