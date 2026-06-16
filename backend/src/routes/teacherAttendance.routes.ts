@@ -29,7 +29,7 @@ router.get('/my-today',     getMyToday)
 router.get('/my-history',   getMyHistory)
 
 // Admin / Director / Secretaria / Junta
-router.get('/report',                              requirePermission(Permission.USER_VIEW_ALL), getReport)
+router.get('/report', getReport)
 router.patch('/:id',                               requirePermission(Permission.USER_CREATE),   updateAttendance)
 router.post('/mark-absent',                        requirePermission(Permission.USER_CREATE),   markAbsent)
 

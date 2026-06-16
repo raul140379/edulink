@@ -100,7 +100,7 @@ export default function TeacherDetailPage() {
         setAttCode(data.attendanceCode || '')
         setEntryTime(data.entryTime || '')
         setExitTime(data.exitTime || '')
-        setToleranceMin(String(data.toleranceMin ?? 10))
+        setToleranceMin(data.toleranceMin != null ? String(data.toleranceMin) : '10')
       }
       else notify('Error al cargar maestro', 'err')
     } catch { notify('Error de conexión', 'err') }

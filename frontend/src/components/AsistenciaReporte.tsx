@@ -11,7 +11,7 @@ interface TeacherRecord {
     id: number; date: string; checkIn: string | null
     checkOut: string | null; status: string; note: string | null
   }[]
-  summary: { presente: number; tardanza: number; ausente: number; licencia: number; total: number }
+  summary: { presente: number; retraso: number; ausente: number; licencia: number; total: number }
 }
 
 interface ReportData {
@@ -21,10 +21,10 @@ interface ReportData {
 }
 
 const STATUS_CONFIG: Record<string, { label: string; bg: string; color: string }> = {
-  PRESENTE: { label: 'Presente',  bg: '#E1F5EE', color: '#0F6E56' },
-  TARDANZA: { label: 'Tardanza',  bg: '#FFFBEA', color: '#BA7517' },
-  AUSENTE:  { label: 'Ausente',   bg: '#FFF0F0', color: '#C0392B' },
-  LICENCIA: { label: 'Licencia',  bg: '#E0ECF8', color: '#1A3A7C' },
+  PRESENTE: { label: 'Presente', bg: '#E1F5EE', color: '#0F6E56' },
+  RETRASO:  { label: 'Retraso',  bg: '#FFFBEA', color: '#BA7517' },
+  AUSENTE:  { label: 'Ausente',  bg: '#FFF0F0', color: '#C0392B' },
+  LICENCIA: { label: 'Licencia', bg: '#E0ECF8', color: '#1A3A7C' },
 }
 
 const MONTHS = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre']
@@ -79,12 +79,12 @@ export default function AsistenciaReporte() {
   ) || []
 
   const totals = filteredTeachers.reduce((acc, t) => ({
-    presente: acc.presente + t.summary.presente,
-    tardanza: acc.tardanza + t.summary.tardanza,
-    ausente:  acc.ausente  + t.summary.ausente,
-    licencia: acc.licencia + t.summary.licencia,
-    total:    acc.total    + t.summary.total,
-  }), { presente:0, tardanza:0, ausente:0, licencia:0, total:0 })
+    presente: acc.presente + (t.summary.presente || 0),
+    retraso:  acc.retraso  + (t.summary.retraso  || 0),
+    ausente:  acc.ausente  + (t.summary.ausente  || 0),
+    licencia: acc.licencia + (t.summary.licencia || 0),
+    total:    acc.total    + (t.summary.total    || 0),
+  }), { presente:0, retraso:0, ausente:0, licencia:0, total:0 })
 
   return (
     <div>
@@ -96,7 +96,7 @@ export default function AsistenciaReporte() {
 
       {/* Controles */}
       <div style={{background:'#fff',border:'1px solid #CBE0F0',borderRadius:12,padding:'16px 20px',marginBottom:20,display:'flex',flexWrap:'wrap',gap:16,alignItems:'center'}}>
-        
+
         {/* Modo */}
         <div style={{display:'flex',gap:6}}>
           {(['diario','semanal','mensual'] as const).map(m=>(
@@ -104,22 +104,17 @@ export default function AsistenciaReporte() {
               padding:'6px 16px',borderRadius:20,border:'none',cursor:'pointer',fontSize:12,fontWeight:600,
               background:mode===m?'#1A3A7C':'#F0F6FC',
               color:mode===m?'#fff':'#1A3A7C',
-              textTransform:'capitalize',
             }}>{m.charAt(0).toUpperCase()+m.slice(1)}</button>
           ))}
         </div>
 
         {/* Selector diario */}
         {mode==='diario' && (
-          <input
-            type="date"
-            value={selDate}
-            onChange={e=>setSelDate(e.target.value)}
-            style={{padding:'7px 12px',border:'1.5px solid #CBE0F0',borderRadius:8,fontSize:13,color:'#1A3A7C',outline:'none'}}
-          />
+          <input type="date" value={selDate} onChange={e=>setSelDate(e.target.value)}
+            style={{padding:'7px 12px',border:'1.5px solid #CBE0F0',borderRadius:8,fontSize:13,color:'#1A3A7C',outline:'none'}}/>
         )}
 
-        {/* Navegación mes (semanal y mensual) */}
+        {/* Navegación mes */}
         {(mode==='semanal'||mode==='mensual') && (
           <div style={{display:'flex',alignItems:'center',gap:8}}>
             <button onClick={prevMonth} style={{background:'#F0F6FC',border:'none',borderRadius:8,width:32,height:32,display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',color:'#1A3A7C'}}>
@@ -149,13 +144,9 @@ export default function AsistenciaReporte() {
         )}
 
         {/* Búsqueda */}
-        <input
-          type="text"
-          placeholder="Buscar maestro..."
-          value={search}
+        <input type="text" placeholder="Buscar maestro..." value={search}
           onChange={e=>setSearch(e.target.value)}
-          style={{padding:'8px 12px',border:'1.5px solid #CBE0F0',borderRadius:8,fontSize:13,color:'#1A3A7C',outline:'none',marginLeft:'auto',width:200}}
-        />
+          style={{padding:'8px 12px',border:'1.5px solid #CBE0F0',borderRadius:8,fontSize:13,color:'#1A3A7C',outline:'none',marginLeft:'auto',width:200}}/>
       </div>
 
       {/* Período activo */}
@@ -165,18 +156,18 @@ export default function AsistenciaReporte() {
         </div>
       )}
 
-      {/* Totales generales */}
+      {/* Totales */}
       {data && (
         <div style={{display:'grid',gridTemplateColumns:'repeat(5,1fr)',gap:10,marginBottom:20}}>
           {[
             {label:'Presente',   value:totals.presente, color:'#0F6E56', bg:'#E1F5EE'},
-            {label:'Tardanza',   value:totals.tardanza, color:'#BA7517', bg:'#FFFBEA'},
+            {label:'Retraso',    value:totals.retraso,  color:'#BA7517', bg:'#FFFBEA'},
             {label:'Ausente',    value:totals.ausente,  color:'#C0392B', bg:'#FFF0F0'},
             {label:'Licencia',   value:totals.licencia, color:'#1A3A7C', bg:'#E0ECF8'},
             {label:'Total días', value:totals.total,    color:'#633806', bg:'#FDF0E6'},
           ].map(s=>(
             <div key={s.label} style={{background:s.bg,borderRadius:10,padding:'12px 14px',textAlign:'center',border:`1px solid ${s.color}22`}}>
-              <div style={{fontSize:24,fontWeight:800,color:s.color}}>{s.value}</div>
+              <div style={{fontSize:24,fontWeight:800,color:s.color}}>{String(s.value)}</div>
               <div style={{fontSize:11,color:s.color,fontWeight:600,marginTop:2}}>{s.label}</div>
             </div>
           ))}
@@ -194,12 +185,10 @@ export default function AsistenciaReporte() {
         <div style={{display:'flex',flexDirection:'column',gap:10}}>
           {filteredTeachers.map(t => {
             const isOpen = expanded === t.teacher.id
-            const pct    = t.summary.total > 0 ? Math.round((t.summary.presente / t.summary.total) * 100) : 0
+            const pct    = t.summary.total > 0 ? Math.round(((t.summary.presente || 0) / t.summary.total) * 100) : 0
             return (
               <div key={t.teacher.id} style={{background:'#fff',border:'1px solid #CBE0F0',borderRadius:12,overflow:'hidden'}}>
-                {/* Cabecera maestro */}
-                <div
-                  style={{display:'flex',alignItems:'center',padding:'14px 18px',cursor:'pointer',gap:16}}
+                <div style={{display:'flex',alignItems:'center',padding:'14px 18px',cursor:'pointer',gap:16}}
                   onClick={()=>setExpanded(isOpen?null:t.teacher.id)}>
                   <div style={{width:38,height:38,borderRadius:'50%',background:'#1A3A7C',color:'#fff',display:'flex',alignItems:'center',justifyContent:'center',fontWeight:700,fontSize:14,flexShrink:0}}>
                     {t.teacher.lastName.charAt(0)}
@@ -209,7 +198,7 @@ export default function AsistenciaReporte() {
                     {t.teacher.ci && <div style={{fontSize:12,color:'#6B8BB0'}}>CI: {t.teacher.ci}</div>}
                   </div>
 
-                  {/* En modo diario mostrar entrada/salida directo */}
+                  {/* Modo diario: entrada/salida directo */}
                   {mode==='diario' && t.records[0] ? (
                     <div style={{display:'flex',gap:20,alignItems:'center'}}>
                       <div style={{textAlign:'center'}}>
@@ -229,21 +218,21 @@ export default function AsistenciaReporte() {
                       </span>
                     </div>
                   ) : (
-                    /* En modo semanal/mensual mostrar resumen */
+                    /* Modo semanal/mensual: resumen */
                     <div style={{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}}>
                       {[
-                        {key:'presente', label:'P', color:'#0F6E56', bg:'#E1F5EE', val:t.summary.presente},
-                        {key:'tardanza', label:'T', color:'#BA7517', bg:'#FFFBEA', val:t.summary.tardanza},
-                        {key:'ausente',  label:'A', color:'#C0392B', bg:'#FFF0F0', val:t.summary.ausente},
-                        {key:'licencia', label:'L', color:'#1A3A7C', bg:'#E0ECF8', val:t.summary.licencia},
+                        {key:'presente', label:'P', color:'#0F6E56', bg:'#E1F5EE', val:t.summary.presente||0},
+                        {key:'retraso',  label:'R', color:'#BA7517', bg:'#FFFBEA', val:t.summary.retraso||0},
+                        {key:'ausente',  label:'A', color:'#C0392B', bg:'#FFF0F0', val:t.summary.ausente||0},
+                        {key:'licencia', label:'L', color:'#1A3A7C', bg:'#E0ECF8', val:t.summary.licencia||0},
                       ].map(s=>(
                         <div key={s.key} style={{textAlign:'center',minWidth:36}}>
-                          <div style={{fontSize:14,fontWeight:800,color:s.color}}>{s.val}</div>
+                          <div style={{fontSize:14,fontWeight:800,color:s.color}}>{String(s.val)}</div>
                           <div style={{fontSize:9,background:s.bg,color:s.color,padding:'1px 5px',borderRadius:10,fontWeight:600}}>{s.label}</div>
                         </div>
                       ))}
                       <div style={{marginLeft:8}}>
-                        <div style={{fontSize:11,color:'#6B8BB0',marginBottom:3,textAlign:'right'}}>{pct}% asistencia</div>
+                        <div style={{fontSize:11,color:'#6B8BB0',marginBottom:3,textAlign:'right'}}>{String(pct)}% asistencia</div>
                         <div style={{width:80,height:6,background:'#F0F6FC',borderRadius:3,overflow:'hidden'}}>
                           <div style={{width:`${pct}%`,height:'100%',background:pct>=80?'#0F6E56':pct>=60?'#BA7517':'#C0392B',borderRadius:3}}/>
                         </div>
@@ -253,7 +242,7 @@ export default function AsistenciaReporte() {
                   {mode!=='diario' && (isOpen?<ChevronUp size={15} color="#6B8BB0"/>:<ChevronDown size={15} color="#6B8BB0"/>)}
                 </div>
 
-                {/* Detalle de días (solo semanal/mensual) */}
+                {/* Detalle días (semanal/mensual) */}
                 {isOpen && mode!=='diario' && (
                   <div style={{borderTop:'1px solid #F0F6FC',background:'#FAFCFF'}}>
                     <table style={{width:'100%',borderCollapse:'collapse'}}>
