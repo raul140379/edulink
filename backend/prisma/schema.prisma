@@ -28,32 +28,39 @@ enum Role {
 
 // Horario institucional por turno (para estudiantes y control general)
 model SchoolSchedule {
-  id           Int      @id @default(autoincrement())
-  shift        String   // MORNING, AFTERNOON
-  name         String   // "Turno Mañana", "Turno Tarde"
-  entryTime    String   // "07:30"
-  exitTime     String   // "12:30"
-  toleranceMin Int      @default(10)
-  isActive     Boolean  @default(true)
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  id             Int      @id @default(autoincrement())
+  shift          String   // MORNING, AFTERNOON
+  name           String   // "Normal Mañana", "Invierno Tarde"
+  startTime      String   // "07:45", "08:15"
+  exitTime       String   // "12:55", "13:30"
+  periods        Int      @default(7)   // 6 o 7 periodos
+  periodDuration Int      @default(40)  // minutos por periodo
+  breakDuration  Int      @default(15)  // minutos de recreo
+  breakAfter     String   @default("2,4") // recreo después del periodo 2 y 4
+  isWinter       Boolean  @default(false)
+  isActive       Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 }
-
+ 
 enum AcademicLevel {
   INICIAL
   PRIMARIA
   SECUNDARIA
 }
+
 enum CampoSaber {
   VIDA_TIERRA_TERRITORIO       // Vida Tierra y Territorio
   COMUNIDAD_SOCIEDAD           // Comunidad y Sociedad
   COSMOS_PENSAMIENTO           // Cosmos y Pensamiento
   CIENCIA_TECNOLOGIA_PRODUCCION // Ciencia Tecnología y Producción
 }
+
 enum Gender {
   MASCULINO
   FEMENINO
 }
+
 enum EducationType {
   REGULAR
   BTH           // Bachillerato Técnico Humanístico
@@ -86,6 +93,7 @@ enum RelationType {
   TUTOR_LEGAL   // Tutor legal (no es padre ni madre)
   OTRO
 }
+
 //ROL DE PERSONAL
 enum StaffRole {
   PORTERO
@@ -100,6 +108,7 @@ enum ChargeTarget {
   TUTOR      // Cargo general al tutor legal (cuota inicial, minga, multa asamblea)
   ESTUDIANTE // Cargo por estudiante específico (reunión de curso, actividades, materiales)
 }
+
 // TIPO DE CARGOS DE PAGO
 enum ChargeType {
   CUOTA_INICIAL     // Monto de inicio de año — por TUTOR
@@ -111,6 +120,7 @@ enum ChargeType {
   MATERIAL_ESCOLAR  // Venta de materiales — por ESTUDIANTE
   OTRO              // Cobros eventuales
 }
+
 //ESTADO DEL CARGO
 enum ChargeStatus {
   PENDIENTE
@@ -118,6 +128,7 @@ enum ChargeStatus {
   PAGADO
   ANULADO
 }
+
 //METODO DE PAGO
 enum PaymentMethod {
   EFECTIVO
@@ -126,6 +137,7 @@ enum PaymentMethod {
   TRANSFERENCIA
   OTRO
 }
+
 //TIPO DE NOTIFICACION
 enum NotificationType {
   REUNION         // Convocatoria a reunión
@@ -211,6 +223,7 @@ model AcademicYear {
   assignments StudentAcademicAssignment[]
   holidays    Holiday[]
   charges     Charge[]
+  schedules Schedule[]
 }
 
 model Trimester {
@@ -226,7 +239,8 @@ model Trimester {
   notas     Nota[]
   tasks  Task[]
 }
-
+ 
+// FECHAS FESTIVA
 model Holiday {
   id             Int          @id @default(autoincrement())
   date           DateTime
@@ -321,7 +335,7 @@ model Teacher {
   notas     Nota[]
   tasks  Task[]
   specialties TeacherSpecialty[]
-  attendances TeacherAttendance[]
+  attendances TeacherAttendance[] 
 }
 
 model TeacherSpecialty {
@@ -333,6 +347,7 @@ model TeacherSpecialty {
 
   @@unique([teacherId, subjectId])
 }
+
 ///TIPO DE ASISTENCIA
 enum AttendanceStatus {
   PRESENTE
@@ -340,6 +355,7 @@ enum AttendanceStatus {
   RETRASO
   LICENCIA
 }
+
 //ASISTENCIA DEL MAESTRO
 model TeacherAttendance {
   id          Int              @id @default(autoincrement())
@@ -391,7 +407,7 @@ model Course {
   teacherSubjects TeacherSubjectCourse[]
   tutor           CourseTutor?
   @@unique([level, grade, parallel, educationType, shift])
-  notas     Nota[]
+  notas     Nota[] 
 }
 
 // Maestro tutor designado a un curso
@@ -417,8 +433,9 @@ model Subject {
   notas           Nota[]
   tasks  Task[]
   @@unique([name, level])
-  teacherSpecialties TeacherSpecialty[]
+  teacherSpecialties TeacherSpecialty[] 
 }
+
 // Configuración de materia por grado: qué grados aplica y cuántas horas
 model SubjectGradeConfig {
   id           Int     @id @default(autoincrement())
@@ -515,16 +532,21 @@ model StudentAcademicAssignment {
 //CRONOGRAMA
 model Schedule {
   id                     Int                  @id @default(autoincrement())
-  dayOfWeek              Int
-  startTime              String
-  endTime                String
+  dayOfWeek              Int                  // 1=Lunes, 2=Martes... 6=Sábado
+  period                 Int                  // 1-7
+  startTime              String               // "07:45"
+  endTime                String               // "08:25"
+   status                 String               @default("BORRADOR") // BORRADOR, PUBLICADO
   courseId               Int
+  academicYearId         Int
   teacherSubjectCourseId Int
-  course               Course               @relation(fields: [courseId], references: [id])
+  course               Course               @relation(fields: [courseId],       references: [id])
+  academicYear         AcademicYear         @relation(fields: [academicYearId], references: [id])
   teacherSubjectCourse TeacherSubjectCourse @relation(fields: [teacherSubjectCourseId], references: [id])
-  @@unique([courseId, dayOfWeek, startTime])
-}
 
+  @@unique([courseId, academicYearId, dayOfWeek, period])
+}
+ 
 // ─────────────────────────────────────────────
 // TESORERÍA
 // ─────────────────────────────────────────────
