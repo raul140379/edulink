@@ -2,21 +2,41 @@ import { Response } from 'express'
 import { AuthRequest } from '../middlewares/auth.middleware'
 import prisma from '../lib/prisma'
 
-// ── Helper: obtener inicio y fin del día ──────────────────────────
+// ── Helpers ──────────────────────────────────────────────────────
 const startOfDay = (date: Date) => {
-  const d = new Date(date)
-  d.setHours(0, 0, 0, 0)
-  return d
+  const d = new Date(date); d.setHours(0, 0, 0, 0); return d
 }
 const endOfDay = (date: Date) => {
-  const d = new Date(date)
-  d.setHours(23, 59, 59, 999)
-  return d
+  const d = new Date(date); d.setHours(23, 59, 59, 999); return d
+}
+const fmtTime = (d: string) => new Date(d).toLocaleTimeString('es-BO', { hour:'2-digit', minute:'2-digit' })
+
+// Verificar si llegó tarde comparando con hora configurada del maestro
+// Si el maestro no tiene hora configurada, usa el horario institucional del turno
+const checkIsRetraso = async (teacherId: number, now: Date): Promise<boolean> => {
+  const teacher = await prisma.teacher.findUnique({
+    where: { id: teacherId },
+    select: { entryTime: true, toleranceMin: true }
+  })
+
+  // Si el maestro tiene hora configurada, usarla
+  if (teacher?.entryTime) {
+    const [entryHour, entryMin] = teacher.entryTime.split(':').map(Number)
+    const tolerance = teacher.toleranceMin ?? 10
+    const entryLimit = new Date(now)
+    entryLimit.setHours(entryHour, entryMin + tolerance, 0, 0)
+    return now > entryLimit
+  }
+
+  // Si no tiene hora, buscar horario institucional por turno
+  // Por defecto verificar si llegó después de las 8:00 AM con 10 min tolerancia
+  const hour   = now.getHours()
+  const minute = now.getMinutes()
+  return hour > 8 || (hour === 8 && minute > 10)
 }
 
 // ─────────────────────────────────────────────
 // POST /api/teacher-attendance/check-in
-// Maestro marca su entrada
 // ─────────────────────────────────────────────
 export const checkIn = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
@@ -26,42 +46,30 @@ export const checkIn = async (req: AuthRequest, res: Response): Promise<void> =>
     if (!teacher) { res.status(404).json({ message: 'Perfil de maestro no encontrado' }); return }
 
     const today = new Date()
-    const start = startOfDay(today)
-    const end   = endOfDay(today)
-
-    // Verificar si ya marcó entrada hoy
     const existing = await prisma.teacherAttendance.findFirst({
-      where: { teacherId: teacher.id, date: { gte: start, lte: end } }
+      where: { teacherId: teacher.id, date: { gte: startOfDay(today), lte: endOfDay(today) } }
     })
 
-    if (existing) {
-      if (existing.checkIn) {
-        res.status(400).json({ message: 'Ya registraste tu entrada hoy', attendance: existing }); return
-      }
-      // Actualizar registro existente con hora de entrada
-      const updated = await prisma.teacherAttendance.update({
-        where: { id: existing.id },
-        data:  { checkIn: today, status: 'PRESENTE' }
-      })
-      res.json({ message: 'Entrada registrada correctamente', attendance: updated }); return
+    if (existing?.checkIn) {
+      res.status(400).json({ message: 'Ya registraste tu entrada hoy', attendance: existing }); return
     }
 
-    // Verificar si es tardanza (después de las 8:30 AM)
-    const hour   = today.getHours()
-    const minute = today.getMinutes()
-    const isTardanza = hour > 8 || (hour === 8 && minute > 30)
+    const isRetraso = await checkIsRetraso(teacher.id, today)
+
+    if (existing) {
+      const updated = await prisma.teacherAttendance.update({
+        where: { id: existing.id },
+        data:  { checkIn: today, status: isRetraso ? 'RETRASO' : 'PRESENTE' }
+      })
+      res.json({ message: isRetraso ? 'Entrada registrada con retraso' : 'Entrada registrada correctamente', attendance: updated }); return
+    }
 
     const attendance = await prisma.teacherAttendance.create({
-      data: {
-        teacherId: teacher.id,
-        date:      today,
-        checkIn:   today,
-        status:    isTardanza ? 'TARDANZA' : 'PRESENTE',
-      }
+      data: { teacherId: teacher.id, date: today, checkIn: today, status: isRetraso ? 'RETRASO' : 'PRESENTE' }
     })
 
     res.status(201).json({
-      message: isTardanza ? 'Entrada registrada con tardanza' : 'Entrada registrada correctamente',
+      message: isRetraso ? 'Entrada registrada con retraso' : 'Entrada registrada correctamente',
       attendance
     })
   } catch (error) {
@@ -72,7 +80,6 @@ export const checkIn = async (req: AuthRequest, res: Response): Promise<void> =>
 
 // ─────────────────────────────────────────────
 // POST /api/teacher-attendance/check-out
-// Maestro marca su salida
 // ─────────────────────────────────────────────
 export const checkOut = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
@@ -82,14 +89,11 @@ export const checkOut = async (req: AuthRequest, res: Response): Promise<void> =
     if (!teacher) { res.status(404).json({ message: 'Perfil de maestro no encontrado' }); return }
 
     const today = new Date()
-    const start = startOfDay(today)
-    const end   = endOfDay(today)
-
     const existing = await prisma.teacherAttendance.findFirst({
-      where: { teacherId: teacher.id, date: { gte: start, lte: end } }
+      where: { teacherId: teacher.id, date: { gte: startOfDay(today), lte: endOfDay(today) } }
     })
 
-    if (!existing) {
+    if (!existing?.checkIn) {
       res.status(400).json({ message: 'No has registrado tu entrada hoy. Marca entrada primero.' }); return
     }
     if (existing.checkOut) {
@@ -110,7 +114,6 @@ export const checkOut = async (req: AuthRequest, res: Response): Promise<void> =
 
 // ─────────────────────────────────────────────
 // GET /api/teacher-attendance/my-today
-// Estado de asistencia del maestro hoy
 // ─────────────────────────────────────────────
 export const getMyToday = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
@@ -131,8 +134,7 @@ export const getMyToday = async (req: AuthRequest, res: Response): Promise<void>
 }
 
 // ─────────────────────────────────────────────
-// GET /api/teacher-attendance/my-history?month=6&year=2026
-// Historial del maestro logueado
+// GET /api/teacher-attendance/my-history
 // ─────────────────────────────────────────────
 export const getMyHistory = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
@@ -144,20 +146,17 @@ export const getMyHistory = async (req: AuthRequest, res: Response): Promise<voi
     const month = req.query.month ? parseInt(req.query.month as string) : new Date().getMonth() + 1
     const year  = req.query.year  ? parseInt(req.query.year  as string) : new Date().getFullYear()
 
-    const start = new Date(year, month - 1, 1)
-    const end   = new Date(year, month, 0, 23, 59, 59)
-
     const records = await prisma.teacherAttendance.findMany({
-      where: { teacherId: teacher.id, date: { gte: start, lte: end } },
+      where: { teacherId: teacher.id, date: { gte: new Date(year, month-1, 1), lte: new Date(year, month, 0, 23, 59, 59) } },
       orderBy: { date: 'asc' }
     })
 
     const summary = {
-      presente:  records.filter(r => r.status === 'PRESENTE').length,
-      tardanza:  records.filter(r => r.status === 'TARDANZA').length,
-      ausente:   records.filter(r => r.status === 'AUSENTE').length,
-      licencia:  records.filter(r => r.status === 'LICENCIA').length,
-      total:     records.length,
+      presente: records.filter(r => r.status === 'PRESENTE').length,
+      retraso:  records.filter(r => r.status === 'RETRASO').length,
+      ausente:  records.filter(r => r.status === 'AUSENTE').length,
+      licencia: records.filter(r => r.status === 'LICENCIA').length,
+      total:    records.length,
     }
 
     res.json({ records, summary, month, year })
@@ -167,15 +166,14 @@ export const getMyHistory = async (req: AuthRequest, res: Response): Promise<voi
 }
 
 // ─────────────────────────────────────────────
-// GET /api/teacher-attendance/report?month=6&year=2026&week=1
-// Reporte para admin/director/secretaria/junta
+// GET /api/teacher-attendance/report
 // ─────────────────────────────────────────────
 export const getReport = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    const month     = req.query.month  ? parseInt(req.query.month  as string) : new Date().getMonth() + 1
-    const year      = req.query.year   ? parseInt(req.query.year   as string) : new Date().getFullYear()
-    const week      = req.query.week   ? parseInt(req.query.week   as string) : null
-    const date      = req.query.date   as string | undefined
+    const month     = req.query.month ? parseInt(req.query.month as string) : new Date().getMonth() + 1
+    const year      = req.query.year  ? parseInt(req.query.year  as string) : new Date().getFullYear()
+    const week      = req.query.week  ? parseInt(req.query.week  as string) : null
+    const date      = req.query.date  as string | undefined
     const teacherId = req.query.teacherId ? parseInt(req.query.teacherId as string) : undefined
 
     let start: Date, end: Date
@@ -185,8 +183,8 @@ export const getReport = async (req: AuthRequest, res: Response): Promise<void> 
       start = startOfDay(d)
       end   = endOfDay(d)
     } else if (week) {
-      const firstDay   = new Date(year, month - 1, 1)
-      const dayOfWeek  = firstDay.getDay()
+      const firstDay    = new Date(year, month - 1, 1)
+      const dayOfWeek   = firstDay.getDay()
       const firstMonday = new Date(firstDay)
       firstMonday.setDate(firstDay.getDate() + (dayOfWeek === 0 ? 1 : 8 - dayOfWeek) % 7)
       start = new Date(firstMonday)
@@ -200,13 +198,8 @@ export const getReport = async (req: AuthRequest, res: Response): Promise<void> 
     }
 
     const records = await prisma.teacherAttendance.findMany({
-      where: {
-        date: { gte: start, lte: end },
-        ...(teacherId ? { teacherId } : {})
-      },
-      include: {
-        teacher: { select: { id: true, firstName: true, lastName: true, ci: true, phone: true } }
-      },
+      where: { date: { gte: start, lte: end }, ...(teacherId ? { teacherId } : {}) },
+      include: { teacher: { select: { id: true, firstName: true, lastName: true, ci: true, phone: true, entryTime: true, exitTime: true } } },
       orderBy: [{ teacher: { lastName: 'asc' } }, { date: 'asc' }]
     })
 
@@ -217,19 +210,16 @@ export const getReport = async (req: AuthRequest, res: Response): Promise<void> 
         byTeacher[tid] = {
           teacher:  r.teacher,
           records:  [],
-          summary:  { presente: 0, tardanza: 0, ausente: 0, licencia: 0, total: 0 }
+          summary:  { presente: 0, retraso: 0, ausente: 0, licencia: 0, total: 0 }
         }
       }
       byTeacher[tid].records.push(r)
-      byTeacher[tid].summary[r.status.toLowerCase()]++
+      const key = r.status.toLowerCase() as keyof typeof byTeacher[typeof tid]['summary']
+      if (key in byTeacher[tid].summary) byTeacher[tid].summary[key]++
       byTeacher[tid].summary.total++
     })
 
-    res.json({
-      period: { start, end, month, year, week, date },
-      teachers: Object.values(byTeacher),
-      totalRecords: records.length,
-    })
+    res.json({ period: { start, end, month, year, week, date }, teachers: Object.values(byTeacher), totalRecords: records.length })
   } catch (error) {
     console.error('getReport error:', error)
     res.status(500).json({ message: 'Error al generar reporte' })
@@ -238,23 +228,20 @@ export const getReport = async (req: AuthRequest, res: Response): Promise<void> 
 
 // ─────────────────────────────────────────────
 // PATCH /api/teacher-attendance/:id
-// Admin puede editar estado (marcar ausente, licencia, etc.)
 // ─────────────────────────────────────────────
 export const updateAttendance = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const { id } = req.params
     const { status, note, checkIn, checkOut } = req.body
-
     const updated = await prisma.teacherAttendance.update({
       where: { id: parseInt(id) },
       data: {
-        ...(status   ? { status }                              : {}),
-        ...(note     ? { note }                                : {}),
-        ...(checkIn  ? { checkIn:  new Date(checkIn)  }       : {}),
-        ...(checkOut ? { checkOut: new Date(checkOut) }       : {}),
+        ...(status   ? { status }                        : {}),
+        ...(note     ? { note }                          : {}),
+        ...(checkIn  ? { checkIn:  new Date(checkIn)  } : {}),
+        ...(checkOut ? { checkOut: new Date(checkOut) } : {}),
       }
     })
-
     res.json({ message: 'Asistencia actualizada', attendance: updated })
   } catch (error) {
     res.status(500).json({ message: 'Error al actualizar asistencia' })
@@ -263,36 +250,24 @@ export const updateAttendance = async (req: AuthRequest, res: Response): Promise
 
 // ─────────────────────────────────────────────
 // POST /api/teacher-attendance/mark-absent
-// Admin marca ausentes a los maestros que no registraron entrada
 // ─────────────────────────────────────────────
 export const markAbsent = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    const today = new Date()
-    const start = startOfDay(today)
-    const end   = endOfDay(today)
-
-    // Obtener todos los maestros activos
+    const today    = new Date()
     const teachers = await prisma.teacher.findMany({ where: { isActive: true } })
-
-    // Obtener los que ya tienen registro hoy
     const existing = await prisma.teacherAttendance.findMany({
-      where: { date: { gte: start, lte: end } },
+      where: { date: { gte: startOfDay(today), lte: endOfDay(today) } },
       select: { teacherId: true }
     })
-    const existingIds = new Set(existing.map(e => e.teacherId))
+    const existingIds     = new Set(existing.map(e => e.teacherId))
+    const absentTeachers  = teachers.filter(t => !existingIds.has(t.id))
 
-    // Marcar ausentes a los que no registraron
-    const absentTeachers = teachers.filter(t => !existingIds.has(t.id))
     if (absentTeachers.length === 0) {
       res.json({ message: 'Todos los maestros ya tienen registro hoy', marked: 0 }); return
     }
 
     await prisma.teacherAttendance.createMany({
-      data: absentTeachers.map(t => ({
-        teacherId: t.id,
-        date:      today,
-        status:    'AUSENTE' as any,
-      })),
+      data: absentTeachers.map(t => ({ teacherId: t.id, date: today, status: 'AUSENTE' as any })),
       skipDuplicates: true,
     })
 
@@ -301,9 +276,9 @@ export const markAbsent = async (req: AuthRequest, res: Response): Promise<void>
     res.status(500).json({ message: 'Error al marcar ausentes' })
   }
 }
+
 // ─────────────────────────────────────────────
 // POST /api/teacher-attendance/public/check-in
-// Marcar entrada con código — sin login
 // ─────────────────────────────────────────────
 export const publicCheckIn = async (req: any, res: Response): Promise<void> => {
   try {
@@ -312,45 +287,38 @@ export const publicCheckIn = async (req: any, res: Response): Promise<void> => {
 
     const teacher = await prisma.teacher.findUnique({
       where: { attendanceCode: code.trim().toUpperCase() },
-      select: { id: true, firstName: true, lastName: true }
+      select: { id: true, firstName: true, lastName: true, entryTime: true, toleranceMin: true }
     })
     if (!teacher) { res.status(404).json({ message: 'Código inválido' }); return }
 
     const today = new Date()
-    const start = startOfDay(today)
-    const end   = endOfDay(today)
-
     const existing = await prisma.teacherAttendance.findFirst({
-      where: { teacherId: teacher.id, date: { gte: start, lte: end } }
+      where: { teacherId: teacher.id, date: { gte: startOfDay(today), lte: endOfDay(today) } }
     })
 
     if (existing?.checkIn) {
-      res.status(400).json({ message: `${teacher.lastName} ${teacher.firstName} — ya registraste tu entrada hoy a las ${fmtTime(existing.checkIn.toISOString())}`, attendance: existing }); return
+      res.status(400).json({
+        message: `${teacher.lastName} ${teacher.firstName} — ya registraste tu entrada hoy a las ${fmtTime(existing.checkIn.toISOString())}`,
+        attendance: existing
+      }); return
     }
 
-    const hour     = today.getHours()
-    const minute   = today.getMinutes()
-    const isTardanza = hour > 8 || (hour === 8 && minute > 30)
+    const isRetraso = await checkIsRetraso(teacher.id, today)
 
     let attendance
     if (existing) {
       attendance = await prisma.teacherAttendance.update({
         where: { id: existing.id },
-        data:  { checkIn: today, status: isTardanza ? 'TARDANZA' : 'PRESENTE' }
+        data:  { checkIn: today, status: isRetraso ? 'RETRASO' : 'PRESENTE' }
       })
     } else {
       attendance = await prisma.teacherAttendance.create({
-        data: {
-          teacherId: teacher.id,
-          date:      today,
-          checkIn:   today,
-          status:    isTardanza ? 'TARDANZA' : 'PRESENTE',
-        }
+        data: { teacherId: teacher.id, date: today, checkIn: today, status: isRetraso ? 'RETRASO' : 'PRESENTE' }
       })
     }
 
     res.json({
-      message:  `✅ ${teacher.lastName} ${teacher.firstName} — ${isTardanza ? 'Entrada con tardanza' : 'Entrada registrada'} a las ${fmtTime(today.toISOString())}`,
+      message: `✅ ${teacher.lastName} ${teacher.firstName} — ${isRetraso ? 'Entrada con retraso' : 'Entrada registrada'} a las ${fmtTime(today.toISOString())}`,
       teacher,
       attendance,
     })
@@ -362,7 +330,6 @@ export const publicCheckIn = async (req: any, res: Response): Promise<void> => {
 
 // ─────────────────────────────────────────────
 // POST /api/teacher-attendance/public/check-out
-// Marcar salida con código — sin login
 // ─────────────────────────────────────────────
 export const publicCheckOut = async (req: any, res: Response): Promise<void> => {
   try {
@@ -376,18 +343,17 @@ export const publicCheckOut = async (req: any, res: Response): Promise<void> => 
     if (!teacher) { res.status(404).json({ message: 'Código inválido' }); return }
 
     const today = new Date()
-    const start = startOfDay(today)
-    const end   = endOfDay(today)
-
     const existing = await prisma.teacherAttendance.findFirst({
-      where: { teacherId: teacher.id, date: { gte: start, lte: end } }
+      where: { teacherId: teacher.id, date: { gte: startOfDay(today), lte: endOfDay(today) } }
     })
 
     if (!existing?.checkIn) {
       res.status(400).json({ message: 'No has registrado tu entrada hoy' }); return
     }
     if (existing.checkOut) {
-      res.status(400).json({ message: `${teacher.lastName} ${teacher.firstName} — ya registraste tu salida hoy a las ${fmtTime(existing.checkOut.toISOString())}` }); return
+      res.status(400).json({
+        message: `${teacher.lastName} ${teacher.firstName} — ya registraste tu salida hoy a las ${fmtTime(existing.checkOut.toISOString())}`
+      }); return
     }
 
     const updated = await prisma.teacherAttendance.update({
@@ -396,7 +362,7 @@ export const publicCheckOut = async (req: any, res: Response): Promise<void> => 
     })
 
     res.json({
-      message:  `✅ ${teacher.lastName} ${teacher.firstName} — Salida registrada a las ${fmtTime(today.toISOString())}`,
+      message: `✅ ${teacher.lastName} ${teacher.firstName} — Salida registrada a las ${fmtTime(today.toISOString())}`,
       teacher,
       attendance: updated,
     })
@@ -404,6 +370,3 @@ export const publicCheckOut = async (req: any, res: Response): Promise<void> => 
     res.status(500).json({ message: 'Error al registrar salida' })
   }
 }
-
-// Helper local
-const fmtTime = (d: string) => new Date(d).toLocaleTimeString('es-BO', { hour:'2-digit', minute:'2-digit' })

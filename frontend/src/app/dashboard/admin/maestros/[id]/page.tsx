@@ -13,7 +13,10 @@ interface Teacher {
   id: number; firstName: string; lastName: string
   ci?: string; phone?: string; email?: string
   specialty?: string; hoursLoad?: number; gender?: string; isActive: boolean
-  attendanceCode?: string  // ← agregar
+  attendanceCode?: string
+  entryTime?: string
+  exitTime?: string
+  toleranceMin?: number
   user?: { email: string; role: string }
   assignments: Assignment[]
 }
@@ -60,21 +63,25 @@ export default function TeacherDetailPage() {
   const router = useRouter()
   const id     = params.id as string
 
-  const [teacher,      setTeacher]      = useState<Teacher | null>(null)
-  const [specialties,  setSpecialties]  = useState<Specialty[]>([])
-  const [courses,      setCourses]      = useState<Course[]>([])
-  const [loading,      setLoading]      = useState(true)
-  const [showModal,    setShowModal]    = useState(false)
+  const [teacher,         setTeacher]         = useState<Teacher | null>(null)
+  const [specialties,     setSpecialties]     = useState<Specialty[]>([])
+  const [courses,         setCourses]         = useState<Course[]>([])
+  const [loading,         setLoading]         = useState(true)
+  const [showModal,       setShowModal]       = useState(false)
   const [selectedCourse,  setSelectedCourse]  = useState('')
   const [selectedSubject, setSelectedSubject] = useState('')
   const [subjectSearch,   setSubjectSearch]   = useState('')
   const [courseSearch,    setCourseSearch]    = useState('')
-  const [saving,       setSaving]       = useState(false)
-  const [removing,     setRemoving]     = useState<number | null>(null)
-  const [success,      setSuccess]      = useState('')
-  const [error,        setError]        = useState('')
-  const [attCode,    setAttCode]    = useState('')
-  const [savingCode, setSavingCode] = useState(false)
+  const [saving,          setSaving]          = useState(false)
+  const [removing,        setRemoving]        = useState<number | null>(null)
+  const [success,         setSuccess]         = useState('')
+  const [error,           setError]           = useState('')
+  const [attCode,         setAttCode]         = useState('')
+  const [savingCode,      setSavingCode]      = useState(false)
+  const [entryTime,       setEntryTime]       = useState('')
+  const [exitTime,        setExitTime]        = useState('')
+  const [toleranceMin,    setToleranceMin]    = useState('10')
+  const [savingSchedule,  setSavingSchedule]  = useState(false)
 
   const token = typeof window !== 'undefined' ? localStorage.getItem('token') : ''
 
@@ -82,7 +89,8 @@ export default function TeacherDetailPage() {
     if (type === 'ok') { setSuccess(msg); setTimeout(() => setSuccess(''), 3000) }
     else               { setError(msg);   setTimeout(() => setError(''),   4000) }
   }
-const fetchTeacher = async () => {
+
+  const fetchTeacher = async () => {
     setLoading(true)
     try {
       const res  = await fetch(`${API_URL}/api/teachers/${id}`, { headers: { Authorization: `Bearer ${token}` } })
@@ -90,6 +98,9 @@ const fetchTeacher = async () => {
       if (res.ok) {
         setTeacher(data)
         setAttCode(data.attendanceCode || '')
+        setEntryTime(data.entryTime || '')
+        setExitTime(data.exitTime || '')
+        setToleranceMin(String(data.toleranceMin ?? 10))
       }
       else notify('Error al cargar maestro', 'err')
     } catch { notify('Error de conexión', 'err') }
@@ -136,6 +147,21 @@ const fetchTeacher = async () => {
       setAttCode(data.teacher.attendanceCode)
     } catch { notify('Error de conexión', 'err') }
     finally  { setSavingCode(false) }
+  }
+
+  const handleSaveSchedule = async () => {
+    setSavingSchedule(true)
+    try {
+      const res  = await fetch(`${API_URL}/api/teachers/${id}/schedule`, {
+        method:  'PATCH',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body:    JSON.stringify({ entryTime, exitTime, toleranceMin: parseInt(toleranceMin) })
+      })
+      const data = await res.json()
+      if (!res.ok) { notify(data.message, 'err'); return }
+      notify('Horario guardado correctamente')
+    } catch { notify('Error de conexión', 'err') }
+    finally  { setSavingSchedule(false) }
   }
 
   const handleAssign = async () => {
@@ -208,9 +234,7 @@ const fetchTeacher = async () => {
 
       {/* Info */}
       <div className="info-card">
-
         <div className="info-row"><User size={15} className="info-icon"/><span className="info-label">CI:</span><span className="info-val">{teacher.ci || '—'}</span></div>
-
         <div className="info-row"><span className="info-label">Teléfono:</span><span className="info-val">{teacher.phone || '—'}</span></div>
         <div className="info-row"><span className="info-label">Email:</span><span className="info-val">{teacher.user?.email || teacher.email || '—'}</span></div>
         <div className="info-row">
@@ -218,20 +242,21 @@ const fetchTeacher = async () => {
           <span className="info-label">Carga hrs/mes:</span>
           <span className="info-val">{teacher.hoursLoad ? <span className="hrs-badge">{teacher.hoursLoad} hrs</span> : '—'}</span>
         </div>
-       <div className="info-row">
+        <div className="info-row">
           <GraduationCap size={15} className="info-icon"/>
           <span className="info-label">Asignaciones:</span>
           <span className="info-val"><strong>{grouped.length}</strong> cursos · <strong>{totalMaterias}</strong> materias</span>
         </div>
 
+        {/* Código de asistencia */}
         <div className="info-row" style={{width:'100%',marginTop:8,paddingTop:8,borderTop:'1px solid #F0F6FC'}}>
           <span className="info-label">Código de Asistencia:</span>
-          <div style={{display:'flex',alignItems:'center',gap:8,flex:1}}>
+          <div style={{display:'flex',alignItems:'center',gap:8,flex:1,flexWrap:'wrap'}}>
             <input
               type="text"
               value={attCode}
               onChange={e=>setAttCode(e.target.value.toUpperCase())}
-              placeholder="Ej: MGOM01"
+              placeholder="Ej: ZF4706"
               maxLength={10}
               style={{
                 padding:'6px 10px',border:'1.5px solid #CBE0F0',borderRadius:7,
@@ -279,10 +304,50 @@ const fetchTeacher = async () => {
             )}
           </div>
         </div>
-      </div> 
+
+        {/* Horario personal */}
+        <div className="info-row" style={{width:'100%',marginTop:8,paddingTop:8,borderTop:'1px solid #F0F6FC'}}>
+          <span className="info-label">Horario personal:</span>
+          <div style={{display:'flex',alignItems:'center',gap:12,flex:1,flexWrap:'wrap'}}>
+            <div style={{display:'flex',alignItems:'center',gap:6}}>
+              <span style={{fontSize:11,color:'#6B8BB0',fontWeight:600}}>Entrada:</span>
+              <input type="time" value={entryTime}
+                onChange={e=>setEntryTime(e.target.value)}
+                style={{padding:'5px 8px',border:'1.5px solid #CBE0F0',borderRadius:7,fontSize:13,color:'#1A3A7C',outline:'none'}}/>
+            </div>
+            <div style={{display:'flex',alignItems:'center',gap:6}}>
+              <span style={{fontSize:11,color:'#6B8BB0',fontWeight:600}}>Salida:</span>
+              <input type="time" value={exitTime}
+                onChange={e=>setExitTime(e.target.value)}
+                style={{padding:'5px 8px',border:'1.5px solid #CBE0F0',borderRadius:7,fontSize:13,color:'#1A3A7C',outline:'none'}}/>
+            </div>
+            <div style={{display:'flex',alignItems:'center',gap:6}}>
+              <span style={{fontSize:11,color:'#6B8BB0',fontWeight:600}}>Tolerancia:</span>
+              <input type="number" min={0} max={30} value={toleranceMin}
+                onChange={e=>setToleranceMin(e.target.value)}
+                style={{padding:'5px 8px',border:'1.5px solid #CBE0F0',borderRadius:7,fontSize:13,color:'#1A3A7C',outline:'none',width:60}}/>
+              <span style={{fontSize:11,color:'#6B8BB0'}}>min</span>
+            </div>
+            <button
+              onClick={handleSaveSchedule}
+              disabled={savingSchedule}
+              style={{
+                display:'flex',alignItems:'center',gap:5,padding:'6px 12px',
+                background:'#633806',color:'#fff',border:'none',borderRadius:7,
+                fontSize:12,cursor:'pointer',opacity:savingSchedule?0.6:1,whiteSpace:'nowrap'
+              }}>
+              <Save size={12}/> {savingSchedule?'Guardando...':'Guardar horario'}
+            </button>
+            {teacher.entryTime && (
+              <span style={{fontSize:11,color:'#633806',background:'#FDF0E6',padding:'2px 8px',borderRadius:20,fontWeight:600}}>
+                🕐 {teacher.entryTime} — {teacher.exitTime||'—'} · {teacher.toleranceMin??10}min tolerancia
+              </span>
+            )}
+          </div>
+        </div>
+      </div>
 
       {/* Asignaciones */}
-
       <div className="section-title"><BookOpen size={16}/> Cursos y materias asignadas</div>
 
       {grouped.length === 0 ? (
@@ -323,7 +388,7 @@ const fetchTeacher = async () => {
         ))
       )}
 
-      {/* ── Modal agregar asignación ── */}
+      {/* Modal */}
       {showModal && (
         <div className="overlay" onClick={() => setShowModal(false)}>
           <div className="modal" onClick={e => e.stopPropagation()}>
@@ -335,8 +400,6 @@ const fetchTeacher = async () => {
               <button onClick={() => setShowModal(false)}><X size={18}/></button>
             </div>
             <div className="mbody">
-
-              {/* Selector de materia */}
               <div className="fg">
                 <label>Materia *</label>
                 {specialties.length === 0 ? (
@@ -376,7 +439,6 @@ const fetchTeacher = async () => {
                 )}
               </div>
 
-              {/* Selector de curso */}
               <div className="fg">
                 <label>Curso *</label>
                 <div className="search-wrap">
@@ -411,7 +473,6 @@ const fetchTeacher = async () => {
                 </div>
               </div>
 
-              {/* Preview */}
               {previewCourse && previewSubject && (
                 <div className="preview-box">
                   <CheckCircle2 size={14} color="#0F6E56"/>

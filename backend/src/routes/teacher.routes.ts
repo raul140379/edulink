@@ -11,6 +11,7 @@ import {
   getTeacherWorkloadById, 
   setAttendanceCode,
   generateAttendanceCode_endpoint,
+  setTeacherSchedule,
 } from '../controllers/teacher.controller'
 import { verifyToken, requirePermission } from '../middlewares/auth.middleware'
 import { Permission } from '../config/permissions'
@@ -39,6 +40,7 @@ router.get('/:id/specialties',                    getTeacherSpecialties)
 router.post('/:id/specialties',                   addTeacherSpecialty)
 router.delete('/:id/specialties/:specialtyId',    removeTeacherSpecialty)
 router.post('/:id/generate-attendance-code', requirePermission(Permission.STUDENT_CREATE), generateAttendanceCode_endpoint)
+router.patch('/:id/schedule', requirePermission(Permission.STUDENT_CREATE), setTeacherSchedule)
 
 // GET /api/teachers?subjectId=5 — maestros con esa especialidad
 export default router

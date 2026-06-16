@@ -620,3 +620,24 @@ export const generateAttendanceCode_endpoint = async (req: AuthRequest, res: Res
     res.status(500).json({ message: 'Error al generar código' })
   }
 }
+export const setTeacherSchedule = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const { id } = req.params
+    const { entryTime, exitTime, toleranceMin } = req.body
+
+    const teacher = await prisma.teacher.update({
+      where: { id: parseInt(id) },
+      data: {
+        ...(entryTime    !== undefined ? { entryTime }                    : {}),
+        ...(exitTime     !== undefined ? { exitTime }                     : {}),
+        ...(toleranceMin !== undefined ? { toleranceMin: parseInt(toleranceMin) } : {}),
+      },
+      select: { id: true, firstName: true, lastName: true, entryTime: true, exitTime: true, toleranceMin: true }
+    })
+
+    res.json({ message: 'Horario actualizado correctamente', teacher })
+  } catch (error) {
+    console.error('setTeacherSchedule error:', error)
+    res.status(500).json({ message: 'Error al actualizar horario' })
+  }
+}

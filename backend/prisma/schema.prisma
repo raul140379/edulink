@@ -26,6 +26,19 @@ enum Role {
   STAFF          // Personal administrativo (portero, etc.)
 }
 
+// Horario institucional por turno (para estudiantes y control general)
+model SchoolSchedule {
+  id           Int      @id @default(autoincrement())
+  shift        String   // MORNING, AFTERNOON
+  name         String   // "Turno Mañana", "Turno Tarde"
+  entryTime    String   // "07:30"
+  exitTime     String   // "12:30"
+  toleranceMin Int      @default(10)
+  isActive     Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
 enum AcademicLevel {
   INICIAL
   PRIMARIA
@@ -293,6 +306,9 @@ model Teacher {
   birthDate DateTime?
   hoursLoad Int?
   gender     String?
+  entryTime    String?  // "07:30" — hora de entrada del maestro
+  exitTime     String?  // "12:30" — hora de salida del maestro
+  toleranceMin Int      @default(10) // minutos de tolerancia para retraso
   attendanceCode String?  @unique  // código para marcar asistencia sin login
   isActive  Boolean   @default(true)
   createdAt DateTime  @default(now())
@@ -321,7 +337,7 @@ model TeacherSpecialty {
 enum AttendanceStatus {
   PRESENTE
   AUSENTE
-  TARDANZA
+  RETRASO
   LICENCIA
 }
 //ASISTENCIA DEL MAESTRO
