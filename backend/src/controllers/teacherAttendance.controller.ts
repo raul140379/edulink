@@ -172,17 +172,21 @@ export const getMyHistory = async (req: AuthRequest, res: Response): Promise<voi
 // ─────────────────────────────────────────────
 export const getReport = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    const month  = req.query.month  ? parseInt(req.query.month  as string) : new Date().getMonth() + 1
-    const year   = req.query.year   ? parseInt(req.query.year   as string) : new Date().getFullYear()
-    const week   = req.query.week   ? parseInt(req.query.week   as string) : null
+    const month     = req.query.month  ? parseInt(req.query.month  as string) : new Date().getMonth() + 1
+    const year      = req.query.year   ? parseInt(req.query.year   as string) : new Date().getFullYear()
+    const week      = req.query.week   ? parseInt(req.query.week   as string) : null
+    const date      = req.query.date   as string | undefined
     const teacherId = req.query.teacherId ? parseInt(req.query.teacherId as string) : undefined
 
     let start: Date, end: Date
 
-    if (week) {
-      // Semana específica del mes
-      const firstDay = new Date(year, month - 1, 1)
-      const dayOfWeek = firstDay.getDay()
+    if (date) {
+      const d = new Date(date)
+      start = startOfDay(d)
+      end   = endOfDay(d)
+    } else if (week) {
+      const firstDay   = new Date(year, month - 1, 1)
+      const dayOfWeek  = firstDay.getDay()
       const firstMonday = new Date(firstDay)
       firstMonday.setDate(firstDay.getDate() + (dayOfWeek === 0 ? 1 : 8 - dayOfWeek) % 7)
       start = new Date(firstMonday)
@@ -191,7 +195,6 @@ export const getReport = async (req: AuthRequest, res: Response): Promise<void> 
       end.setDate(start.getDate() + 6)
       end.setHours(23, 59, 59)
     } else {
-      // Mes completo
       start = new Date(year, month - 1, 1)
       end   = new Date(year, month, 0, 23, 59, 59)
     }
@@ -207,7 +210,6 @@ export const getReport = async (req: AuthRequest, res: Response): Promise<void> 
       orderBy: [{ teacher: { lastName: 'asc' } }, { date: 'asc' }]
     })
 
-    // Agrupar por maestro
     const byTeacher: Record<number, any> = {}
     records.forEach(r => {
       const tid = r.teacherId
@@ -224,7 +226,7 @@ export const getReport = async (req: AuthRequest, res: Response): Promise<void> 
     })
 
     res.json({
-      period: { start, end, month, year, week },
+      period: { start, end, month, year, week, date },
       teachers: Object.values(byTeacher),
       totalRecords: records.length,
     })
