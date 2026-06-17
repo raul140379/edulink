@@ -180,19 +180,75 @@ export const assignPeriod = async (req: AuthRequest, res: Response): Promise<voi
     const activeYear = academicYearId
       ? { id: academicYearId }
       : await prisma.academicYear.findFirst({ where: { isActive: true } })
-
     if (!activeYear) { res.status(400).json({ message: 'No hay gestión activa' }); return }
 
     // Verificar que teacherSubjectCourse existe y pertenece al curso
     const tsc = await prisma.teacherSubjectCourse.findFirst({
-      where: { id: teacherSubjectCourseId, courseId: parseInt(courseId) }
+      where: { id: teacherSubjectCourseId, courseId: parseInt(courseId) },
+      include: {
+        subject: {
+          include: {
+            gradeConfigs: true
+          }
+        },
+        course: { select: { grade: true, educationType: true } }
+      }
     })
     if (!tsc) { res.status(404).json({ message: 'Asignación de materia no encontrada para este curso' }); return }
+
+    // Obtener horario institucional activo
+    const course = await prisma.course.findUnique({ where: { id: parseInt(courseId) } })
+    const schoolSchedule = await prisma.schoolSchedule.findFirst({
+      where: { isActive: true, shift: course?.shift || 'MORNING' }
+    })
+
+    if (schoolSchedule) {
+      // Calcular periodos máximos permitidos para esta materia
+      const gradeConfig = tsc.subject.gradeConfigs.find(
+        gc => gc.grade === tsc.course.grade && gc.educationType === tsc.course.educationType
+      )
+
+      if (gradeConfig) {
+        const hoursPerMonth   = gradeConfig.hoursPerWeek
+        const minsPerWeek     = (hoursPerMonth / 4) * 60
+        const maxPeriodos     = Math.round(minsPerWeek / schoolSchedule.periodDuration)
+
+        // Contar periodos ya asignados para esta materia en este curso
+        const yaAsignados = await prisma.schedule.count({
+          where: {
+            courseId:      parseInt(courseId),
+            academicYearId: activeYear.id,
+            teacherSubjectCourseId,
+          }
+        })
+
+        if (yaAsignados >= maxPeriodos) {
+          res.status(400).json({
+            message: `${tsc.subject.name} ya tiene el máximo de periodos asignados (${maxPeriodos} periodos/semana según la carga horaria de ${hoursPerMonth} hrs/mes)`
+          }); return
+        }
+      }
+    }
+
+    // Verificar conflicto de maestro (mismo día y periodo en otro curso)
+    const conflictoMaestro = await prisma.schedule.findFirst({
+      where: {
+        academicYearId: activeYear.id,
+        dayOfWeek,
+        period,
+        teacherSubjectCourse: { teacherId: tsc.teacherId }
+      }
+    })
+    if (conflictoMaestro) {
+      res.status(400).json({
+        message: `El maestro ya tiene clase asignada el ${['','Lunes','Martes','Miércoles','Jueves','Viernes','Sábado'][dayOfWeek]} en el periodo ${period}`
+      }); return
+    }
 
     const schedule = await prisma.schedule.upsert({
       where: {
         courseId_academicYearId_dayOfWeek_period: {
-          courseId:      parseInt(courseId),
+          courseId:       parseInt(courseId),
           academicYearId: activeYear.id,
           dayOfWeek,
           period,
@@ -200,13 +256,14 @@ export const assignPeriod = async (req: AuthRequest, res: Response): Promise<voi
       },
       update: { startTime, endTime, teacherSubjectCourseId },
       create: {
-        courseId:      parseInt(courseId),
+        courseId:       parseInt(courseId),
         academicYearId: activeYear.id,
         dayOfWeek,
         period,
         startTime,
         endTime,
         teacherSubjectCourseId,
+        status: 'BORRADOR',
       },
       include: {
         teacherSubjectCourse: {
@@ -342,26 +399,22 @@ export const generateSchedule = async (req: AuthRequest, res: Response): Promise
   try {
     const { courseId } = req.params
 
-    // 1. Obtener gestión activa
     const activeYear = await prisma.academicYear.findFirst({ where: { isActive: true } })
     if (!activeYear) { res.status(400).json({ message: 'No hay gestión activa' }); return }
 
-    // 2. Obtener curso
     const course = await prisma.course.findUnique({ where: { id: parseInt(courseId) } })
     if (!course) { res.status(404).json({ message: 'Curso no encontrado' }); return }
 
-    // 3. Obtener horario institucional activo
     const schoolSchedule = await prisma.schoolSchedule.findFirst({
       where: { isActive: true, shift: course.shift }
     })
     if (!schoolSchedule) { res.status(400).json({ message: 'No hay horario institucional activo para este turno' }); return }
 
-    // 4. Calcular periodos disponibles por día
     const periodDuration = schoolSchedule.periodDuration
     const totalPeriods   = schoolSchedule.periods
     const DAYS = course.level === 'SECUNDARIA' ? [1,2,3,4,5,6] : [1,2,3,4,5]
 
-    // 5. Obtener materias asignadas al curso con sus maestros
+    // Obtener materias con maestros
     const tscs = await prisma.teacherSubjectCourse.findMany({
       where: { courseId: parseInt(courseId) },
       include: {
@@ -372,7 +425,6 @@ export const generateSchedule = async (req: AuthRequest, res: Response): Promise
             }
           }
         },
-        teacher: { select: { id: true, firstName: true, lastName: true } }
       }
     })
 
@@ -380,22 +432,27 @@ export const generateSchedule = async (req: AuthRequest, res: Response): Promise
       res.status(400).json({ message: 'El curso no tiene materias asignadas' }); return
     }
 
-    // 6. Calcular periodos/semana por materia
-    const materiasConPeriodos = tscs.map(tsc => {
-      const hoursPerMonth = tsc.subject.gradeConfigs[0]?.hoursPerWeek || 0
-      const minsPerMonth  = hoursPerMonth * 60
-      const minsPerWeek   = minsPerMonth / 4
-      const periodosSemanales = Math.round(minsPerWeek / periodDuration)
+    // Calcular periodos/semana por materia
+    const materias = tscs.map(tsc => {
+      const hoursPerMonth     = tsc.subject.gradeConfigs[0]?.hoursPerWeek || 0
+      const minsPerWeek       = (hoursPerMonth / 4) * 60
+      const periodosSemanales = Math.floor(minsPerWeek / periodDuration)
       return {
-        tscId:    tsc.id,
-        teacherId: tsc.teacherId,
-        subject:  tsc.subject.name,
-        periodos: periodosSemanales,
-        asignados: 0,
+        tscId:      tsc.id,
+        teacherId:  tsc.teacherId,
+        subject:    tsc.subject.name,
+        pendientes: periodosSemanales,
+        total:      periodosSemanales,
       }
-    }).filter(m => m.periodos > 0)
+    }).filter(m => m.total > 0)
+      .sort((a, b) => b.total - a.total) // Ordenar de más a menos periodos
 
-    // 7. Calcular periodos de cada hora del día
+    // Eliminar borrador existente
+    await prisma.schedule.deleteMany({
+      where: { courseId: parseInt(courseId), academicYearId: activeYear.id, status: 'BORRADOR' }
+    })
+
+    // Calcular periodos de horario
     const periodTimes = calcularPeriodos(
       schoolSchedule.startTime,
       totalPeriods,
@@ -404,75 +461,88 @@ export const generateSchedule = async (req: AuthRequest, res: Response): Promise
       schoolSchedule.breakAfter
     )
 
-    // 8. Eliminar horario borrador existente
-    await prisma.schedule.deleteMany({
-      where: { courseId: parseInt(courseId), academicYearId: activeYear.id, status: 'BORRADOR' }
-    })
-
-    // 9. Generar distribución
-    const created: any[] = []
-    const errors:  any[] = []
-
-    // Crear mapa de ocupación del maestro (teacherId → Set de "día-periodo")
-    const maestroOcupado: Record<number, Set<string>> = {}
-
-    // Cargar ocupaciones existentes (otros cursos ya publicados)
+    // Cargar ocupaciones de maestros en cursos ya publicados
     const existingSchedules = await prisma.schedule.findMany({
       where: { academicYearId: activeYear.id, status: 'PUBLICADO' },
       include: { teacherSubjectCourse: { select: { teacherId: true } } }
     })
+
+    // Mapa de ocupación: teacherId → Set<"día-periodo">
+    const maestroOcupado: Record<number, Set<string>> = {}
     existingSchedules.forEach(s => {
       const tid = s.teacherSubjectCourse.teacherId
       if (!maestroOcupado[tid]) maestroOcupado[tid] = new Set()
       maestroOcupado[tid].add(`${s.dayOfWeek}-${s.period}`)
     })
 
-    // Distribuir periodos por día usando round-robin
-    let dayIndex = 0
-    for (const materia of materiasConPeriodos) {
-      let pendientes = materia.periodos
-      let intentos   = 0
+    // Grilla del curso: Set<"día-periodo"> para saber qué celdas están ocupadas
+    const cursoOcupado = new Set<string>()
+    const created: any[] = []
+    const errors:  any[] = []
 
-      while (pendientes > 0 && intentos < totalPeriods * DAYS.length * 2) {
-        intentos++
-        const day    = DAYS[dayIndex % DAYS.length]
-        dayIndex++
+    // Algoritmo de distribución equitativa
+    // Usamos rondas: en cada ronda asignamos 1 periodo de cada materia
+    let hayPendientes = true
 
-        // Buscar periodo libre en este día para este curso y maestro
-        for (let p = 1; p <= totalPeriods; p++) {
-          // Verificar que el periodo del curso esté libre
-          const yaAsignado = created.find(c => c.dayOfWeek === day && c.period === p)
-          if (yaAsignado) continue
+    while (hayPendientes) {
+      hayPendientes = false
+      
+      for (const materia of materias) {
+        if (materia.pendientes <= 0) continue
+        hayPendientes = true
 
-          // Verificar que el maestro no esté ocupado
-          const key = `${day}-${p}`
-          if (!maestroOcupado[materia.teacherId]) maestroOcupado[materia.teacherId] = new Set()
-          if (maestroOcupado[materia.teacherId].has(key)) continue
+        // Calcular cuántos periodos ya asignados por día para esta materia
+        const asignadosPorDia: Record<number, number> = {}
+        DAYS.forEach(d => asignadosPorDia[d] = 0)
+        created.filter(c => c.teacherSubjectCourseId === materia.tscId)
+          .forEach(c => asignadosPorDia[c.dayOfWeek]++)
 
-          // Asignar
-          const pt = periodTimes[p - 1]
-          created.push({
-            courseId:              parseInt(courseId),
-            academicYearId:        activeYear.id,
-            dayOfWeek:             day,
-            period:                p,
-            startTime:             pt.startTime,
-            endTime:               pt.endTime,
-            teacherSubjectCourseId: materia.tscId,
-            status:                'BORRADOR',
-          })
-          maestroOcupado[materia.teacherId].add(key)
-          pendientes--
-          break
+        // Intentar asignar en el día con menos periodos de esta materia
+        const diasOrdenados = [...DAYS].sort((a, b) => asignadosPorDia[a] - asignadosPorDia[b])
+
+        let asignado = false
+        for (const day of diasOrdenados) {
+          if (asignado) break
+          
+          // Buscar periodo libre en este día
+          for (let p = 1; p <= totalPeriods; p++) {
+            const key = `${day}-${p}`
+            
+            // Verificar que el curso no tenga algo en esta celda
+            if (cursoOcupado.has(key)) continue
+
+            // Verificar que el maestro no esté ocupado
+            if (!maestroOcupado[materia.teacherId]) maestroOcupado[materia.teacherId] = new Set()
+            if (maestroOcupado[materia.teacherId].has(key)) continue
+
+            // Asignar
+            const pt = periodTimes[p - 1]
+            created.push({
+              courseId:               parseInt(courseId),
+              academicYearId:         activeYear.id,
+              dayOfWeek:              day,
+              period:                 p,
+              startTime:              pt.startTime,
+              endTime:                pt.endTime,
+              teacherSubjectCourseId: materia.tscId,
+              status:                 'BORRADOR',
+            })
+            cursoOcupado.add(key)
+            maestroOcupado[materia.teacherId].add(key)
+            materia.pendientes--
+            asignado = true
+            break
+          }
         }
-      }
 
-      if (pendientes > 0) {
-        errors.push({ subject: materia.subject, periodosFaltantes: pendientes })
+        if (!asignado) {
+          errors.push({ subject: materia.subject, periodosFaltantes: materia.pendientes })
+          materia.pendientes = 0 // Evitar loop infinito
+        }
       }
     }
 
-    // 10. Guardar en BD
+    // Guardar en BD
     await prisma.schedule.createMany({ data: created, skipDuplicates: true })
 
     res.json({
@@ -525,5 +595,57 @@ export const deleteDraft = async (req: AuthRequest, res: Response): Promise<void
     res.json({ message: `Borrador eliminado: ${deleted.count} periodos`, count: deleted.count })
   } catch (error) {
     res.status(500).json({ message: 'Error al eliminar borrador' })
+  }
+}
+
+
+export const getTscsByCourse = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const { courseId } = req.params
+
+    const course = await prisma.course.findUnique({ where: { id: parseInt(courseId) } })
+    if (!course) { res.status(404).json({ message: 'Curso no encontrado' }); return }
+
+    // Obtener horario activo para calcular periodos máximos
+    const schoolSchedule = await prisma.schoolSchedule.findFirst({
+      where: { isActive: true, shift: course.shift }
+    })
+
+    const tscs = await prisma.teacherSubjectCourse.findMany({
+      where: { courseId: parseInt(courseId) },
+      include: {
+        teacher: { select: { id: true, firstName: true, lastName: true } },
+        subject: {
+          select: {
+            id: true, name: true, campo: true,
+            gradeConfigs: {
+              where: { grade: course.grade, educationType: course.educationType }
+            }
+          }
+        },
+      }
+    })
+
+    // Agregar periodos máximos calculados
+    const result = tscs.map(t => {
+      const hoursPerMonth    = t.subject.gradeConfigs[0]?.hoursPerWeek || 0
+      const minsPerWeek      = (hoursPerMonth / 4) * 60
+      const maxPeriodos      = schoolSchedule
+        ? Math.floor(minsPerWeek / schoolSchedule.periodDuration)
+        : 0
+      return {
+        id:          t.id,
+        teacherId:   t.teacherId,
+        subjectId:   t.subjectId,
+        teacher:     t.teacher,
+        subject:     { id: t.subject.id, name: t.subject.name, campo: t.subject.campo },
+        hoursPerMonth,
+        maxPeriodos,
+      }
+    })
+
+    res.json(result)
+  } catch (error) {
+    res.status(500).json({ message: 'Error al obtener asignaciones' })
   }
 }
