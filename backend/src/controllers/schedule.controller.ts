@@ -44,6 +44,11 @@ export const createSchoolSchedule = async (req: AuthRequest, res: Response): Pro
   try {
     const { shift, name, startTime, exitTime, periods, periodDuration, breakDuration, breakAfter, isWinter } = req.body
 
+    // Verificar si ya hay un horario activo para este turno
+    const hayActivo = await prisma.schoolSchedule.findFirst({
+      where: { shift, isActive: true }
+    })
+
     const schedule = await prisma.schoolSchedule.create({
       data: {
         shift, name, startTime, exitTime,
@@ -52,7 +57,7 @@ export const createSchoolSchedule = async (req: AuthRequest, res: Response): Pro
         breakDuration:  breakDuration  || 15,
         breakAfter:     breakAfter     || '2,4',
         isWinter:       isWinter       || false,
-        isActive:       true,
+        isActive:       !hayActivo, // Solo activo si no hay otro activo en ese turno
       }
     })
 
@@ -61,7 +66,6 @@ export const createSchoolSchedule = async (req: AuthRequest, res: Response): Pro
     res.status(500).json({ message: 'Error al crear configuración' })
   }
 }
-
 // ─────────────────────────────────────────────
 // PUT /api/schedules/school-schedules/:id
 // Actualizar configuración
