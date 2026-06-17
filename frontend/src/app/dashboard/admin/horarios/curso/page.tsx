@@ -47,6 +47,24 @@ const CAMPO_BG: Record<string,string> = {
   CIENCIA_TECNOLOGIA_PRODUCCION: '#F5E8F5',
 }
 
+const SUBJECT_EMOJI: Record<string, string> = {
+  'Matemática':                             '🔢',
+  'Lenguas Castellana y Originaria':        '📖',
+  'Lengua Extranjera':                      '🌍',
+  'Ciencias Sociales':                      '🏛️',
+  'Ciencias Naturales: Biología':           '🧬',
+  'Física':                                 '⚛️',
+  'Química':                                '🧪',
+  'Educación Física y Deportes':            '⚽',
+  'Educación Musical':                      '🎵',
+  'Artes Plásticas y Visuales':             '🎨',
+  'Cosmovisiones y Filosofía':              '🌌',
+  'Valores, Espiritualidad y Religiones':   '☮️',
+  'Psicología':                             '🧠',
+  'Técnica Tecnológica General':            '⚙️',
+  'Técnica Tecnológica General y Especializada': '🔧',
+}
+
 export default function HorarioCursoPage() {
   const router = useRouter()
   const [courses,    setCourses]    = useState<Course[]>([])
@@ -426,6 +444,9 @@ export default function HorarioCursoPage() {
                               }}>
                               {cell ? (
                                 <div style={{position:'relative',padding:'2px 0'}}>
+                                 <div style={{fontSize:16,lineHeight:1,marginBottom:3}}>
+                                    {SUBJECT_EMOJI[cell.teacherSubjectCourse.subject.name] || '📚'}
+                                  </div>
                                   <div style={{
                                     fontSize:11,fontWeight:700,lineHeight:1.3,
                                     color: campo ? CAMPO_COLOR[campo] : '#1A3A7C',
