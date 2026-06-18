@@ -6,7 +6,7 @@ import Link from 'next/link'
 import Image from 'next/image'
 import {
   LayoutDashboard, DollarSign, Bell, BookOpen,
-  LogOut, Menu, X, ChevronRight, Users, UserCircle
+  LogOut, Menu, X, ChevronRight, Users, UserCircle, Calendar
 } from 'lucide-react'
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000'
@@ -19,6 +19,7 @@ interface User {
 
 const menuItems = [
   { label: 'Inicio',           href: '/dashboard/parent',                icon: <LayoutDashboard size={18}/> },
+   { label: 'Horario',          href: '/dashboard/parent/horario',          icon: <Calendar size={18}/> },
   { label: 'Calificaciones',   href: '/dashboard/parent/calificaciones',  icon: <BookOpen size={18}/> },
   { label: 'Estado de Cuenta', href: '/dashboard/parent/tesoreria',       icon: <DollarSign size={18}/> },
   { label: 'Maestros',         href: '/dashboard/parent/maestros',         icon: <Users size={18}/> },

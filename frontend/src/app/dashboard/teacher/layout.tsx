@@ -6,7 +6,7 @@ import Link from 'next/link'
 import Image from 'next/image'
 import {
   LayoutDashboard, Bell,
-  LogOut, Menu, X, ChevronRight, BookOpen, Users, Clock, UserCircle, FileText
+  LogOut, Menu, X, ChevronRight, BookOpen, Users, Clock, UserCircle, FileText,Calendar
 } from 'lucide-react'
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000'
