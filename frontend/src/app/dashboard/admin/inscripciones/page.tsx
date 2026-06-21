@@ -69,6 +69,7 @@ export default function InscripcionesPage() {
   const [selectedCourse,  setSelectedCourse]  = useState('')
   const [enrollFilterLvl, setEnrollFilterLvl] = useState('')
   const [saving,          setSaving]          = useState(false)
+  const [canceling,       setCanceling]       = useState<number | null>(null)
 
   // Modal tutor
   const [showTutorModal,  setShowTutorModal]  = useState(false)
@@ -91,7 +92,7 @@ export default function InscripcionesPage() {
     setLoading(true)
     try {
       const [sRes, cRes] = await Promise.all([
-        fetch(`${API_URL}/api/students`, { headers: { Authorization: `Bearer ${token}` } }),
+        fetch(`${API_URL}/api/students?isActive=true`, { headers: { Authorization: `Bearer ${token}` } }),
         fetch(`${API_URL}/api/courses`,  { headers: { Authorization: `Bearer ${token}` } }),
       ])
       const [sData, cData] = await Promise.all([sRes.json(), cRes.json()])
@@ -149,6 +150,22 @@ export default function InscripcionesPage() {
       fetchData()
     } catch { notify('Error de conexión', 'err') }
     finally  { setSaving(false) }
+  }
+
+  const handleCancel = async (student: Student) => {
+    if (!confirm(`¿Anular la inscripción de ${student.lastName} ${student.firstName}? El estudiante quedará sin curso.`)) return
+    setCanceling(student.id)
+    try {
+      const res  = await fetch(`${API_URL}/api/students/${student.id}/enroll`, {
+        method:  'DELETE',
+        headers: { Authorization: `Bearer ${token}` },
+      })
+      const data = await res.json()
+      if (!res.ok) { notify(data.message, 'err'); return }
+      notify(data.message)
+      fetchData()
+    } catch { notify('Error de conexión', 'err') }
+    finally  { setCanceling(null) }
   }
 
   // ── Tutor ──
@@ -370,9 +387,19 @@ export default function InscripcionesPage() {
                             <UserPlus size={13}/> Inscribir
                           </button>
                         ) : (
-                          <button className="btn-action change" onClick={() => openChange(s)} title="Cambiar curso">
-                            <RefreshCw size={13}/> Cambiar
-                          </button>
+                          <>
+                            <button className="btn-action change" onClick={() => openChange(s)} title="Cambiar curso">
+                              <RefreshCw size={13}/> Cambiar
+                            </button>
+                            <button
+                              className="btn-action cancel"
+                              onClick={() => handleCancel(s)}
+                              disabled={canceling === s.id}
+                              title="Anular inscripción">
+                              {canceling === s.id ? <span className="spinsm"/> : <X size={13}/>}
+                              Anular
+                            </button>
+                          </>
                         )}
                         {tutor ? (
                           <button className="btn-action tutor-change" onClick={() => openChangeTutor(s)} title="Cambiar tutor">
@@ -578,10 +605,13 @@ export default function InscripcionesPage() {
         .course-badge{background:#E1F5EE;color:#0F6E56;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:500;white-space:nowrap}
         .actions{display:flex;gap:6px;flex-wrap:wrap}
         .btn-action{display:flex;align-items:center;gap:4px;padding:5px 10px;border:none;border-radius:6px;font-size:11px;font-weight:500;cursor:pointer;white-space:nowrap}
+        .btn-action:disabled{opacity:.6;cursor:not-allowed}
         .btn-action.enroll{background:#1A3A7C;color:#fff}
         .btn-action.enroll:hover{background:#4A9FD4}
         .btn-action.change{background:#F0F6FC;color:#1A3A7C;border:1px solid #CBE0F0}
         .btn-action.change:hover{background:#E0ECF8}
+        .btn-action.cancel{background:#FFF0F0;color:#C0392B;border:1px solid #FFBBBB}
+        .btn-action.cancel:hover:not(:disabled){background:#FFE0E0}
         .btn-action.tutor-assign{background:#E1F5EE;color:#0F6E56;border:1px solid #9FE1CB}
         .btn-action.tutor-assign:hover{background:#C8EFE3}
         .btn-action.tutor-change{background:#FFFBEA;color:#BA7517;border:1px solid #F5C518}

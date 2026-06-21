@@ -1289,3 +1289,34 @@ export const saveMyAutoEvaluacion = async (req: AuthRequest, res: Response): Pro
     res.status(500).json({ message: 'Error al guardar autoevaluación' })
   }
 }
+// ─────────────────────────────────────────────
+// DELETE /api/students/:id/enroll — Anular inscripción
+// ─────────────────────────────────────────────
+export const cancelEnrollment = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const { id } = req.params
+
+    const activeYear = await prisma.academicYear.findFirst({ where: { isActive: true } })
+    if (!activeYear) {
+      res.status(400).json({ message: 'No hay gestión académica activa' }); return
+    }
+
+    const existing = await prisma.studentAcademicAssignment.findFirst({
+      where: { studentId: parseInt(id), academicYearId: activeYear.id },
+      include: { course: true }
+    })
+
+    if (!existing) {
+      res.status(404).json({ message: 'El estudiante no tiene inscripción activa en esta gestión' }); return
+    }
+
+    await prisma.studentAcademicAssignment.delete({ where: { id: existing.id } })
+
+    res.json({
+      message: `Inscripción anulada correctamente. El estudiante salió de ${existing.course.grade} "${existing.course.parallel}"`
+    })
+  } catch (error) {
+    console.error('cancelEnrollment error:', error)
+    res.status(500).json({ message: 'Error al anular inscripción' })
+  }
+}

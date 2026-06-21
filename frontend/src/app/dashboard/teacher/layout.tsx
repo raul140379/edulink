@@ -18,6 +18,7 @@ interface User {
 }
 const menuItems = [
   { label: 'Mi Perfil',       href: '/dashboard/teacher/perfil',         icon: <UserCircle size={18}/> },
+  { label: 'Mi Horario',      href: '/dashboard/teacher/horario',         icon: <Calendar size={18}/> },
   { label: 'Mi Curso',        href: '/dashboard/teacher',                 icon: <LayoutDashboard size={18}/> },
   { label: 'Carga Horaria',   href: '/dashboard/teacher/workload',        icon: <Clock size={18}/> },
   { label: 'Mis Notas',       href: '/dashboard/teacher/notas',           icon: <BookOpen size={18}/> },
