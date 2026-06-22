@@ -139,6 +139,7 @@ export const getCourseSchedule = async (req: AuthRequest, res: Response): Promis
     const schedules = await prisma.schedule.findMany({
       where: { courseId: parseInt(courseId), academicYearId: activeYear.id },
       include: {
+         classroom: true,  // ← AGREGAR ESTA LÍNEA
         teacherSubjectCourse: {
           include: {
             teacher: { select: { id: true, firstName: true, lastName: true } },

@@ -19,9 +19,17 @@ interface TSC {
   maxPeriodos:   number
 }
 
+interface Classroom {
+  id:       number
+  name:     string
+  capacity: number | null
+}
+
 interface ScheduleItem {
   id: number; dayOfWeek: number; period: number
   startTime: string; endTime: string; status: string
+  classroomId?: number
+  classroom?: { id: number; name: string }
   teacherSubjectCourse: {
     id: number
     teacher: { firstName: string; lastName: string }
@@ -76,9 +84,21 @@ export default function HorarioCursoPage() {
   const [generating, setGenerating] = useState(false)
   const [publishing, setPublishing] = useState(false)
   const [toast,      setToast]      = useState<{type:'ok'|'err'|'warn'; text:string} | null>(null)
-  const [showModal,  setShowModal]  = useState(false)
-  const [selCell,    setSelCell]    = useState<{day:number; period:number; startTime:string; endTime:string} | null>(null)
-  const [selTsc,     setSelTsc]     = useState('')
+
+  // Modal asignar materia
+  const [showModal, setShowModal] = useState(false)
+  const [selCell,   setSelCell]   = useState<{day:number; period:number; startTime:string; endTime:string} | null>(null)
+  const [selTsc,    setSelTsc]    = useState('')
+
+  // Modal asignar aula a periodo individual
+  const [classrooms,         setClassrooms]         = useState<Classroom[]>([])
+  const [showClassroomModal, setShowClassroomModal] = useState(false)
+  const [selScheduleId,      setSelScheduleId]      = useState<number | null>(null)
+  const [selClassroom,       setSelClassroom]       = useState('')
+
+  // Modal asignar aula a todo el curso
+  const [showBulkClassroomModal, setShowBulkClassroomModal] = useState(false)
+  const [bulkClassroom,          setBulkClassroom]          = useState('')
 
   const token = () => localStorage.getItem('token') || ''
   const auth  = () => ({ Authorization: `Bearer ${token()}` })
@@ -90,6 +110,9 @@ export default function HorarioCursoPage() {
   useEffect(() => {
     fetch(`${API}/api/courses`, { headers: auth() })
       .then(r=>r.json()).then(d=>{ if(Array.isArray(d)) setCourses(d) })
+
+    fetch(`${API}/api/classrooms`, { headers: auth() })
+      .then(r=>r.json()).then(d=>{ if(Array.isArray(d)) setClassrooms(d) })
   }, [])
 
   useEffect(() => {
@@ -228,6 +251,36 @@ export default function HorarioCursoPage() {
     loadTscs()
   }
 
+  // Asignar aula a periodo individual (borrador o publicado)
+  const handleAssignClassroom = async () => {
+    if (!selScheduleId) return
+    const res = await fetch(`${API}/api/classrooms/${selScheduleId}/classroom`, {
+      method: 'PATCH',
+      headers: { ...auth(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ classroomId: selClassroom ? parseInt(selClassroom) : null })
+    })
+    const data = await res.json()
+    if (!res.ok) { showToast('err', data.message); return }
+    showToast('ok', selClassroom ? 'Aula asignada correctamente' : 'Aula removida')
+    setShowClassroomModal(false)
+    loadSchedule()
+  }
+
+  // Asignar aula a todos los periodos en borrador del curso
+  const handleAssignClassroomToAll = async () => {
+    if (!selCourse || !bulkClassroom) return
+    const res = await fetch(`${API}/api/classrooms/course/${selCourse.id}/all`, {
+      method: 'PATCH',
+      headers: { ...auth(), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ classroomId: parseInt(bulkClassroom) })
+    })
+    const data = await res.json()
+    if (!res.ok) { showToast('err', data.message); return }
+    showToast('ok', data.message)
+    setShowBulkClassroomModal(false)
+    loadSchedule()
+  }
+
   const totalPeriods = schoolSch?.periods || 7
   const days = selCourse?.level === 'SECUNDARIA' ? [1,2,3,4,5,6] : [1,2,3,4,5]
   const getCell = (day: number, period: number) =>
@@ -236,7 +289,6 @@ export default function HorarioCursoPage() {
   const hasDraft     = schedule.some(s => s.status === 'BORRADOR')
   const hasPublished = schedule.some(s => s.status === 'PUBLICADO')
 
-  // Progreso total
   const totalAsignados = resumenMaterias.reduce((s,t)=>s+t.asignados,0)
   const totalMaximo    = resumenMaterias.reduce((s,t)=>s+t.maxPeriodos,0)
   const progresoPct    = totalMaximo > 0 ? Math.round((totalAsignados/totalMaximo)*100) : 0
@@ -317,6 +369,12 @@ export default function HorarioCursoPage() {
               style={{display:'flex',alignItems:'center',gap:7,padding:'9px 16px',background:'#633806',color:'#fff',border:'none',borderRadius:8,fontSize:13,fontWeight:600,cursor:'pointer',opacity:(generating||!schoolSch)?0.6:1}}>
               <Zap size={15}/> {generating?'Generando...':'⚡ Generar Automático'}
             </button>
+            {(hasDraft || hasPublished) && (
+              <button onClick={()=>{ setBulkClassroom(''); setShowBulkClassroomModal(true) }}
+                style={{display:'flex',alignItems:'center',gap:7,padding:'9px 16px',background:'#fff',color:'#1A3A7C',border:'1.5px solid #CBE0F0',borderRadius:8,fontSize:13,fontWeight:600,cursor:'pointer'}}>
+                🚪 Asignar aula a todo el curso
+              </button>
+            )}
             {hasDraft && (
               <>
                 <button onClick={handlePublish} disabled={publishing}
@@ -394,6 +452,9 @@ export default function HorarioCursoPage() {
             <div style={{display:'flex',alignItems:'center',gap:6,fontSize:12,color:'#6B8BB0'}}>
               <div style={{width:12,height:12,borderRadius:3,background:'#FAFCFF',border:'1px dashed #CBE0F0'}}/> Libre (clic para asignar)
             </div>
+            <div style={{display:'flex',alignItems:'center',gap:6,fontSize:12,color:'#6B8BB0'}}>
+              📍 Clic en cualquier celda ocupada para asignar/cambiar aula
+            </div>
           </div>
 
           {/* Grilla */}
@@ -421,30 +482,36 @@ export default function HorarioCursoPage() {
                           <div style={{fontSize:10,color:'#6B8BB0',fontWeight:400}}>{pt.endTime}</div>
                         </td>
                         {days.map(day => {
-                          const cell       = getCell(day, period)
-                          const isDraft    = cell?.status === 'BORRADOR'
+                          const cell        = getCell(day, period)
+                          const isDraft     = cell?.status === 'BORRADOR'
                           const isPublished = cell?.status === 'PUBLICADO'
-                          const campo      = cell?.teacherSubjectCourse?.subject?.campo
+                          const campo       = cell?.teacherSubjectCourse?.subject?.campo
                           return (
                             <td key={day} style={{
                               ...tdStyle,
                               background:  isDraft ? '#FFFEF0' : isPublished ? '#F0FBF5' : '#FAFCFF',
                               borderColor: isDraft ? '#F5C518' : isPublished ? '#9FE1CB' : '#E0EAF5',
                               borderStyle: cell ? 'solid' : 'dashed',
-                              cursor: !isPublished ? 'pointer' : 'default',
+                              cursor: cell ? 'pointer' : 'default',
                               minWidth: 110,
                             }}
-                              onClick={()=>{
+                              onClick={() => {
                                 if (!cell) {
+                                  // Celda vacía → asignar materia
                                   const pt = getPeriodTime(period)
                                   setSelCell({day, period, startTime:pt.startTime, endTime:pt.endTime})
                                   setSelTsc('')
                                   setShowModal(true)
+                                } else {
+                                  // Celda ocupada (borrador o publicado) → asignar/cambiar aula
+                                  setSelScheduleId(cell.id)
+                                  setSelClassroom(cell.classroomId ? String(cell.classroomId) : '')
+                                  setShowClassroomModal(true)
                                 }
                               }}>
                               {cell ? (
                                 <div style={{position:'relative',padding:'2px 0'}}>
-                                 <div style={{fontSize:16,lineHeight:1,marginBottom:3}}>
+                                  <div style={{fontSize:16,lineHeight:1,marginBottom:3}}>
                                     {SUBJECT_EMOJI[cell.teacherSubjectCourse.subject.name] || '📚'}
                                   </div>
                                   <div style={{
@@ -456,6 +523,15 @@ export default function HorarioCursoPage() {
                                   <div style={{fontSize:10,color:'#6B8BB0',marginTop:1}}>
                                     {cell.teacherSubjectCourse.teacher.lastName}
                                   </div>
+                                  {cell.classroom && (
+                                    <div style={{
+                                      fontSize:9,color:'#0F6E56',fontWeight:600,marginTop:2,
+                                      background:'#E1F5EE',borderRadius:4,padding:'1px 5px',
+                                      display:'inline-block',
+                                    }}>
+                                      📍 {cell.classroom.name}
+                                    </div>
+                                  )}
                                   {!isPublished && (
                                     <button
                                       onClick={e=>{e.stopPropagation();handleDeletePeriod(cell.id)}}
@@ -486,7 +562,7 @@ export default function HorarioCursoPage() {
         </>
       )}
 
-      {/* Modal asignar periodo */}
+      {/* Modal asignar materia */}
       {showModal && selCell && (
         <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,.45)',zIndex:500,display:'flex',alignItems:'center',justifyContent:'center',padding:16}}>
           <div style={{background:'#fff',borderRadius:14,width:'100%',maxWidth:440,boxShadow:'0 20px 60px rgba(0,0,0,.2)'}}>
@@ -526,6 +602,116 @@ export default function HorarioCursoPage() {
               <button onClick={handleAssign} disabled={!selTsc}
                 style={{display:'flex',alignItems:'center',gap:6,padding:'8px 18px',background:'#1A3A7C',color:'#fff',border:'none',borderRadius:8,fontSize:13,fontWeight:600,cursor:'pointer',opacity:!selTsc?0.5:1}}>
                 <Save size={13}/> Asignar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal asignar aula a periodo individual */}
+      {showClassroomModal && (
+        <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,.45)',zIndex:500,display:'flex',alignItems:'center',justifyContent:'center',padding:16}}>
+          <div style={{background:'#fff',borderRadius:14,width:'100%',maxWidth:380,boxShadow:'0 20px 60px rgba(0,0,0,.2)'}}>
+            <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'16px 20px',borderBottom:'1px solid #CBE0F0'}}>
+              <div>
+                <h3 style={{fontSize:15,fontWeight:700,color:'#1A3A7C',margin:0}}>Asignar Aula</h3>
+                <p style={{fontSize:12,color:'#6B8BB0',margin:'2px 0 0'}}>Espacio físico para este periodo</p>
+              </div>
+              <button onClick={()=>setShowClassroomModal(false)} style={{background:'none',border:'none',cursor:'pointer',color:'#6B8BB0'}}>
+                <X size={18}/>
+              </button>
+            </div>
+            <div style={{padding:20}}>
+              <label style={{fontSize:11,fontWeight:700,color:'#1A3A7C',textTransform:'uppercase',letterSpacing:'.5px',display:'block',marginBottom:8}}>
+                Aula física
+              </label>
+              {classrooms.length === 0 ? (
+                <div style={{padding:'12px',background:'#FFF0F0',borderRadius:8,fontSize:12,color:'#C0392B'}}>
+                  No hay aulas registradas.{' '}
+                  <span onClick={()=>router.push('/dashboard/admin/horarios/aulas')}
+                    style={{textDecoration:'underline',cursor:'pointer'}}>
+                    Crear aulas aquí
+                  </span>
+                </div>
+              ) : (
+                <select value={selClassroom} onChange={e=>setSelClassroom(e.target.value)}
+                  style={{width:'100%',padding:'10px 12px',border:'1.5px solid #CBE0F0',borderRadius:8,fontSize:13,color:'#1A3A7C',outline:'none'}}>
+                  <option value="">-- Sin aula asignada --</option>
+                  {classrooms.map(c=>(
+                    <option key={c.id} value={c.id}>
+                      {c.name}{c.capacity ? ` (cap. ${c.capacity})` : ''}
+                    </option>
+                  ))}
+                </select>
+              )}
+              <p style={{fontSize:11,color:'#6B8BB0',margin:'8px 0 0'}}>
+                Selecciona "Sin aula asignada" para quitar el aula de este periodo.
+              </p>
+            </div>
+            <div style={{display:'flex',justifyContent:'flex-end',gap:10,padding:'12px 20px',borderTop:'1px solid #CBE0F0'}}>
+              <button onClick={()=>setShowClassroomModal(false)}
+                style={{padding:'8px 16px',background:'#fff',border:'1.5px solid #CBE0F0',borderRadius:8,fontSize:13,cursor:'pointer',color:'#1A3A7C'}}>
+                Cancelar
+              </button>
+              <button onClick={handleAssignClassroom} disabled={classrooms.length===0}
+                style={{display:'flex',alignItems:'center',gap:6,padding:'8px 18px',background:'#0F6E56',color:'#fff',border:'none',borderRadius:8,fontSize:13,fontWeight:600,cursor:'pointer',opacity:classrooms.length===0?0.5:1}}>
+                <Save size={13}/> Guardar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal asignar aula a todo el curso */}
+      {showBulkClassroomModal && (
+        <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,.45)',zIndex:500,display:'flex',alignItems:'center',justifyContent:'center',padding:16}}>
+          <div style={{background:'#fff',borderRadius:14,width:'100%',maxWidth:400,boxShadow:'0 20px 60px rgba(0,0,0,.2)'}}>
+            <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'16px 20px',borderBottom:'1px solid #CBE0F0'}}>
+              <div>
+                <h3 style={{fontSize:15,fontWeight:700,color:'#1A3A7C',margin:0}}>Asignar aula a todo el curso</h3>
+                <p style={{fontSize:12,color:'#6B8BB0',margin:'2px 0 0'}}>
+                  Se aplicará a todos los periodos del curso
+                </p>
+              </div>
+              <button onClick={()=>setShowBulkClassroomModal(false)} style={{background:'none',border:'none',cursor:'pointer',color:'#6B8BB0'}}>
+                <X size={18}/>
+              </button>
+            </div>
+            <div style={{padding:20}}>
+              <label style={{fontSize:11,fontWeight:700,color:'#1A3A7C',textTransform:'uppercase',letterSpacing:'.5px',display:'block',marginBottom:8}}>
+                Aula física
+              </label>
+              {classrooms.length === 0 ? (
+                <div style={{padding:'12px',background:'#FFF0F0',borderRadius:8,fontSize:12,color:'#C0392B'}}>
+                  No hay aulas registradas.{' '}
+                  <span onClick={()=>router.push('/dashboard/admin/horarios/aulas')}
+                    style={{textDecoration:'underline',cursor:'pointer'}}>
+                    Crear aulas aquí
+                  </span>
+                </div>
+              ) : (
+                <select value={bulkClassroom} onChange={e=>setBulkClassroom(e.target.value)}
+                  style={{width:'100%',padding:'10px 12px',border:'1.5px solid #CBE0F0',borderRadius:8,fontSize:13,color:'#1A3A7C',outline:'none'}}>
+                  <option value="">-- Selecciona un aula --</option>
+                  {classrooms.map(c=>(
+                    <option key={c.id} value={c.id}>
+                      {c.name}{c.capacity ? ` (cap. ${c.capacity})` : ''}
+                    </option>
+                  ))}
+                </select>
+              )}
+              <p style={{fontSize:11,color:'#6B8BB0',margin:'8px 0 0'}}>
+                Esto sobreescribirá el aula de todos los periodos del curso.
+              </p>
+            </div>
+            <div style={{display:'flex',justifyContent:'flex-end',gap:10,padding:'12px 20px',borderTop:'1px solid #CBE0F0'}}>
+              <button onClick={()=>setShowBulkClassroomModal(false)}
+                style={{padding:'8px 16px',background:'#fff',border:'1.5px solid #CBE0F0',borderRadius:8,fontSize:13,cursor:'pointer',color:'#1A3A7C'}}>
+                Cancelar
+              </button>
+              <button onClick={handleAssignClassroomToAll} disabled={!bulkClassroom||classrooms.length===0}
+                style={{display:'flex',alignItems:'center',gap:6,padding:'8px 18px',background:'#1A3A7C',color:'#fff',border:'none',borderRadius:8,fontSize:13,fontWeight:600,cursor:'pointer',opacity:(!bulkClassroom||classrooms.length===0)?0.5:1}}>
+                <Save size={13}/> Asignar a todos
               </button>
             </div>
           </div>

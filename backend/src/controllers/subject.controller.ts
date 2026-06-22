@@ -380,3 +380,98 @@ export const removeSubjectFromGradePlan = async (req: AuthRequest, res: Response
     res.status(500).json({ message: 'Error al eliminar materia del plan' })
   }
 }
+// ─────────────────────────────────────────────
+// POST /api/subjects/assign-bulk
+// Asignar una materia + maestro a VARIOS cursos a la vez
+// ─────────────────────────────────────────────
+export const assignSubjectToMultipleCourses = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const { subjectId, teacherId, courseIds } = req.body
+
+    if (!subjectId || !teacherId || !Array.isArray(courseIds) || courseIds.length === 0) {
+      res.status(400).json({ message: 'Materia, maestro y al menos un curso son requeridos' })
+      return
+    }
+
+    const assigned: any[] = []
+    const skipped:  { courseId: number; reason: string }[] = []
+
+    for (const courseId of courseIds) {
+      const course = await prisma.course.findUnique({ where: { id: parseInt(courseId) } })
+      if (!course) {
+        skipped.push({ courseId, reason: 'Curso no encontrado' })
+        continue
+      }
+
+      // Validar que la materia pertenezca al plan de ese grado
+      const gradeConfig = await prisma.subjectGradeConfig.findFirst({
+        where: {
+          subjectId:     parseInt(subjectId),
+          grade:         course.grade         as any,
+          educationType: course.educationType as any,
+        }
+      })
+      if (!gradeConfig) {
+        skipped.push({ courseId, reason: 'No pertenece al plan de este grado' })
+        continue
+      }
+
+      // Validar si ya está ocupada por OTRO maestro
+      const existing = await prisma.teacherSubjectCourse.findFirst({
+        where: { subjectId: parseInt(subjectId), courseId: parseInt(courseId) }
+      })
+
+      if (existing) {
+        if (existing.teacherId === parseInt(teacherId)) {
+          skipped.push({ courseId, reason: 'Ya estaba asignado a este maestro' })
+        } else {
+          skipped.push({ courseId, reason: 'Ya asignado a otro maestro' })
+        }
+        continue
+      }
+
+      const created = await prisma.teacherSubjectCourse.create({
+        data: {
+          subjectId: parseInt(subjectId),
+          teacherId: parseInt(teacherId),
+          courseId:  parseInt(courseId),
+        },
+        include: {
+          subject: { select: { id: true, name: true, code: true, campo: true } },
+          course:  { select: { id: true, level: true, grade: true, parallel: true, shift: true } },
+        }
+      })
+      assigned.push(created)
+    }
+
+    res.status(201).json({
+      message:  `${assigned.length} curso(s) asignado(s)${skipped.length ? `, ${skipped.length} omitido(s)` : ''}`,
+      assigned,
+      skipped,
+    })
+  } catch (error) {
+    console.error('assignSubjectToMultipleCourses error:', error)
+    res.status(500).json({ message: 'Error al asignar materia a múltiples cursos' })
+  }
+}
+// ─────────────────────────────────────────────
+// GET /api/subjects/:id/occupied-courses
+// Cursos donde esta materia ya está asignada (a cualquier maestro)
+// ─────────────────────────────────────────────
+export const getOccupiedCoursesForSubject = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const { id } = req.params
+
+    const assignments = await prisma.teacherSubjectCourse.findMany({
+      where: { subjectId: parseInt(id) },
+      select: {
+        courseId: true,
+        teacher: { select: { id: true, firstName: true, lastName: true } }
+      }
+    })
+
+    res.json(assignments)
+  } catch (error) {
+    res.status(500).json({ message: 'Error al obtener cursos ocupados' })
+  }
+}

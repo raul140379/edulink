@@ -27,11 +27,6 @@ interface Periodo {
   endTime:   string
 }
 
-const SHIFT_LABEL: Record<string, string> = {
-  MORNING:   'Mañana',
-  AFTERNOON: 'Tarde',
-}
-
 export default function HorariosPage() {
   const [schedules,  setSchedules]  = useState<SchoolSchedule[]>([])
   const router = useRouter()
@@ -59,7 +54,6 @@ export default function HorariosPage() {
       const data = await res.json()
       if (res.ok) {
         setSchedules(data)
-        // Cargar periodos de cada configuración
         data.forEach(async (s: SchoolSchedule) => {
           const r = await fetch(`${API}/api/schedules/periodos/${s.id}`, { headers: auth() })
           const d = await r.json()
@@ -106,7 +100,7 @@ export default function HorariosPage() {
   }
 
   const toggleActive = async (s: SchoolSchedule) => {
-    if (s.isActive) return // No se puede desactivar manualmente
+    if (s.isActive) return
     try {
       await fetch(`${API}/api/schedules/school-schedules/${s.id}`, {
         method: 'PUT', headers: { ...auth(), 'Content-Type': 'application/json' },
@@ -117,8 +111,7 @@ export default function HorariosPage() {
     } catch { showToast('err', 'Error') }
   }
 
-  // Agrupar por turno
-  const morning  = schedules.filter(s => s.shift === 'MORNING')
+  const morning   = schedules.filter(s => s.shift === 'MORNING')
   const afternoon = schedules.filter(s => s.shift === 'AFTERNOON')
 
   return (
@@ -134,13 +127,22 @@ export default function HorariosPage() {
           {toast.text}
         </div>
       )}
-{/* Header */}
+
+      {/* Header */}
       <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:24,flexWrap:'wrap',gap:12}}>
         <div>
           <h1 style={{fontSize:20,fontWeight:700,color:'#1A3A7C',marginBottom:4}}>Configuración de Horarios</h1>
           <p style={{fontSize:13,color:'#6B8BB0'}}>Gestiona los horarios institucionales por turno</p>
         </div>
-        <div style={{display:'flex',gap:10}}>
+        <div style={{display:'flex',gap:10,flexWrap:'wrap'}}>
+          {/* ← NUEVO: botón de aulas */}
+          <button onClick={()=>router.push('/dashboard/admin/horarios/aulas')} style={{
+            display:'flex',alignItems:'center',gap:8,padding:'10px 18px',
+            background:'#fff',color:'#1A3A7C',border:'1.5px solid #CBE0F0',borderRadius:8,
+            fontSize:13,fontWeight:600,cursor:'pointer'
+          }}>
+            🚪 Gestionar Aulas
+          </button>
           <button onClick={()=>router.push('/dashboard/admin/horarios/curso')} style={{
             display:'flex',alignItems:'center',gap:8,padding:'10px 18px',
             background:'#0F6E56',color:'#fff',border:'none',borderRadius:8,
@@ -170,7 +172,6 @@ export default function HorariosPage() {
         </div>
       ) : (
         <>
-          {/* Turno Mañana */}
           {morning.length > 0 && (
             <div style={{marginBottom:24}}>
               <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:12}}>
@@ -183,7 +184,6 @@ export default function HorariosPage() {
             </div>
           )}
 
-          {/* Turno Tarde */}
           {afternoon.length > 0 && (
             <div style={{marginBottom:24}}>
               <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:12}}>
@@ -212,7 +212,6 @@ export default function HorariosPage() {
             </div>
             <div style={{padding:20,display:'flex',flexDirection:'column',gap:14}}>
 
-              {/* Nombre */}
               <div style={{display:'flex',flexDirection:'column',gap:6}}>
                 <label style={{fontSize:11,fontWeight:700,color:'#1A3A7C',textTransform:'uppercase',letterSpacing:'.5px'}}>Nombre *</label>
                 <input value={form.name} onChange={e=>setForm(p=>({...p,name:e.target.value}))}
@@ -220,7 +219,6 @@ export default function HorariosPage() {
                   style={{padding:'10px 12px',border:'1.5px solid #CBE0F0',borderRadius:8,fontSize:13,color:'#1A3A7C',outline:'none'}}/>
               </div>
 
-              {/* Turno e Invierno */}
               <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
                 <div style={{display:'flex',flexDirection:'column',gap:6}}>
                   <label style={{fontSize:11,fontWeight:700,color:'#1A3A7C',textTransform:'uppercase',letterSpacing:'.5px'}}>Turno</label>
@@ -240,7 +238,6 @@ export default function HorariosPage() {
                 </div>
               </div>
 
-              {/* Horario entrada/salida */}
               <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
                 <div style={{display:'flex',flexDirection:'column',gap:6}}>
                   <label style={{fontSize:11,fontWeight:700,color:'#1A3A7C',textTransform:'uppercase',letterSpacing:'.5px'}}>Hora de Entrada</label>
@@ -254,7 +251,6 @@ export default function HorariosPage() {
                 </div>
               </div>
 
-              {/* Periodos y duración */}
               <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:12}}>
                 <div style={{display:'flex',flexDirection:'column',gap:6}}>
                   <label style={{fontSize:11,fontWeight:700,color:'#1A3A7C',textTransform:'uppercase',letterSpacing:'.5px'}}>Periodos</label>
@@ -278,7 +274,6 @@ export default function HorariosPage() {
                 </div>
               </div>
 
-              {/* Recreo después de */}
               <div style={{display:'flex',flexDirection:'column',gap:6}}>
                 <label style={{fontSize:11,fontWeight:700,color:'#1A3A7C',textTransform:'uppercase',letterSpacing:'.5px'}}>Recreo después del periodo (separado por comas)</label>
                 <input value={form.breakAfter} onChange={e=>setForm(p=>({...p,breakAfter:e.target.value}))}
@@ -342,7 +337,6 @@ function ScheduleCard({ s, periodos, onEdit, onToggle }: {
         </div>
       </div>
 
-      {/* Periodos calculados */}
       {periodos.length > 0 && (
         <div style={{padding:'12px 18px'}}>
           <div style={{fontSize:11,fontWeight:700,color:'#6B8BB0',textTransform:'uppercase',letterSpacing:'.5px',marginBottom:8}}>

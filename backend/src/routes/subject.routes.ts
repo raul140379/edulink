@@ -10,6 +10,8 @@ import {
   getCoursePlan,
   addSubjectToGradePlan,
   removeSubjectFromGradePlan,
+  assignSubjectToMultipleCourses,
+  getOccupiedCoursesForSubject,
 } from '../controllers/subject.controller'
 
 const router = Router()
@@ -19,10 +21,11 @@ router.use(verifyToken)
 // ⚠️ Rutas específicas PRIMERO (antes de /:id para evitar conflicto)
 router.get('/plan/:courseId', getCoursePlan)
 router.post('/assign',        assignSubjectToCourse)
+router.post('/assign-bulk',   assignSubjectToMultipleCourses)
 router.delete('/assign/:id',  removeSubjectFromCourse)
 router.post('/grade-config', addSubjectToGradePlan)
 router.delete('/grade-config/:id', removeSubjectFromGradePlan)
-
+router.get('/:id/occupied-courses', getOccupiedCoursesForSubject)
 // Rutas genéricas DESPUÉS
 router.get('/',       getSubjects)
 router.post('/',      createSubject)

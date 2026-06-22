@@ -536,17 +536,27 @@ model Schedule {
   period                 Int                  // 1-7
   startTime              String               // "07:45"
   endTime                String               // "08:25"
-   status                 String               @default("BORRADOR") // BORRADOR, PUBLICADO
+  status                 String               @default("BORRADOR") // BORRADOR, PUBLICADO
   courseId               Int
   academicYearId         Int
   teacherSubjectCourseId Int
+  classroomId            Int?                 // ← NUEVO
   course               Course               @relation(fields: [courseId],       references: [id])
   academicYear         AcademicYear         @relation(fields: [academicYearId], references: [id])
   teacherSubjectCourse TeacherSubjectCourse @relation(fields: [teacherSubjectCourseId], references: [id])
+  classroom            Classroom?           @relation(fields: [classroomId], references: [id])  // ← NUEVO
 
   @@unique([courseId, academicYearId, dayOfWeek, period])
 }
- 
+ // aula de clases
+ model Classroom {
+  id        Int        @id @default(autoincrement())
+  name      String     @unique  // "Aula 101", "Laboratorio", "Patio"
+  capacity  Int?
+  isActive  Boolean    @default(true)
+  createdAt DateTime   @default(now())
+  schedules Schedule[]
+}
 // ─────────────────────────────────────────────
 // TESORERÍA
 // ─────────────────────────────────────────────

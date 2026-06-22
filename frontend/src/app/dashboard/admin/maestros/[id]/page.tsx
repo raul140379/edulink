@@ -1,4 +1,4 @@
-'use client'
+ 'use client'
 
 import { useEffect, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
@@ -36,6 +36,12 @@ interface Specialty {
   subject: { id: number; name: string; campo?: string }
 }
 
+interface OccupiedCourse {
+  courseId: number
+  teacher: { id: number; firstName: string; lastName: string }
+}
+
+const GRADE_ORDER: Record<string, number> = { PRIMERO:1, SEGUNDO:2, TERCERO:3, CUARTO:4, QUINTO:5, SEXTO:6 }
 const GRADES:  Record<string,string> = { PRIMERO:'1°', SEGUNDO:'2°', TERCERO:'3°', CUARTO:'4°', QUINTO:'5°', SEXTO:'6°' }
 const SHIFTS:  Record<string,string> = { MORNING:'Mañana', AFTERNOON:'Tarde', NIGHT:'Noche' }
 const LEVELS:  Record<string,string> = { INICIAL:'Inicial', PRIMARIA:'Primaria', SECUNDARIA:'Secundaria' }
@@ -66,9 +72,10 @@ export default function TeacherDetailPage() {
   const [teacher,         setTeacher]         = useState<Teacher | null>(null)
   const [specialties,     setSpecialties]     = useState<Specialty[]>([])
   const [courses,         setCourses]         = useState<Course[]>([])
+  const [occupied,        setOccupied]        = useState<OccupiedCourse[]>([])
   const [loading,         setLoading]         = useState(true)
   const [showModal,       setShowModal]       = useState(false)
-  const [selectedCourse,  setSelectedCourse]  = useState('')
+  const [selectedCourses, setSelectedCourses] = useState<number[]>([])
   const [selectedSubject, setSelectedSubject] = useState('')
   const [subjectSearch,   setSubjectSearch]   = useState('')
   const [courseSearch,    setCourseSearch]    = useState('')
@@ -87,7 +94,7 @@ export default function TeacherDetailPage() {
 
   const notify = (msg: string, type: 'ok' | 'err' = 'ok') => {
     if (type === 'ok') { setSuccess(msg); setTimeout(() => setSuccess(''), 3000) }
-    else               { setError(msg);   setTimeout(() => setError(''),   4000) }
+    else               { setError(msg);   setTimeout(() => setError(''),   5000) }
   }
 
   const fetchTeacher = async () => {
@@ -123,13 +130,35 @@ export default function TeacherDetailPage() {
     } catch { console.error('Error cargando cursos') }
   }
 
+  const fetchOccupied = async (subjectId: string) => {
+    if (!subjectId) { setOccupied([]); return }
+    try {
+      const res  = await fetch(`${API_URL}/api/subjects/${subjectId}/occupied-courses`, { headers: { Authorization: `Bearer ${token}` } })
+      const data = await res.json()
+      if (res.ok) setOccupied(data)
+    } catch { console.error('Error cargando cursos ocupados') }
+  }
+
   useEffect(() => { fetchTeacher() }, [id])
 
   const openModal = async () => {
-    setSelectedCourse(''); setSelectedSubject('')
-    setSubjectSearch(''); setCourseSearch('')
+    setSelectedCourses([]); setSelectedSubject('')
+    setSubjectSearch(''); setCourseSearch(''); setOccupied([])
     setShowModal(true)
     await Promise.all([fetchSpecialties(), fetchCourses()])
+  }
+
+  const handleSelectSubject = (subjectId: string) => {
+    setSelectedSubject(subjectId)
+    setSelectedCourses([]) // limpiar selección de cursos al cambiar materia
+    fetchOccupied(subjectId)
+  }
+
+  const toggleCourse = (courseId: number, isOccupiedByOther: boolean) => {
+    if (isOccupiedByOther) return
+    setSelectedCourses(prev =>
+      prev.includes(courseId) ? prev.filter(c => c !== courseId) : [...prev, courseId]
+    )
   }
 
   const handleSaveCode = async () => {
@@ -165,17 +194,25 @@ export default function TeacherDetailPage() {
   }
 
   const handleAssign = async () => {
-    if (!selectedCourse || !selectedSubject) { notify('Selecciona un curso y una materia', 'err'); return }
+    if (selectedCourses.length === 0 || !selectedSubject) {
+      notify('Selecciona una materia y al menos un curso', 'err'); return
+    }
     setSaving(true)
     try {
-      const res  = await fetch(`${API_URL}/api/subjects/assign`, {
+      const res  = await fetch(`${API_URL}/api/subjects/assign-bulk`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ subjectId: parseInt(selectedSubject), teacherId: parseInt(id), courseId: parseInt(selectedCourse) }),
+        body: JSON.stringify({
+          subjectId: parseInt(selectedSubject),
+          teacherId: parseInt(id),
+          courseIds: selectedCourses,
+        }),
       })
       const data = await res.json()
       if (!res.ok) { notify(data.message, 'err'); return }
-      notify(data.message); setShowModal(false); fetchTeacher()
+      notify(data.message)
+      setShowModal(false)
+      fetchTeacher()
     } catch { notify('Error de conexión', 'err') }
     finally  { setSaving(false) }
   }
@@ -192,13 +229,18 @@ export default function TeacherDetailPage() {
     finally  { setRemoving(null) }
   }
 
+  // Agrupar y ORDENAR por grado → paralelo
   const groupByCourse = (assignments: Assignment[]) => {
     const map: Record<number, { course: Assignment['course']; items: Assignment[] }> = {}
     for (const a of assignments) {
       if (!map[a.courseId]) map[a.courseId] = { course: a.course, items: [] }
       map[a.courseId].items.push(a)
     }
-    return Object.values(map)
+    return Object.values(map).sort((a, b) => {
+      const gradeDiff = (GRADE_ORDER[a.course.grade] || 99) - (GRADE_ORDER[b.course.grade] || 99)
+      if (gradeDiff !== 0) return gradeDiff
+      return a.course.parallel.localeCompare(b.course.parallel)
+    })
   }
 
   if (loading) return <div className="center"><div className="spinner"/></div>
@@ -207,16 +249,24 @@ export default function TeacherDetailPage() {
   const grouped       = groupByCourse(teacher.assignments)
   const totalMaterias = teacher.assignments.length
 
-  const previewCourse  = courses.find(c => c.id === parseInt(selectedCourse))
   const previewSubject = specialties.find(s => s.subject.id === parseInt(selectedSubject))
+  const previewCourses = courses.filter(c => selectedCourses.includes(c.id))
 
   const filteredSpecialties = specialties.filter(sp =>
     subjectSearch === '' || sp.subject.name.toLowerCase().includes(subjectSearch.toLowerCase())
   )
-  const filteredCourses = courses.filter(c => {
-    const label = `${GRADES[c.grade]} ${c.parallel} ${SHIFTS[c.shift]} ${LEVELS[c.level]}`.toLowerCase()
-    return courseSearch === '' || label.includes(courseSearch.toLowerCase())
-  })
+  const filteredCourses = courses
+    .filter(c => {
+      const label = `${GRADES[c.grade]} ${c.parallel} ${SHIFTS[c.shift]} ${LEVELS[c.level]}`.toLowerCase()
+      return courseSearch === '' || label.includes(courseSearch.toLowerCase())
+    })
+    .sort((a, b) => {
+      const gradeDiff = (GRADE_ORDER[a.grade] || 99) - (GRADE_ORDER[b.grade] || 99)
+      if (gradeDiff !== 0) return gradeDiff
+      return a.parallel.localeCompare(b.parallel)
+    })
+
+  const getOccupiedBy = (courseId: number) => occupied.find(o => o.courseId === courseId)
 
   return (
     <div>
@@ -347,7 +397,7 @@ export default function TeacherDetailPage() {
         </div>
       </div>
 
-      {/* Asignaciones */}
+      {/* Asignaciones — ordenadas por grado → paralelo */}
       <div className="section-title"><BookOpen size={16}/> Cursos y materias asignadas</div>
 
       {grouped.length === 0 ? (
@@ -388,7 +438,7 @@ export default function TeacherDetailPage() {
         ))
       )}
 
-      {/* Modal */}
+      {/* Modal — asignación múltiple */}
       {showModal && (
         <div className="overlay" onClick={() => setShowModal(false)}>
           <div className="modal" onClick={e => e.stopPropagation()}>
@@ -421,7 +471,7 @@ export default function TeacherDetailPage() {
                           return (
                             <label key={sp.subject.id} className={`option-item ${sel ? 'selected' : ''}`}>
                               <input type="radio" name="subject" value={sp.subject.id}
-                                checked={sel} onChange={() => setSelectedSubject(String(sp.subject.id))}/>
+                                checked={sel} onChange={() => handleSelectSubject(String(sp.subject.id))}/>
                               <div className="option-info">
                                 <span className="option-name">{sp.subject.name}</span>
                                 {campo && (
@@ -440,7 +490,9 @@ export default function TeacherDetailPage() {
               </div>
 
               <div className="fg">
-                <label>Curso *</label>
+                <label>
+                  Cursos * {selectedCourses.length > 0 && <span style={{color:'#0F6E56',fontWeight:700}}>({selectedCourses.length} seleccionados)</span>}
+                </label>
                 <div className="search-wrap">
                   <Search size={13} className="s-icon"/>
                   <input type="text" placeholder="Buscar curso..." value={courseSearch}
@@ -453,17 +505,26 @@ export default function TeacherDetailPage() {
                     <div className="no-options">No se encontraron cursos</div>
                   ) : (
                     filteredCourses.map(c => {
-                      const sel = selectedCourse === String(c.id)
+                      const sel        = selectedCourses.includes(c.id)
+                      const occupiedBy = getOccupiedBy(c.id)
+                      const blocked    = !!occupiedBy
                       return (
-                        <label key={c.id} className={`option-item ${sel ? 'selected' : ''}`}>
-                          <input type="radio" name="course" value={c.id}
-                            checked={sel} onChange={() => setSelectedCourse(String(c.id))}/>
+                        <label key={c.id} className={`option-item ${sel ? 'selected' : ''} ${blocked ? 'blocked' : ''}`}>
+                          <input type="checkbox" value={c.id}
+                            checked={sel}
+                            disabled={blocked}
+                            onChange={() => toggleCourse(c.id, blocked)}/>
                           <div className="option-info">
                             <span className="option-name">
                               {GRADES[c.grade]} &quot;{c.parallel}&quot; · {SHIFTS[c.shift]}
                             </span>
                             <span className="option-sub">
                               {LEVELS[c.level]}{c.educationType === 'BTH' ? ' · BTH' : ''}
+                              {blocked && (
+                                <span style={{color:'#C0392B',fontWeight:600}}>
+                                  {' '}· Ya asignado a {occupiedBy!.teacher.lastName} {occupiedBy!.teacher.firstName}
+                                </span>
+                              )}
                             </span>
                           </div>
                         </label>
@@ -473,21 +534,25 @@ export default function TeacherDetailPage() {
                 </div>
               </div>
 
-              {previewCourse && previewSubject && (
+              {previewCourses.length > 0 && previewSubject && (
                 <div className="preview-box">
                   <CheckCircle2 size={14} color="#0F6E56"/>
                   <span>
                     <strong>{teacher.firstName}</strong> enseñará <strong>{previewSubject.subject.name}</strong> en{' '}
-                    <strong>{GRADES[previewCourse.grade]} &quot;{previewCourse.parallel}&quot; {SHIFTS[previewCourse.shift]}</strong>
+                    {previewCourses.map((c, i) => (
+                      <strong key={c.id}>
+                        {GRADES[c.grade]} &quot;{c.parallel}&quot; {SHIFTS[c.shift]}{i < previewCourses.length - 1 ? ', ' : ''}
+                      </strong>
+                    ))}
                   </span>
                 </div>
               )}
             </div>
             <div className="mfoot">
               <button className="btn-outline" onClick={() => setShowModal(false)}>Cancelar</button>
-              <button className="btn-primary" onClick={handleAssign} disabled={saving || !selectedCourse || !selectedSubject}>
+              <button className="btn-primary" onClick={handleAssign} disabled={saving || selectedCourses.length === 0 || !selectedSubject}>
                 {saving ? <span className="spinsm"/> : <Save size={14}/>}
-                {saving ? 'Guardando...' : 'Asignar'}
+                {saving ? 'Guardando...' : `Asignar (${selectedCourses.length})`}
               </button>
             </div>
           </div>
@@ -549,13 +614,16 @@ export default function TeacherDetailPage() {
         .search-wrap input{padding:8px 10px 8px 30px;border:1.5px solid #CBE0F0;border-radius:8px;font-size:13px;color:#1A3A7C;outline:none;width:100%}
         .search-wrap input:focus{border-color:#4A9FD4;box-shadow:0 0 0 3px rgba(74,159,212,.12)}
         .search-wrap input:disabled{opacity:.5;cursor:not-allowed;background:#F8FBFF}
-        .option-list{border:1.5px solid #CBE0F0;border-radius:8px;max-height:160px;overflow-y:auto}
+        .option-list{border:1.5px solid #CBE0F0;border-radius:8px;max-height:200px;overflow-y:auto}
         .option-list.disabled{opacity:.5;pointer-events:none}
         .option-item{display:flex;align-items:center;gap:8px;padding:7px 10px;cursor:pointer;border-bottom:1px solid #F0F6FC;transition:background .12s}
         .option-item:last-child{border-bottom:none}
         .option-item:hover{background:#F8FBFF}
         .option-item.selected{background:#E8F0FB;border-left:3px solid #1A3A7C}
+        .option-item.blocked{cursor:not-allowed;opacity:.55;background:#FFF8F8}
+        .option-item.blocked:hover{background:#FFF8F8}
         .option-item input{accent-color:#1A3A7C;cursor:pointer;flex-shrink:0;width:14px;height:14px}
+        .option-item input:disabled{cursor:not-allowed}
         .option-info{flex:1;display:flex;flex-direction:column;gap:2px}
         .option-name{font-size:12px;font-weight:500;color:#1A3A7C}
         .option-sub{font-size:11px;color:#6B8BB0}
