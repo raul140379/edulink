@@ -932,3 +932,47 @@ export const updateMe = async (req: AuthRequest, res: Response): Promise<void> =
     res.status(500).json({ message: 'Error al actualizar perfil' })
   }
 }
+// GET /api/parents/my-students
+// Retorna los hijos del padre autenticado con su curso activo
+export const getMyStudents = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const userId = req.userId
+
+    const parent = await prisma.parent.findUnique({
+      where: { userId },
+      include: {
+        students: {
+          include: {
+            student: {
+              include: {
+                assignments: {
+                  where: { academicYear: { isActive: true } },
+                  include: {
+                    course: { select: { id: true, grade: true, parallel: true, level: true, shift: true } },
+                    academicYear: { select: { year: true } },
+                  },
+                  take: 1,
+                }
+              }
+            }
+          }
+        }
+      }
+    })
+
+    if (!parent) { res.status(404).json({ message: 'Perfil de padre no encontrado' }); return }
+
+    const students = parent.students.map(ps => ({
+      id:        ps.student.id,
+      firstName: ps.student.firstName,
+      lastName:  ps.student.lastName,
+      isTutor:   ps.isTutor,
+      course:    ps.student.assignments[0]?.course ?? null,
+    }))
+
+    res.json(students)
+  } catch (err) {
+    console.error('getMyStudents:', err)
+    res.status(500).json({ message: 'Error al obtener estudiantes' })
+  }
+}

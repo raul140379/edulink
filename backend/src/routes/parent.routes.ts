@@ -15,6 +15,7 @@ import {
   changeRelation,
   getMe,
   updateMe,
+  getMyStudents,
 } from '../controllers/parent.controller'
 import { verifyToken, requirePermission } from '../middlewares/auth.middleware'
 import { Permission } from '../config/permissions'
@@ -25,6 +26,7 @@ const router = Router()
 
 router.use(verifyToken)
 
+router.get('/my-students', getMyStudents)
 router.get('/',                           requirePermission(Permission.PARENT_VIEW_ALL), getParents)
 router.get('/me', verifyToken, getMe)
 router.put('/me', verifyToken, updateMe)
