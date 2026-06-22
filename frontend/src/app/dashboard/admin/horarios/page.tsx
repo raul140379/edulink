@@ -1,8 +1,7 @@
 'use client' 
 
 import { useEffect, useState } from 'react'
-import { Clock, Plus, Save, X, Edit2, Sun, Snowflake } from 'lucide-react'
-
+import { Clock, Plus, Save, X, Edit2, Sun, Snowflake, Zap } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 
 const API = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000'
@@ -27,15 +26,27 @@ interface Periodo {
   endTime:   string
 }
 
+interface GenerateResult {
+  course: { id: number; grade: string; parallel: string; shift: string }
+  status: 'ok' | 'error' | 'skip'
+  msg:    string
+}
+
+const GRADES: Record<string,string> = { PRIMERO:'1°', SEGUNDO:'2°', TERCERO:'3°', CUARTO:'4°', QUINTO:'5°', SEXTO:'6°' }
+const SHIFTS: Record<string,string> = { MORNING:'Mañana', AFTERNOON:'Tarde' }
+
 export default function HorariosPage() {
-  const [schedules,  setSchedules]  = useState<SchoolSchedule[]>([])
   const router = useRouter()
-  const [loading,    setLoading]    = useState(true)
-  const [showModal,  setShowModal]  = useState(false)
-  const [editing,    setEditing]    = useState<SchoolSchedule | null>(null)
-  const [periodos,   setPeriodos]   = useState<Record<number, Periodo[]>>({})
-  const [toast,      setToast]      = useState<{type:'ok'|'err'; text:string} | null>(null)
-  const [form,       setForm]       = useState({
+  const [schedules,    setSchedules]    = useState<SchoolSchedule[]>([])
+  const [loading,      setLoading]      = useState(true)
+  const [showModal,    setShowModal]    = useState(false)
+  const [editing,      setEditing]      = useState<SchoolSchedule | null>(null)
+  const [periodos,     setPeriodos]     = useState<Record<number, Periodo[]>>({})
+  const [toast,        setToast]        = useState<{type:'ok'|'err'|'warn'; text:string} | null>(null)
+  const [generatingAll,setGeneratingAll]= useState(false)
+  const [resultAll,    setResultAll]    = useState<GenerateResult[]>([])
+  const [showResults,  setShowResults]  = useState(false)
+  const [form,         setForm]         = useState({
     shift: 'MORNING', name: '', startTime: '07:45', exitTime: '12:55',
     periods: 7, periodDuration: 40, breakDuration: 15, breakAfter: '2,4', isWinter: false
   })
@@ -43,8 +54,8 @@ export default function HorariosPage() {
   const token = () => localStorage.getItem('token') || ''
   const auth  = () => ({ Authorization: `Bearer ${token()}` })
 
-  const showToast = (type: 'ok'|'err', text: string) => {
-    setToast({type, text}); setTimeout(()=>setToast(null), 3000)
+  const showToast = (type: 'ok'|'err'|'warn', text: string) => {
+    setToast({type, text}); setTimeout(()=>setToast(null), 4000)
   }
 
   const loadSchedules = async () => {
@@ -111,6 +122,78 @@ export default function HorariosPage() {
     } catch { showToast('err', 'Error') }
   }
 
+ const handleGenerateAll = async () => {
+  if (!confirm('¿Generar y publicar el horario de todos los cursos SIN horario publicado?')) return
+  setGeneratingAll(true)
+  setResultAll([])
+  setShowResults(true)
+  try {
+    const resC    = await fetch(`${API}/api/courses`, { headers: auth() })
+    const courses = await resC.json()
+    if (!Array.isArray(courses)) { showToast('err', 'Error al obtener cursos'); return }
+
+    const results: GenerateResult[] = []
+
+    for (const course of courses) {
+      try {
+        // Verificar si ya tiene horario publicado
+        const resS  = await fetch(`${API}/api/schedules/course/${course.id}`, { headers: auth() })
+        const dataS = await resS.json()
+        const periods = dataS.schedule?.flatMap((d:any) => d.periods) || []
+        const yaPublicado = periods.some((p:any) => p.status === 'PUBLICADO')
+
+        if (yaPublicado) {
+          results.push({ course, status: 'skip', msg: 'Ya tiene horario publicado — omitido' })
+          setResultAll([...results])
+          continue
+        }
+
+        // Generar borrador
+        const resG  = await fetch(`${API}/api/schedules/generate/${course.id}`, {
+          method: 'POST', headers: auth()
+        })
+        const dataG = await resG.json()
+
+        if (!resG.ok) {
+          results.push({ course, status: 'error', msg: dataG.message || 'Error al generar' })
+          setResultAll([...results])
+          continue
+        }
+
+        if (dataG.created === 0) {
+          results.push({ course, status: 'skip', msg: 'Sin materias asignadas — omitido' })
+          setResultAll([...results])
+          continue
+        }
+
+        // Publicar
+        const resP  = await fetch(`${API}/api/schedules/publish/${course.id}`, {
+          method: 'POST', headers: auth()
+        })
+        const dataP = await resP.json()
+
+        results.push({
+          course,
+          status: resP.ok ? 'ok' : 'error',
+          msg:    resP.ok ? `${dataP.count} periodos publicados` : dataP.message
+        })
+        setResultAll([...results])
+
+      } catch {
+        results.push({ course, status: 'error', msg: 'Error de conexión' })
+        setResultAll([...results])
+      }
+    }
+
+    const ok   = results.filter(r => r.status === 'ok').length
+    const err  = results.filter(r => r.status === 'error').length
+    const skip = results.filter(r => r.status === 'skip').length
+    showToast('ok', `Completado: ${ok} publicados, ${skip} omitidos, ${err} errores`)
+
+  } catch { showToast('err', 'Error al obtener cursos') }
+  finally  { setGeneratingAll(false) }
+}
+
   const morning   = schedules.filter(s => s.shift === 'MORNING')
   const afternoon = schedules.filter(s => s.shift === 'AFTERNOON')
 
@@ -120,9 +203,10 @@ export default function HorariosPage() {
       {toast && (
         <div style={{
           position:'fixed',top:16,right:16,zIndex:999,padding:'10px 16px',borderRadius:8,fontSize:13,
-          background:toast.type==='ok'?'#E1F5EE':'#FFF0F0',
-          border:`1px solid ${toast.type==='ok'?'#9FE1CB':'#FFBBBB'}`,
-          color:toast.type==='ok'?'#0F6E56':'#C0392B',boxShadow:'0 4px 12px rgba(0,0,0,.1)',
+          background:toast.type==='ok'?'#E1F5EE':toast.type==='warn'?'#FFFBEA':'#FFF0F0',
+          border:`1px solid ${toast.type==='ok'?'#9FE1CB':toast.type==='warn'?'#F5C518':'#FFBBBB'}`,
+          color:toast.type==='ok'?'#0F6E56':toast.type==='warn'?'#7A6000':'#C0392B',
+          boxShadow:'0 4px 12px rgba(0,0,0,.1)',maxWidth:400,
         }}>
           {toast.text}
         </div>
@@ -135,13 +219,19 @@ export default function HorariosPage() {
           <p style={{fontSize:13,color:'#6B8BB0'}}>Gestiona los horarios institucionales por turno</p>
         </div>
         <div style={{display:'flex',gap:10,flexWrap:'wrap'}}>
-          {/* ← NUEVO: botón de aulas */}
           <button onClick={()=>router.push('/dashboard/admin/horarios/aulas')} style={{
             display:'flex',alignItems:'center',gap:8,padding:'10px 18px',
             background:'#fff',color:'#1A3A7C',border:'1.5px solid #CBE0F0',borderRadius:8,
             fontSize:13,fontWeight:600,cursor:'pointer'
           }}>
             🚪 Gestionar Aulas
+          </button>
+          <button onClick={handleGenerateAll} disabled={generatingAll} style={{
+            display:'flex',alignItems:'center',gap:8,padding:'10px 18px',
+            background:'#8B1A7C',color:'#fff',border:'none',borderRadius:8,
+            fontSize:13,fontWeight:600,cursor:'pointer',opacity:generatingAll?0.6:1
+          }}>
+            <Zap size={15}/> {generatingAll?'Generando...':'⚡ Generar Todos'}
           </button>
           <button onClick={()=>router.push('/dashboard/admin/horarios/curso')} style={{
             display:'flex',alignItems:'center',gap:8,padding:'10px 18px',
@@ -159,6 +249,45 @@ export default function HorariosPage() {
           </button>
         </div>
       </div>
+
+      {/* Resultado de generación masiva */}
+      {showResults && resultAll.length > 0 && (
+        <div style={{background:'#fff',border:'1px solid #CBE0F0',borderRadius:10,padding:'14px 18px',marginBottom:20}}>
+          <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:10}}>
+            <span style={{fontSize:13,fontWeight:700,color:'#1A3A7C'}}>
+              Resultado de generación masiva {generatingAll && <span style={{color:'#6B8BB0',fontWeight:400}}>(en progreso...)</span>}
+            </span>
+            <button onClick={()=>setShowResults(false)} style={{background:'none',border:'none',cursor:'pointer',color:'#6B8BB0',fontSize:12}}>
+              Ocultar
+            </button>
+          </div>
+          <div style={{display:'flex',flexDirection:'column',gap:4,maxHeight:240,overflowY:'auto'}}>
+            {resultAll.map((r, i) => (
+              <div key={i} style={{
+                display:'flex',gap:8,alignItems:'center',fontSize:12,
+                padding:'4px 8px',borderRadius:6,
+                background: r.status==='ok'?'#F0FBF5':r.status==='skip'?'#FFFBEA':'#FFF0F0',
+              }}>
+                <span>{r.status==='ok'?'✅':r.status==='skip'?'⏭️':'❌'}</span>
+                <span style={{fontWeight:600,minWidth:80}}>
+                  {GRADES[r.course.grade]} &quot;{r.course.parallel}&quot;
+                </span>
+                <span style={{color:'#6B8BB0',fontSize:11}}>{SHIFTS[r.course.shift]}</span>
+                <span style={{color: r.status==='ok'?'#0F6E56':r.status==='skip'?'#7A6000':'#C0392B'}}>
+                  {r.msg}
+                </span>
+              </div>
+            ))}
+          </div>
+          {!generatingAll && (
+            <div style={{marginTop:10,fontSize:12,color:'#6B8BB0',display:'flex',gap:16}}>
+              <span>✅ {resultAll.filter(r=>r.status==='ok').length} publicados</span>
+              <span>⏭️ {resultAll.filter(r=>r.status==='skip').length} omitidos</span>
+              <span>❌ {resultAll.filter(r=>r.status==='error').length} errores</span>
+            </div>
+          )}
+        </div>
+      )}
 
       {loading ? (
         <div style={{display:'flex',justifyContent:'center',padding:48}}><div className="spinner"/></div>
