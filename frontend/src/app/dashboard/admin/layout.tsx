@@ -65,6 +65,7 @@ const menuGroups: MenuGroup[] = [
       { label: 'Padres / Tutores',href: '/dashboard/admin/padres',      icon: <Users size={16}/>,         roles: ['SUPER_ADMIN','DIRECTOR','REGENTE','SECRETARY'] },
       { label: 'Maestros',        href: '/dashboard/admin/maestros',    icon: <GraduationCap size={16}/>, roles: ['SUPER_ADMIN','DIRECTOR','SECRETARY'] },
       { label: 'Asistencia', href: '/dashboard/admin/asistencia', icon: <ClipboardCheck size={16}/>, roles: ['SUPER_ADMIN','DIRECTOR','SECRETARY'] },
+      { label: 'Portero', href: '/dashboard/admin/portero', icon: <ShieldCheck size={16}/>, roles: ['SUPER_ADMIN','DIRECTOR'] },
       
     ]
   },
@@ -90,9 +91,11 @@ const menuGroups: MenuGroup[] = [
     icon:  <Settings size={14}/>,
     roles: ['SUPER_ADMIN'],
     items: [
-      { label: 'Configuración', href: '/dashboard/admin/configuracion', icon: <Settings size={16}/>,   roles: ['SUPER_ADMIN'] },
-      { label: 'Verificación',  href: '/dashboard/portero',             icon: <ShieldCheck size={16}/>, roles: ['SUPER_ADMIN'] },
-    ]
+    { label: 'Configuración',  href: '/dashboard/admin/configuracion',  icon: <Settings size={16}/>,    roles: ['SUPER_ADMIN'] },
+   { label: 'Gestionar Porteros', href: '/dashboard/admin/portero',         icon: <ShieldCheck size={16}/>, roles: ['SUPER_ADMIN','DIRECTOR'] },
+{ label: 'Vista Portero',      href: '/dashboard/portero',               icon: <ShieldCheck size={16}/>, roles: ['SUPER_ADMIN'] },
+    { label: 'Reporte Accesos', href: '/dashboard/admin/portero/reporte', icon: <FileBarChart size={16}/>, roles: ['SUPER_ADMIN','DIRECTOR'] },
+  ]
   },
 ]
 

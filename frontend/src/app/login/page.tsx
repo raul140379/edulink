@@ -58,6 +58,7 @@ export default function LoginPage() {
         case 'PARENT':        router.push('/dashboard/parent'); break
         case 'STUDENT':       router.push('/dashboard/estudiantes'); break
         case 'DELEGATE':      router.push('/dashboard/delegate'); break
+        case 'PORTERO':       router.push('/dashboard/portero'); break  // ← NUEVO
         default:              router.push('/dashboard')
       }
     } catch { setLoginError('Error de conexión con el servidor') }

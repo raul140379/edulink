@@ -24,6 +24,7 @@ enum Role {
   STUDENT        // Estudiante (consulta)
   STUDENT_GOV    // Gobierno estudiantil
   STAFF          // Personal administrativo (portero, etc.)
+  PORTERO        //portero
 }
 
 // Horario institucional por turno (para estudiantes y control general)
@@ -336,6 +337,7 @@ model Teacher {
   tasks  Task[]
   specialties TeacherSpecialty[]
   attendances TeacherAttendance[] 
+  gateRecords GateRecord[]
 }
 
 model TeacherSpecialty {
@@ -698,4 +700,34 @@ model NotaItem {
   taskId      Int?          // opcional: si viene de una Task formal
   task        Task?         @relation(fields: [taskId], references: [id])
 }
+// ─────────────────────────────────────────────
+// PORTERO — REGISTRO DE ENTRADA/SALIDA
+// ─────────────────────────────────────────────
 
+enum GateRecordType {
+  MAESTRO
+  VISITANTE
+}
+
+enum GateAction {
+  ENTRADA
+  SALIDA
+}
+
+model GateRecord {
+  id          Int             @id @default(autoincrement())
+  type        GateRecordType
+  action      GateAction
+  // Para maestros
+  teacherId   Int?
+  teacher     Teacher?        @relation(fields: [teacherId], references: [id])
+  // Para visitantes
+  visitorName String?
+  visitorCI   String?
+  reason      String?         // motivo de visita
+  destination String?         // a quién visita / destino
+  // Metadatos
+  registeredById Int?
+  note        String?
+  createdAt   DateTime        @default(now())
+}
