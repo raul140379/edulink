@@ -1,8 +1,8 @@
-'use client'
+ 'use client'
 
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { ArrowLeft, Zap, CheckCircle, Trash2, X, Save } from 'lucide-react'
+import { ArrowLeft, Zap, CheckCircle, Trash2, X, Save, Edit2 } from 'lucide-react'
 
 const API = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000'
 
@@ -83,6 +83,7 @@ export default function HorarioCursoPage() {
   const [loading,    setLoading]    = useState(false)
   const [generating, setGenerating] = useState(false)
   const [publishing, setPublishing] = useState(false)
+  const [editMode,   setEditMode]   = useState(false)
   const [toast,      setToast]      = useState<{type:'ok'|'err'|'warn'; text:string} | null>(null)
 
   // Modal asignar materia
@@ -110,13 +111,13 @@ export default function HorarioCursoPage() {
   useEffect(() => {
     fetch(`${API}/api/courses`, { headers: auth() })
       .then(r=>r.json()).then(d=>{ if(Array.isArray(d)) setCourses(d) })
-
     fetch(`${API}/api/classrooms`, { headers: auth() })
       .then(r=>r.json()).then(d=>{ if(Array.isArray(d)) setClassrooms(d) })
   }, [])
 
   useEffect(() => {
     if (!selCourse) return
+    setEditMode(false)
     loadSchedule()
     loadTscs()
     loadSchoolSchedule()
@@ -193,15 +194,14 @@ export default function HorarioCursoPage() {
       if (data.errors?.length > 0) {
         setTimeout(() => showToast('warn', `⚠️ Sin espacio para: ${data.errors.map((e:any)=>e.subject).join(', ')}`), 1000)
       }
-      loadSchedule()
-      loadTscs()
+      loadSchedule(); loadTscs()
     } catch { showToast('err', 'Error de conexión') }
     finally { setGenerating(false) }
   }
 
   const handlePublish = async () => {
     if (!selCourse) return
-    if (!confirm('¿Confirmar y publicar este horario? No se podrá deshacer.')) return
+    if (!confirm('¿Confirmar y publicar este horario?')) return
     setPublishing(true)
     try {
       const res  = await fetch(`${API}/api/schedules/publish/${selCourse.id}`, {
@@ -210,6 +210,7 @@ export default function HorarioCursoPage() {
       const data = await res.json()
       if (!res.ok) { showToast('err', data.message); return }
       showToast('ok', data.message)
+      setEditMode(false)
       loadSchedule()
     } catch { showToast('err', 'Error de conexión') }
     finally { setPublishing(false) }
@@ -220,14 +221,28 @@ export default function HorarioCursoPage() {
     if (!confirm('¿Eliminar el borrador?')) return
     await fetch(`${API}/api/schedules/draft/${selCourse.id}`, { method: 'DELETE', headers: auth() })
     showToast('ok', 'Borrador eliminado')
-    loadSchedule()
-    loadTscs()
+    setEditMode(false)
+    loadSchedule(); loadTscs()
+  }
+
+  const handleDeleteAll = async () => {
+    if (!selCourse) return
+    if (!confirm(`¿Eliminar TODO el horario de este curso (borradores y publicados)? Esta acción no se puede deshacer.`)) return
+    try {
+      const res  = await fetch(`${API}/api/schedules/course/${selCourse.id}/all`, {
+        method: 'DELETE', headers: auth()
+      })
+      const data = await res.json()
+      if (!res.ok) { showToast('err', data.message); return }
+      showToast('ok', data.message)
+      setEditMode(false)
+      loadSchedule(); loadTscs()
+    } catch { showToast('err', 'Error de conexión') }
   }
 
   const handleDeletePeriod = async (id: number) => {
     await fetch(`${API}/api/schedules/${id}`, { method: 'DELETE', headers: auth() })
-    loadSchedule()
-    loadTscs()
+    loadSchedule(); loadTscs()
   }
 
   const handleAssign = async () => {
@@ -247,11 +262,9 @@ export default function HorarioCursoPage() {
     if (!res.ok) { showToast('err', data.message); return }
     showToast('ok', 'Periodo asignado correctamente')
     setShowModal(false)
-    loadSchedule()
-    loadTscs()
+    loadSchedule(); loadTscs()
   }
 
-  // Asignar aula a periodo individual (borrador o publicado)
   const handleAssignClassroom = async () => {
     if (!selScheduleId) return
     const res = await fetch(`${API}/api/classrooms/${selScheduleId}/classroom`, {
@@ -266,7 +279,6 @@ export default function HorarioCursoPage() {
     loadSchedule()
   }
 
-  // Asignar aula a todos los periodos en borrador del curso
   const handleAssignClassroomToAll = async () => {
     if (!selCourse || !bulkClassroom) return
     const res = await fetch(`${API}/api/classrooms/course/${selCourse.id}/all`, {
@@ -288,6 +300,7 @@ export default function HorarioCursoPage() {
 
   const hasDraft     = schedule.some(s => s.status === 'BORRADOR')
   const hasPublished = schedule.some(s => s.status === 'PUBLICADO')
+  const hasAny       = hasDraft || hasPublished
 
   const totalAsignados = resumenMaterias.reduce((s,t)=>s+t.asignados,0)
   const totalMaximo    = resumenMaterias.reduce((s,t)=>s+t.maxPeriodos,0)
@@ -339,7 +352,7 @@ export default function HorarioCursoPage() {
             <optgroup key={grade} label={`${GRADES[grade]} Grado`}>
               {courses.filter(c=>c.grade===grade).map(c=>(
                 <option key={c.id} value={c.id}>
-                  {GRADES[c.grade]} "{c.parallel}" · {SHIFTS[c.shift]} · {c.level}{c.educationType==='BTH'?' · BTH':''}
+                  {GRADES[c.grade]} &quot;{c.parallel}&quot; · {SHIFTS[c.shift]} · {c.level}{c.educationType==='BTH'?' · BTH':''}
                 </option>
               ))}
             </optgroup>
@@ -369,17 +382,36 @@ export default function HorarioCursoPage() {
               style={{display:'flex',alignItems:'center',gap:7,padding:'9px 16px',background:'#633806',color:'#fff',border:'none',borderRadius:8,fontSize:13,fontWeight:600,cursor:'pointer',opacity:(generating||!schoolSch)?0.6:1}}>
               <Zap size={15}/> {generating?'Generando...':'⚡ Generar Automático'}
             </button>
-            {(hasDraft || hasPublished) && (
-              <button onClick={()=>{ setBulkClassroom(''); setShowBulkClassroomModal(true) }}
-                style={{display:'flex',alignItems:'center',gap:7,padding:'9px 16px',background:'#fff',color:'#1A3A7C',border:'1.5px solid #CBE0F0',borderRadius:8,fontSize:13,fontWeight:600,cursor:'pointer'}}>
-                🚪 Asignar aula a todo el curso
-              </button>
+
+            {hasAny && (
+              <>
+                <button onClick={()=>{ setBulkClassroom(''); setShowBulkClassroomModal(true) }}
+                  style={{display:'flex',alignItems:'center',gap:7,padding:'9px 16px',background:'#fff',color:'#1A3A7C',border:'1.5px solid #CBE0F0',borderRadius:8,fontSize:13,fontWeight:600,cursor:'pointer'}}>
+                  🚪 Asignar aula al curso
+                </button>
+
+                <button onClick={()=>setEditMode(!editMode)} style={{
+                  display:'flex',alignItems:'center',gap:7,padding:'9px 16px',
+                  background:editMode?'#1A3A7C':'#F0F6FC',
+                  color:editMode?'#fff':'#1A3A7C',
+                  border:`1.5px solid ${editMode?'#1A3A7C':'#CBE0F0'}`,
+                  borderRadius:8,fontSize:13,fontWeight:600,cursor:'pointer'
+                }}>
+                  <Edit2 size={14}/> {editMode?'✅ Salir de edición':'✏️ Modo edición'}
+                </button>
+
+                <button onClick={handleDeleteAll}
+                  style={{display:'flex',alignItems:'center',gap:7,padding:'9px 16px',background:'#FFF0F0',color:'#C0392B',border:'1px solid #FFBBBB',borderRadius:8,fontSize:13,cursor:'pointer',fontWeight:600}}>
+                  <Trash2 size={14}/> Eliminar Todo
+                </button>
+              </>
             )}
+
             {hasDraft && (
               <>
                 <button onClick={handlePublish} disabled={publishing}
                   style={{display:'flex',alignItems:'center',gap:7,padding:'9px 16px',background:'#0F6E56',color:'#fff',border:'none',borderRadius:8,fontSize:13,fontWeight:600,cursor:'pointer',opacity:publishing?0.6:1}}>
-                  <CheckCircle size={15}/> {publishing?'Publicando...':'✅ Publicar Horario'}
+                  <CheckCircle size={15}/> {publishing?'Publicando...':'✅ Publicar'}
                 </button>
                 <button onClick={handleDeleteDraft}
                   style={{display:'flex',alignItems:'center',gap:7,padding:'9px 16px',background:'#FFF0F0',color:'#C0392B',border:'1px solid #FFBBBB',borderRadius:8,fontSize:13,cursor:'pointer'}}>
@@ -388,6 +420,13 @@ export default function HorarioCursoPage() {
               </>
             )}
           </div>
+
+          {/* Aviso modo edición */}
+          {editMode && (
+            <div style={{background:'#FFF8E1',border:'1px solid #F5C518',borderRadius:8,padding:'8px 14px',marginBottom:12,fontSize:12,color:'#7A6000',display:'flex',alignItems:'center',gap:8}}>
+              ✏️ <strong>Modo edición activo</strong> — haz clic en el <strong>×</strong> de cualquier celda para eliminar ese periodo.
+            </div>
+          )}
 
           {/* Progreso general */}
           {totalMaximo > 0 && (
@@ -429,8 +468,7 @@ export default function HorarioCursoPage() {
                       <span style={{color:'#6B8BB0',fontSize:11}}>{t.teacher.lastName}</span>
                       <span style={{
                         background: t.completo?'#0F6E56':pct>=0.5?'#BA7517':'#1A3A7C',
-                        color:'#fff',padding:'1px 7px',borderRadius:10,fontSize:10,fontWeight:700,
-                        whiteSpace:'nowrap'
+                        color:'#fff',padding:'1px 7px',borderRadius:10,fontSize:10,fontWeight:700,whiteSpace:'nowrap'
                       }}>
                         {t.asignados}/{t.maxPeriodos}P
                       </span>
@@ -450,11 +488,13 @@ export default function HorarioCursoPage() {
               <div style={{width:12,height:12,borderRadius:3,background:'#F0FBF5',border:'1px solid #9FE1CB'}}/> Publicado
             </div>
             <div style={{display:'flex',alignItems:'center',gap:6,fontSize:12,color:'#6B8BB0'}}>
-              <div style={{width:12,height:12,borderRadius:3,background:'#FAFCFF',border:'1px dashed #CBE0F0'}}/> Libre (clic para asignar)
+              <div style={{width:12,height:12,borderRadius:3,background:'#FAFCFF',border:'1px dashed #CBE0F0'}}/> Libre
             </div>
-            <div style={{display:'flex',alignItems:'center',gap:6,fontSize:12,color:'#6B8BB0'}}>
-              📍 Clic en cualquier celda ocupada para asignar/cambiar aula
-            </div>
+            {!editMode && (
+              <div style={{display:'flex',alignItems:'center',gap:6,fontSize:12,color:'#6B8BB0'}}>
+                📍 Clic en celda ocupada → asignar aula
+              </div>
+            )}
           </div>
 
           {/* Grilla */}
@@ -492,18 +532,17 @@ export default function HorarioCursoPage() {
                               background:  isDraft ? '#FFFEF0' : isPublished ? '#F0FBF5' : '#FAFCFF',
                               borderColor: isDraft ? '#F5C518' : isPublished ? '#9FE1CB' : '#E0EAF5',
                               borderStyle: cell ? 'solid' : 'dashed',
-                              cursor: cell ? 'pointer' : 'default',
+                              cursor: editMode ? 'default' : (cell ? 'pointer' : 'default'),
                               minWidth: 110,
                             }}
                               onClick={() => {
+                                if (editMode) return
                                 if (!cell) {
-                                  // Celda vacía → asignar materia
                                   const pt = getPeriodTime(period)
                                   setSelCell({day, period, startTime:pt.startTime, endTime:pt.endTime})
                                   setSelTsc('')
                                   setShowModal(true)
                                 } else {
-                                  // Celda ocupada (borrador o publicado) → asignar/cambiar aula
                                   setSelScheduleId(cell.id)
                                   setSelClassroom(cell.classroomId ? String(cell.classroomId) : '')
                                   setShowClassroomModal(true)
@@ -514,25 +553,18 @@ export default function HorarioCursoPage() {
                                   <div style={{fontSize:16,lineHeight:1,marginBottom:3}}>
                                     {SUBJECT_EMOJI[cell.teacherSubjectCourse.subject.name] || '📚'}
                                   </div>
-                                  <div style={{
-                                    fontSize:11,fontWeight:700,lineHeight:1.3,
-                                    color: campo ? CAMPO_COLOR[campo] : '#1A3A7C',
-                                  }}>
+                                  <div style={{fontSize:11,fontWeight:700,lineHeight:1.3,color:campo?CAMPO_COLOR[campo]:'#1A3A7C'}}>
                                     {cell.teacherSubjectCourse.subject.name}
                                   </div>
                                   <div style={{fontSize:10,color:'#6B8BB0',marginTop:1}}>
                                     {cell.teacherSubjectCourse.teacher.lastName}
                                   </div>
                                   {cell.classroom && (
-                                    <div style={{
-                                      fontSize:9,color:'#0F6E56',fontWeight:600,marginTop:2,
-                                      background:'#E1F5EE',borderRadius:4,padding:'1px 5px',
-                                      display:'inline-block',
-                                    }}>
+                                    <div style={{fontSize:9,color:'#0F6E56',fontWeight:600,marginTop:2,background:'#E1F5EE',borderRadius:4,padding:'1px 5px',display:'inline-block'}}>
                                       📍 {cell.classroom.name}
                                     </div>
                                   )}
-                                  {!isPublished && (
+                                  {editMode && (
                                     <button
                                       onClick={e=>{e.stopPropagation();handleDeletePeriod(cell.id)}}
                                       style={{
@@ -540,14 +572,16 @@ export default function HorarioCursoPage() {
                                         background:'#C0392B',border:'none',borderRadius:'50%',
                                         cursor:'pointer',color:'#fff',width:16,height:16,
                                         display:'flex',alignItems:'center',justifyContent:'center',
-                                        fontSize:10,
+                                        fontSize:10,lineHeight:1,
                                       }}>
                                       ×
                                     </button>
                                   )}
                                 </div>
                               ) : (
-                                <div style={{textAlign:'center',color:'#D0E4F0',fontSize:20}}>+</div>
+                                <div style={{textAlign:'center',color:'#D0E4F0',fontSize:20}}>
+                                  {editMode ? '' : '+'}
+                                </div>
                               )}
                             </td>
                           )
@@ -628,8 +662,7 @@ export default function HorarioCursoPage() {
               {classrooms.length === 0 ? (
                 <div style={{padding:'12px',background:'#FFF0F0',borderRadius:8,fontSize:12,color:'#C0392B'}}>
                   No hay aulas registradas.{' '}
-                  <span onClick={()=>router.push('/dashboard/admin/horarios/aulas')}
-                    style={{textDecoration:'underline',cursor:'pointer'}}>
+                  <span onClick={()=>router.push('/dashboard/admin/horarios/aulas')} style={{textDecoration:'underline',cursor:'pointer'}}>
                     Crear aulas aquí
                   </span>
                 </div>
@@ -645,7 +678,7 @@ export default function HorarioCursoPage() {
                 </select>
               )}
               <p style={{fontSize:11,color:'#6B8BB0',margin:'8px 0 0'}}>
-                Selecciona "Sin aula asignada" para quitar el aula de este periodo.
+                Selecciona &quot;Sin aula asignada&quot; para quitar el aula de este periodo.
               </p>
             </div>
             <div style={{display:'flex',justifyContent:'flex-end',gap:10,padding:'12px 20px',borderTop:'1px solid #CBE0F0'}}>
@@ -669,9 +702,7 @@ export default function HorarioCursoPage() {
             <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'16px 20px',borderBottom:'1px solid #CBE0F0'}}>
               <div>
                 <h3 style={{fontSize:15,fontWeight:700,color:'#1A3A7C',margin:0}}>Asignar aula a todo el curso</h3>
-                <p style={{fontSize:12,color:'#6B8BB0',margin:'2px 0 0'}}>
-                  Se aplicará a todos los periodos del curso
-                </p>
+                <p style={{fontSize:12,color:'#6B8BB0',margin:'2px 0 0'}}>Se aplicará a todos los periodos del curso</p>
               </div>
               <button onClick={()=>setShowBulkClassroomModal(false)} style={{background:'none',border:'none',cursor:'pointer',color:'#6B8BB0'}}>
                 <X size={18}/>
@@ -684,8 +715,7 @@ export default function HorarioCursoPage() {
               {classrooms.length === 0 ? (
                 <div style={{padding:'12px',background:'#FFF0F0',borderRadius:8,fontSize:12,color:'#C0392B'}}>
                   No hay aulas registradas.{' '}
-                  <span onClick={()=>router.push('/dashboard/admin/horarios/aulas')}
-                    style={{textDecoration:'underline',cursor:'pointer'}}>
+                  <span onClick={()=>router.push('/dashboard/admin/horarios/aulas')} style={{textDecoration:'underline',cursor:'pointer'}}>
                     Crear aulas aquí
                   </span>
                 </div>

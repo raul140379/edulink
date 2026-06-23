@@ -654,3 +654,24 @@ export const getTscsByCourse = async (req: AuthRequest, res: Response): Promise<
     res.status(500).json({ message: 'Error al obtener asignaciones' })
   }
 }
+// ─────────────────────────────────────────────
+// DELETE /api/schedules/course/:courseId/all
+// Eliminar TODOS los periodos de un curso
+// ─────────────────────────────────────────────
+export const deleteAllSchedule = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const { courseId } = req.params
+
+    const activeYear = await prisma.academicYear.findFirst({ where: { isActive: true } })
+    if (!activeYear) { res.status(400).json({ message: 'No hay gestión activa' }); return }
+
+    const deleted = await prisma.schedule.deleteMany({
+      where: { courseId: parseInt(courseId), academicYearId: activeYear.id }
+    })
+
+    res.json({ message: `Horario eliminado: ${deleted.count} periodos`, count: deleted.count })
+  } catch (error) {
+    console.error('deleteAllSchedule error:', error)
+    res.status(500).json({ message: 'Error al eliminar horario' })
+  }
+}
