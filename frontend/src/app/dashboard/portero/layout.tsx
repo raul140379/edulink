@@ -1,3 +1,22 @@
+import type { Metadata } from 'next'
+
+export const metadata: Metadata = {
+  title: 'Control de Acceso — NNUU',
+  description: 'Control de entrada y salida U.E. Naciones Unidas',
+  manifest: '/manifest.json',
+  themeColor: '#1A3A7C',
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: 'black-translucent',
+    title: 'Portero NNUU',
+  },
+  viewport: {
+    width: 'device-width',
+    initialScale: 1,
+    maximumScale: 1,
+  },
+}
+
 export default function PorteroLayout({ children }: { children: React.ReactNode }) {
   return (
     <div style={{
@@ -6,7 +25,6 @@ export default function PorteroLayout({ children }: { children: React.ReactNode 
       display: 'flex',
       flexDirection: 'column',
     }}>
-      {/* Header */}
       <div style={{
         background: '#1E293B',
         borderBottom: '1px solid #334155',
