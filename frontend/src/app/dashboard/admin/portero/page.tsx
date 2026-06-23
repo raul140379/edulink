@@ -6,12 +6,12 @@ import { Plus, X, Save, RefreshCw, Shield, Eye, EyeOff } from 'lucide-react'
 const API = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000'
 
 interface PorteroUser {
-  id:       number
-  email:    string
-  role:     string
-  isActive: boolean
+  id:        number
+  email:     string
+  role:      string
+  isActive:  boolean
   createdAt: string
-  staff?:   { id: number; firstName: string; lastName: string; staffRole: string }
+  staff?:    { id: number; firstName: string; lastName: string; staffRole: string }
 }
 
 export default function PorteroAdminPage() {
@@ -37,6 +37,21 @@ export default function PorteroAdminPage() {
     else               { setError(msg);   setTimeout(() => setError(''),   4000) }
   }
 
+  const normalize = (str: string) =>
+    str.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, '').replace(/[^a-z0-9]/g, '')
+
+  const getAutoEmail = () => {
+    if (!form.firstName || !form.lastName) return ''
+    const first = normalize(form.firstName.split(' ')[0])
+    const last  = normalize(form.lastName.split(' ')[0])
+    return `${first}.${last}@nnuu.edu.bo`
+  }
+
+  const getAutoPassword = () => {
+    if (form.ci && form.ci.trim()) return `port${form.ci.trim()}`
+    return 'port123'
+  }
+
   const loadUsers = async () => {
     setLoading(true)
     try {
@@ -50,38 +65,42 @@ export default function PorteroAdminPage() {
   useEffect(() => { loadUsers() }, [])
 
   const handleCreate = async () => {
-    if (!form.firstName || !form.lastName || !form.email || !form.password) {
-      notify('Completa todos los campos obligatorios', 'err'); return
+    if (!form.firstName || !form.lastName) {
+      notify('Nombre y apellido son requeridos', 'err'); return
     }
-    if (form.password.length < 6) {
-      notify('La contraseña debe tener al menos 6 caracteres', 'err'); return
-    }
+
+    const finalEmail    = form.email.trim()    || getAutoEmail()
+    const finalPassword = form.password.trim() || getAutoPassword()
+
+    if (!finalEmail) { notify('No se pudo generar el email', 'err'); return }
+    if (finalPassword.length < 6) { notify('La contraseña debe tener al menos 6 caracteres', 'err'); return }
+
     setSaving(true)
     try {
       // 1. Crear usuario con rol PORTERO
       const resU  = await fetch(`${API}/api/users`, {
         method: 'POST',
         headers: { ...auth(), 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: form.email, password: form.password, role: 'PORTERO' })
+        body: JSON.stringify({ email: finalEmail, password: finalPassword, role: 'PORTERO' })
       })
       const dataU = await resU.json()
       if (!resU.ok) { notify(dataU.message, 'err'); return }
 
       // 2. Crear registro Staff vinculado
-      const resS  = await fetch(`${API}/api/users/${dataU.user.id}/staff`, {
+      await fetch(`${API}/api/users/${dataU.user.id}/staff`, {
         method: 'POST',
         headers: { ...auth(), 'Content-Type': 'application/json' },
         body: JSON.stringify({
           firstName: form.firstName,
           lastName:  form.lastName,
-          ci:        form.ci   || null,
+          ci:        form.ci    || null,
           phone:     form.phone || null,
           staffRole: 'PORTERO',
           shift:     form.shift,
         })
       }).catch(() => null)
 
-      notify('Portero creado correctamente')
+      notify(`✅ Portero creado — Email: ${finalEmail} · Contraseña: ${finalPassword}`)
       setShowModal(false)
       setForm({ firstName:'', lastName:'', ci:'', phone:'', email:'', password:'', shift:'MORNING' })
       loadUsers()
@@ -113,6 +132,9 @@ export default function PorteroAdminPage() {
     } catch { notify('Error de conexión', 'err') }
   }
 
+  const autoEmail    = getAutoEmail()
+  const autoPassword = getAutoPassword()
+
   return (
     <div>
       <div style={{display:'flex',alignItems:'flex-start',justifyContent:'space-between',marginBottom:24,gap:16,flexWrap:'wrap'}}>
@@ -141,13 +163,11 @@ export default function PorteroAdminPage() {
               <X size={16}/>
             </button>
           </div>
-          <div style={{fontSize:13,color:'#1A3A7C'}}>
-            <strong>Email:</strong> {resetResult.email}
-          </div>
+          <div style={{fontSize:13,color:'#1A3A7C'}}><strong>Email:</strong> {resetResult.email}</div>
           <div style={{fontSize:18,fontWeight:800,color:'#1A3A7C',letterSpacing:2,marginTop:4,fontFamily:'monospace'}}>
             {resetResult.password}
           </div>
-          <div style={{fontSize:11,color:'#6B8BB0',marginTop:4}}>Comparte esta contraseña con el portero y pídele que la cambie.</div>
+          <div style={{fontSize:11,color:'#6B8BB0',marginTop:4}}>Comparte esta contraseña con el portero.</div>
         </div>
       )}
 
@@ -171,7 +191,7 @@ export default function PorteroAdminPage() {
               <tr style={{background:'#F0F6FC'}}>
                 <th style={th}>Portero</th>
                 <th style={th}>Email</th>
-                <th style={th}>Turno</th>
+                <th style={th}>Rol</th>
                 <th style={th}>Estado</th>
                 <th style={th}>Acciones</th>
               </tr>
@@ -188,7 +208,7 @@ export default function PorteroAdminPage() {
                         <div style={{fontSize:13,fontWeight:600,color:'#1A3A7C'}}>
                           {u.staff ? `${u.staff.lastName} ${u.staff.firstName}` : `Portero #${i+1}`}
                         </div>
-                        <div style={{fontSize:11,color:'#6B8BB0'}}>ID: {u.id}</div>
+                        <div style={{fontSize:11,color:'#6B8BB0'}}>{u.email}</div>
                       </div>
                     </div>
                   </td>
@@ -236,7 +256,7 @@ export default function PorteroAdminPage() {
       <div style={{background:'#E0ECF8',border:'1px solid #CBE0F0',borderRadius:10,padding:'12px 16px',marginTop:16,fontSize:12,color:'#1A3A7C'}}>
         <div style={{fontWeight:700,marginBottom:4}}>🔗 Acceso al módulo de portero</div>
         <div style={{color:'#6B8BB0'}}>
-          El portero accede con su email y contraseña en:{' '}
+          El portero accede en:{' '}
           <strong>{typeof window !== 'undefined' ? window.location.origin : ''}/dashboard/portero</strong>
         </div>
       </div>
@@ -295,16 +315,27 @@ export default function PorteroAdminPage() {
                   <Shield size={13}/> Credenciales de acceso
                 </div>
                 <div style={{display:'flex',flexDirection:'column',gap:12}}>
+
+                  {/* Email */}
                   <div style={{display:'flex',flexDirection:'column',gap:5}}>
-                    <label style={lbl}>Email *</label>
+                    <label style={lbl}>Email (opcional)</label>
                     <input value={form.email} onChange={e=>setForm(p=>({...p,email:e.target.value}))}
-                      placeholder="portero@nnuu.edu.bo" type="email" style={inp}/>
+                      placeholder="Se generará automáticamente si está vacío"
+                      type="email" style={inp}/>
+                    {!form.email && autoEmail && (
+                      <div style={{fontSize:11,color:'#0F6E56',background:'#E1F5EE',padding:'5px 10px',borderRadius:6,display:'flex',alignItems:'center',gap:4}}>
+                        📧 Se usará: <strong>{autoEmail}</strong>
+                      </div>
+                    )}
                   </div>
+
+                  {/* Contraseña */}
                   <div style={{display:'flex',flexDirection:'column',gap:5}}>
-                    <label style={lbl}>Contraseña *</label>
+                    <label style={lbl}>Contraseña (opcional)</label>
                     <div style={{position:'relative'}}>
                       <input value={form.password} onChange={e=>setForm(p=>({...p,password:e.target.value}))}
-                        placeholder="Mínimo 6 caracteres" type={showPass?'text':'password'}
+                        placeholder="Se generará automáticamente si está vacío"
+                        type={showPass?'text':'password'}
                         style={{...inp,paddingRight:40}}/>
                       <button onClick={()=>setShowPass(!showPass)} style={{
                         position:'absolute',right:10,top:'50%',transform:'translateY(-50%)',
@@ -313,7 +344,14 @@ export default function PorteroAdminPage() {
                         {showPass ? <EyeOff size={16}/> : <Eye size={16}/>}
                       </button>
                     </div>
+                    {!form.password && (
+                      <div style={{fontSize:11,color:'#633806',background:'#FDF0E6',padding:'5px 10px',borderRadius:6,display:'flex',alignItems:'center',gap:4}}>
+                        🔑 Se usará: <strong>{autoPassword}</strong>
+                        {form.ci ? ` (port + CI: ${form.ci})` : ' (port123 — sin CI)'}
+                      </div>
+                    )}
                   </div>
+
                 </div>
               </div>
             </div>
