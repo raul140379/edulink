@@ -225,6 +225,7 @@ model AcademicYear {
   holidays    Holiday[]
   charges     Charge[]
   schedules Schedule[]
+  studentAttendances StudentAttendance[]
 }
 
 model Trimester {
@@ -298,6 +299,7 @@ model Student {
   taskSubmissions  TaskSubmission[]
   charges     Charge[]   // Cargos asignados a este estudiante específico
   notas     Nota[]
+  studentAttendances StudentAttendance[]
 }
 
 model ParentStudent {
@@ -338,6 +340,7 @@ model Teacher {
   specialties TeacherSpecialty[]
   attendances TeacherAttendance[] 
   gateRecords GateRecord[]
+  studentAttendances StudentAttendance[]
 }
 
 model TeacherSpecialty {
@@ -410,6 +413,7 @@ model Course {
   tutor           CourseTutor?
   @@unique([level, grade, parallel, educationType, shift])
   notas     Nota[] 
+  studentAttendances StudentAttendance[]
 }
 
 // Maestro tutor designado a un curso
@@ -730,4 +734,35 @@ model GateRecord {
   registeredById Int?
   note        String?
   createdAt   DateTime        @default(now())
+}
+// ─────────────────────────────────────────────
+// ASISTENCIA DE ESTUDIANTES
+// ─────────────────────────────────────────────
+
+enum StudentAttendanceStatus {
+  PRESENTE
+  AUSENTE
+  RETRASO
+  LICENCIA
+}
+
+model StudentAttendance {
+  id        Int                     @id @default(autoincrement())
+  date      DateTime                // fecha del registro (solo fecha, sin hora)
+  status    StudentAttendanceStatus @default(PRESENTE)
+  note      String?
+  createdAt DateTime                @default(now())
+  updatedAt DateTime                @updatedAt
+
+  studentId      Int
+  courseId       Int
+  teacherId      Int
+  academicYearId Int
+
+  student      Student      @relation(fields: [studentId],      references: [id])
+  course       Course       @relation(fields: [courseId],       references: [id])
+  teacher      Teacher      @relation(fields: [teacherId],      references: [id])
+  academicYear AcademicYear @relation(fields: [academicYearId], references: [id])
+
+  @@unique([studentId, courseId, date])
 }

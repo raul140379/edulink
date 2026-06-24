@@ -1,0 +1,16 @@
+{
+  "name": "Padre — U.E. Naciones Unidas",
+  "short_name": "Padre NNUU",
+  "description": "Portal del padre — U.E. Naciones Unidas El Torno",
+  "start_url": "/dashboard/parent",
+  "scope": "/dashboard/parent",
+  "display": "standalone",
+  "background_color": "#27500A",
+  "theme_color": "#27500A",
+  "orientation": "any",
+  "lang": "es",
+  "icons": [
+    { "src": "/logo-nnuu.jpeg", "sizes": "192x192", "type": "image/jpeg", "purpose": "any maskable" },
+    { "src": "/logo-nnuu.jpeg", "sizes": "512x512", "type": "image/jpeg", "purpose": "any maskable" }
+  ]
+}
