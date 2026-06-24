@@ -3,7 +3,7 @@ import type { Metadata } from 'next'
 export const metadata: Metadata = {
   title: 'Control de Acceso — NNUU',
   description: 'Control de entrada y salida U.E. Naciones Unidas',
-  manifest: '/manifest.json',
+  manifest: '/manifest-portero.json',
   themeColor: '#1A3A7C',
   appleWebApp: {
     capable: true,
