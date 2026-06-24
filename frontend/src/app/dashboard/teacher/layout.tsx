@@ -37,6 +37,12 @@ export default function TeacherLayout({ children }: { children: React.ReactNode 
   const [mobileOpen, setMobileOpen] = useState(false)
 
   useEffect(() => {
+     // PWA manifest del maestro
+     const link = document.querySelector('link[rel="manifest"]') as HTMLLinkElement
+    if (link) link.href = '/manifest-teacher.json'
+    document.querySelector('meta[name="theme-color"]')?.setAttribute('content', '#633806')
+    document.querySelector('meta[name="apple-mobile-web-app-title"]')?.setAttribute('content', 'Maestro NNUU')
+
     const userData = localStorage.getItem('user')
     const token    = localStorage.getItem('token')
     if (!userData || !token) { router.push('/login'); return }

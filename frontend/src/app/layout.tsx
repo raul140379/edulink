@@ -28,7 +28,14 @@ export default function RootLayout({
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
       <head>
+        <meta name="application-name" content="SGJE NNUU" />
+        <meta name="apple-mobile-web-app-capable" content="yes" />
+        <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+        <meta name="apple-mobile-web-app-title" content="SGJE NNUU" />
+        <meta name="mobile-web-app-capable" content="yes" />
+        <meta name="theme-color" content="#1A3A7C" />
         <link rel="manifest" href="/manifest.json" />
+        <link rel="apple-touch-icon" href="/logo-nnuu.jpeg" />
       </head>
       <body className="min-h-full flex flex-col">{children}</body>
     </html>

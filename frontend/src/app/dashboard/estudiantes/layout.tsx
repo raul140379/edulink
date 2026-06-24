@@ -39,6 +39,12 @@ export default function EstudiantesLayout({ children }: { children: React.ReactN
   }
 
   useEffect(() => {
+     // PWA manifest del maestro
+    const link = document.querySelector('link[rel="manifest"]') as HTMLLinkElement
+    if (link) link.href = '/manifest-student.json'
+    document.querySelector('meta[name="theme-color"]')?.setAttribute('content', '#1A7DB8')
+    document.querySelector('meta[name="apple-mobile-web-app-title"]')?.setAttribute('content', 'Estudiante NNUU')
+
     const userData = localStorage.getItem('user')
     const token    = localStorage.getItem('token')
     if (!userData || !token) { router.push('/login'); return }
