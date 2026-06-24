@@ -3,7 +3,7 @@
   "short_name": "Estudiante NNUU",
   "description": "Portal del estudiante — U.E. Naciones Unidas El Torno",
   "start_url": "/dashboard/estudiantes",
-  "scope": "/dashboard/estudiantes",
+  "scope": "/",
   "display": "standalone",
   "background_color": "#1A7DB8",
   "theme_color": "#1A7DB8",

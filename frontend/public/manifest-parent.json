@@ -3,7 +3,7 @@
   "short_name": "Padre NNUU",
   "description": "Portal del padre — U.E. Naciones Unidas El Torno",
   "start_url": "/dashboard/parent",
-  "scope": "/dashboard/parent",
+  "scope": "/",
   "display": "standalone",
   "background_color": "#27500A",
   "theme_color": "#27500A",

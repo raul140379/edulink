@@ -3,7 +3,7 @@
   "short_name": "Portero NNUU",
   "description": "Control de entrada y salida — U.E. Naciones Unidas El Torno",
   "start_url": "/dashboard/portero",
-  "scope": "/dashboard/portero",
+  "scope": "/",
   "display": "standalone",
   "background_color": "#0F172A",
   "theme_color": "#1A3A7C",

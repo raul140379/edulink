@@ -34,8 +34,19 @@ export default function RootLayout({
         <meta name="apple-mobile-web-app-title" content="SGJE NNUU" />
         <meta name="mobile-web-app-capable" content="yes" />
         <meta name="theme-color" content="#1A3A7C" />
-        <link rel="manifest" href="/manifest.json" />
+        <link rel="manifest" href="/manifest.json" id="pwa-manifest" />
         <link rel="apple-touch-icon" href="/logo-nnuu.jpeg" />
+        <script dangerouslySetInnerHTML={{ __html: `
+          (function() {
+            var path = window.location.pathname;
+            var manifest = '/manifest.json';
+            if (path.startsWith('/dashboard/teacher')) manifest = '/manifest-teacher.json';
+            else if (path.startsWith('/dashboard/parent')) manifest = '/manifest-parent.json';
+            else if (path.startsWith('/dashboard/estudiantes')) manifest = '/manifest-student.json';
+            var el = document.getElementById('pwa-manifest');
+            if (el) el.setAttribute('href', manifest);
+          })();
+        `}} />
       </head>
       <body className="min-h-full flex flex-col">{children}</body>
     </html>

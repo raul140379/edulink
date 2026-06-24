@@ -3,7 +3,7 @@
   "short_name": "Maestro NNUU",
   "description": "Portal del maestro — U.E. Naciones Unidas El Torno",
   "start_url": "/dashboard/teacher",
-  "scope": "/dashboard/teacher",
+  "scope": "/",
   "display": "standalone",
   "background_color": "#633806",
   "theme_color": "#633806",

@@ -39,7 +39,7 @@ export default function EstudiantesLayout({ children }: { children: React.ReactN
   }
 
   useEffect(() => {
-     // PWA manifest del maestro
+     // PWA manifest del estudiante
     const link = document.querySelector('link[rel="manifest"]') as HTMLLinkElement
     if (link) link.href = '/manifest-student.json'
     document.querySelector('meta[name="theme-color"]')?.setAttribute('content', '#1A7DB8')
