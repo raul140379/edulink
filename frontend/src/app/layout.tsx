@@ -40,7 +40,8 @@ export default function RootLayout({
           (function() {
             var path = window.location.pathname;
             var manifest = '/manifest.json';
-            if (path.startsWith('/dashboard/teacher')) manifest = '/manifest-teacher.json';
+            if (path.startsWith('/dashboard/portero')) manifest = '/manifest-portero.json';
+            else if (path.startsWith('/dashboard/teacher')) manifest = '/manifest-teacher.json';
             else if (path.startsWith('/dashboard/parent')) manifest = '/manifest-parent.json';
             else if (path.startsWith('/dashboard/estudiantes')) manifest = '/manifest-student.json';
             var el = document.getElementById('pwa-manifest');
