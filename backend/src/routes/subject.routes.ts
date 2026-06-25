@@ -12,6 +12,8 @@ import {
   removeSubjectFromGradePlan,
   assignSubjectToMultipleCourses,
   getOccupiedCoursesForSubject,
+  updateSubjectGradeConfig,
+  getSubjectGradeConfigs,
 } from '../controllers/subject.controller'
 
 const router = Router()
@@ -26,6 +28,8 @@ router.delete('/assign/:id',  removeSubjectFromCourse)
 router.post('/grade-config', addSubjectToGradePlan)
 router.delete('/grade-config/:id', removeSubjectFromGradePlan)
 router.get('/:id/occupied-courses', getOccupiedCoursesForSubject)
+router.put('/grade-config/:id', updateSubjectGradeConfig)
+router.get('/:id/grade-configs', getSubjectGradeConfigs)
 // Rutas genéricas DESPUÉS
 router.get('/',       getSubjects)
 router.post('/',      createSubject)

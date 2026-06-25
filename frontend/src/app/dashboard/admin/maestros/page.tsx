@@ -90,18 +90,14 @@ export default function MaestrosPage() {
   const [copied,       setCopied]       = useState(false)
   const [subjectsByCampo, setSubjectsByCampo] = useState<Record<string, Subject[]>>({})
 
-  const [showSpecialties,   setShowSpecialties]   = useState(false)
-  const [specTeacher,       setSpecTeacher]       = useState<Teacher | null>(null)
-  const [specialties,       setSpecialties]       = useState<Specialty[]>([])
-  const [selectedSubjectId, setSelectedSubjectId] = useState('')
-  const [specSearch,        setSpecSearch]        = useState('')
-  const [addingSpec,        setAddingSpec]        = useState(false)
-  const [loadingSpec,       setLoadingSpec]       = useState(false)
+  const [showSpecialties,    setShowSpecialties]    = useState(false)
+  const [specTeacher,        setSpecTeacher]        = useState<Teacher | null>(null)
+  const [specialties,        setSpecialties]        = useState<Specialty[]>([])
+  const [selectedSubjectId,  setSelectedSubjectId]  = useState('')
+  const [specSearch,         setSpecSearch]         = useState('')
+  const [addingSpec,         setAddingSpec]         = useState(false)
+  const [loadingSpec,        setLoadingSpec]        = useState(false)
   const [allSubjectsForSpec, setAllSubjectsForSpec] = useState<Subject[]>([])
-
-  const [workloadModal, setWorkloadModal] = useState<{ open: boolean; teacherId: number | null; data: any }>({
-    open: false, teacherId: null, data: null
-  })
 
   const token = typeof window !== 'undefined' ? localStorage.getItem('token') : ''
 
@@ -122,14 +118,6 @@ export default function MaestrosPage() {
       else notify('Error al cargar maestros', 'error')
     } catch { notify('Error de conexión', 'error') }
     finally  { setLoading(false) }
-  }
-
-  const fetchWorkload = async (teacherId: number) => {
-    try {
-      const res  = await fetch(`${API_URL}/api/teachers/${teacherId}/workload`, { headers: { Authorization: `Bearer ${token}` } })
-      const data = await res.json()
-      setWorkloadModal({ open: true, teacherId, data })
-    } catch { notify('Error al cargar carga horaria', 'error') }
   }
 
   const fetchSpecialties = async (teacherId: number) => {
@@ -427,7 +415,7 @@ export default function MaestrosPage() {
                           {t.isActive ? <UserX size={13}/> : <UserCheck size={13}/>}
                         </button>
                         <button className="icon-btn del" title="Eliminar" onClick={() => handleDelete(t.id, `${t.firstName} ${t.lastName}`)}><Trash2 size={13}/></button>
-                        <button className="icon-btn view" title="Ver carga horaria" onClick={() => fetchWorkload(t.id)}><Clock size={13}/></button>
+                        <button className="icon-btn clock" title="Ver carga horaria" onClick={() => router.push(`/dashboard/admin/maestros/${t.id}/workload`)}><Clock size={13}/></button>
                       </div>
                     </td>
                   </tr>
@@ -610,143 +598,6 @@ export default function MaestrosPage() {
           </div>
         </div>
       )}
-{/* ── Modal carga horaria ACTUALIZADO ── */}
-      {workloadModal.open && workloadModal.data && (
-        <div className="overlay" onClick={() => setWorkloadModal({ open: false, teacherId: null, data: null })}>
-          <div className="modal modal-lg" onClick={e => e.stopPropagation()}>
-            <div className="mhead">
-              <div>
-                <h2>{workloadModal.data.teacher?.lastName} {workloadModal.data.teacher?.firstName}</h2>
-                <p className="mhead-sub">{workloadModal.data.teacher?.specialty || 'Sin especialidad registrada'}</p>
-              </div>
-              <button onClick={() => setWorkloadModal({ open: false, teacherId: null, data: null })}><X size={18}/></button>
-            </div>
-            <div className="mbody">
-
-              {/* Tarjetas resumen */}
-              <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:'12px',flexShrink:0}}>
-                <div style={{background:'#633806',color:'#fff',borderRadius:'12px',padding:'16px',textAlign:'center'}}>
-                  <div style={{fontSize:'11px',opacity:.8,textTransform:'uppercase',letterSpacing:'.5px',marginBottom:6}}>Carga contratada</div>
-                  <div style={{fontSize:'28px',fontWeight:'800',lineHeight:1}}>{workloadModal.data.horasContratadaMes || 0}</div>
-                  <div style={{fontSize:'11px',opacity:.7,marginTop:4}}>hrs/mes</div>
-                </div>
-                <div style={{background:'#1A3A7C',color:'#fff',borderRadius:'12px',padding:'16px',textAlign:'center'}}>
-                  <div style={{fontSize:'11px',opacity:.8,textTransform:'uppercase',letterSpacing:'.5px',marginBottom:6}}>Materias distintas</div>
-                  <div style={{fontSize:'28px',fontWeight:'800',lineHeight:1}}>
-                    {[...new Set(workloadModal.data.assignments.map((a: any) => a.subjectName))].length}
-                  </div>
-                  <div style={{fontSize:'11px',opacity:.7,marginTop:4}}>materias</div>
-                </div>
-                <div style={{background:'#0F6E56',color:'#fff',borderRadius:'12px',padding:'16px',textAlign:'center'}}>
-                  <div style={{fontSize:'11px',opacity:.8,textTransform:'uppercase',letterSpacing:'.5px',marginBottom:6}}>Asignaciones</div>
-                  <div style={{fontSize:'28px',fontWeight:'800',lineHeight:1}}>{workloadModal.data.assignments.length}</div>
-                  <div style={{fontSize:'11px',opacity:.7,marginTop:4}}>cursos</div>
-                </div>
-              </div>
-
-              {/* Horas por tipo de horario institucional */}
-              {workloadModal.data.totalesPorHorario && workloadModal.data.totalesPorHorario.length > 0 && (
-                <div style={{flexShrink:0}}>
-                  <div style={{fontSize:'11px',fontWeight:700,color:'#1A3A7C',textTransform:'uppercase',letterSpacing:'.5px',marginBottom:8}}>
-                    Horas asignadas en horario
-                  </div>
-                  <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(200px,1fr))',gap:10}}>
-                    {workloadModal.data.totalesPorHorario.map((h: any) => {
-                      const porcentaje = workloadModal.data.horasContratadaMes > 0
-                        ? Math.min(Math.round((h.horasMes / workloadModal.data.horasContratadaMes) * 100), 100)
-                        : 0
-                      const color = porcentaje >= 100 ? '#0F6E56' : porcentaje >= 75 ? '#BA7517' : '#C0392B'
-                      const bg    = porcentaje >= 100 ? '#E1F5EE' : porcentaje >= 75 ? '#FFFBEA' : '#FFF0F0'
-                      return (
-                        <div key={h.horarioId} style={{background:'#F8FBFF',border:'1px solid #CBE0F0',borderRadius:10,padding:14}}>
-                          <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:8}}>
-                            <div>
-                              <div style={{fontSize:13,fontWeight:700,color:'#1A3A7C'}}>
-                                {h.isWinter ? '❄️' : '☀️'} {h.nombre}
-                              </div>
-                              <div style={{fontSize:11,color:'#6B8BB0',marginTop:2}}>
-                                {h.minPeriodo} min/periodo · {h.totalPeriodos} periodos/sem
-                              </div>
-                            </div>
-                            <div style={{background:bg,color,borderRadius:8,padding:'4px 10px',fontSize:12,fontWeight:700}}>
-                              {porcentaje}%
-                            </div>
-                          </div>
-                          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:8,marginBottom:8}}>
-                            <div style={{background:'#fff',borderRadius:8,padding:'6px',textAlign:'center'}}>
-                              <div style={{fontSize:16,fontWeight:800,color:'#1A3A7C'}}>{h.horasSemana}</div>
-                              <div style={{fontSize:10,color:'#6B8BB0'}}>hrs/semana</div>
-                            </div>
-                            <div style={{background:'#fff',borderRadius:8,padding:'6px',textAlign:'center'}}>
-                              <div style={{fontSize:16,fontWeight:800,color:'#1A3A7C'}}>{h.horasMes}</div>
-                              <div style={{fontSize:10,color:'#6B8BB0'}}>hrs/mes</div>
-                            </div>
-                          </div>
-                          <div style={{background:'#F0F6FC',borderRadius:20,height:5,overflow:'hidden'}}>
-                            <div style={{height:'100%',borderRadius:20,width:`${porcentaje}%`,background:color}}/>
-                          </div>
-                          <div style={{display:'flex',justifyContent:'space-between',marginTop:3}}>
-                            <span style={{fontSize:10,color:'#6B8BB0'}}>0</span>
-                            <span style={{fontSize:10,color:'#6B8BB0'}}>Meta: {workloadModal.data.horasContratadaMes} hrs/mes</span>
-                          </div>
-                        </div>
-                      )
-                    })}
-                  </div>
-                </div>
-              )}
-
-              {/* Detalle de asignaciones — con scroll propio */}
-              <div style={{display:'flex',flexDirection:'column',flex:1,minHeight:0,border:'1px solid #CBE0F0',borderRadius:'10px',overflow:'hidden'}}>
-                <div style={{
-                  padding:'12px 16px',background:'#F8FBFF',borderBottom:'1px solid #CBE0F0',
-                  fontSize:'12px',fontWeight:'700',color:'#1A3A7C',textTransform:'uppercase',
-                  letterSpacing:'.5px',flexShrink:0
-                }}>
-                  Detalle de asignaciones ({workloadModal.data.assignments.length})
-                </div>
-                <div style={{overflowY:'auto',flex:1}}>
-                  <table style={{width:'100%',borderCollapse:'collapse'}}>
-                    <thead>
-                      <tr style={{background:'#F0F6FC',position:'sticky',top:0,zIndex:1}}>
-                        <th style={{padding:'10px 14px',textAlign:'left',fontSize:'11px',fontWeight:'600',color:'#1A3A7C',textTransform:'uppercase',letterSpacing:'.5px'}}>Materia</th>
-                        <th style={{padding:'10px 14px',textAlign:'left',fontSize:'11px',fontWeight:'600',color:'#1A3A7C',textTransform:'uppercase',letterSpacing:'.5px'}}>Curso</th>
-                        <th style={{padding:'10px 14px',textAlign:'center',fontSize:'11px',fontWeight:'600',color:'#1A3A7C',textTransform:'uppercase',letterSpacing:'.5px'}}>Periodos</th>
-                        <th style={{padding:'10px 14px',textAlign:'right',fontSize:'11px',fontWeight:'600',color:'#1A3A7C',textTransform:'uppercase',letterSpacing:'.5px'}}>Hrs/Sem</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {workloadModal.data.assignments.map((a: any, i: number) => (
-                        <tr key={i} style={{borderTop:'1px solid #F0F6FC'}}>
-                          <td style={{padding:'10px 14px',fontSize:'13px',fontWeight:'500',color:'#1A3A7C'}}>{a.subjectName}</td>
-                          <td style={{padding:'10px 14px',fontSize:'13px',color:'#6B8BB0'}}>{a.courseLabel}</td>
-                          <td style={{padding:'10px 14px',textAlign:'center'}}>
-                            <span style={{background:'#FDF0E6',color:'#633806',padding:'2px 10px',borderRadius:'20px',fontSize:'12px',fontWeight:'600'}}>
-                              {a.periodosAsignados || 0} per.
-                            </span>
-                          </td>
-                          <td style={{padding:'10px 14px',textAlign:'right'}}>
-                            <span style={{background:'#FFFBEA',color:'#BA7517',border:'1px solid #F5C518',padding:'3px 12px',borderRadius:'20px',fontSize:'12px',fontWeight:'600'}}>
-                              {a.hoursPerWeek} hrs
-                            </span>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-
-            </div>
-            <div className="mfoot">
-              <span style={{fontSize:'12px',color:'#6B8BB0'}}>
-                Carga contratada: <strong>{workloadModal.data.horasContratadaMes || 0} hrs/mes</strong>
-              </span>
-              <button className="btn-primary" onClick={() => setWorkloadModal({ open: false, teacherId: null, data: null })}>Cerrar</button>
-            </div>
-          </div>
-        </div>
-      )}
 
       <style>{`
         .page-header{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:24px;gap:16px}
@@ -796,6 +647,7 @@ export default function MaestrosPage() {
         .icon-btn.view{background:#E0ECF8;color:#1A3A7C}
         .icon-btn.edit{background:#FAEEDA;color:#633806}
         .icon-btn.spec{background:#E8F0FB;color:#1A3A7C}
+        .icon-btn.clock{background:#E1F5EE;color:#0F6E56}
         .icon-btn.deact{background:#FFF0F0;color:#C0392B}
         .icon-btn.act2{background:#E1F5EE;color:#0F6E56}
         .icon-btn.del{background:#FFF0F0;color:#C0392B}
@@ -804,14 +656,14 @@ export default function MaestrosPage() {
         .center-state{display:flex;flex-direction:column;align-items:center;justify-content:center;padding:48px;gap:12px;color:#6B8BB0;font-size:13px}
         .overlay{position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:500;display:flex;align-items:center;justify-content:center;padding:16px}
         .modal{background:#fff;border-radius:14px;width:100%;max-width:440px;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,0.15);max-height:92vh;display:flex;flex-direction:column}
-        .modal-lg{max-width:780px;height:90vh}
+        .modal-lg{max-width:580px}
         .modal-spec{max-width:460px}
         .mhead{display:flex;align-items:flex-start;justify-content:space-between;padding:18px 20px;border-bottom:1px solid #CBE0F0;flex-shrink:0;gap:12px}
         .mhead h2{font-size:16px;font-weight:600;color:#1A3A7C;margin:0}
         .mhead-sub{font-size:12px;color:#6B8BB0;margin-top:2px}
         .mhead button{background:none;border:none;cursor:pointer;color:#6B8BB0;display:flex;padding:4px;border-radius:6px;flex-shrink:0}
         .mhead button:hover{background:#F0F6FC;color:#1A3A7C}
-       .mbody{padding:20px;display:flex;flex-direction:column;gap:14px;overflow-y:auto;flex:1;min-height:0}
+        .mbody{padding:20px;display:flex;flex-direction:column;gap:14px;overflow-y:auto;flex:1;min-height:0}
         .mfoot{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:16px 20px;border-top:1px solid #CBE0F0;flex-shrink:0}
         .section-lbl{font-size:12px;font-weight:700;color:#1A3A7C;text-transform:uppercase;letter-spacing:.6px;padding-bottom:4px;border-bottom:1px solid #F0F6FC}
         .form-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}

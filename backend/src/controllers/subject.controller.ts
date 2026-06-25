@@ -475,3 +475,40 @@ export const getOccupiedCoursesForSubject = async (req: AuthRequest, res: Respon
     res.status(500).json({ message: 'Error al obtener cursos ocupados' })
   }
 }
+// ─────────────────────────────────────────────
+// PUT /api/subjects/grade-config/:id — Actualizar horas de materia en grado
+// ─────────────────────────────────────────────
+export const updateSubjectGradeConfig = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const { id } = req.params
+    const { hoursPerWeek } = req.body
+
+    if (!hoursPerWeek || parseInt(hoursPerWeek) < 1) {
+      res.status(400).json({ message: 'Las horas deben ser mayor a 0' }); return
+    }
+
+    const config = await prisma.subjectGradeConfig.update({
+      where: { id: parseInt(id) },
+      data:  { hoursPerWeek: parseInt(hoursPerWeek) },
+      include: { subject: { select: { id: true, name: true } } }
+    })
+
+    res.json({ message: 'Horas actualizadas correctamente', config })
+  } catch (error) {
+    console.error('updateSubjectGradeConfig error:', error)
+    res.status(500).json({ message: 'Error al actualizar horas' })
+  }
+}
+
+export const getSubjectGradeConfigs = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const { id } = req.params
+    const configs = await prisma.subjectGradeConfig.findMany({
+      where: { subjectId: parseInt(id) },
+      orderBy: [{ educationType: 'asc' }, { grade: 'asc' }]
+    })
+    res.json(configs)
+  } catch (error) {
+    res.status(500).json({ message: 'Error al obtener configuración' })
+  }
+}
