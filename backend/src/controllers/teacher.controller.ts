@@ -140,6 +140,7 @@ export const getTeacherById = async (req: AuthRequest, res: Response): Promise<v
   }
 }
 // GET /api/teachers/:id/workload - carga de horas por semana y detalle de asignaciones para un maestro específico
+// GET /api/teachers/:id/workload - carga de horas por semana y detalle de asignaciones para un maestro específico
 export const getTeacherWorkloadById = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     const teacherId = parseInt(req.params.id);
@@ -150,48 +151,81 @@ export const getTeacherWorkloadById = async (req: AuthRequest, res: Response): P
         assignments: {
           include: {
             subject: {
-              include: {
-                gradeConfigs: true,
-              },
+              include: { gradeConfigs: true },
             },
             course: true,
+            schedules: {
+              include: {
+                academicYear: { select: { isActive: true } }
+              }
+            },
           },
         },
       },
     });
 
     if (!teacher) { res.status(404).json({ error: 'Maestro no encontrado' }); return }
-    let totalHours = 0;
+
+    // Obtener horarios institucionales activos
+    const schoolSchedules = await prisma.schoolSchedule.findMany({
+      where: { isActive: true },
+      orderBy: { isWinter: 'asc' }
+    });
+
+    let totalHoursPerWeek = 0;
 
     const detail = teacher.assignments.map((a) => {
       const config = a.subject.gradeConfigs.find(
         (gc) => gc.grade === a.course.grade && gc.educationType === a.course.educationType
       );
       const hours = config?.hoursPerWeek ?? a.subject.hoursPerWeek;
-      totalHours += hours;
+      totalHoursPerWeek += hours;
+
+      const periodosAsignados = a.schedules.filter(s => s.academicYear?.isActive).length;
 
       return {
-        subjectId: a.subjectId,
-        subjectName: a.subject.name,
-        campo: a.subject.campo,
-        courseId: a.courseId,
-        courseLabel: `${a.course.grade} "${a.course.parallel}" ${a.course.shift === 'MORNING' ? 'Mañana' : 'Tarde'}`,
-        grade: a.course.grade,
-        parallel: a.course.parallel,
-        shift: a.course.shift,
+        subjectId:     a.subjectId,
+        subjectName:   a.subject.name,
+        campo:         a.subject.campo,
+        courseId:      a.courseId,
+        courseLabel:   `${a.course.grade} "${a.course.parallel}" ${a.course.shift === 'MORNING' ? 'Mañana' : 'Tarde'}`,
+        grade:         a.course.grade,
+        parallel:      a.course.parallel,
+        shift:         a.course.shift,
         educationType: a.course.educationType,
-        hoursPerWeek: hours,
+        hoursPerWeek:  hours,
+        periodosAsignados,
+      };
+    });
+
+    // Totales por tipo de horario
+    const totalesPorHorario = schoolSchedules.map(sh => {
+      const totalPeriodos = detail.reduce((s, d) => s + d.periodosAsignados, 0);
+      const minutos       = totalPeriodos * sh.periodDuration;
+      const horasSemana   = Math.round((minutos / 60) * 10) / 10;
+      const horasMes      = Math.round(horasSemana * 4 * 10) / 10;
+      return {
+        horarioId:    sh.id,
+        nombre:       sh.name,
+        turno:        sh.shift,
+        isWinter:     sh.isWinter,
+        minPeriodo:   sh.periodDuration,
+        totalPeriodos,
+        horasSemana,
+        horasMes,
       };
     });
 
     res.json({
       teacher: {
-        id: teacher.id,
+        id:        teacher.id,
         firstName: teacher.firstName,
-        lastName: teacher.lastName,
+        lastName:  teacher.lastName,
         specialty: teacher.specialty,
       },
-      totalHoursPerWeek: totalHours,
+      totalHoursPerWeek,
+      horasContratadaMes: teacher.hoursLoad || 0,
+      totalesPorHorario,
       assignments: detail,
     });
   } catch (error) {
@@ -392,7 +426,7 @@ export const deleteTeacher = async (req: AuthRequest, res: Response): Promise<vo
 }// GET /api/teachers/Mi Carga Horaria — Total de horas por semana y detalle de asignaciones
 export const getTeacherWorkload = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-  const userId = req.userId;
+    const userId = req.userId;
 
     const teacher = await prisma.teacher.findUnique({
       where: { userId },
@@ -400,11 +434,14 @@ export const getTeacherWorkload = async (req: AuthRequest, res: Response): Promi
         assignments: {
           include: {
             subject: {
-              include: {
-                gradeConfigs: true,
-              },
+              include: { gradeConfigs: true },
             },
             course: true,
+            schedules: {
+              include: {
+                academicYear: { select: { isActive: true } }
+              }
+            },
           },
         },
       },
@@ -412,30 +449,80 @@ export const getTeacherWorkload = async (req: AuthRequest, res: Response): Promi
 
     if (!teacher) { res.status(404).json({ error: 'Maestro no encontrado' }); return }
 
-    let totalHours = 0;
+    // Obtener todos los horarios institucionales activos (Normal e Invierno)
+    const schoolSchedules = await prisma.schoolSchedule.findMany({
+      where: { isActive: true },
+      orderBy: { isWinter: 'asc' }
+    });
+
+    let totalHoursPerWeek = 0;
 
     const detail = teacher.assignments.map((a) => {
       const config = a.subject.gradeConfigs.find(
         (gc) => gc.grade === a.course.grade && gc.educationType === a.course.educationType
       );
       const hours = config?.hoursPerWeek ?? a.subject.hoursPerWeek;
-      totalHours += hours;
+      totalHoursPerWeek += hours;
+
+      // Periodos asignados en el horario del año activo
+      const periodosAsignados = a.schedules.filter(s => s.academicYear?.isActive).length;
+
+      // Calcular horas por tipo de horario (Normal e Invierno)
+      const horasPorHorario = schoolSchedules.map(sh => {
+        const minutos = periodosAsignados * sh.periodDuration;
+        const horasSemana = Math.round((minutos / 60) * 10) / 10;
+        const horasMes    = Math.round(horasSemana * 4 * 10) / 10;
+        return {
+          horarioId:    sh.id,
+          nombre:       sh.name,
+          turno:        sh.shift,
+          isWinter:     sh.isWinter,
+          minPeriodo:   sh.periodDuration,
+          horasSemana,
+          horasMes,
+        };
+      });
 
       return {
-        subjectId: a.subjectId,
-        subjectName: a.subject.name,
-        campo: a.subject.campo,
-        courseId: a.courseId,
-        courseLabel: `${a.course.grade} "${a.course.parallel}" ${a.course.shift === 'MORNING' ? 'Mañana' : 'Tarde'}`,
-        grade: a.course.grade,
-        parallel: a.course.parallel,
-        shift: a.course.shift,
+        subjectId:    a.subjectId,
+        subjectName:  a.subject.name,
+        campo:        a.subject.campo,
+        courseId:     a.courseId,
+        courseLabel:  `${a.course.grade} "${a.course.parallel}" ${a.course.shift === 'MORNING' ? 'Mañana' : 'Tarde'}`,
+        grade:        a.course.grade,
+        parallel:     a.course.parallel,
+        shift:        a.course.shift,
         educationType: a.course.educationType,
-        hoursPerWeek: hours,
+        hoursPerWeek:  hours,
+        periodosAsignados,
+        horasPorHorario,
       };
     });
 
-    res.json({ totalHoursPerWeek: totalHours, assignments: detail });
+    // Totales por tipo de horario
+    const totalesPorHorario = schoolSchedules.map(sh => {
+      const totalPeriodos = detail.reduce((s, d) => s + d.periodosAsignados, 0);
+      const minutos       = totalPeriodos * sh.periodDuration;
+      const horasSemana   = Math.round((minutos / 60) * 10) / 10;
+      const horasMes      = Math.round(horasSemana * 4 * 10) / 10;
+      return {
+        horarioId:   sh.id,
+        nombre:      sh.name,
+        turno:       sh.shift,
+        isWinter:    sh.isWinter,
+        minPeriodo:  sh.periodDuration,
+        totalPeriodos,
+        horasSemana,
+        horasMes,
+      };
+    });
+
+    res.json({
+      totalHoursPerWeek,
+      horasContratadaMes: teacher.hoursLoad || 0,
+      totalesPorHorario,
+      assignments: detail,
+    });
   } catch (error) {
     res.status(500).json({ error: 'Error al obtener carga horaria' });
   }
