@@ -22,6 +22,7 @@ import scheduleRoutes from './routes/schedule.routes'
 import classroomRoutes from './routes/classroom.routes'
 import gateRoutes from './routes/gate.routes'
 import studentAttendanceRoutes from './routes/studentAttendance.routes'
+import planificacionRoutes from './routes/planificacion.routes'
 
 dotenv.config()
 
@@ -61,6 +62,7 @@ app.use('/api/schedules', scheduleRoutes)
 app.use('/api/classrooms', classroomRoutes)
 app.use('/api/gate', gateRoutes)
 app.use('/api/student-attendance', studentAttendanceRoutes)
+app.use('/api/planificacion', planificacionRoutes)
 
 app.get('/', (req, res) => {
   res.json({ message: '🚀 SGJE Backend funcionando correctamente', version: '1.0.0' })

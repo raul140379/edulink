@@ -16,6 +16,7 @@ import {
   deleteDraft,
   getTscsByCourse,
   deleteAllSchedule,
+  getPeriodsSummary,
 } from '../controllers/schedule.controller'
 
 const router = Router()
@@ -36,6 +37,7 @@ router.delete('/:id',                     requirePermission(Permission.USER_CREA
 router.post('/generate/:courseId',        requirePermission(Permission.USER_CREATE), generateSchedule)
 router.post('/publish/:courseId',         requirePermission(Permission.USER_CREATE), publishSchedule)
 router.get('/tscs/:courseId',             getTscsByCourse)
+router.get('/course/:courseId/periods-summary', getPeriodsSummary)
 
 // Horario por maestro
 router.get('/teacher/:teacherId',         getTeacherSchedule)

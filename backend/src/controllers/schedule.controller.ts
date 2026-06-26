@@ -675,3 +675,35 @@ export const deleteAllSchedule = async (req: AuthRequest, res: Response): Promis
     res.status(500).json({ message: 'Error al eliminar horario' })
   }
 }
+// ─────────────────────────────────────────────
+// GET /api/schedules/course/:courseId/periods-summary
+// Periodos PUBLICADOS por materia para un curso
+// ─────────────────────────────────────────────
+export const getPeriodsSummary = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const { courseId } = req.params
+
+    const activeYear = await prisma.academicYear.findFirst({ where: { isActive: true } })
+    if (!activeYear) { res.status(400).json({ message: 'No hay gestión activa' }); return }
+
+    const schedules = await prisma.schedule.findMany({
+      where: { courseId: parseInt(courseId), academicYearId: activeYear.id, status: 'PUBLICADO' },
+      include: {
+        teacherSubjectCourse: {
+          select: { subjectId: true }
+        }
+      }
+    })
+
+    // Agrupar por subjectId → contar periodos publicados
+    const summary: Record<number, number> = {}
+    schedules.forEach(s => {
+      const sid = s.teacherSubjectCourse.subjectId
+      summary[sid] = (summary[sid] || 0) + 1
+    })
+
+    res.json({ courseId: parseInt(courseId), summary })
+  } catch (error) {
+    res.status(500).json({ message: 'Error al obtener resumen de periodos' })
+  }
+}

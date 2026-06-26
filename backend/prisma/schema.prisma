@@ -226,6 +226,7 @@ model AcademicYear {
   charges     Charge[]
   schedules Schedule[]
   studentAttendances StudentAttendance[]
+  schedulePlans SchedulePlan[]
 }
 
 model Trimester {
@@ -414,6 +415,7 @@ model Course {
   @@unique([level, grade, parallel, educationType, shift])
   notas     Nota[] 
   studentAttendances StudentAttendance[]
+  schedulePlans SchedulePlan[]
 }
 
 // Maestro tutor designado a un curso
@@ -466,6 +468,7 @@ model TeacherSubjectCourse {
   course    Course  @relation(fields: [courseId], references: [id])
   schedules Schedule[]
   @@unique([teacherId, subjectId, courseId])
+  schedulePlans SchedulePlan[]
 }
 
 //TIPOS TAREAS ESTUDIANTES
@@ -554,6 +557,29 @@ model Schedule {
 
   @@unique([courseId, academicYearId, dayOfWeek, period])
 }
+// PLANIFICACION DE HORARIO
+model SchedulePlan {
+  id                     Int      @id @default(autoincrement())
+  dayOfWeek              Int
+  period                 Int
+  startTime              String
+  endTime                String
+  slot                   String   @default("TEMP") // TEMP, A, B
+  courseId               Int
+  academicYearId         Int
+  teacherSubjectCourseId Int
+  classroomId            Int?
+
+  course               Course               @relation(fields: [courseId],               references: [id])
+  academicYear         AcademicYear         @relation(fields: [academicYearId],         references: [id])
+  teacherSubjectCourse TeacherSubjectCourse @relation(fields: [teacherSubjectCourseId], references: [id])
+  classroom            Classroom?           @relation(fields: [classroomId],            references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([courseId, academicYearId, dayOfWeek, period, slot])
+}
  // aula de clases
  model Classroom {
   id        Int        @id @default(autoincrement())
@@ -562,6 +588,7 @@ model Schedule {
   isActive  Boolean    @default(true)
   createdAt DateTime   @default(now())
   schedules Schedule[]
+  schedulePlans SchedulePlan[]
 }
 // ─────────────────────────────────────────────
 // TESORERÍA

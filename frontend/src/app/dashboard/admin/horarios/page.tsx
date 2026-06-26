@@ -1,4 +1,4 @@
-'use client' 
+ 'use client' 
 
 import { useEffect, useState } from 'react'
 import { Clock, Plus, Save, X, Edit2, Sun, Snowflake, Zap } from 'lucide-react'
@@ -122,77 +122,74 @@ export default function HorariosPage() {
     } catch { showToast('err', 'Error') }
   }
 
- const handleGenerateAll = async () => {
-  if (!confirm('¿Generar y publicar el horario de todos los cursos SIN horario publicado?')) return
-  setGeneratingAll(true)
-  setResultAll([])
-  setShowResults(true)
-  try {
-    const resC    = await fetch(`${API}/api/courses`, { headers: auth() })
-    const courses = await resC.json()
-    if (!Array.isArray(courses)) { showToast('err', 'Error al obtener cursos'); return }
+  const handleGenerateAll = async () => {
+    if (!confirm('¿Generar y publicar el horario de todos los cursos SIN horario publicado?')) return
+    setGeneratingAll(true)
+    setResultAll([])
+    setShowResults(true)
+    try {
+      const resC    = await fetch(`${API}/api/courses`, { headers: auth() })
+      const courses = await resC.json()
+      if (!Array.isArray(courses)) { showToast('err', 'Error al obtener cursos'); return }
 
-    const results: GenerateResult[] = []
+      const results: GenerateResult[] = []
 
-    for (const course of courses) {
-      try {
-        // Verificar si ya tiene horario publicado
-        const resS  = await fetch(`${API}/api/schedules/course/${course.id}`, { headers: auth() })
-        const dataS = await resS.json()
-        const periods = dataS.schedule?.flatMap((d:any) => d.periods) || []
-        const yaPublicado = periods.some((p:any) => p.status === 'PUBLICADO')
+      for (const course of courses) {
+        try {
+          const resS  = await fetch(`${API}/api/schedules/course/${course.id}`, { headers: auth() })
+          const dataS = await resS.json()
+          const periods = dataS.schedule?.flatMap((d:any) => d.periods) || []
+          const yaPublicado = periods.some((p:any) => p.status === 'PUBLICADO')
 
-        if (yaPublicado) {
-          results.push({ course, status: 'skip', msg: 'Ya tiene horario publicado — omitido' })
+          if (yaPublicado) {
+            results.push({ course, status: 'skip', msg: 'Ya tiene horario publicado — omitido' })
+            setResultAll([...results])
+            continue
+          }
+
+          const resG  = await fetch(`${API}/api/schedules/generate/${course.id}`, {
+            method: 'POST', headers: auth()
+          })
+          const dataG = await resG.json()
+
+          if (!resG.ok) {
+            results.push({ course, status: 'error', msg: dataG.message || 'Error al generar' })
+            setResultAll([...results])
+            continue
+          }
+
+          if (dataG.created === 0) {
+            results.push({ course, status: 'skip', msg: 'Sin materias asignadas — omitido' })
+            setResultAll([...results])
+            continue
+          }
+
+          const resP  = await fetch(`${API}/api/schedules/publish/${course.id}`, {
+            method: 'POST', headers: auth()
+          })
+          const dataP = await resP.json()
+
+          results.push({
+            course,
+            status: resP.ok ? 'ok' : 'error',
+            msg:    resP.ok ? `${dataP.count} periodos publicados` : dataP.message
+          })
           setResultAll([...results])
-          continue
-        }
 
-        // Generar borrador
-        const resG  = await fetch(`${API}/api/schedules/generate/${course.id}`, {
-          method: 'POST', headers: auth()
-        })
-        const dataG = await resG.json()
-
-        if (!resG.ok) {
-          results.push({ course, status: 'error', msg: dataG.message || 'Error al generar' })
+        } catch {
+          results.push({ course, status: 'error', msg: 'Error de conexión' })
           setResultAll([...results])
-          continue
         }
-
-        if (dataG.created === 0) {
-          results.push({ course, status: 'skip', msg: 'Sin materias asignadas — omitido' })
-          setResultAll([...results])
-          continue
-        }
-
-        // Publicar
-        const resP  = await fetch(`${API}/api/schedules/publish/${course.id}`, {
-          method: 'POST', headers: auth()
-        })
-        const dataP = await resP.json()
-
-        results.push({
-          course,
-          status: resP.ok ? 'ok' : 'error',
-          msg:    resP.ok ? `${dataP.count} periodos publicados` : dataP.message
-        })
-        setResultAll([...results])
-
-      } catch {
-        results.push({ course, status: 'error', msg: 'Error de conexión' })
-        setResultAll([...results])
       }
-    }
 
-    const ok   = results.filter(r => r.status === 'ok').length
-    const err  = results.filter(r => r.status === 'error').length
-    const skip = results.filter(r => r.status === 'skip').length
-    showToast('ok', `Completado: ${ok} publicados, ${skip} omitidos, ${err} errores`)
+      const ok   = results.filter(r => r.status === 'ok').length
+      const err  = results.filter(r => r.status === 'error').length
+      const skip = results.filter(r => r.status === 'skip').length
+      showToast('ok', `Completado: ${ok} publicados, ${skip} omitidos, ${err} errores`)
 
-  } catch { showToast('err', 'Error al obtener cursos') }
-  finally  { setGeneratingAll(false) }
-}
+    } catch { showToast('err', 'Error al obtener cursos') }
+    finally  { setGeneratingAll(false) }
+  }
 
   const morning   = schedules.filter(s => s.shift === 'MORNING')
   const afternoon = schedules.filter(s => s.shift === 'AFTERNOON')
@@ -226,6 +223,13 @@ export default function HorariosPage() {
           }}>
             🚪 Gestionar Aulas
           </button>
+          <button onClick={()=>router.push('/dashboard/admin/horarios/planificacion')} style={{
+  display:'flex',alignItems:'center',gap:8,padding:'10px 18px',
+  background:'#8B1A7C',color:'#fff',border:'none',borderRadius:8,
+  fontSize:13,fontWeight:600,cursor:'pointer'
+}}>
+  📅 Planificación Global
+</button>
           <button onClick={handleGenerateAll} disabled={generatingAll} style={{
             display:'flex',alignItems:'center',gap:8,padding:'10px 18px',
             background:'#8B1A7C',color:'#fff',border:'none',borderRadius:8,
@@ -307,7 +311,7 @@ export default function HorariosPage() {
                 <Sun size={18} color="#BA7517"/>
                 <span style={{fontWeight:700,fontSize:15,color:'#BA7517'}}>Turno Mañana</span>
               </div>
-              <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(400px,1fr))',gap:16}}>
+              <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(420px,1fr))',gap:16}}>
                 {morning.map(s => <ScheduleCard key={s.id} s={s} periodos={periodos[s.id]||[]} onEdit={openEdit} onToggle={toggleActive}/>)}
               </div>
             </div>
@@ -319,7 +323,7 @@ export default function HorariosPage() {
                 <Clock size={18} color="#1A3A7C"/>
                 <span style={{fontWeight:700,fontSize:15,color:'#1A3A7C'}}>Turno Tarde / BTH</span>
               </div>
-              <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(400px,1fr))',gap:16}}>
+              <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(420px,1fr))',gap:16}}>
                 {afternoon.map(s => <ScheduleCard key={s.id} s={s} periodos={periodos[s.id]||[]} onEdit={openEdit} onToggle={toggleActive}/>)}
               </div>
             </div>
@@ -437,15 +441,22 @@ function ScheduleCard({ s, periodos, onEdit, onToggle }: {
   onEdit: (s: SchoolSchedule) => void
   onToggle: (s: SchoolSchedule) => void
 }) {
+  const recreos          = s.breakAfter ? s.breakAfter.split(',').filter(Boolean) : []
+  const cantidadRecreos  = recreos.length
+  const totalMinReceso   = cantidadRecreos * s.breakDuration
+  const minExtraPeriodo  = s.periods > 0 ? Math.round((totalMinReceso / s.periods) * 10) / 10 : 0
+  const duracionEfectiva = Math.round((s.periodDuration + minExtraPeriodo) * 10) / 10
+  const breakPeriods     = s.breakAfter.split(',').map(Number)
+
   return (
     <div style={{
-      background:'#fff',border:`1px solid ${s.isActive?'#CBE0F0':'#E0E0E0'}`,borderRadius:12,overflow:'hidden',
-      opacity:s.isActive?1:0.6
+      background:'#fff', border:`1px solid ${s.isActive?'#CBE0F0':'#E0E0E0'}`,
+      borderRadius:12, overflow:'hidden', opacity:s.isActive?1:0.6
     }}>
+
+      {/* Header */}
       <div style={{padding:'14px 18px',borderBottom:'1px solid #F0F6FC',display:'flex',alignItems:'center',gap:10}}>
-        {s.isWinter
-          ? <Snowflake size={16} color="#4A9FD4"/>
-          : <Sun size={16} color="#BA7517"/>}
+        {s.isWinter ? <Snowflake size={16} color="#4A9FD4"/> : <Sun size={16} color="#BA7517"/>}
         <div style={{flex:1}}>
           <div style={{fontWeight:700,fontSize:14,color:'#1A3A7C'}}>{s.name}</div>
           <div style={{fontSize:12,color:'#6B8BB0'}}>
@@ -453,36 +464,77 @@ function ScheduleCard({ s, periodos, onEdit, onToggle }: {
           </div>
         </div>
         <div style={{display:'flex',gap:6}}>
-          <button onClick={()=>onEdit(s)} style={{background:'#F0F6FC',border:'none',borderRadius:7,padding:'6px 10px',cursor:'pointer',color:'#1A3A7C',display:'flex',alignItems:'center',gap:4,fontSize:12}}>
+          <button onClick={()=>onEdit(s)}
+            style={{background:'#F0F6FC',border:'none',borderRadius:7,padding:'6px 10px',cursor:'pointer',color:'#1A3A7C',display:'flex',alignItems:'center',gap:4,fontSize:12}}>
             <Edit2 size={12}/> Editar
           </button>
           <button onClick={()=>!s.isActive && onToggle(s)} style={{
-            background:s.isActive?'#E1F5EE':'#F0F6FC',border:'none',borderRadius:7,
-            padding:'6px 10px',cursor:s.isActive?'default':'pointer',
-            color:s.isActive?'#0F6E56':'#6B8BB0',fontSize:12,fontWeight:600
+            background:s.isActive?'#E1F5EE':'#F0F6FC', border:'none', borderRadius:7,
+            padding:'6px 10px', cursor:s.isActive?'default':'pointer',
+            color:s.isActive?'#0F6E56':'#6B8BB0', fontSize:12, fontWeight:600
           }}>
-            {s.isActive?'✅ Activo':'Activar'}
+            {s.isActive ? '✅ Activo' : 'Activar'}
           </button>
         </div>
       </div>
 
+      {/* Recreos */}
+      <div style={{padding:'10px 18px',borderBottom:'1px solid #F0F6FC',background:'#FFFDF0'}}>
+        <div style={{fontSize:11,fontWeight:700,color:'#7A6000',textTransform:'uppercase',letterSpacing:'.5px',marginBottom:6}}>
+          ☕ Recreos
+        </div>
+        <div style={{display:'flex',flexWrap:'wrap',gap:10,alignItems:'center'}}>
+          <div style={{fontSize:12,color:'#7A6000'}}>
+            <span style={{fontWeight:600}}>{cantidadRecreos}</span> recreo{cantidadRecreos!==1?'s':''}{' '}
+            × <span style={{fontWeight:600}}>{s.breakDuration} min</span> c/u
+            {' '}= <span style={{fontWeight:700}}>{totalMinReceso} min total</span>
+          </div>
+          <div style={{fontSize:12,color:'#7A6000'}}>
+            Después del periodo: <span style={{fontWeight:600}}>{s.breakAfter}</span>
+          </div>
+        </div>
+        <div style={{display:'flex',flexWrap:'wrap',gap:8,marginTop:8}}>
+          <div style={{
+            background:'#FFF8DC',border:'1px solid #F5C518',borderRadius:20,
+            padding:'2px 10px',fontSize:11,color:'#7A6000',fontWeight:600
+          }}>
+            +{minExtraPeriodo} min efectivos/periodo
+          </div>
+          <div style={{
+            background:'#1A3A7C',borderRadius:20,
+            padding:'2px 10px',fontSize:11,color:'#fff',fontWeight:600
+          }}>
+            ⏱ Duración efectiva: {duracionEfectiva} min/periodo
+          </div>
+        </div>
+      </div>
+
+      {/* Periodos con recreos intercalados */}
       {periodos.length > 0 && (
         <div style={{padding:'12px 18px'}}>
           <div style={{fontSize:11,fontWeight:700,color:'#6B8BB0',textTransform:'uppercase',letterSpacing:'.5px',marginBottom:8}}>
             Distribución de periodos
           </div>
-          <div style={{display:'flex',flexWrap:'wrap',gap:6}}>
+          <div style={{display:'flex',flexWrap:'wrap',gap:6,alignItems:'center'}}>
             {periodos.map(p => (
-              <div key={p.period} style={{
-                background:'#F0F6FC',borderRadius:8,padding:'4px 10px',
-                fontSize:12,color:'#1A3A7C',fontWeight:600,
-              }}>
-                P{p.period}: {p.startTime}–{p.endTime}
+              <div key={p.period} style={{display:'flex',alignItems:'center',gap:4}}>
+                <div style={{
+                  background:'#F0F6FC',borderRadius:8,padding:'4px 10px',
+                  fontSize:12,color:'#1A3A7C',fontWeight:600,
+                }}>
+                  P{p.period}: {p.startTime}–{p.endTime}
+                </div>
+                {breakPeriods.includes(p.period) && (
+                  <div style={{
+                    background:'#FFFBEA',border:'1px solid #F5C518',borderRadius:8,
+                    padding:'4px 8px',fontSize:11,color:'#7A6000',fontWeight:600,
+                    display:'flex',alignItems:'center',gap:3
+                  }}>
+                    ☕ {s.breakDuration}min
+                  </div>
+                )}
               </div>
             ))}
-          </div>
-          <div style={{fontSize:11,color:'#6B8BB0',marginTop:6}}>
-            Recreo después del periodo: {s.breakAfter} · {s.breakDuration} min
           </div>
         </div>
       )}

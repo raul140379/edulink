@@ -1,6 +1,6 @@
- 'use client'
+'use client'
 
-import { useEffect, useState } from 'react'
+import React, { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { ArrowLeft, Zap, CheckCircle, Trash2, X, Save, Edit2 } from 'lucide-react'
 
@@ -86,18 +86,15 @@ export default function HorarioCursoPage() {
   const [editMode,   setEditMode]   = useState(false)
   const [toast,      setToast]      = useState<{type:'ok'|'err'|'warn'; text:string} | null>(null)
 
-  // Modal asignar materia
   const [showModal, setShowModal] = useState(false)
   const [selCell,   setSelCell]   = useState<{day:number; period:number; startTime:string; endTime:string} | null>(null)
   const [selTsc,    setSelTsc]    = useState('')
 
-  // Modal asignar aula a periodo individual
   const [classrooms,         setClassrooms]         = useState<Classroom[]>([])
   const [showClassroomModal, setShowClassroomModal] = useState(false)
   const [selScheduleId,      setSelScheduleId]      = useState<number | null>(null)
   const [selClassroom,       setSelClassroom]       = useState('')
 
-  // Modal asignar aula a todo el curso
   const [showBulkClassroomModal, setShowBulkClassroomModal] = useState(false)
   const [bulkClassroom,          setBulkClassroom]          = useState('')
 
@@ -306,6 +303,8 @@ export default function HorarioCursoPage() {
   const totalMaximo    = resumenMaterias.reduce((s,t)=>s+t.maxPeriodos,0)
   const progresoPct    = totalMaximo > 0 ? Math.round((totalAsignados/totalMaximo)*100) : 0
 
+  const breakPeriods = schoolSch?.breakAfter?.split(',').map(Number) || []
+
   return (
     <div>
       {/* Toast */}
@@ -369,6 +368,7 @@ export default function HorarioCursoPage() {
               <span>Entrada: <strong>{schoolSch.startTime}</strong></span>
               <span>Salida: <strong>{schoolSch.exitTime}</strong></span>
               <span><strong>{schoolSch.periods}</strong> periodos · <strong>{schoolSch.periodDuration}</strong> min/periodo</span>
+              <span>☕ <strong>{breakPeriods.length}</strong> recreo{breakPeriods.length!==1?'s':''} × <strong>{schoolSch.breakDuration}</strong> min</span>
             </div>
           ) : (
             <div style={{background:'#FFF0F0',border:'1px solid #FFBBBB',borderRadius:8,padding:'8px 16px',marginBottom:16,fontSize:12,color:'#C0392B'}}>
@@ -389,7 +389,6 @@ export default function HorarioCursoPage() {
                   style={{display:'flex',alignItems:'center',gap:7,padding:'9px 16px',background:'#fff',color:'#1A3A7C',border:'1.5px solid #CBE0F0',borderRadius:8,fontSize:13,fontWeight:600,cursor:'pointer'}}>
                   🚪 Asignar aula al curso
                 </button>
-
                 <button onClick={()=>setEditMode(!editMode)} style={{
                   display:'flex',alignItems:'center',gap:7,padding:'9px 16px',
                   background:editMode?'#1A3A7C':'#F0F6FC',
@@ -399,7 +398,6 @@ export default function HorarioCursoPage() {
                 }}>
                   <Edit2 size={14}/> {editMode?'✅ Salir de edición':'✏️ Modo edición'}
                 </button>
-
                 <button onClick={handleDeleteAll}
                   style={{display:'flex',alignItems:'center',gap:7,padding:'9px 16px',background:'#FFF0F0',color:'#C0392B',border:'1px solid #FFBBBB',borderRadius:8,fontSize:13,cursor:'pointer',fontWeight:600}}>
                   <Trash2 size={14}/> Eliminar Todo
@@ -490,6 +488,9 @@ export default function HorarioCursoPage() {
             <div style={{display:'flex',alignItems:'center',gap:6,fontSize:12,color:'#6B8BB0'}}>
               <div style={{width:12,height:12,borderRadius:3,background:'#FAFCFF',border:'1px dashed #CBE0F0'}}/> Libre
             </div>
+            <div style={{display:'flex',alignItems:'center',gap:6,fontSize:12,color:'#6B8BB0'}}>
+              <span>☕</span> Recreo
+            </div>
             {!editMode && (
               <div style={{display:'flex',alignItems:'center',gap:6,fontSize:12,color:'#6B8BB0'}}>
                 📍 Clic en celda ocupada → asignar aula
@@ -513,80 +514,102 @@ export default function HorarioCursoPage() {
                 </thead>
                 <tbody>
                   {Array.from({length:totalPeriods},(_,i)=>i+1).map(period => {
-                    const pt = getPeriodTime(period)
+                    const pt          = getPeriodTime(period)
+                    const tieneRecreo = breakPeriods.includes(period)
                     return (
-                      <tr key={period}>
-                        <td style={{...tdStyle,textAlign:'center',background:'#F8FBFF',fontWeight:700,fontSize:11,whiteSpace:'nowrap'}}>
-                          <div style={{color:'#1A3A7C'}}>P{period}</div>
-                          <div style={{fontSize:10,color:'#6B8BB0',fontWeight:400}}>{pt.startTime}</div>
-                          <div style={{fontSize:10,color:'#6B8BB0',fontWeight:400}}>{pt.endTime}</div>
-                        </td>
-                        {days.map(day => {
-                          const cell        = getCell(day, period)
-                          const isDraft     = cell?.status === 'BORRADOR'
-                          const isPublished = cell?.status === 'PUBLICADO'
-                          const campo       = cell?.teacherSubjectCourse?.subject?.campo
-                          return (
-                            <td key={day} style={{
-                              ...tdStyle,
-                              background:  isDraft ? '#FFFEF0' : isPublished ? '#F0FBF5' : '#FAFCFF',
-                              borderColor: isDraft ? '#F5C518' : isPublished ? '#9FE1CB' : '#E0EAF5',
-                              borderStyle: cell ? 'solid' : 'dashed',
-                              cursor: editMode ? 'default' : (cell ? 'pointer' : 'default'),
-                              minWidth: 110,
-                            }}
-                              onClick={() => {
-                                if (editMode) return
-                                if (!cell) {
-                                  const pt = getPeriodTime(period)
-                                  setSelCell({day, period, startTime:pt.startTime, endTime:pt.endTime})
-                                  setSelTsc('')
-                                  setShowModal(true)
-                                } else {
-                                  setSelScheduleId(cell.id)
-                                  setSelClassroom(cell.classroomId ? String(cell.classroomId) : '')
-                                  setShowClassroomModal(true)
-                                }
-                              }}>
-                              {cell ? (
-                                <div style={{position:'relative',padding:'2px 0'}}>
-                                  <div style={{fontSize:16,lineHeight:1,marginBottom:3}}>
-                                    {SUBJECT_EMOJI[cell.teacherSubjectCourse.subject.name] || '📚'}
-                                  </div>
-                                  <div style={{fontSize:11,fontWeight:700,lineHeight:1.3,color:campo?CAMPO_COLOR[campo]:'#1A3A7C'}}>
-                                    {cell.teacherSubjectCourse.subject.name}
-                                  </div>
-                                  <div style={{fontSize:10,color:'#6B8BB0',marginTop:1}}>
-                                    {cell.teacherSubjectCourse.teacher.lastName}
-                                  </div>
-                                  {cell.classroom && (
-                                    <div style={{fontSize:9,color:'#0F6E56',fontWeight:600,marginTop:2,background:'#E1F5EE',borderRadius:4,padding:'1px 5px',display:'inline-block'}}>
-                                      📍 {cell.classroom.name}
+                      <React.Fragment key={period}>
+                        <tr>
+                          <td style={{...tdStyle,textAlign:'center',background:'#F8FBFF',fontWeight:700,fontSize:11,whiteSpace:'nowrap'}}>
+                            <div style={{color:'#1A3A7C'}}>P{period}</div>
+                            <div style={{fontSize:10,color:'#6B8BB0',fontWeight:400}}>{pt.startTime}</div>
+                            <div style={{fontSize:10,color:'#6B8BB0',fontWeight:400}}>{pt.endTime}</div>
+                          </td>
+                          {days.map(day => {
+                            const cell        = getCell(day, period)
+                            const isDraft     = cell?.status === 'BORRADOR'
+                            const isPublished = cell?.status === 'PUBLICADO'
+                            const campo       = cell?.teacherSubjectCourse?.subject?.campo
+                            return (
+                              <td key={day} style={{
+                                ...tdStyle,
+                                background:  isDraft ? '#FFFEF0' : isPublished ? '#F0FBF5' : '#FAFCFF',
+                                borderColor: isDraft ? '#F5C518' : isPublished ? '#9FE1CB' : '#E0EAF5',
+                                borderStyle: cell ? 'solid' : 'dashed',
+                                cursor: editMode ? 'default' : (cell ? 'pointer' : 'default'),
+                                minWidth: 110,
+                              }}
+                                onClick={() => {
+                                  if (editMode) return
+                                  if (!cell) {
+                                    const pt = getPeriodTime(period)
+                                    setSelCell({day, period, startTime:pt.startTime, endTime:pt.endTime})
+                                    setSelTsc('')
+                                    setShowModal(true)
+                                  } else {
+                                    setSelScheduleId(cell.id)
+                                    setSelClassroom(cell.classroomId ? String(cell.classroomId) : '')
+                                    setShowClassroomModal(true)
+                                  }
+                                }}>
+                                {cell ? (
+                                  <div style={{position:'relative',padding:'2px 0'}}>
+                                    <div style={{fontSize:16,lineHeight:1,marginBottom:3}}>
+                                      {SUBJECT_EMOJI[cell.teacherSubjectCourse.subject.name] || '📚'}
                                     </div>
-                                  )}
-                                  {editMode && (
-                                    <button
-                                      onClick={e=>{e.stopPropagation();handleDeletePeriod(cell.id)}}
-                                      style={{
-                                        position:'absolute',top:-2,right:-2,
-                                        background:'#C0392B',border:'none',borderRadius:'50%',
-                                        cursor:'pointer',color:'#fff',width:16,height:16,
-                                        display:'flex',alignItems:'center',justifyContent:'center',
-                                        fontSize:10,lineHeight:1,
-                                      }}>
-                                      ×
-                                    </button>
-                                  )}
-                                </div>
-                              ) : (
-                                <div style={{textAlign:'center',color:'#D0E4F0',fontSize:20}}>
-                                  {editMode ? '' : '+'}
-                                </div>
-                              )}
-                            </td>
-                          )
-                        })}
-                      </tr>
+                                    <div style={{fontSize:11,fontWeight:700,lineHeight:1.3,color:campo?CAMPO_COLOR[campo]:'#1A3A7C'}}>
+                                      {cell.teacherSubjectCourse.subject.name}
+                                    </div>
+                                    <div style={{fontSize:10,color:'#6B8BB0',marginTop:1}}>
+                                      {cell.teacherSubjectCourse.teacher.lastName}
+                                    </div>
+                                    {cell.classroom && (
+                                      <div style={{fontSize:9,color:'#0F6E56',fontWeight:600,marginTop:2,background:'#E1F5EE',borderRadius:4,padding:'1px 5px',display:'inline-block'}}>
+                                        📍 {cell.classroom.name}
+                                      </div>
+                                    )}
+                                    {editMode && (
+                                      <button
+                                        onClick={e=>{e.stopPropagation();handleDeletePeriod(cell.id)}}
+                                        style={{
+                                          position:'absolute',top:-2,right:-2,
+                                          background:'#C0392B',border:'none',borderRadius:'50%',
+                                          cursor:'pointer',color:'#fff',width:16,height:16,
+                                          display:'flex',alignItems:'center',justifyContent:'center',
+                                          fontSize:10,lineHeight:1,
+                                        }}>
+                                        ×
+                                      </button>
+                                    )}
+                                  </div>
+                                ) : (
+                                  <div style={{textAlign:'center',color:'#D0E4F0',fontSize:20}}>
+                                    {editMode ? '' : '+'}
+                                  </div>
+                                )}
+                              </td>
+                            )
+                          })}
+                        </tr>
+
+                        {/* Separador de recreo */}
+   {tieneRecreo && (
+  <tr>
+    <td colSpan={days.length + 1} style={{
+      padding:'6px 12px',
+      background:'#D0EFFF',
+      borderTop:'2px solid #4A9FD4',
+      borderBottom:'2px solid #4A9FD4',
+      textAlign:'center',
+      fontSize:11,
+      color:'#1A5F8A',
+      fontWeight:700,
+      letterSpacing:'.3px',
+    }}>
+      ☕ Recreo — {schoolSch?.breakDuration} min
+    </td>
+  </tr>
+)}
+                      </React.Fragment>
                     )
                   })}
                 </tbody>

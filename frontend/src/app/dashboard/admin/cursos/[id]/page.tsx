@@ -86,19 +86,20 @@ export default function CourseDetailPage() {
   const router = useRouter()
   const id     = params.id as string
 
-  const [course,      setCourse]      = useState<Course | null>(null)
-  const [plan,        setPlan]        = useState<CoursePlan | null>(null)
-  const [assignments, setAssignments] = useState<Assignment[]>([])
-  const [loading,     setLoading]     = useState(true)
-  const [removing,    setRemoving]    = useState<number | null>(null)
-  const [removingPlan,setRemovingPlan]= useState<number | null>(null)
-  const [working,     setWorking]     = useState(false)
-  const [creds,       setCreds]       = useState<Credentials | null>(null)
-  const [copied,      setCopied]      = useState(false)
-  const [success,     setSuccess]     = useState('')
-  const [error,       setError]       = useState('')
+  const [course,         setCourse]         = useState<Course | null>(null)
+  const [plan,           setPlan]           = useState<CoursePlan | null>(null)
+  const [assignments,    setAssignments]    = useState<Assignment[]>([])
+  const [periodsSummary, setPeriodsSummary] = useState<Record<number,number>>({})
+  const [schoolSch,      setSchoolSch]      = useState<any>(null)
+  const [loading,        setLoading]        = useState(true)
+  const [removing,       setRemoving]       = useState<number | null>(null)
+  const [removingPlan,   setRemovingPlan]   = useState<number | null>(null)
+  const [working,        setWorking]        = useState(false)
+  const [creds,          setCreds]          = useState<Credentials | null>(null)
+  const [copied,         setCopied]         = useState(false)
+  const [success,        setSuccess]        = useState('')
+  const [error,          setError]          = useState('')
 
-  // Modal agregar materia al plan
   const [showAddSubject,  setShowAddSubject]  = useState(false)
   const [allSubjects,     setAllSubjects]     = useState<Subject[]>([])
   const [subjectSearch,   setSubjectSearch]   = useState('')
@@ -106,11 +107,10 @@ export default function CourseDetailPage() {
   const [hoursPerWeek,    setHoursPerWeek]    = useState('4')
   const [addingSubject,   setAddingSubject]   = useState(false)
 
-  const token   = typeof window !== 'undefined' ? localStorage.getItem('token') : ''
+  const token    = typeof window !== 'undefined' ? localStorage.getItem('token') : ''
   const userRole = typeof window !== 'undefined'
     ? JSON.parse(localStorage.getItem('user') || '{}').role
     : ''
-
   const isDirector = userRole === 'DIRECTOR' || userRole === 'SUPER_ADMIN'
 
   const notify = (msg: string, type: 'ok' | 'err' = 'ok') => {
@@ -127,11 +127,38 @@ export default function CourseDetailPage() {
         fetch(`${API_URL}/api/subjects/plan/${id}`,    { headers: { Authorization: `Bearer ${token}` } }),
       ])
       const [cData, aData, pData] = await Promise.all([cRes.json(), aRes.json(), pRes.json()])
-      if (cRes.ok) setCourse(cData)
+      if (cRes.ok) {
+        setCourse(cData)
+        fetchSchoolSchedule(cData.shift)
+        fetchPeriodsSummary()
+      }
       if (aRes.ok) setAssignments(aData)
       if (pRes.ok) setPlan(pData)
     } catch (e) { console.error(e) }
     finally     { setLoading(false) }
+  }
+
+  const fetchPeriodsSummary = async () => {
+    try {
+      const res  = await fetch(`${API_URL}/api/schedules/course/${id}/periods-summary`, {
+        headers: { Authorization: `Bearer ${token}` }
+      })
+      const data = await res.json()
+      if (res.ok) setPeriodsSummary(data.summary || {})
+    } catch { console.error('Error al obtener resumen de periodos') }
+  }
+
+  const fetchSchoolSchedule = async (shift: string) => {
+    try {
+      const res  = await fetch(`${API_URL}/api/schedules/school-schedules`, {
+        headers: { Authorization: `Bearer ${token}` }
+      })
+      const data = await res.json()
+      if (res.ok) {
+        const active = data.find((s: any) => s.isActive && s.shift === shift)
+        setSchoolSch(active || null)
+      }
+    } catch { console.error('Error al obtener horario institucional') }
   }
 
   const fetchAllSubjects = async () => {
@@ -234,6 +261,25 @@ export default function CourseDetailPage() {
     setTimeout(() => setCopied(false), 2000)
   }
 
+  // ── Cálculos de periodos ──
+  const getDuracionEfectiva = () => {
+    if (!schoolSch) return 0
+    const cantidadRecreos  = schoolSch.breakAfter ? schoolSch.breakAfter.split(',').filter(Boolean).length : 0
+    const totalMinReceso   = cantidadRecreos * schoolSch.breakDuration
+    const minExtra         = schoolSch.periods > 0 ? totalMinReceso / schoolSch.periods : 0
+    return schoolSch.periodDuration + minExtra
+  }
+
+  const calcPeriodosPlan = (hoursPerMonth: number) => {
+    if (!schoolSch || !hoursPerMonth) return null
+    return Math.floor((hoursPerMonth / 4 * 60) / getDuracionEfectiva())
+  }
+
+  const totalPeriodosAsignados = Object.values(periodsSummary).reduce((a, b) => a + b, 0)
+  const totalPeriodosPlan      = plan && schoolSch
+    ? Math.floor((plan.totalHours / 4 * 60) / getDuracionEfectiva())
+    : 0
+
   if (loading) return <div className="center"><div className="spinner"/></div>
   if (!course)  return <div className="center"><p>Curso no encontrado</p></div>
 
@@ -243,8 +289,8 @@ export default function CourseDetailPage() {
 
   const hasTutor     = !!course.tutor
   const hasTutorUser = !!course.tutor?.teacher.tutorUserId
+  const hayHorario   = Object.keys(periodsSummary).length > 0
 
-  // Materias que ya están en el plan (para excluirlas del selector)
   const planSubjectIds = plan
     ? Object.values(plan.grouped).flat().map(i => i.subjectId)
     : []
@@ -294,7 +340,7 @@ export default function CourseDetailPage() {
             </div>
             <div className="stat-card">
               <Clock size={20} color="#0F6E56"/>
-              <div><div className="stat-num">{plan.totalHours}</div><div className="stat-lbl">Horas / Mes</div></div>
+              <div><div className="stat-num">{plan.totalHours}</div><div className="stat-lbl">Horas / Mes (plan)</div></div>
             </div>
             <div className="stat-card">
               <CheckCircle2 size={20} color={plan.pendingCount === 0 ? '#0F6E56' : '#BA7517'}/>
@@ -305,6 +351,17 @@ export default function CourseDetailPage() {
                 <div className="stat-lbl">Con maestro asignado</div>
               </div>
             </div>
+            {hayHorario && schoolSch && (
+              <div className="stat-card">
+                <Clock size={20} color={totalPeriodosAsignados >= totalPeriodosPlan ? '#0F6E56' : '#BA7517'}/>
+                <div>
+                  <div className="stat-num" style={{color: totalPeriodosAsignados >= totalPeriodosPlan ? '#0F6E56' : '#BA7517'}}>
+                    {totalPeriodosAsignados} / {totalPeriodosPlan}
+                  </div>
+                  <div className="stat-lbl">Periodos ejecutados / plan</div>
+                </div>
+              </div>
+            )}
           </>
         )}
       </div>
@@ -378,6 +435,12 @@ export default function CourseDetailPage() {
               <div className="alert-ok"><CheckCircle2 size={14}/>Todas las materias tienen maestro asignado ✓</div>
             )}
 
+            {!hayHorario && (
+              <div style={{display:'flex',alignItems:'center',gap:8,padding:'8px 12px',background:'#FFFBEA',border:'1px solid #F5C518',borderRadius:8,fontSize:12,color:'#7A6000'}}>
+                ⚠️ Este curso aún no tiene horario publicado — los periodos asignados aparecerán una vez publicado.
+              </div>
+            )}
+
             {camposOrden.map(campo => {
               const items      = plan.grouped[campo] || []
               const col        = CAMPO_COLORS[campo] || CAMPO_COLORS['SIN_CAMPO']
@@ -400,51 +463,78 @@ export default function CourseDetailPage() {
                         <th className="th">Materia</th>
                         <th className="th">Código</th>
                         <th className="th" style={{textAlign:'center'}}>Hrs/Mes</th>
+                        <th className="th" style={{textAlign:'center'}}>Per. Plan</th>
+                        <th className="th" style={{textAlign:'center'}}>Per. Asignados</th>
                         <th className="th">Maestro</th>
                         <th className="th" style={{width:'80px',textAlign:'center'}}>Acciones</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {items.map(item => (
-                        <tr key={item.subjectId} style={{borderTop:'1px solid #F0F6FC'}}>
-                          <td className="td" style={{fontWeight:500}}>{item.subject.name}</td>
-                          <td className="td muted">{item.subject.code || '—'}</td>
-                          <td className="td" style={{textAlign:'center'}}>
-                            <span className="hrs-badge">{item.hoursPerWeek}</span>
-                          </td>
-                          <td className="td">
-                            {item.teacher ? (
-                              <span style={{display:'flex',alignItems:'center',gap:'6px'}}>
-                                <CheckCircle2 size={13} color="#0F6E56"/>
-                                <span style={{color:'#1A3A7C'}}>{item.teacher.lastName} {item.teacher.firstName}</span>
-                              </span>
-                            ) : (
-                              <span style={{display:'flex',alignItems:'center',gap:'6px',color:'#BA7517'}}>
-                                <AlertCircle size={13}/>
-                                <span style={{fontSize:'12px',fontStyle:'italic'}}>Sin maestro</span>
-                              </span>
-                            )}
-                          </td>
-                          <td className="td" style={{textAlign:'center'}}>
-                            <div style={{display:'flex',gap:'6px',justifyContent:'center'}}>
-                              {item.assignmentId && (
-                                <button className="icon-btn-sm" title="Quitar maestro"
-                                  style={{background:'#FFFBEA',color:'#BA7517',border:'1px solid #F5C518'}}
-                                  disabled={removing === item.assignmentId}
-                                  onClick={() => handleRemoveAssignment(item.assignmentId!)}>
-                                  <Trash2 size={11}/>
-                                </button>
+                      {items.map(item => {
+                        const periodosPlan      = calcPeriodosPlan(item.hoursPerWeek)
+                        const periodosAsignados = periodsSummary[item.subjectId] || 0
+                        const cumplido          = periodosPlan !== null && periodosAsignados >= periodosPlan
+                        const parcial           = periodosPlan !== null && periodosAsignados > 0 && periodosAsignados < periodosPlan
+
+                        return (
+                          <tr key={item.subjectId} style={{borderTop:'1px solid #F0F6FC'}}>
+                            <td className="td" style={{fontWeight:500}}>{item.subject.name}</td>
+                            <td className="td muted">{item.subject.code || '—'}</td>
+                            <td className="td" style={{textAlign:'center'}}>
+                              <span className="hrs-badge">{item.hoursPerWeek}</span>
+                            </td>
+                            <td className="td" style={{textAlign:'center'}}>
+                              {periodosPlan !== null ? (
+                                <span style={{background:'#E0ECF8',color:'#1A3A7C',borderRadius:20,padding:'2px 10px',fontSize:12,fontWeight:600}}>
+                                  {periodosPlan}P
+                                </span>
+                              ) : <span className="muted">—</span>}
+                            </td>
+                            <td className="td" style={{textAlign:'center'}}>
+                              {hayHorario ? (
+                                <span style={{
+                                  background: cumplido?'#E1F5EE':parcial?'#FFFBEA':'#FFF0F0',
+                                  color:      cumplido?'#0F6E56':parcial?'#7A6000':'#C0392B',
+                                  borderRadius:20, padding:'2px 10px', fontSize:12, fontWeight:600,
+                                }}>
+                                  {periodosAsignados}P {cumplido?'✅':parcial?'⚠️':'❌'}
+                                </span>
+                              ) : <span className="muted">—</span>}
+                            </td>
+                            <td className="td">
+                              {item.teacher ? (
+                                <span style={{display:'flex',alignItems:'center',gap:'6px'}}>
+                                  <CheckCircle2 size={13} color="#0F6E56"/>
+                                  <span style={{color:'#1A3A7C'}}>{item.teacher.lastName} {item.teacher.firstName}</span>
+                                </span>
+                              ) : (
+                                <span style={{display:'flex',alignItems:'center',gap:'6px',color:'#BA7517'}}>
+                                  <AlertCircle size={13}/>
+                                  <span style={{fontSize:'12px',fontStyle:'italic'}}>Sin maestro</span>
+                                </span>
                               )}
-                              <button className="icon-btn-sm" title="Eliminar materia del plan"
-                                style={{background:'#FFF0F0',color:'#C0392B',border:'1px solid #FFBBBB'}}
-                                disabled={removingPlan === item.gradeConfigId}
-                                onClick={() => handleRemoveFromPlan(item.gradeConfigId, item.subject.name)}>
-                                <X size={11}/>
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                      ))}
+                            </td>
+                            <td className="td" style={{textAlign:'center'}}>
+                              <div style={{display:'flex',gap:'6px',justifyContent:'center'}}>
+                                {item.assignmentId && (
+                                  <button className="icon-btn-sm" title="Quitar maestro"
+                                    style={{background:'#FFFBEA',color:'#BA7517',border:'1px solid #F5C518'}}
+                                    disabled={removing === item.assignmentId}
+                                    onClick={() => handleRemoveAssignment(item.assignmentId!)}>
+                                    <Trash2 size={11}/>
+                                  </button>
+                                )}
+                                <button className="icon-btn-sm" title="Eliminar materia del plan"
+                                  style={{background:'#FFF0F0',color:'#C0392B',border:'1px solid #FFBBBB'}}
+                                  disabled={removingPlan === item.gradeConfigId}
+                                  onClick={() => handleRemoveFromPlan(item.gradeConfigId, item.subject.name)}>
+                                  <X size={11}/>
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        )
+                      })}
                     </tbody>
                   </table>
                 </div>
@@ -481,7 +571,7 @@ export default function CourseDetailPage() {
         )}
       </div>
 
-      {/* ── Modal agregar materia al plan ── */}
+      {/* Modal agregar materia al plan */}
       {showAddSubject && (
         <div className="overlay" onClick={() => setShowAddSubject(false)}>
           <div className="modal" onClick={e => e.stopPropagation()}>
@@ -498,8 +588,6 @@ export default function CourseDetailPage() {
               <div className="info-box">
                 📋 La materia se agregará al plan del grado <strong>{GRADES[course.grade]}</strong> y estará disponible en todos los cursos de ese grado.
               </div>
-
-              {/* Buscador */}
               <div className="fg">
                 <label>Buscar materia</label>
                 <div className="search-wrap">
@@ -508,8 +596,6 @@ export default function CourseDetailPage() {
                     onChange={e => setSubjectSearch(e.target.value)}/>
                 </div>
               </div>
-
-              {/* Lista de materias */}
               <div className="fg">
                 <label>Seleccionar materia *</label>
                 <div className="subject-list">
@@ -536,8 +622,6 @@ export default function CourseDetailPage() {
                   )}
                 </div>
               </div>
-
-              {/* Hrs/mes */}
               <div className="fg">
                 <label>Horas por mes *</label>
                 <input type="number" min={1} max={200} value={hoursPerWeek}
@@ -557,7 +641,7 @@ export default function CourseDetailPage() {
         </div>
       )}
 
-      {/* ── Modal credenciales tutor ── */}
+      {/* Modal credenciales tutor */}
       {creds && (
         <div className="overlay" onClick={() => setCreds(null)}>
           <div className="modal" onClick={e => e.stopPropagation()}>
@@ -637,12 +721,12 @@ export default function CourseDetailPage() {
         .search-wrap{position:relative}
         .s-icon{position:absolute;left:10px;top:50%;transform:translateY(-50%);color:#4A9FD4;pointer-events:none}
         .search-wrap input{padding-left:32px!important}
-        ..subject-list{border:1.5px solid #CBE0F0;border-radius:8px;max-height:180px;overflow-y:auto}
-.subject-option{display:flex;align-items:center;gap:8px;padding:5px 10px;cursor:pointer;border-bottom:1px solid #F0F6FC}
-.subject-option:last-child{border-bottom:none}
-.subject-option:hover{background:#F8FBFF}
-.subject-option.selected{background:#E8F0FB;border-left:3px solid #1A3A7C}
-.subject-option input{accent-color:#1A3A7C;cursor:pointer;flex-shrink:0;width:14px;height:14px}
+        .subject-list{border:1.5px solid #CBE0F0;border-radius:8px;max-height:180px;overflow-y:auto}
+        .subject-option{display:flex;align-items:center;gap:8px;padding:5px 10px;cursor:pointer;border-bottom:1px solid #F0F6FC}
+        .subject-option:last-child{border-bottom:none}
+        .subject-option:hover{background:#F8FBFF}
+        .subject-option.selected{background:#E8F0FB;border-left:3px solid #1A3A7C}
+        .subject-option input{accent-color:#1A3A7C;cursor:pointer;flex-shrink:0;width:14px;height:14px}
         .cred-row{display:flex;align-items:center;gap:10px;background:#F0F6FC;border:1px solid #CBE0F0;border-radius:8px;padding:10px 14px}
         .cred-label{font-size:12px;font-weight:600;color:#6B8BB0;min-width:80px;text-transform:uppercase;letter-spacing:.5px}
         .cred-value{font-size:13px;font-weight:600;color:#1A3A7C;font-family:monospace;word-break:break-all}
