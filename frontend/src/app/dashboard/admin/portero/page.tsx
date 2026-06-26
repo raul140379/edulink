@@ -77,7 +77,6 @@ export default function PorteroAdminPage() {
 
     setSaving(true)
     try {
-      // 1. Crear usuario con rol PORTERO
       const resU  = await fetch(`${API}/api/users`, {
         method: 'POST',
         headers: { ...auth(), 'Content-Type': 'application/json' },
@@ -86,7 +85,6 @@ export default function PorteroAdminPage() {
       const dataU = await resU.json()
       if (!resU.ok) { notify(dataU.message, 'err'); return }
 
-      // 2. Crear registro Staff vinculado
       await fetch(`${API}/api/users/${dataU.user.id}/staff`, {
         method: 'POST',
         headers: { ...auth(), 'Content-Type': 'application/json' },
@@ -137,18 +135,28 @@ export default function PorteroAdminPage() {
 
   return (
     <div>
+      {/* Header */}
       <div style={{display:'flex',alignItems:'flex-start',justifyContent:'space-between',marginBottom:24,gap:16,flexWrap:'wrap'}}>
         <div>
           <h1 style={{fontSize:20,fontWeight:700,color:'#1A3A7C',marginBottom:4}}>Usuarios Portero</h1>
           <p style={{fontSize:13,color:'#6B8BB0'}}>Gestiona el acceso al módulo de control de entrada</p>
         </div>
-        <button onClick={()=>setShowModal(true)} style={{
-          display:'flex',alignItems:'center',gap:8,padding:'10px 18px',
-          background:'#1A3A7C',color:'#fff',border:'none',borderRadius:8,
-          fontSize:13,fontWeight:600,cursor:'pointer'
-        }}>
-          <Plus size={15}/> Nuevo Portero
-        </button>
+        <div style={{display:'flex',gap:10}}>
+          <a href="/dashboard/admin/portero/codigoQR" style={{
+            display:'flex',alignItems:'center',gap:8,padding:'10px 18px',
+            background:'#0F6E56',color:'#fff',borderRadius:8,
+            fontSize:13,fontWeight:600,cursor:'pointer',textDecoration:'none'
+          }}>
+            🔲 Códigos QR
+          </a>
+          <button onClick={()=>setShowModal(true)} style={{
+            display:'flex',alignItems:'center',gap:8,padding:'10px 18px',
+            background:'#1A3A7C',color:'#fff',border:'none',borderRadius:8,
+            fontSize:13,fontWeight:600,cursor:'pointer'
+          }}>
+            <Plus size={15}/> Nuevo Portero
+          </button>
+        </div>
       </div>
 
       {success && <div style={{padding:'10px 14px',borderRadius:8,fontSize:13,marginBottom:14,background:'#E1F5EE',border:'1px solid #9FE1CB',color:'#0F6E56'}}>{success}</div>}
@@ -275,7 +283,6 @@ export default function PorteroAdminPage() {
               </button>
             </div>
             <div style={{padding:20,display:'flex',flexDirection:'column',gap:14}}>
-
               <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
                 <div style={{display:'flex',flexDirection:'column',gap:5}}>
                   <label style={lbl}>Nombre *</label>
@@ -288,7 +295,6 @@ export default function PorteroAdminPage() {
                     placeholder="Apellido" style={inp}/>
                 </div>
               </div>
-
               <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
                 <div style={{display:'flex',flexDirection:'column',gap:5}}>
                   <label style={lbl}>CI</label>
@@ -301,7 +307,6 @@ export default function PorteroAdminPage() {
                     placeholder="Celular" style={inp}/>
                 </div>
               </div>
-
               <div style={{display:'flex',flexDirection:'column',gap:5}}>
                 <label style={lbl}>Turno</label>
                 <select value={form.shift} onChange={e=>setForm(p=>({...p,shift:e.target.value}))} style={inp}>
@@ -309,14 +314,11 @@ export default function PorteroAdminPage() {
                   <option value="AFTERNOON">Tarde</option>
                 </select>
               </div>
-
               <div style={{borderTop:'1px solid #F0F6FC',paddingTop:14}}>
                 <div style={{fontSize:11,fontWeight:700,color:'#1A3A7C',textTransform:'uppercase',letterSpacing:'.5px',marginBottom:10,display:'flex',alignItems:'center',gap:6}}>
                   <Shield size={13}/> Credenciales de acceso
                 </div>
                 <div style={{display:'flex',flexDirection:'column',gap:12}}>
-
-                  {/* Email */}
                   <div style={{display:'flex',flexDirection:'column',gap:5}}>
                     <label style={lbl}>Email (opcional)</label>
                     <input value={form.email} onChange={e=>setForm(p=>({...p,email:e.target.value}))}
@@ -328,8 +330,6 @@ export default function PorteroAdminPage() {
                       </div>
                     )}
                   </div>
-
-                  {/* Contraseña */}
                   <div style={{display:'flex',flexDirection:'column',gap:5}}>
                     <label style={lbl}>Contraseña (opcional)</label>
                     <div style={{position:'relative'}}>
@@ -351,7 +351,6 @@ export default function PorteroAdminPage() {
                       </div>
                     )}
                   </div>
-
                 </div>
               </div>
             </div>

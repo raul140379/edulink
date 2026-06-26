@@ -4,105 +4,233 @@ import { useEffect, useState, useRef } from 'react'
 
 const API = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000'
 
-interface Teacher {
+interface Person {
   id: number; firstName: string; lastName: string
-  specialty?: string; attendanceCode?: string
+  ci?: string; attendanceCode?: string
+  specialty?: string; staffRole?: string
 }
-
 interface GateRecord {
-  id: number; type: string; action: string
-  createdAt: string
+  id: number; type: string; action: string; createdAt: string
   teacher?: { firstName: string; lastName: string }
+  staff?: { firstName: string; lastName: string }
   visitorName?: string
 }
+interface Expected {
+  id: number; firstName: string; lastName: string
+  ci?: string; attendanceCode?: string
+  category: string; registered: boolean; isAbsent: boolean
+  gateRecord: any; attendance: any
+}
+interface ScheduleInfo {
+  startTime: string; exitTime: string
+  windowOpen: boolean; minutesBeforeExit: number
+}
 
-type Mode = 'home' | 'teacher' | 'visitor'
+type Mode = 'home' | 'teacher' | 'staff' | 'visitor' | 'expected'
 type Step = 'input' | 'confirm'
 
 export default function PorteroPage() {
-  const [mode,        setMode]        = useState<Mode>('home')
-  const [step,        setStep]        = useState<Step>('input')
-  const [code,        setCode]        = useState('')
-  const [teacher,     setTeacher]     = useState<Teacher | null>(null)
-  const [nextAction,  setNextAction]  = useState<'ENTRADA' | 'SALIDA'>('ENTRADA')
-  const [loading,     setLoading]     = useState(false)
-  const [saving,      setSaving]      = useState(false)
-  const [toast,       setToast]       = useState<{type:'ok'|'err'; text:string} | null>(null)
-  const [recentList,  setRecentList]  = useState<GateRecord[]>([])
-  const [clock,       setClock]       = useState('')
+  const [mode,       setMode]       = useState<Mode>('home')
+  const [step,       setStep]       = useState<Step>('input')
+  const [code,       setCode]       = useState('')
+  const [person,     setPerson]     = useState<Person | null>(null)
+  const [nextAction, setNextAction] = useState<'ENTRADA'|'SALIDA'>('ENTRADA')
+  const [loading,    setLoading]    = useState(false)
+  const [saving,     setSaving]     = useState(false)
+  const [toast,      setToast]      = useState<{type:'ok'|'err'; text:string}|null>(null)
+  const [recentList, setRecentList] = useState<GateRecord[]>([])
+  const [clock,      setClock]      = useState('')
+  const [expected,   setExpected]   = useState<{teachers: Expected[]; staff: Expected[]; schedule: ScheduleInfo; summary: any}|null>(null)
+  const [loadingExp, setLoadingExp] = useState(false)
+  const [showQR,     setShowQR]     = useState(false)
+  const [selectedExpected, setSelectedExpected] = useState<Expected|null>(null)
 
+  // Visitante
   const [vName,        setVName]        = useState('')
   const [vCI,          setVCI]          = useState('')
   const [vReason,      setVReason]      = useState('')
   const [vDestination, setVDestination] = useState('')
   const [vAction,      setVAction]      = useState<'ENTRADA'|'SALIDA'>('ENTRADA')
 
-  const codeRef = useRef<HTMLInputElement>(null)
-  const token   = () => localStorage.getItem('token') || ''
-  const auth    = () => ({ Authorization: `Bearer ${token()}` })
+  const codeRef    = useRef<HTMLInputElement>(null)
+  const scannerRef = useRef<any>(null)
+
+  const token = () => localStorage.getItem('token') || ''
+  const auth  = () => ({ Authorization: `Bearer ${token()}` })
 
   const notify = (type: 'ok'|'err', text: string) => {
     setToast({type, text}); setTimeout(() => setToast(null), 4000)
   }
 
+  // Reloj
   useEffect(() => {
     const tick = () => {
       const now = new Date()
       setClock(now.toLocaleTimeString('es-BO', { hour: '2-digit', minute: '2-digit', second: '2-digit' }))
     }
     tick()
-    const interval = setInterval(tick, 1000)
-    return () => clearInterval(interval)
+    const i = setInterval(tick, 1000)
+    return () => clearInterval(i)
   }, [])
+
+  // Focus input
+  useEffect(() => {
+    if ((mode === 'teacher' || mode === 'staff') && step === 'input') {
+      setTimeout(() => codeRef.current?.focus(), 100)
+    }
+  }, [mode, step])
+
+  // Limpiar scanner al cambiar de modo
+  useEffect(() => {
+    if (mode !== 'teacher' && mode !== 'staff') stopQRScanner()
+  }, [mode])
 
   const loadRecent = async () => {
     try {
       const res  = await fetch(`${API}/api/gate/records`, { headers: auth() })
       const data = await res.json()
       if (res.ok) setRecentList(data.records.slice(0, 8))
-    } catch { console.error('Error cargando registros') }
+    } catch {}
+  }
+
+  const loadExpected = async () => {
+    setLoadingExp(true)
+    try {
+      const res  = await fetch(`${API}/api/gate/expected-today`, { headers: auth() })
+      const data = await res.json()
+      if (res.ok) setExpected(data)
+    } catch { notify('err', 'Error al cargar lista') }
+    finally { setLoadingExp(false) }
   }
 
   useEffect(() => { loadRecent() }, [])
 
-  useEffect(() => {
-    if (mode === 'teacher' && step === 'input') {
-      setTimeout(() => codeRef.current?.focus(), 100)
-    }
-  }, [mode, step])
+  // ── QR Scanner ────────────────────────────────────
+  const startQRScanner = async () => {
+    setShowQR(true)
+    setTimeout(async () => {
+      try {
+        const { Html5Qrcode } = await import('html5-qrcode')
+        const scanner = new Html5Qrcode('qr-reader')
+        scannerRef.current = scanner
+        await scanner.start(
+          { facingMode: 'environment' },
+          { fps: 10, qrbox: { width: 250, height: 250 } },
+          (decodedText: string) => {
+            const val = decodedText.trim().toUpperCase()
+            setCode(val)
+            stopQRScanner()
+            handleSearchCodeByValue(val)
+          },
+          () => {}
+        )
+      } catch {
+        notify('err', 'No se pudo acceder a la cámara')
+        setShowQR(false)
+      }
+    }, 300)
+  }
 
-  const handleSearchCode = async () => {
-    if (!code.trim()) return
+  const stopQRScanner = async () => {
+  if (scannerRef.current) {
+    try {
+      const state = scannerRef.current.getState()
+      // 2 = SCANNING, 3 = PAUSED
+      if (state === 2 || state === 3) {
+        await scannerRef.current.stop()
+      }
+    } catch {}
+    try {
+      scannerRef.current.clear()
+    } catch {}
+    scannerRef.current = null
+  }
+  setShowQR(false)
+}
+
+  // ── Buscar por valor directo (desde QR) ───────────
+  const handleSearchCodeByValue = async (value: string) => {
+    if (!value) return
     setLoading(true)
     try {
-      const res  = await fetch(`${API}/api/gate/teacher/${code.trim().toUpperCase()}`, { headers: auth() })
+      const endpoint = mode === 'staff'
+        ? `${API}/api/gate/staff/${value}`
+        : `${API}/api/gate/teacher/${value}`
+      const res  = await fetch(endpoint, { headers: auth() })
       const data = await res.json()
       if (!res.ok) { notify('err', data.message); return }
-      setTeacher(data.teacher)
+      setPerson(mode === 'staff' ? data.staff : data.teacher)
       setNextAction(data.nextAction)
       setStep('confirm')
     } catch { notify('err', 'Error de conexión') }
     finally { setLoading(false) }
   }
 
-  const handleRegisterTeacher = async () => {
-    if (!teacher) return
-    setSaving(true)
+  // ── Buscar por código (teclado manual) ────────────
+  const handleSearchCode = async () => {
+    if (!code.trim()) return
+    setLoading(true)
     try {
-      const res  = await fetch(`${API}/api/gate/teacher`, {
-        method: 'POST',
-        headers: { ...auth(), 'Content-Type': 'application/json' },
-        body: JSON.stringify({ teacherId: teacher.id, action: nextAction })
-      })
+      const endpoint = mode === 'staff'
+        ? `${API}/api/gate/staff/${code.trim().toUpperCase()}`
+        : `${API}/api/gate/teacher/${code.trim().toUpperCase()}`
+      const res  = await fetch(endpoint, { headers: auth() })
       const data = await res.json()
       if (!res.ok) { notify('err', data.message); return }
+      setPerson(mode === 'staff' ? data.staff : data.teacher)
+      setNextAction(data.nextAction)
+      setStep('confirm')
+    } catch { notify('err', 'Error de conexión') }
+    finally { setLoading(false) }
+  }
+
+  // ── Registrar desde código ────────────────────────
+  const handleRegisterByCode = async () => {
+    if (!person) return
+    setSaving(true)
+    try {
+      const endpoint = mode === 'staff' ? `${API}/api/gate/staff` : `${API}/api/gate/teacher`
+      const body     = mode === 'staff'
+        ? { staffId: person.id, action: nextAction }
+        : { teacherId: person.id, action: nextAction }
+      const res  = await fetch(endpoint, {
+        method: 'POST',
+        headers: { ...auth(), 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      })
+      const data = await res.json()
+      if (!res.ok) { notify('err', data.message); resetPerson(); return }
       notify('ok', data.message)
-      resetTeacher()
+      resetPerson()
       loadRecent()
+      if (expected) loadExpected()
     } catch { notify('err', 'Error de conexión') }
     finally { setSaving(false) }
   }
 
+  // ── Registrar desde lista ─────────────────────────
+  const handleRegisterFromList = async (exp: Expected, action: 'ENTRADA'|'SALIDA') => {
+    setSaving(true)
+    try {
+      const isStaff = exp.category !== 'MAESTRO'
+      const endpoint = isStaff ? `${API}/api/gate/staff` : `${API}/api/gate/teacher`
+      const body     = isStaff ? { staffId: exp.id, action } : { teacherId: exp.id, action }
+      const res  = await fetch(endpoint, {
+        method: 'POST',
+        headers: { ...auth(), 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      })
+      const data = await res.json()
+      if (!res.ok) { notify('err', data.message); return }
+      notify('ok', data.message)
+      setSelectedExpected(null)
+      loadRecent()
+      loadExpected()
+    } catch { notify('err', 'Error de conexión') }
+    finally { setSaving(false) }
+  }
+
+  // ── Registrar visitante ───────────────────────────
   const handleRegisterVisitor = async () => {
     if (!vName.trim()) { notify('err', 'El nombre es requerido'); return }
     setSaving(true)
@@ -121,17 +249,11 @@ export default function PorteroPage() {
     finally { setSaving(false) }
   }
 
-  const resetTeacher = () => { setCode(''); setTeacher(null); setStep('input'); setMode('home') }
+  const resetPerson  = () => { setCode(''); setPerson(null); setStep('input'); setMode('home') }
   const resetVisitor = () => { setVName(''); setVCI(''); setVReason(''); setVDestination(''); setVAction('ENTRADA'); setMode('home') }
-
-  const formatTime = (iso: string) =>
-    new Date(iso).toLocaleTimeString('es-BO', { hour: '2-digit', minute: '2-digit' })
-
-  const handleLogout = () => {
-    localStorage.removeItem('token')
-    localStorage.removeItem('user')
-    window.location.href = '/login'
-  }
+  const formatTime   = (iso: string) => new Date(iso).toLocaleTimeString('es-BO', { hour: '2-digit', minute: '2-digit' })
+  const handleLogout = () => { localStorage.removeItem('token'); localStorage.removeItem('user'); window.location.href = '/login' }
+  const personLabel  = mode === 'staff' ? 'Personal' : 'Maestro'
 
   return (
     <div>
@@ -156,31 +278,44 @@ export default function PorteroPage() {
           position: 'absolute', top: 0, right: 0,
           background: 'rgba(255,255,255,.1)', border: 'none', borderRadius: 8,
           padding: '6px 12px', fontSize: 12, color: '#94A3B8', cursor: 'pointer'
-        }}>
-          Salir
-        </button>
+        }}>Salir</button>
       </div>
 
-      {/* HOME */}
+      {/* ── HOME ── */}
       {mode === 'home' && (
         <>
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16, marginBottom: 24 }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
             <button onClick={() => { setMode('teacher'); setStep('input'); setCode('') }} style={{
-              background: '#1A3A7C', border: 'none', borderRadius: 16, padding: '32px 16px',
-              cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12,
+              background: '#1A3A7C', border: 'none', borderRadius: 16, padding: '28px 16px',
+              cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10,
             }}>
-              <span style={{ fontSize: 48 }}>👨‍🏫</span>
-              <span style={{ fontSize: 16, fontWeight: 700, color: '#F1F5F9' }}>Maestro</span>
-              <span style={{ fontSize: 12, color: '#94A3B8' }}>Registrar entrada/salida</span>
+              <span style={{ fontSize: 40 }}>👨‍🏫</span>
+              <span style={{ fontSize: 15, fontWeight: 700, color: '#F1F5F9' }}>Maestro</span>
+              <span style={{ fontSize: 11, color: '#94A3B8' }}>Registrar por código</span>
             </button>
-
-            <button onClick={() => setMode('visitor')} style={{
-              background: '#0F4C2A', border: 'none', borderRadius: 16, padding: '32px 16px',
-              cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12,
+            <button onClick={() => { setMode('staff'); setStep('input'); setCode('') }} style={{
+              background: '#1A4A2A', border: 'none', borderRadius: 16, padding: '28px 16px',
+              cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10,
             }}>
-              <span style={{ fontSize: 48 }}>🧑‍💼</span>
-              <span style={{ fontSize: 16, fontWeight: 700, color: '#F1F5F9' }}>Visitante</span>
-              <span style={{ fontSize: 12, color: '#94A3B8' }}>Registrar visita</span>
+              <span style={{ fontSize: 40 }}>🏢</span>
+              <span style={{ fontSize: 15, fontWeight: 700, color: '#F1F5F9' }}>Administrativo</span>
+              <span style={{ fontSize: 11, color: '#94A3B8' }}>Registrar por código</span>
+            </button>
+          </div>
+          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 20 }}>
+            <button onClick={() => setMode('visitor')} style={{
+              background: '#2A1A4A', border: 'none', borderRadius: 16, padding: '20px 16px',
+              cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8,
+            }}>
+              <span style={{ fontSize: 32 }}>🧑‍💼</span>
+              <span style={{ fontSize: 14, fontWeight: 700, color: '#F1F5F9' }}>Visitante</span>
+            </button>
+            <button onClick={() => { setMode('expected'); loadExpected() }} style={{
+              background: '#2A2A1A', border: 'none', borderRadius: 16, padding: '20px 16px',
+              cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8,
+            }}>
+              <span style={{ fontSize: 32 }}>📋</span>
+              <span style={{ fontSize: 14, fontWeight: 700, color: '#F1F5F9' }}>Lista de hoy</span>
             </button>
           </div>
 
@@ -190,111 +325,143 @@ export default function PorteroPage() {
                 Registros recientes
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                {recentList.map(r => (
-                  <div key={r.id} style={{
-                    display: 'flex', alignItems: 'center', gap: 10,
-                    padding: '8px 12px', borderRadius: 8,
-                    background: r.action === 'ENTRADA' ? '#0F2A1A' : '#2A0F0F',
-                    border: `1px solid ${r.action === 'ENTRADA' ? '#0F6E56' : '#C0392B'}33`,
-                  }}>
-                    <span style={{ fontSize: 20 }}>{r.type === 'MAESTRO' ? '👨‍🏫' : '🧑‍💼'}</span>
-                    <div style={{ flex: 1 }}>
-                      <div style={{ fontSize: 13, fontWeight: 600, color: '#F1F5F9' }}>
-                        {r.teacher ? `${r.teacher.lastName} ${r.teacher.firstName}` : r.visitorName}
+                {recentList.map(r => {
+                  const name = r.teacher
+                    ? `${r.teacher.lastName} ${r.teacher.firstName}`
+                    : (r as any).staff
+                      ? `${(r as any).staff.lastName} ${(r as any).staff.firstName}`
+                      : r.visitorName
+                  const icon  = r.type === 'MAESTRO' ? '👨‍🏫' : r.type === 'ADMINISTRATIVO' ? '🏢' : '🧑‍💼'
+                  const label = r.type === 'MAESTRO' ? 'Maestro' : r.type === 'ADMINISTRATIVO' ? 'Administrativo' : 'Visitante'
+                  return (
+                    <div key={r.id} style={{
+                      display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', borderRadius: 8,
+                      background: r.action === 'ENTRADA' ? '#0F2A1A' : '#2A0F0F',
+                      border: `1px solid ${r.action === 'ENTRADA' ? '#0F6E56' : '#C0392B'}33`,
+                    }}>
+                      <span style={{ fontSize: 20 }}>{icon}</span>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontSize: 13, fontWeight: 600, color: '#F1F5F9' }}>{name}</div>
+                        <div style={{ fontSize: 11, color: '#64748B' }}>{label}</div>
                       </div>
-                      <div style={{ fontSize: 11, color: '#64748B' }}>
-                        {r.type === 'MAESTRO' ? 'Maestro' : 'Visitante'}
+                      <div style={{ textAlign: 'right' }}>
+                        <div style={{
+                          fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 20,
+                          background: r.action === 'ENTRADA' ? '#0F6E56' : '#C0392B', color: '#fff',
+                        }}>{r.action}</div>
+                        <div style={{ fontSize: 10, color: '#64748B', marginTop: 2 }}>{formatTime(r.createdAt)}</div>
                       </div>
                     </div>
-                    <div style={{ textAlign: 'right' }}>
-                      <div style={{
-                        fontSize: 11, fontWeight: 700, padding: '2px 8px', borderRadius: 20,
-                        background: r.action === 'ENTRADA' ? '#0F6E56' : '#C0392B', color: '#fff',
-                      }}>
-                        {r.action}
-                      </div>
-                      <div style={{ fontSize: 10, color: '#64748B', marginTop: 2 }}>
-                        {formatTime(r.createdAt)}
-                      </div>
-                    </div>
-                  </div>
-                ))}
+                  )
+                })}
               </div>
             </div>
           )}
         </>
       )}
 
-      {/* MAESTRO — input código */}
-      {mode === 'teacher' && step === 'input' && (
+      {/* ── CÓDIGO (maestro o staff) ── */}
+      {(mode === 'teacher' || mode === 'staff') && step === 'input' && (
         <div style={{ background: '#1E293B', borderRadius: 16, padding: 24 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 24 }}>
-            <button onClick={() => setMode('home')} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#94A3B8', fontSize: 20 }}>←</button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 20 }}>
+            <button onClick={() => { stopQRScanner(); setMode('home') }} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#94A3B8', fontSize: 20 }}>←</button>
             <div>
-              <div style={{ fontSize: 18, fontWeight: 700, color: '#F1F5F9' }}>Registrar Maestro</div>
-              <div style={{ fontSize: 12, color: '#94A3B8' }}>Ingresa el código de asistencia</div>
+              <div style={{ fontSize: 18, fontWeight: 700, color: '#F1F5F9' }}>Registrar {personLabel}</div>
+              <div style={{ fontSize: 12, color: '#94A3B8' }}>Ingresa o escanea el código</div>
             </div>
           </div>
 
-          <div style={{ marginBottom: 20 }}>
+          {/* Input código */}
+          <div style={{ marginBottom: 12 }}>
             <input
               ref={codeRef}
               type="text"
               value={code}
               onChange={e => setCode(e.target.value.toUpperCase())}
               onKeyDown={e => e.key === 'Enter' && handleSearchCode()}
-              placeholder="Ej: ZF4706"
-              maxLength={10}
+              placeholder="Ej: JCF-4827"
+              maxLength={12}
               style={{
-                width: '100%', padding: '20px', fontSize: 32, fontWeight: 800,
-                letterSpacing: 8, textAlign: 'center', border: '2px solid #334155',
+                width: '100%', padding: '18px', fontSize: 28, fontWeight: 800,
+                letterSpacing: 6, textAlign: 'center', border: '2px solid #334155',
                 borderRadius: 12, background: '#0F172A', color: '#F1F5F9', outline: 'none',
-                fontVariantNumeric: 'tabular-nums',
+                fontVariantNumeric: 'tabular-nums', boxSizing: 'border-box',
               }}
             />
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 10, marginBottom: 16 }}>
-            {['1','2','3','4','5','6','7','8','9','⌫','0','↵'].map(k => (
+          {/* Botón cámara QR */}
+          {!showQR && (
+            <button onClick={startQRScanner} style={{
+              width: '100%', padding: '13px', fontSize: 14, fontWeight: 700,
+              background: '#1A4A3A', color: '#fff', border: 'none', borderRadius: 12,
+              cursor: 'pointer', marginBottom: 14,
+              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 8,
+            }}>
+              📷 Escanear QR con cámara
+            </button>
+          )}
+
+          {/* Scanner QR */}
+          {showQR && (
+            <div style={{ marginBottom: 14 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                <span style={{ fontSize: 13, color: '#94A3B8' }}>Apunta al código QR</span>
+                <button onClick={stopQRScanner} style={{
+                  background: '#C0392B', border: 'none', borderRadius: 6,
+                  padding: '4px 10px', fontSize: 12, color: '#fff', cursor: 'pointer'
+                }}>✕ Cerrar</button>
+              </div>
+              <div id="qr-reader" style={{ borderRadius: 12, overflow: 'hidden' }} />
+            </div>
+          )}
+
+          {/* Teclado numérico */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8, marginBottom: 10 }}>
+            {['1','2','3','4','5','6','7','8','9','⌫','0','-'].map(k => (
               <button key={k} onClick={() => {
                 if (k === '⌫') setCode(p => p.slice(0, -1))
-                else if (k === '↵') handleSearchCode()
-                else setCode(p => (p + k).slice(0, 10))
+                else setCode(p => (p + k).slice(0, 12))
               }} style={{
-                padding: '18px', fontSize: k === '↵' || k === '⌫' ? 20 : 24,
+                padding: '15px', fontSize: k === '⌫' ? 18 : 20,
                 fontWeight: 700, border: 'none', borderRadius: 10, cursor: 'pointer',
-                background: k === '↵' ? '#1A3A7C' : k === '⌫' ? '#334155' : '#1E3A5F',
-                color: '#F1F5F9',
-              }}>
-                {k}
-              </button>
+                background: k === '⌫' ? '#334155' : '#1E3A5F', color: '#F1F5F9',
+              }}>{k}</button>
+            ))}
+          </div>
+
+          {/* Teclado letras */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 5, marginBottom: 14 }}>
+            {['A','B','C','D','E','F','G','H','I','J','K','L','M','N','O','P','Q','R','S','T','U','V','W','X','Y','Z'].slice(0,18).map(k => (
+              <button key={k} onClick={() => setCode(p => (p + k).slice(0, 12))} style={{
+                padding: '9px 4px', fontSize: 13, fontWeight: 700, border: 'none',
+                borderRadius: 8, cursor: 'pointer', background: '#1E3A5F', color: '#F1F5F9',
+              }}>{k}</button>
             ))}
           </div>
 
           <button onClick={handleSearchCode} disabled={!code.trim() || loading} style={{
-            width: '100%', padding: '16px', fontSize: 16, fontWeight: 700,
-            background: '#1A3A7C', color: '#fff', border: 'none', borderRadius: 12,
-            cursor: 'pointer', opacity: (!code.trim() || loading) ? 0.5 : 1,
+            width: '100%', padding: '15px', fontSize: 16, fontWeight: 700,
+            background: mode === 'staff' ? '#1A4A2A' : '#1A3A7C',
+            color: '#fff', border: 'none', borderRadius: 12, cursor: 'pointer',
+            opacity: (!code.trim() || loading) ? 0.5 : 1,
           }}>
-            {loading ? 'Buscando...' : '🔍 Buscar Maestro'}
+            {loading ? 'Buscando...' : `🔍 Buscar ${personLabel}`}
           </button>
         </div>
       )}
 
-      {/* MAESTRO — confirmar */}
-      {mode === 'teacher' && step === 'confirm' && teacher && (
+      {/* ── CONFIRMAR ── */}
+      {(mode === 'teacher' || mode === 'staff') && step === 'confirm' && person && (
         <div style={{ background: '#1E293B', borderRadius: 16, padding: 24 }}>
           <div style={{ textAlign: 'center', marginBottom: 24 }}>
-            <div style={{ fontSize: 64, marginBottom: 8 }}>👨‍🏫</div>
-            <div style={{ fontSize: 24, fontWeight: 800, color: '#F1F5F9', marginBottom: 4 }}>
-              {teacher.lastName} {teacher.firstName}
+            <div style={{ fontSize: 56, marginBottom: 8 }}>{mode === 'staff' ? '🏢' : '👨‍🏫'}</div>
+            <div style={{ fontSize: 22, fontWeight: 800, color: '#F1F5F9', marginBottom: 4 }}>
+              {person.lastName} {person.firstName}
             </div>
-            {teacher.specialty && (
-              <div style={{ fontSize: 13, color: '#94A3B8' }}>{teacher.specialty}</div>
-            )}
-            <div style={{ fontSize: 12, color: '#64748B', marginTop: 4 }}>
-              Código: {teacher.attendanceCode}
-            </div>
+            {person.specialty  && <div style={{ fontSize: 13, color: '#94A3B8' }}>{person.specialty}</div>}
+            {person.staffRole  && <div style={{ fontSize: 13, color: '#94A3B8' }}>{person.staffRole}</div>}
+            <div style={{ fontSize: 12, color: '#64748B', marginTop: 4 }}>Código: {person.attendanceCode}</div>
           </div>
 
           <div style={{
@@ -302,9 +469,7 @@ export default function PorteroPage() {
             background: nextAction === 'ENTRADA' ? '#0F2A1A' : '#2A1A0F',
             border: `2px solid ${nextAction === 'ENTRADA' ? '#0F6E56' : '#BA7517'}`,
           }}>
-            <div style={{ fontSize: 40, marginBottom: 8 }}>
-              {nextAction === 'ENTRADA' ? '🟢' : '🔴'}
-            </div>
+            <div style={{ fontSize: 40, marginBottom: 8 }}>{nextAction === 'ENTRADA' ? '🟢' : '🔴'}</div>
             <div style={{ fontSize: 28, fontWeight: 800, color: nextAction === 'ENTRADA' ? '#0F6E56' : '#BA7517' }}>
               {nextAction}
             </div>
@@ -314,13 +479,11 @@ export default function PorteroPage() {
           </div>
 
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-            <button onClick={resetTeacher} style={{
+            <button onClick={resetPerson} style={{
               padding: '16px', fontSize: 15, fontWeight: 600,
               background: '#334155', color: '#F1F5F9', border: 'none', borderRadius: 12, cursor: 'pointer',
-            }}>
-              ← Cancelar
-            </button>
-            <button onClick={handleRegisterTeacher} disabled={saving} style={{
+            }}>← Cancelar</button>
+            <button onClick={handleRegisterByCode} disabled={saving} style={{
               padding: '16px', fontSize: 15, fontWeight: 700,
               background: nextAction === 'ENTRADA' ? '#0F6E56' : '#C0392B',
               color: '#fff', border: 'none', borderRadius: 12, cursor: 'pointer',
@@ -332,7 +495,148 @@ export default function PorteroPage() {
         </div>
       )}
 
-      {/* VISITANTE */}
+      {/* ── LISTA ESPERADOS HOY ── */}
+      {mode === 'expected' && (
+        <div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 16 }}>
+            <button onClick={() => { setMode('home'); setSelectedExpected(null) }} style={{
+              background: 'none', border: 'none', cursor: 'pointer', color: '#94A3B8', fontSize: 20
+            }}>←</button>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 18, fontWeight: 700, color: '#F1F5F9' }}>Lista de hoy</div>
+              {expected?.schedule && (
+                <div style={{ fontSize: 12, color: expected.schedule.windowOpen ? '#0F6E56' : '#94A3B8' }}>
+                  {expected.schedule.windowOpen
+                    ? `✅ Ventana abierta — ${expected.schedule.minutesBeforeExit} min para el cierre`
+                    : `⏳ Faltan ${expected.schedule.minutesBeforeExit} min para las ${expected.schedule.exitTime}`}
+                </div>
+              )}
+            </div>
+            <button onClick={loadExpected} style={{
+              background: '#334155', border: 'none', borderRadius: 8,
+              padding: '6px 12px', fontSize: 12, color: '#94A3B8', cursor: 'pointer'
+            }}>↻</button>
+          </div>
+
+          {/* Modal confirmación desde lista */}
+          {selectedExpected && (
+            <div style={{
+              position: 'fixed', inset: 0, background: 'rgba(0,0,0,.75)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100, padding: 20
+            }}>
+              <div style={{ background: '#1E293B', borderRadius: 16, padding: 24, width: '100%', maxWidth: 360 }}>
+                <div style={{ textAlign: 'center', marginBottom: 20 }}>
+                  <div style={{ fontSize: 48, marginBottom: 8 }}>
+                    {selectedExpected.category === 'MAESTRO' ? '👨‍🏫' : '🏢'}
+                  </div>
+                  <div style={{ fontSize: 18, fontWeight: 800, color: '#F1F5F9' }}>
+                    {selectedExpected.lastName} {selectedExpected.firstName}
+                  </div>
+                  <div style={{ fontSize: 12, color: '#94A3B8', marginTop: 4 }}>{selectedExpected.category}</div>
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10 }}>
+                  <button onClick={() => setSelectedExpected(null)} style={{
+                    padding: '14px', fontSize: 13, fontWeight: 600,
+                    background: '#334155', color: '#F1F5F9', border: 'none', borderRadius: 10, cursor: 'pointer',
+                  }}>← Volver</button>
+                  <button onClick={() => handleRegisterFromList(selectedExpected, 'ENTRADA')} disabled={saving} style={{
+                    padding: '14px', fontSize: 13, fontWeight: 700,
+                    background: '#0F6E56', color: '#fff', border: 'none', borderRadius: 10, cursor: 'pointer',
+                    opacity: saving ? 0.6 : 1,
+                  }}>🟢 Entrada</button>
+                  <button onClick={() => handleRegisterFromList(selectedExpected, 'SALIDA')} disabled={saving} style={{
+                    padding: '14px', fontSize: 13, fontWeight: 700,
+                    background: '#C0392B', color: '#fff', border: 'none', borderRadius: 10, cursor: 'pointer',
+                    opacity: saving ? 0.6 : 1,
+                  }}>🔴 Salida</button>
+                </div>
+              </div>
+            </div>
+          )}
+
+          {loadingExp && <div style={{ textAlign: 'center', padding: 40, color: '#94A3B8' }}>Cargando...</div>}
+
+          {expected && !loadingExp && (
+            <>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 10, marginBottom: 16 }}>
+                {[
+                  { label: 'Maestros esperados',   val: expected.summary?.teachersExpected  ?? 0, color: '#1A3A7C' },
+                  { label: 'Maestros registrados',  val: expected.summary?.teachersRegistered ?? 0, color: '#0F6E56' },
+                ].map(s => (
+                  <div key={s.label} style={{
+                    background: s.color + '33', border: `1px solid ${s.color}55`,
+                    borderRadius: 10, padding: '12px', textAlign: 'center'
+                  }}>
+                    <div style={{ fontSize: 24, fontWeight: 800, color: '#F1F5F9' }}>{s.val}</div>
+                    <div style={{ fontSize: 11, color: '#94A3B8' }}>{s.label}</div>
+                  </div>
+                ))}
+              </div>
+
+              <div style={{ fontSize: 12, fontWeight: 700, color: '#94A3B8', textTransform: 'uppercase', letterSpacing: '.5px', marginBottom: 8 }}>
+                Maestros ({expected.teachers.length})
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 20 }}>
+                {expected.teachers.map(t => (
+                  <button key={t.id} onClick={() => !t.isAbsent && setSelectedExpected(t)}
+                    disabled={t.isAbsent}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: 12, padding: '10px 14px',
+                      borderRadius: 10, border: 'none', cursor: t.isAbsent ? 'default' : 'pointer', textAlign: 'left',
+                      background: t.isAbsent ? '#1A0F0F' : t.registered ? '#0F2A1A' : '#1E293B',
+                      borderLeft: `4px solid ${t.isAbsent ? '#7F1D1D' : t.registered ? '#0F6E56' : '#334155'}`,
+                      opacity: t.isAbsent ? 0.6 : 1, width: '100%',
+                    }}>
+                    <span style={{ fontSize: 22 }}>{t.isAbsent ? '❌' : t.registered ? '✅' : '⏳'}</span>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontSize: 13, fontWeight: 600, color: '#F1F5F9' }}>
+                        {t.lastName} {t.firstName}
+                      </div>
+                      <div style={{ fontSize: 11, color: '#64748B' }}>
+                        {t.isAbsent ? 'AUSENTE' : t.registered ? `Entró a las ${formatTime(t.gateRecord?.createdAt)}` : 'Sin registro'}
+                      </div>
+                    </div>
+                    {!t.registered && !t.isAbsent && <span style={{ fontSize: 11, color: '#94A3B8' }}>Tap →</span>}
+                  </button>
+                ))}
+              </div>
+
+              {expected.staff.length > 0 && (
+                <>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: '#94A3B8', textTransform: 'uppercase', letterSpacing: '.5px', marginBottom: 8 }}>
+                    Personal administrativo ({expected.staff.length})
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                    {expected.staff.map(s => (
+                      <button key={s.id} onClick={() => setSelectedExpected(s)}
+                        style={{
+                          display: 'flex', alignItems: 'center', gap: 12, padding: '10px 14px',
+                          borderRadius: 10, border: 'none', cursor: 'pointer', textAlign: 'left',
+                          background: s.registered ? '#0F2A1A' : '#1E293B',
+                          borderLeft: `4px solid ${s.registered ? '#0F6E56' : '#334155'}`,
+                          width: '100%',
+                        }}>
+                        <span style={{ fontSize: 22 }}>{s.registered ? '✅' : '⏳'}</span>
+                        <div style={{ flex: 1 }}>
+                          <div style={{ fontSize: 13, fontWeight: 600, color: '#F1F5F9' }}>
+                            {s.lastName} {s.firstName}
+                          </div>
+                          <div style={{ fontSize: 11, color: '#64748B' }}>
+                            {s.category} — {s.registered ? `Entró a las ${formatTime(s.gateRecord?.createdAt)}` : 'Sin registro'}
+                          </div>
+                        </div>
+                        {!s.registered && <span style={{ fontSize: 11, color: '#94A3B8' }}>Tap →</span>}
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
+            </>
+          )}
+        </div>
+      )}
+
+      {/* ── VISITANTE ── */}
       {mode === 'visitor' && (
         <div style={{ background: '#1E293B', borderRadius: 16, padding: 24 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 24 }}>
@@ -356,49 +660,26 @@ export default function PorteroPage() {
               ))}
             </div>
 
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-              <label style={{ fontSize: 11, fontWeight: 600, color: '#94A3B8', textTransform: 'uppercase', letterSpacing: '.5px' }}>
-                Nombre completo *
-              </label>
-              <input value={vName} onChange={e => setVName(e.target.value)}
-                placeholder="Nombre del visitante"
-                style={{ padding: '12px', border: '1.5px solid #334155', borderRadius: 8, fontSize: 14, color: '#F1F5F9', background: '#0F172A', outline: 'none' }}/>
-            </div>
-
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-              <label style={{ fontSize: 11, fontWeight: 600, color: '#94A3B8', textTransform: 'uppercase', letterSpacing: '.5px' }}>
-                CI (opcional)
-              </label>
-              <input value={vCI} onChange={e => setVCI(e.target.value)}
-                placeholder="Número de CI"
-                style={{ padding: '12px', border: '1.5px solid #334155', borderRadius: 8, fontSize: 14, color: '#F1F5F9', background: '#0F172A', outline: 'none' }}/>
-            </div>
-
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-              <label style={{ fontSize: 11, fontWeight: 600, color: '#94A3B8', textTransform: 'uppercase', letterSpacing: '.5px' }}>
-                Motivo de visita
-              </label>
-              <input value={vReason} onChange={e => setVReason(e.target.value)}
-                placeholder="Ej: Reunión, trámite, entrega..."
-                style={{ padding: '12px', border: '1.5px solid #334155', borderRadius: 8, fontSize: 14, color: '#F1F5F9', background: '#0F172A', outline: 'none' }}/>
-            </div>
-
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-              <label style={{ fontSize: 11, fontWeight: 600, color: '#94A3B8', textTransform: 'uppercase', letterSpacing: '.5px' }}>
-                Destino / A quién visita
-              </label>
-              <input value={vDestination} onChange={e => setVDestination(e.target.value)}
-                placeholder="Ej: Dirección, Secretaría, Curso 3° A..."
-                style={{ padding: '12px', border: '1.5px solid #334155', borderRadius: 8, fontSize: 14, color: '#F1F5F9', background: '#0F172A', outline: 'none' }}/>
-            </div>
+            {[
+              { label: 'Nombre completo *',          val: vName,        set: setVName,        ph: 'Nombre del visitante' },
+              { label: 'CI (opcional)',               val: vCI,          set: setVCI,          ph: 'Número de CI' },
+              { label: 'Motivo de visita',            val: vReason,      set: setVReason,      ph: 'Ej: Reunión, trámite...' },
+              { label: 'Destino / A quién visita',   val: vDestination, set: setVDestination, ph: 'Ej: Dirección, Secretaría...' },
+            ].map(f => (
+              <div key={f.label} style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                <label style={{ fontSize: 11, fontWeight: 600, color: '#94A3B8', textTransform: 'uppercase', letterSpacing: '.5px' }}>
+                  {f.label}
+                </label>
+                <input value={f.val} onChange={e => f.set(e.target.value)} placeholder={f.ph}
+                  style={{ padding: '12px', border: '1.5px solid #334155', borderRadius: 8, fontSize: 14, color: '#F1F5F9', background: '#0F172A', outline: 'none' }} />
+              </div>
+            ))}
 
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginTop: 8 }}>
               <button onClick={resetVisitor} style={{
                 padding: '14px', fontSize: 14, fontWeight: 600,
                 background: '#334155', color: '#F1F5F9', border: 'none', borderRadius: 12, cursor: 'pointer',
-              }}>
-                ← Cancelar
-              </button>
+              }}>← Cancelar</button>
               <button onClick={handleRegisterVisitor} disabled={!vName.trim() || saving} style={{
                 padding: '14px', fontSize: 14, fontWeight: 700,
                 background: vAction === 'ENTRADA' ? '#0F6E56' : '#C0392B',

@@ -602,3 +602,90 @@ export const generateAttendanceCodes = async (req: AuthRequest, res: Response): 
     res.status(500).json({ message: 'Error al generar códigos' })
   }
 }
+// ─────────────────────────────────────────────
+// GET /api/gate/attendance-codes
+// Lista todos los maestros con su código QR
+// ─────────────────────────────────────────────
+export const getAttendanceCodes = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const teachers = await prisma.teacher.findMany({
+      where: { isActive: true },
+      select: {
+        id: true,
+        firstName: true,
+        lastName: true,
+        ci: true,
+        attendanceCode: true,
+      },
+      orderBy: { lastName: 'asc' }
+    })
+
+    const staff = await prisma.staff.findMany({
+      where: { isActive: true },
+      select: {
+        id: true,
+        firstName: true,
+        lastName: true,
+        ci: true,
+        staffRole: true,
+        attendanceCode: true,
+      },
+      orderBy: { lastName: 'asc' }
+    })
+
+    res.json({ teachers, staff })
+  } catch (error) {
+    console.error('getAttendanceCodes error:', error)
+    res.status(500).json({ message: 'Error al obtener códigos' })
+  }
+}
+// ─────────────────────────────────────────────
+// POST /api/gate/regenerate-code/teacher/:id
+// POST /api/gate/regenerate-code/staff/:id
+// Regenerar código QR individual
+// ─────────────────────────────────────────────
+export const regenerateCode = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const { id, type } = req.params
+
+    function makeCode(firstName: string, lastName: string): string {
+      const parts = [...firstName.trim().split(' '), ...lastName.trim().split(' ')]
+      const initials = parts.filter(p => p.length > 0).slice(0, 3).map(p => p[0].toUpperCase()).join('')
+      const nums = Math.floor(1000 + Math.random() * 9000)
+      return `${initials}-${nums}`
+    }
+
+    if (type === 'teacher') {
+      const teacher = await prisma.teacher.findUnique({ where: { id: parseInt(id) } })
+      if (!teacher) { res.status(404).json({ message: 'Maestro no encontrado' }); return }
+
+      let code = makeCode(teacher.firstName, teacher.lastName)
+      let exists = await prisma.teacher.findUnique({ where: { attendanceCode: code } })
+      while (exists) {
+        code = makeCode(teacher.firstName, teacher.lastName)
+        exists = await prisma.teacher.findUnique({ where: { attendanceCode: code } })
+      }
+      await prisma.teacher.update({ where: { id: parseInt(id) }, data: { attendanceCode: code } })
+      res.json({ message: 'Código regenerado', attendanceCode: code })
+
+    } else if (type === 'staff') {
+      const staff = await prisma.staff.findUnique({ where: { id: parseInt(id) } })
+      if (!staff) { res.status(404).json({ message: 'Personal no encontrado' }); return }
+
+      let code = makeCode(staff.firstName, staff.lastName)
+      let exists = await prisma.staff.findUnique({ where: { attendanceCode: code } })
+      while (exists) {
+        code = makeCode(staff.firstName, staff.lastName)
+        exists = await prisma.staff.findUnique({ where: { attendanceCode: code } })
+      }
+      await prisma.staff.update({ where: { id: parseInt(id) }, data: { attendanceCode: code } })
+      res.json({ message: 'Código regenerado', attendanceCode: code })
+
+    } else {
+      res.status(400).json({ message: 'Tipo inválido' })
+    }
+  } catch (error) {
+    console.error('regenerateCode error:', error)
+    res.status(500).json({ message: 'Error al regenerar código' })
+  }
+}

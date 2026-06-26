@@ -11,6 +11,8 @@ import {
   getRecords,
   getTodayTeachers,
   generateAttendanceCodes,
+  getAttendanceCodes,
+  regenerateCode,
 } from '../controllers/gate.controller'
 
 const router = Router()
@@ -19,8 +21,10 @@ router.use(verifyToken)
 // Búsqueda por código QR
 
 router.post('/generate-codes', generateAttendanceCodes)
+router.get('/attendance-codes', getAttendanceCodes)
 router.get('/teacher/:code',            getTeacherByCode)
 router.get('/staff/:code',              getStaffByCode)
+router.post('/regenerate-code/:type/:id', regenerateCode)
 
 // Lista esperados hoy
 router.get('/expected-today',           getExpectedToday)
