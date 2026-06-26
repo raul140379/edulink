@@ -2,19 +2,37 @@ import { Router } from 'express'
 import { verifyToken } from '../middlewares/auth.middleware'
 import {
   getTeacherByCode,
+  getStaffByCode,
+  getExpectedToday,
   registerTeacher,
+  registerStaff,
   registerVisitor,
+  markAbsentTeachers,
   getRecords,
   getTodayTeachers,
+  generateAttendanceCodes,
 } from '../controllers/gate.controller'
 
 const router = Router()
 router.use(verifyToken)
 
-router.get('/teacher/:code',       getTeacherByCode)
-router.post('/teacher',            registerTeacher)
-router.post('/visitor',            registerVisitor)
-router.get('/records',             getRecords)
-router.get('/records/today-teachers', getTodayTeachers)
+// Búsqueda por código QR
+
+router.post('/generate-codes', generateAttendanceCodes)
+router.get('/teacher/:code',            getTeacherByCode)
+router.get('/staff/:code',              getStaffByCode)
+
+// Lista esperados hoy
+router.get('/expected-today',           getExpectedToday)
+
+// Registros
+router.post('/teacher',                 registerTeacher)
+router.post('/staff',                   registerStaff)
+router.post('/visitor',                 registerVisitor)
+router.post('/mark-absent',             markAbsentTeachers)
+
+// Historial
+router.get('/records',                  getRecords)
+router.get('/records/today-teachers',   getTodayTeachers)
 
 export default router

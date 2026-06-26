@@ -7,43 +7,594 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// ─────────────────────────────────────────────
-// ENUMS
-// ─────────────────────────────────────────────
-
-enum Role {
-  SUPER_ADMIN    // Administrador general del sistema
-  DIRECTOR       // Director de turno
-  REGENTE        // Regente / subdirector
-  TEACHER        // Maestro
-  TEACHER_TUTOR // Maestro tutor
-  DELEGATE       // Delegado de curso (padre designado por el curso)
-  JUNTA_ESCOLAR  // Directorio de la junta escolar - responsable económico
-  SECRETARY      // Secretaria de la U.E
-  PARENT         // Padre / madre de familia
-  STUDENT        // Estudiante (consulta)
-  STUDENT_GOV    // Gobierno estudiantil
-  STAFF          // Personal administrativo (portero, etc.)
-  PORTERO        //portero
-}
-
-// Horario institucional por turno (para estudiantes y control general)
 model SchoolSchedule {
   id             Int      @id @default(autoincrement())
-  shift          String   // MORNING, AFTERNOON
-  name           String   // "Normal Mañana", "Invierno Tarde"
-  startTime      String   // "07:45", "08:15"
-  exitTime       String   // "12:55", "13:30"
-  periods        Int      @default(7)   // 6 o 7 periodos
-  periodDuration Int      @default(40)  // minutos por periodo
-  breakDuration  Int      @default(15)  // minutos de recreo
-  breakAfter     String   @default("2,4") // recreo después del periodo 2 y 4
-  isWinter       Boolean  @default(false)
+  shift          String
+  name           String
+  exitTime       String
   isActive       Boolean  @default(true)
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
+  breakAfter     String   @default("2,4")
+  breakDuration  Int      @default(15)
+  isWinter       Boolean  @default(false)
+  periodDuration Int      @default(40)
+  periods        Int      @default(7)
+  startTime      String
 }
- 
+
+model User {
+  id                Int            @id @default(autoincrement())
+  email             String         @unique
+  password          String
+  role              Role
+  isActive          Boolean        @default(true)
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
+  juntaMember       JuntaMember?
+  meetingsCreated   Meeting[]      @relation("MeetingCreator")
+  notificationsSent Notification[] @relation("NotificationSender")
+  parentDelegate    Parent?        @relation("ParentDelegate")
+  parent            Parent?        @relation("ParentUser")
+  director          ShiftDirector?
+  staff             Staff?
+  student           Student?
+  teacherTutor      Teacher?       @relation("TeacherTutor")
+  teacher           Teacher?       @relation("TeacherUser")
+}
+
+model JuntaMember {
+  id           Int       @id @default(autoincrement())
+  firstName    String
+  lastName     String
+  ci           String?   @unique
+  phone        String?
+  juntaRole    JuntaRole @default(VOCAL)
+  academicYear Int
+  isActive     Boolean   @default(true)
+  createdAt    DateTime  @default(now())
+  userId       Int       @unique
+  user         User      @relation(fields: [userId], references: [id])
+}
+
+model ShiftDirector {
+  id      Int      @id @default(autoincrement())
+  shift   Shift    @unique
+  userId  Int      @unique
+  courses Course[]
+  user    User     @relation(fields: [userId], references: [id])
+}
+
+model AcademicYear {
+  id                 Int                         @id @default(autoincrement())
+  year               Int                         @unique
+  startDate          DateTime
+  endDate            DateTime
+  isActive           Boolean                     @default(false)
+  createdAt          DateTime                    @default(now())
+  charges            Charge[]
+  holidays           Holiday[]
+  schedules          Schedule[]
+  schedulePlans      SchedulePlan[]
+  assignments        StudentAcademicAssignment[]
+  studentAttendances StudentAttendance[]
+  trimesters         Trimester[]
+}
+
+model Trimester {
+  id             Int          @id @default(autoincrement())
+  number         Int
+  name           String?
+  startDate      DateTime
+  endDate        DateTime
+  academicYearId Int
+  isClosed       Boolean      @default(false)
+  notas          Nota[]
+  tasks          Task[]
+  academicYear   AcademicYear @relation(fields: [academicYearId], references: [id])
+
+  @@unique([academicYearId, number])
+}
+
+model Holiday {
+  id             Int          @id @default(autoincrement())
+  date           DateTime
+  description    String
+  academicYearId Int
+  academicYear   AcademicYear @relation(fields: [academicYearId], references: [id])
+}
+
+model Parent {
+  id             Int             @id @default(autoincrement())
+  firstName      String
+  lastName       String
+  ci             String?         @unique
+  phone          String?
+  address        String?
+  email          String?         @unique
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  userId         Int?            @unique
+  delegateUserId Int?            @unique
+  attendances    Attendance[]
+  charges        Charge[]
+  delegateCourse Course?         @relation("CourseDelegate")
+  notifications  Notification[]
+  delegateUser   User?           @relation("ParentDelegate", fields: [delegateUserId], references: [id])
+  user           User?           @relation("ParentUser", fields: [userId], references: [id])
+  students       ParentStudent[]
+  payments       Payment[]
+}
+
+model Student {
+  id                 Int                         @id @default(autoincrement())
+  firstName          String
+  lastName           String
+  ci                 String?                     @unique
+  rude               String?                     @unique
+  birthDate          DateTime?
+  phone              String?
+  email              String?                     @unique
+  isActive           Boolean                     @default(true)
+  createdAt          DateTime                    @default(now())
+  updatedAt          DateTime                    @updatedAt
+  userId             Int?                        @unique
+  address            String?
+  gender             Gender                      @default(MASCULINO)
+  kardex             String?
+  charges            Charge[]
+  notas              Nota[]
+  parents            ParentStudent[]
+  user               User?                       @relation(fields: [userId], references: [id])
+  assignments        StudentAcademicAssignment[]
+  studentAttendances StudentAttendance[]
+  taskSubmissions    TaskSubmission[]
+}
+
+model ParentStudent {
+  id           Int          @id @default(autoincrement())
+  relationType RelationType @default(OTRO)
+  isTutor      Boolean      @default(false)
+  parentId     Int
+  studentId    Int
+  parent       Parent       @relation(fields: [parentId], references: [id])
+  student      Student      @relation(fields: [studentId], references: [id])
+
+  @@unique([parentId, studentId])
+}
+
+model Teacher {
+  id                 Int                    @id @default(autoincrement())
+  firstName          String
+  lastName           String
+  ci                 String?                @unique
+  phone              String?
+  email              String?                @unique
+  specialty          String?
+  isActive           Boolean                @default(true)
+  createdAt          DateTime               @default(now())
+  userId             Int                    @unique
+  birthDate          DateTime?
+  hoursLoad          Int?
+  gender             String?
+  tutorUserId        Int?                   @unique
+  attendanceCode     String?                @unique
+  entryTime          String?
+  exitTime           String?
+  toleranceMin       Int                    @default(10)
+  biometricTemplate  BiometricTemplate[]
+  tutorCourse        CourseTutor?
+  gateRecords        GateRecord[]
+  notas              Nota[]
+  studentAttendances StudentAttendance[]
+  tasks              Task[]
+  tutorUser          User?                  @relation("TeacherTutor", fields: [tutorUserId], references: [id])
+  user               User                   @relation("TeacherUser", fields: [userId], references: [id])
+  attendances        TeacherAttendance[]
+  specialties        TeacherSpecialty[]
+  assignments        TeacherSubjectCourse[]
+}
+
+model TeacherSpecialty {
+  id        Int     @id @default(autoincrement())
+  teacherId Int
+  subjectId Int
+  subject   Subject @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  teacher   Teacher @relation(fields: [teacherId], references: [id], onDelete: Cascade)
+
+  @@unique([teacherId, subjectId])
+}
+
+model TeacherAttendance {
+  id        Int              @id @default(autoincrement())
+  teacherId Int
+  date      DateTime         @default(now())
+  checkIn   DateTime?
+  checkOut  DateTime?
+  status    AttendanceStatus @default(PRESENTE)
+  note      String?
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
+  teacher   Teacher          @relation(fields: [teacherId], references: [id])
+
+  @@unique([teacherId, date])
+}
+
+model Staff {
+  id                Int                 @id @default(autoincrement())
+  firstName         String
+  lastName          String
+  ci                String?             @unique
+  phone             String?
+  staffRole         StaffRole
+  shift             Shift?
+  isActive          Boolean             @default(true)
+  createdAt         DateTime            @default(now())
+  userId            Int                 @unique
+  attendanceCode    String?             @unique
+  biometricTemplate BiometricTemplate[]
+  gateRecord        GateRecord[]
+  user              User                @relation(fields: [userId], references: [id])
+}
+
+model Course {
+  id                 Int                         @id @default(autoincrement())
+  level              AcademicLevel
+  grade              Grade
+  parallel           Parallel
+  educationType      EducationType               @default(REGULAR)
+  shift              Shift
+  shiftDirectorId    Int?
+  delegateId         Int?                        @unique
+  delegate           Parent?                     @relation("CourseDelegate", fields: [delegateId], references: [id])
+  shiftDirector      ShiftDirector?              @relation(fields: [shiftDirectorId], references: [id])
+  tutor              CourseTutor?
+  meetings           Meeting[]
+  notas              Nota[]
+  schedules          Schedule[]
+  schedulePlans      SchedulePlan[]
+  assignments        StudentAcademicAssignment[]
+  studentAttendances StudentAttendance[]
+  tasks              Task[]
+  teacherSubjects    TeacherSubjectCourse[]
+
+  @@unique([level, grade, parallel, educationType, shift])
+}
+
+model CourseTutor {
+  id        Int      @id @default(autoincrement())
+  courseId  Int      @unique
+  teacherId Int      @unique
+  createdAt DateTime @default(now())
+  course    Course   @relation(fields: [courseId], references: [id])
+  teacher   Teacher  @relation(fields: [teacherId], references: [id])
+}
+
+/// /MATERIAL_ESCOLAR
+model Subject {
+  id                 Int                    @id @default(autoincrement())
+  name               String
+  code               String?
+  level              AcademicLevel
+  hoursPerWeek       Int                    @default(4)
+  campo              CampoSaber?
+  isActive           Boolean                @default(true)
+  notas              Nota[]
+  gradeConfigs       SubjectGradeConfig[]
+  tasks              Task[]
+  teacherSpecialties TeacherSpecialty[]
+  teacherSubjects    TeacherSubjectCourse[]
+
+  @@unique([name, level])
+}
+
+model SubjectGradeConfig {
+  id            Int           @id @default(autoincrement())
+  subjectId     Int
+  grade         Grade
+  hoursPerWeek  Int
+  educationType EducationType @default(REGULAR)
+  subject       Subject       @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+
+  @@unique([subjectId, grade, educationType])
+}
+
+model TeacherSubjectCourse {
+  id            Int            @id @default(autoincrement())
+  teacherId     Int
+  subjectId     Int
+  courseId      Int
+  schedules     Schedule[]
+  schedulePlans SchedulePlan[]
+  course        Course         @relation(fields: [courseId], references: [id])
+  subject       Subject        @relation(fields: [subjectId], references: [id])
+  teacher       Teacher        @relation(fields: [teacherId], references: [id])
+
+  @@unique([teacherId, subjectId, courseId])
+}
+
+model Task {
+  id            Int              @id @default(autoincrement())
+  title         String
+  description   String?
+  type          TaskType
+  maxScore      Float
+  dueDate       DateTime?
+  courseId      Int
+  subjectId     Int
+  teacherId     Int
+  trimesterId   Int?
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+  attachmentUrl String?
+  notaItems     NotaItem[]
+  course        Course           @relation(fields: [courseId], references: [id])
+  subject       Subject          @relation(fields: [subjectId], references: [id])
+  teacher       Teacher          @relation(fields: [teacherId], references: [id])
+  trimester     Trimester?       @relation(fields: [trimesterId], references: [id])
+  submissions   TaskSubmission[]
+}
+
+model TaskSubmission {
+  id        Int        @id @default(autoincrement())
+  taskId    Int
+  studentId Int
+  score     Float?
+  note      String?
+  status    TaskStatus @default(PENDIENTE)
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+  student   Student    @relation(fields: [studentId], references: [id])
+  task      Task       @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  @@unique([taskId, studentId])
+}
+
+model StudentAcademicAssignment {
+  id             Int           @id @default(autoincrement())
+  educationType  EducationType
+  year           Int
+  studentId      Int
+  courseId       Int
+  academicYearId Int
+  createdAt      DateTime      @default(now())
+  academicYear   AcademicYear  @relation(fields: [academicYearId], references: [id])
+  course         Course        @relation(fields: [courseId], references: [id])
+  student        Student       @relation(fields: [studentId], references: [id])
+
+  @@unique([studentId, academicYearId, educationType])
+}
+
+model Schedule {
+  id                     Int                  @id @default(autoincrement())
+  dayOfWeek              Int
+  startTime              String
+  endTime                String
+  courseId               Int
+  teacherSubjectCourseId Int
+  academicYearId         Int
+  period                 Int
+  status                 String               @default("BORRADOR")
+  classroomId            Int?
+  academicYear           AcademicYear         @relation(fields: [academicYearId], references: [id])
+  classroom              Classroom?           @relation(fields: [classroomId], references: [id])
+  course                 Course               @relation(fields: [courseId], references: [id])
+  teacherSubjectCourse   TeacherSubjectCourse @relation(fields: [teacherSubjectCourseId], references: [id])
+
+  @@unique([courseId, academicYearId, dayOfWeek, period])
+}
+
+model SchedulePlan {
+  id                     Int                  @id @default(autoincrement())
+  dayOfWeek              Int
+  period                 Int
+  startTime              String
+  endTime                String
+  courseId               Int
+  academicYearId         Int
+  teacherSubjectCourseId Int
+  classroomId            Int?
+  createdAt              DateTime             @default(now())
+  updatedAt              DateTime             @updatedAt
+  slot                   String               @default("TEMP")
+  academicYear           AcademicYear         @relation(fields: [academicYearId], references: [id])
+  classroom              Classroom?           @relation(fields: [classroomId], references: [id])
+  course                 Course               @relation(fields: [courseId], references: [id])
+  teacherSubjectCourse   TeacherSubjectCourse @relation(fields: [teacherSubjectCourseId], references: [id])
+
+  @@unique([courseId, academicYearId, dayOfWeek, period, slot])
+}
+
+model Classroom {
+  id            Int            @id @default(autoincrement())
+  name          String         @unique
+  capacity      Int?
+  isActive      Boolean        @default(true)
+  createdAt     DateTime       @default(now())
+  schedules     Schedule[]
+  schedulePlans SchedulePlan[]
+}
+
+model Charge {
+  id             Int          @id @default(autoincrement())
+  title          String
+  description    String?
+  amount         Float
+  paidAmount     Float        @default(0)
+  type           ChargeType
+  status         ChargeStatus @default(PENDIENTE)
+  dueDate        DateTime?
+  createdAt      DateTime     @default(now())
+  parentId       Int
+  academicYearId Int
+  studentId      Int?
+  target         ChargeTarget @default(TUTOR)
+  tolerance      Boolean      @default(false)
+  toleranceNote  String?
+  updatedAt      DateTime     @updatedAt
+  academicYear   AcademicYear @relation(fields: [academicYearId], references: [id])
+  parent         Parent       @relation(fields: [parentId], references: [id])
+  student        Student?     @relation(fields: [studentId], references: [id])
+  payments       Payment[]
+}
+
+model Payment {
+  id           Int           @id @default(autoincrement())
+  amount       Float
+  reference    String?
+  date         DateTime      @default(now())
+  createdAt    DateTime      @default(now())
+  chargeId     Int
+  parentId     Int
+  note         String?
+  receivedById Int?
+  method       PaymentMethod @default(EFECTIVO)
+  charge       Charge        @relation(fields: [chargeId], references: [id])
+  parent       Parent        @relation(fields: [parentId], references: [id])
+}
+
+model Notification {
+  id        Int              @id @default(autoincrement())
+  title     String
+  message   String
+  type      NotificationType
+  isRead    Boolean          @default(false)
+  createdAt DateTime         @default(now())
+  parentId  Int
+  sentById  Int
+  parent    Parent           @relation(fields: [parentId], references: [id])
+  sentBy    User             @relation("NotificationSender", fields: [sentById], references: [id])
+}
+
+model Meeting {
+  id          Int          @id @default(autoincrement())
+  title       String
+  date        DateTime
+  courseId    Int
+  createdById Int
+  createdAt   DateTime     @default(now())
+  attendances Attendance[]
+  course      Course       @relation(fields: [courseId], references: [id])
+  createdBy   User         @relation("MeetingCreator", fields: [createdById], references: [id])
+}
+
+model Attendance {
+  id        Int      @id @default(autoincrement())
+  meetingId Int
+  parentId  Int
+  present   Boolean  @default(false)
+  note      String?
+  createdAt DateTime @default(now())
+  meeting   Meeting  @relation(fields: [meetingId], references: [id])
+  parent    Parent   @relation(fields: [parentId], references: [id])
+
+  @@unique([meetingId, parentId])
+}
+
+model Nota {
+  id             Int        @id @default(autoincrement())
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
+  studentId      Int
+  subjectId      Int
+  courseId       Int
+  teacherId      Int
+  trimesterId    Int
+  autoEvaluacion Float?
+  cerrado        Boolean    @default(false)
+  hacer          Float?
+  saber          Float?
+  ser            Float?
+  total          Float?
+  course         Course     @relation(fields: [courseId], references: [id])
+  student        Student    @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  subject        Subject    @relation(fields: [subjectId], references: [id])
+  teacher        Teacher    @relation(fields: [teacherId], references: [id])
+  trimester      Trimester  @relation(fields: [trimesterId], references: [id])
+  items          NotaItem[]
+
+  @@unique([studentId, subjectId, courseId, trimesterId])
+}
+
+model NotaItem {
+  id         Int           @id @default(autoincrement())
+  dimension  NotaDimension
+  titulo     String
+  puntaje    Float
+  maxPuntaje Float
+  fecha      DateTime?
+  createdAt  DateTime      @default(now())
+  notaId     Int
+  taskId     Int?
+  nota       Nota          @relation(fields: [notaId], references: [id], onDelete: Cascade)
+  task       Task?         @relation(fields: [taskId], references: [id])
+}
+
+model GateRecord {
+  id             Int            @id @default(autoincrement())
+  type           GateRecordType
+  action         GateAction
+  teacherId      Int?
+  visitorName    String?
+  visitorCI      String?
+  reason         String?
+  destination    String?
+  registeredById Int?
+  note           String?
+  createdAt      DateTime       @default(now())
+  staffId        Int?
+  method         String         @default("MANUAL")
+  staff          Staff?         @relation(fields: [staffId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  teacher        Teacher?       @relation(fields: [teacherId], references: [id])
+}
+
+model StudentAttendance {
+  id             Int                     @id @default(autoincrement())
+  date           DateTime
+  status         StudentAttendanceStatus @default(PRESENTE)
+  note           String?
+  createdAt      DateTime                @default(now())
+  updatedAt      DateTime                @updatedAt
+  studentId      Int
+  courseId       Int
+  teacherId      Int
+  academicYearId Int
+  academicYear   AcademicYear            @relation(fields: [academicYearId], references: [id])
+  course         Course                  @relation(fields: [courseId], references: [id])
+  student        Student                 @relation(fields: [studentId], references: [id])
+  teacher        Teacher                 @relation(fields: [teacherId], references: [id])
+
+  @@unique([studentId, courseId, date])
+}
+
+model BiometricTemplate {
+  id        Int      @id @default(autoincrement())
+  template  String
+  deviceId  String?
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now()) @db.Timestamp(6)
+  teacherId Int?
+  staffId   Int?
+  staff     Staff?   @relation(fields: [staffId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  teacher   Teacher? @relation(fields: [teacherId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+}
+
+enum Role {
+  SUPER_ADMIN
+  DIRECTOR
+  REGENTE
+  TEACHER
+  DELEGATE
+  PARENT
+  STUDENT
+  STUDENT_GOV
+  STAFF
+  SECRETARY
+  JUNTA_ESCOLAR
+  TEACHER_TUTOR
+  PORTERO
+}
+
 enum AcademicLevel {
   INICIAL
   PRIMARIA
@@ -51,10 +602,10 @@ enum AcademicLevel {
 }
 
 enum CampoSaber {
-  VIDA_TIERRA_TERRITORIO       // Vida Tierra y Territorio
-  COMUNIDAD_SOCIEDAD           // Comunidad y Sociedad
-  COSMOS_PENSAMIENTO           // Cosmos y Pensamiento
-  CIENCIA_TECNOLOGIA_PRODUCCION // Ciencia Tecnología y Producción
+  VIDA_TIERRA_TERRITORIO
+  COMUNIDAD_SOCIEDAD
+  COSMOS_PENSAMIENTO
+  CIENCIA_TECNOLOGIA_PRODUCCION
 }
 
 enum Gender {
@@ -64,13 +615,13 @@ enum Gender {
 
 enum EducationType {
   REGULAR
-  BTH           // Bachillerato Técnico Humanístico
+  BTH
 }
 
 enum Shift {
-  MORNING       // Turno mañana
-  AFTERNOON     // Turno tarde
-  NIGHT         // Turno noche
+  MORNING
+  AFTERNOON
+  NIGHT
 }
 
 enum Parallel {
@@ -91,38 +642,35 @@ enum Grade {
 enum RelationType {
   PADRE
   MADRE
-  TUTOR_LEGAL   // Tutor legal (no es padre ni madre)
+  TUTOR_LEGAL
   OTRO
 }
 
-//ROL DE PERSONAL
 enum StaffRole {
   PORTERO
   SECRETARIA
   REGENTE
   AUXILIAR
   OTRO
+  PSICOLOGO
 }
 
-// Destino del cargo: al tutor (general) o a un estudiante específico
 enum ChargeTarget {
-  TUTOR      // Cargo general al tutor legal (cuota inicial, minga, multa asamblea)
-  ESTUDIANTE // Cargo por estudiante específico (reunión de curso, actividades, materiales)
+  TUTOR
+  ESTUDIANTE
 }
 
-// TIPO DE CARGOS DE PAGO
 enum ChargeType {
-  CUOTA_INICIAL     // Monto de inicio de año — por TUTOR
-  DEUDA_ANTERIOR    // Saldo pendiente del año anterior — por TUTOR
-  MULTA_ASAMBLEA    // Multa por inasistencia a asamblea general — por TUTOR
-  MINGA             // Minga de cada gestión — por TUTOR
-  MULTA_REUNION     // Multa por inasistencia a reunión de curso — por ESTUDIANTE
-  ACTIVIDAD         // Kermesse, día del padre/madre, festivos — por ESTUDIANTE
-  MATERIAL_ESCOLAR  // Venta de materiales — por ESTUDIANTE
-  OTRO              // Cobros eventuales
+  CUOTA_INICIAL
+  DEUDA_ANTERIOR
+  MULTA_ASAMBLEA
+  MINGA
+  MULTA_REUNION
+  ACTIVIDAD
+  MATERIAL_ESCOLAR
+  OTRO
 }
 
-//ESTADO DEL CARGO
 enum ChargeStatus {
   PENDIENTE
   PARCIAL
@@ -130,7 +678,6 @@ enum ChargeStatus {
   ANULADO
 }
 
-//METODO DE PAGO
 enum PaymentMethod {
   EFECTIVO
   DEPOSITO_BANCARIO
@@ -139,41 +686,13 @@ enum PaymentMethod {
   OTRO
 }
 
-//TIPO DE NOTIFICACION
 enum NotificationType {
-  REUNION         // Convocatoria a reunión
-  ACTIVIDAD       // Actividad programada
-  DEUDA           // Recordatorio de pago pendiente
-  ACADEMICA       // Notificación académica del maestro
-  GENERAL         // Comunicado general
+  REUNION
+  ACTIVIDAD
+  DEUDA
+  ACADEMICA
+  GENERAL
 }
-
-// ─────────────────────────────────────────────
-// USUARIOS Y SEGURIDAD
-// ─────────────────────────────────────────────
-model User {
-  id        Int       @id @default(autoincrement())
-  email     String    @unique
-  password  String
-  role      Role
-  isActive  Boolean   @default(true)
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt  
-  parent         Parent?  @relation("ParentUser")
-  parentDelegate Parent?  @relation("ParentDelegate")
-  teacher        Teacher? @relation("TeacherUser")
-  teacherTutor   Teacher? @relation("TeacherTutor")
-  student       Student?
-  staff         Staff?
-  director      ShiftDirector?
-  juntaMember   JuntaMember? 
-  notificationsSent  Notification[] @relation("NotificationSender") 
-  meetingsCreated  Meeting[] @relation("MeetingCreator")
-}
-
-// ─────────────────────────────────────────────
-// JUNTA ESCOLAR
-// ─────────────────────────────────────────────
 
 enum JuntaRole {
   PRESIDENTE
@@ -183,178 +702,7 @@ enum JuntaRole {
   VOCAL
 }
 
-model JuntaMember {
-  id          Int       @id @default(autoincrement())
-  firstName   String
-  lastName    String
-  ci          String?   @unique
-  phone       String?
-  juntaRole   JuntaRole @default(VOCAL)
-  academicYear Int      // Gestión a la que pertenece
-  isActive    Boolean   @default(true)
-  createdAt   DateTime  @default(now())
-  userId      Int       @unique
-  user        User      @relation(fields: [userId], references: [id])
-}
-
-// ─────────────────────────────────────────────
-// UNIDAD EDUCATIVA Y TURNOS
-// ─────────────────────────────────────────────
-
-model ShiftDirector {
-  id        Int      @id @default(autoincrement())
-  shift     Shift    @unique
-  userId    Int      @unique
-  user      User     @relation(fields: [userId], references: [id])
-  courses   Course[]
-}
-
-// ─────────────────────────────────────────────
-// GESTIÓN ACADÉMICA
-// ─────────────────────────────────────────────
-
-model AcademicYear {
-  id          Int          @id @default(autoincrement())
-  year        Int          @unique
-  startDate   DateTime
-  endDate     DateTime
-  isActive    Boolean      @default(false)
-  createdAt   DateTime     @default(now())
-  trimesters  Trimester[] 
-  assignments StudentAcademicAssignment[]
-  holidays    Holiday[]
-  charges     Charge[]
-  schedules Schedule[]
-  studentAttendances StudentAttendance[]
-  schedulePlans SchedulePlan[]
-}
-
-model Trimester {
-  id             Int          @id @default(autoincrement())
-  number         Int
-  name           String?
-  startDate      DateTime
-  endDate        DateTime
-   isClosed       Boolean      @default(false)
-  academicYearId Int
-  academicYear   AcademicYear @relation(fields: [academicYearId], references: [id])
-  @@unique([academicYearId, number])
-  notas     Nota[]
-  tasks  Task[]
-}
- 
-// FECHAS FESTIVA
-model Holiday {
-  id             Int          @id @default(autoincrement())
-  date           DateTime
-  description    String
-  academicYearId Int
-  academicYear   AcademicYear @relation(fields: [academicYearId], references: [id])
-}
-
-// ─────────────────────────────────────────────
-// ACTORES
-// ─────────────────────────────────────────────
-
-model Parent {
-  id        Int             @id @default(autoincrement())
-  firstName String
-  lastName  String
-  ci        String?         @unique
-  phone     String?
-  address   String?
-  email     String?         @unique
-  createdAt DateTime        @default(now())
-  updatedAt DateTime        @updatedAt
-  userId    Int?            @unique
-user      User?           @relation("ParentUser", fields: [userId], references: [id])
-delegateUserId  Int?      @unique
-delegateUser    User?     @relation("ParentDelegate", fields: [delegateUserId], references: [id])
-  students      ParentStudent[]
-  charges       Charge[]
-  payments      Payment[]
-  notifications Notification[]  
-  delegateCourse Course? @relation("CourseDelegate")
-  attendances  Attendance[]
-}
-
-model Student {
-  id        Int       @id @default(autoincrement())
-  firstName String
-  lastName  String
-  ci        String?   @unique
-  rude      String?   @unique
-  birthDate DateTime?
-  phone     String?
-  email     String?   @unique
-  address   String?
-  gender    Gender   @default(MASCULINO)
-  isActive  Boolean   @default(true)
-  createdAt DateTime  @default(now())
-  updatedAt DateTime  @updatedAt
-  kardex    String?  
-  userId      Int?      @unique
-  user        User?     @relation(fields: [userId], references: [id])
-  parents     ParentStudent[]
-  assignments StudentAcademicAssignment[]
-  taskSubmissions  TaskSubmission[]
-  charges     Charge[]   // Cargos asignados a este estudiante específico
-  notas     Nota[]
-  studentAttendances StudentAttendance[]
-}
-
-model ParentStudent {
-  id           Int          @id @default(autoincrement())
-  relationType RelationType @default(OTRO)
-  isTutor      Boolean      @default(false)
-  parentId     Int
-  studentId    Int
-  parent       Parent       @relation(fields: [parentId], references: [id])
-  student      Student      @relation(fields: [studentId], references: [id])
-  @@unique([parentId, studentId])
-}
-model Teacher {
-  id        Int       @id @default(autoincrement())
-  firstName String
-  lastName  String
-  ci        String?   @unique
-  phone     String?
-  email     String?   @unique
-  specialty String?
-  birthDate DateTime?
-  hoursLoad Int?
-  gender     String?
-  entryTime    String?  // "07:30" — hora de entrada del maestro
-  exitTime     String?  // "12:30" — hora de salida del maestro
-  toleranceMin Int      @default(10) // minutos de tolerancia para retraso
-  attendanceCode String?  @unique  // código para marcar asistencia sin login
-  isActive  Boolean   @default(true)
-  createdAt DateTime  @default(now())
-  userId      Int       @unique
-  user        User      @relation("TeacherUser", fields: [userId], references: [id])
-  tutorUserId Int?      @unique
-  tutorUser   User?     @relation("TeacherTutor", fields: [tutorUserId], references: [id])
-  assignments TeacherSubjectCourse[]
-  tutorCourse CourseTutor?
-  notas     Nota[]
-  tasks  Task[]
-  specialties TeacherSpecialty[]
-  attendances TeacherAttendance[] 
-  gateRecords GateRecord[]
-  studentAttendances StudentAttendance[]
-}
-
-model TeacherSpecialty {
-  id        Int     @id @default(autoincrement())
-  teacherId Int
-  subjectId Int
-  teacher   Teacher @relation(fields: [teacherId], references: [id], onDelete: Cascade)
-  subject   Subject @relation(fields: [subjectId], references: [id], onDelete: Cascade)
-
-  @@unique([teacherId, subjectId])
-}
-
-///TIPO DE ASISTENCIA
+/// TIPO DE ASISTENCIA
 enum AttendanceStatus {
   PRESENTE
   AUSENTE
@@ -362,382 +710,27 @@ enum AttendanceStatus {
   LICENCIA
 }
 
-//ASISTENCIA DEL MAESTRO
-model TeacherAttendance {
-  id          Int              @id @default(autoincrement())
-  teacherId   Int
-  date        DateTime         @default(now())
-  checkIn     DateTime?        // hora de entrada
-  checkOut    DateTime?        // hora de salida
-  status      AttendanceStatus @default(PRESENTE)
-  note        String?          // observación (motivo de licencia, etc.)
-  createdAt   DateTime         @default(now())
-  updatedAt   DateTime         @updatedAt
-  teacher     Teacher          @relation(fields: [teacherId], references: [id])
-
-  @@unique([teacherId, date]) // un registro por día por maestro
-}
-
-model Staff {
-  id        Int       @id @default(autoincrement())
-  firstName String
-  lastName  String
-  ci        String?   @unique
-  phone     String?
-  staffRole StaffRole
-  shift     Shift?
-  isActive  Boolean   @default(true)
-  createdAt DateTime  @default(now())
-  userId    Int       @unique
-  user      User      @relation(fields: [userId], references: [id])
-}
-
-// ─────────────────────────────────────────────
-// CURSOS
-// ─────────────────────────────────────────────
-model Course {
-  id            Int           @id @default(autoincrement())
-  level         AcademicLevel
-  grade         Grade
-  parallel      Parallel
-  educationType EducationType @default(REGULAR)
-  shift         Shift
-  meetings  Meeting[]
-  shiftDirectorId Int?
-  shiftDirector   ShiftDirector? @relation(fields: [shiftDirectorId], references: [id])
-  delegateId  Int?    @unique
-  delegate    Parent? @relation("CourseDelegate", fields: [delegateId], references: [id])
-  assignments     StudentAcademicAssignment[]
-  schedules       Schedule[]
-  tasks  Task[]
-  teacherSubjects TeacherSubjectCourse[]
-  tutor           CourseTutor?
-  @@unique([level, grade, parallel, educationType, shift])
-  notas     Nota[] 
-  studentAttendances StudentAttendance[]
-  schedulePlans SchedulePlan[]
-}
-
-// Maestro tutor designado a un curso
-model CourseTutor {
-  id        Int      @id @default(autoincrement())
-  courseId  Int      @unique  // Un tutor por curso
-  teacherId Int      @unique  // Un maestro no puede tutorear más de un curso
-  course    Course   @relation(fields: [courseId], references: [id])
-  teacher   Teacher  @relation(fields: [teacherId], references: [id])
-  createdAt DateTime @default(now())
-}
-////MATERIAL_ESCOLAR
-model Subject {
-  id           Int           @id @default(autoincrement())
-  name         String
-  code         String?
-  level        AcademicLevel
-  campo        CampoSaber?   // Campo de Saberes y Conocimientos
-  hoursPerWeek Int           @default(4) // Horas base (referencia)
-  isActive     Boolean       @default(true)
-  teacherSubjects TeacherSubjectCourse[]
-  gradeConfigs    SubjectGradeConfig[]   // Horas y disponibilidad por grado
-  notas           Nota[]
-  tasks  Task[]
-  @@unique([name, level])
-  teacherSpecialties TeacherSpecialty[] 
-}
-
-// Configuración de materia por grado: qué grados aplica y cuántas horas
-model SubjectGradeConfig {
-  id           Int     @id @default(autoincrement())
-  subjectId    Int
-  grade        Grade   // PRIMERO...SEXTO
-  hoursPerWeek Int     // Horas semanales para ese grado específico
-  educationType EducationType @default(REGULAR) // REGULAR o BTH
-
-  subject Subject @relation(fields: [subjectId], references: [id], onDelete: Cascade)
-
-  @@unique([subjectId, grade, educationType])
-}
-
-//PROFESOR MATERIA Y CURSO
-model TeacherSubjectCourse {
-  id        Int     @id @default(autoincrement())
-  teacherId Int
-  subjectId Int
-  courseId  Int
-  teacher   Teacher @relation(fields: [teacherId], references: [id])
-  subject   Subject @relation(fields: [subjectId], references: [id])
-  course    Course  @relation(fields: [courseId], references: [id])
-  schedules Schedule[]
-  @@unique([teacherId, subjectId, courseId])
-  schedulePlans SchedulePlan[]
-}
-
-//TIPOS TAREAS ESTUDIANTES
 enum TaskType {
-  EVALUACION   // Campo SABER — hasta 45 pts
-  TRABAJO      // Campo HACER — hasta 40 pts
-  SER          // Campo SER — hasta 10 pts
-  DECIDIR      // Campo DECIDIR — hasta 5 pts
+  EVALUACION
+  TRABAJO
+  SER
+  DECIDIR
 }
 
-//ESTADOS TAREAS ESTUDIANTES
 enum TaskStatus {
   PENDIENTE
   CALIFICADO
 }
 
-// TAREAS DEL ESTUDIANTES
-model Task {
-  id          Int        @id @default(autoincrement())
-  title       String
-  description String?
-  type        TaskType
-  maxScore    Float      // Máximo según tipo
-  dueDate     DateTime?
-  attachmentUrl String?  // ← agregar esta línea
-  courseId    Int
-  subjectId   Int
-  teacherId   Int
-  trimesterId Int?
-  createdAt   DateTime   @default(now())
-  updatedAt   DateTime   @updatedAt
-  course      Course     @relation(fields: [courseId], references: [id])
-  subject     Subject    @relation(fields: [subjectId], references: [id])
-  teacher     Teacher    @relation(fields: [teacherId], references: [id])
-  trimester   Trimester? @relation(fields: [trimesterId], references: [id])
-  submissions TaskSubmission[]
-  notaItems   NotaItem[]   // ← agregar esta línea
-}
-
-// TAREAS ENVIADAS DEL ESTUDIANTES
-model TaskSubmission {
-  id        Int        @id @default(autoincrement())
-  taskId    Int
-  studentId Int
-  score     Float?     // Nota asignada por el maestro
-  note      String?    // Comentario
-  status    TaskStatus @default(PENDIENTE)
-  createdAt DateTime   @default(now())
-  updatedAt DateTime   @updatedAt
-  task      Task       @relation(fields: [taskId], references: [id], onDelete: Cascade)
-  student   Student    @relation(fields: [studentId], references: [id])
-  @@unique([taskId, studentId])
-}
-
-//Tarea académica del estudiante
-model StudentAcademicAssignment {
-  id             Int           @id @default(autoincrement())
-  educationType  EducationType
-  year           Int
-  studentId      Int
-  courseId       Int
-  academicYearId Int
-  createdAt      DateTime      @default(now())
-  student      Student      @relation(fields: [studentId], references: [id])
-  course       Course       @relation(fields: [courseId], references: [id])
-  academicYear AcademicYear @relation(fields: [academicYearId], references: [id])
-  @@unique([studentId, academicYearId, educationType])
-}
-
-//CRONOGRAMA
-model Schedule {
-  id                     Int                  @id @default(autoincrement())
-  dayOfWeek              Int                  // 1=Lunes, 2=Martes... 6=Sábado
-  period                 Int                  // 1-7
-  startTime              String               // "07:45"
-  endTime                String               // "08:25"
-  status                 String               @default("BORRADOR") // BORRADOR, PUBLICADO
-  courseId               Int
-  academicYearId         Int
-  teacherSubjectCourseId Int
-  classroomId            Int?                 // ← NUEVO
-  course               Course               @relation(fields: [courseId],       references: [id])
-  academicYear         AcademicYear         @relation(fields: [academicYearId], references: [id])
-  teacherSubjectCourse TeacherSubjectCourse @relation(fields: [teacherSubjectCourseId], references: [id])
-  classroom            Classroom?           @relation(fields: [classroomId], references: [id])  // ← NUEVO
-
-  @@unique([courseId, academicYearId, dayOfWeek, period])
-}
-// PLANIFICACION DE HORARIO
-model SchedulePlan {
-  id                     Int      @id @default(autoincrement())
-  dayOfWeek              Int
-  period                 Int
-  startTime              String
-  endTime                String
-  slot                   String   @default("TEMP") // TEMP, A, B
-  courseId               Int
-  academicYearId         Int
-  teacherSubjectCourseId Int
-  classroomId            Int?
-
-  course               Course               @relation(fields: [courseId],               references: [id])
-  academicYear         AcademicYear         @relation(fields: [academicYearId],         references: [id])
-  teacherSubjectCourse TeacherSubjectCourse @relation(fields: [teacherSubjectCourseId], references: [id])
-  classroom            Classroom?           @relation(fields: [classroomId],            references: [id])
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  @@unique([courseId, academicYearId, dayOfWeek, period, slot])
-}
- // aula de clases
- model Classroom {
-  id        Int        @id @default(autoincrement())
-  name      String     @unique  // "Aula 101", "Laboratorio", "Patio"
-  capacity  Int?
-  isActive  Boolean    @default(true)
-  createdAt DateTime   @default(now())
-  schedules Schedule[]
-  schedulePlans SchedulePlan[]
-}
-// ─────────────────────────────────────────────
-// TESORERÍA
-// ─────────────────────────────────────────────
-
-model Charge {
-  id            Int          @id @default(autoincrement())
-  title         String
-  description   String?
-  amount        Float
-  paidAmount    Float        @default(0)
-  type          ChargeType
-  target        ChargeTarget @default(TUTOR) // TUTOR o ESTUDIANTE
-  status        ChargeStatus @default(PENDIENTE)
-  dueDate       DateTime?
-  tolerance     Boolean      @default(false) // Caso especial con tolerancia
-  toleranceNote String?      // Nota sobre la tolerancia
-  createdAt     DateTime     @default(now())
-  updatedAt     DateTime     @updatedAt
-  academicYearId Int
-  academicYear   AcademicYear @relation(fields: [academicYearId], references: [id])
-  // El pago siempre lo hace el tutor legal
-  parentId    Int
-  parent      Parent       @relation(fields: [parentId], references: [id])
-  // Si el cargo es por ESTUDIANTE, se especifica el estudiante
-  studentId   Int?
-  student     Student?     @relation(fields: [studentId], references: [id])
-  payments    Payment[]
-}
-
-//LOS PAGOS
-model Payment {
-  id        Int           @id @default(autoincrement())
-  amount    Float
-  method    PaymentMethod @default(EFECTIVO)
-  reference String?       // Número de comprobante / referencia
-  note      String?       // Nota adicional
-  date      DateTime      @default(now())
-  createdAt DateTime      @default(now())
-  chargeId  Int
-  charge    Charge        @relation(fields: [chargeId], references: [id])
-  // Quien recibió el pago (miembro de la junta)
-  receivedById Int?
-  parentId     Int
-  parent       Parent     @relation(fields: [parentId], references: [id])
-}
-
-// ─────────────────────────────────────────────
-// NOTIFICACIONES
-// ─────────────────────────────────────────────
-
-model Notification {
-  id        Int              @id @default(autoincrement())
-  title     String
-  message   String
-  type      NotificationType
-  isRead    Boolean          @default(false)
-  createdAt DateTime         @default(now())
-  sentById  Int
-  sentBy    User   @relation("NotificationSender", fields: [sentById], references: [id])
-  parentId  Int
-  parent    Parent           @relation(fields: [parentId], references: [id])
-}
-// ─────────────────────────────────────────────
-// REUNIONES
-// ─────────────────────────────────────────────
-
-model Meeting {
-  id           Int           @id @default(autoincrement())
-  title        String
-  date         DateTime
-  courseId     Int
-  course       Course        @relation(fields: [courseId], references: [id])
-  createdById  Int
-  createdBy    User          @relation("MeetingCreator", fields: [createdById], references: [id])
-  attendances  Attendance[]
-  createdAt    DateTime      @default(now())
-}
-// ─────────────────────────────────────────────
-// ASISTENCIA
-// ─────────────────────────────────────────────
-
-model Attendance {
-  id        Int      @id @default(autoincrement())
-  meetingId Int
-  meeting   Meeting  @relation(fields: [meetingId], references: [id])
-  parentId  Int
-  parent    Parent   @relation(fields: [parentId], references: [id])
-  present   Boolean  @default(false)
-  note      String?
-  createdAt DateTime @default(now())
-  @@unique([meetingId, parentId])
-}// ─────────────────────────────────────────────
-// NOTAS Y CALIFICACIONES
-// ─────────────────────────────────────────────
-model Nota {
-  id              Int      @id @default(autoincrement())
-  // Notas finales de cada dimensión (calculadas o ingresadas)
-  saber           Float?   // 0-45 — promedio de ítems SABER
-  hacer           Float?   // 0-40 — promedio de ítems HACER  
-  ser             Float?   // 0-10 — ingresado por maestro al cerrar trimestre
-  autoEvaluacion  Float?   // 0-5  — ingresado por el estudiante
-  total           Float?   // suma de las 4 dimensiones (calculado)
-  cerrado         Boolean  @default(false) // true = trimestre cerrado, no editable
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-
-  studentId   Int
-  subjectId   Int
-  courseId    Int
-  teacherId   Int
-  trimesterId Int
-
-  student   Student   @relation(fields: [studentId], references: [id], onDelete: Cascade)
-  subject   Subject   @relation(fields: [subjectId], references: [id])
-  course    Course    @relation(fields: [courseId], references: [id])
-  teacher   Teacher   @relation(fields: [teacherId], references: [id])
-  trimester Trimester @relation(fields: [trimesterId], references: [id])
-  items     NotaItem[]
-
-  @@unique([studentId, subjectId, courseId, trimesterId])
-}
-
 enum NotaDimension {
-  SABER  // máx 45 pts
-  HACER  // máx 40 pts
+  SABER
+  HACER
 }
-
-// Ítem individual: cada examen, trabajo, actividad
-model NotaItem {
-  id          Int           @id @default(autoincrement())
-  dimension   NotaDimension // SABER o HACER
-  titulo      String        // "Examen parcial 1", "Trabajo grupal", etc.
-  puntaje     Float         // Nota obtenida (sobre maxPuntaje)
-  maxPuntaje  Float         // Puntaje máximo de este ítem
-  fecha       DateTime?
-  createdAt   DateTime      @default(now())
-  notaId      Int
-  nota        Nota          @relation(fields: [notaId], references: [id], onDelete: Cascade)
-  taskId      Int?          // opcional: si viene de una Task formal
-  task        Task?         @relation(fields: [taskId], references: [id])
-}
-// ─────────────────────────────────────────────
-// PORTERO — REGISTRO DE ENTRADA/SALIDA
-// ─────────────────────────────────────────────
 
 enum GateRecordType {
   MAESTRO
   VISITANTE
+  ADMINISTRATIVO
 }
 
 enum GateAction {
@@ -745,51 +738,9 @@ enum GateAction {
   SALIDA
 }
 
-model GateRecord {
-  id          Int             @id @default(autoincrement())
-  type        GateRecordType
-  action      GateAction
-  // Para maestros
-  teacherId   Int?
-  teacher     Teacher?        @relation(fields: [teacherId], references: [id])
-  // Para visitantes
-  visitorName String?
-  visitorCI   String?
-  reason      String?         // motivo de visita
-  destination String?         // a quién visita / destino
-  // Metadatos
-  registeredById Int?
-  note        String?
-  createdAt   DateTime        @default(now())
-}
-// ─────────────────────────────────────────────
-// ASISTENCIA DE ESTUDIANTES
-// ─────────────────────────────────────────────
-
 enum StudentAttendanceStatus {
   PRESENTE
   AUSENTE
   RETRASO
   LICENCIA
-}
-
-model StudentAttendance {
-  id        Int                     @id @default(autoincrement())
-  date      DateTime                // fecha del registro (solo fecha, sin hora)
-  status    StudentAttendanceStatus @default(PRESENTE)
-  note      String?
-  createdAt DateTime                @default(now())
-  updatedAt DateTime                @updatedAt
-
-  studentId      Int
-  courseId       Int
-  teacherId      Int
-  academicYearId Int
-
-  student      Student      @relation(fields: [studentId],      references: [id])
-  course       Course       @relation(fields: [courseId],       references: [id])
-  teacher      Teacher      @relation(fields: [teacherId],      references: [id])
-  academicYear AcademicYear @relation(fields: [academicYearId], references: [id])
-
-  @@unique([studentId, courseId, date])
 }
