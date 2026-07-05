@@ -149,6 +149,7 @@ model Student {
   assignments        StudentAcademicAssignment[]
   studentAttendances StudentAttendance[]
   taskSubmissions    TaskSubmission[]
+  gateRecords        GateRecord[]
 }
 
 model ParentStudent {
@@ -544,8 +545,10 @@ model GateRecord {
   createdAt      DateTime       @default(now())
   staffId        Int?
   method         String         @default("MANUAL")
+  studentId      Int?
   staff          Staff?         @relation(fields: [staffId], references: [id], onDelete: NoAction, onUpdate: NoAction)
   teacher        Teacher?       @relation(fields: [teacherId], references: [id])
+  student        Student?       @relation(fields: [studentId], references: [id], onDelete: NoAction, onUpdate: NoAction)
 }
 
 model StudentAttendance {
@@ -731,6 +734,7 @@ enum GateRecordType {
   MAESTRO
   VISITANTE
   ADMINISTRATIVO
+  ESTUDIANTE
 }
 
 enum GateAction {

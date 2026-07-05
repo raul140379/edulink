@@ -1,5 +1,6 @@
 import { Router } from 'express'
-import { verifyToken } from '../middlewares/auth.middleware'
+import { verifyToken, requirePermission } from '../middlewares/auth.middleware'
+import { Permission } from '../config/permissions'
 import {
   getTeachersReport,
   getDelegatesReport,
@@ -10,8 +11,8 @@ const router = Router()
 
 router.use(verifyToken)
 
-router.get('/teachers',  getTeachersReport)
-router.get('/delegates', getDelegatesReport)
-router.get('/treasury',  getTreasuryReport)
+router.get('/teachers',  requirePermission(Permission.REPORT_VIEW), getTeachersReport)
+router.get('/delegates', requirePermission(Permission.REPORT_VIEW), getDelegatesReport)
+router.get('/treasury',  requirePermission(Permission.CHARGE_VIEW_ALL), getTreasuryReport)
 
 export default router

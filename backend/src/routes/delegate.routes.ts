@@ -1,5 +1,8 @@
 import { Router } from 'express'
-import { verifyToken } from '../middlewares/auth.middleware'
+import { verifyToken, requirePermission } from '../middlewares/auth.middleware'
+import { validateBody } from '../middlewares/validate.middleware'
+import { Permission } from '../config/permissions'
+import { assignDelegateSchema } from '../schemas/delegate.schema'
 import {
   getDelegates,
   getEligibleParents,
@@ -12,13 +15,13 @@ const router = Router()
 
 router.use(verifyToken)
 
-// Gestión de delegados (Junta Escolar / Admin)
-router.get('/',                                    getDelegates)
-router.get('/course/:courseId/eligible-parents',   getEligibleParents)
-router.post('/course/:courseId/assign',            assignDelegate)
-router.delete('/course/:courseId/remove',          removeDelegate)
+// Gestión de delegados (Junta Escolar)
+router.get('/',                                    requirePermission(Permission.DELEGATE_MANAGE), getDelegates)
+router.get('/course/:courseId/eligible-parents',   requirePermission(Permission.DELEGATE_MANAGE), getEligibleParents)
+router.post('/course/:courseId/assign',            requirePermission(Permission.DELEGATE_MANAGE), validateBody(assignDelegateSchema), assignDelegate)
+router.delete('/course/:courseId/remove',          requirePermission(Permission.DELEGATE_MANAGE), removeDelegate)
 
 // Para el delegado logueado
-router.get('/my-course',                           getMyCourse)
+router.get('/my-course',                           requirePermission(Permission.DELEGATE_VIEW_OWN), getMyCourse)
 
 export default router

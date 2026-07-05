@@ -2,3 +2,6 @@
 *.xls
 ~$*
 temp*.js
+backups/
+*.dump
+*.sql

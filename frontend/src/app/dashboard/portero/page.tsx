@@ -23,7 +23,15 @@ interface Expected {
 }
 interface ScheduleInfo {
   startTime: string; exitTime: string
-  windowOpen: boolean; minutesBeforeExit: number
+  windowOpen: boolean; isClosed: boolean
+  minutesBeforeExit: number
+}
+interface ExpectedData {
+  teachers: Expected[]
+  teachersWithoutPeriods: Expected[]
+  staff: Expected[]
+  schedule: ScheduleInfo
+  summary: any
 }
 
 type Mode = 'home' | 'teacher' | 'staff' | 'visitor' | 'expected'
@@ -37,15 +45,15 @@ export default function PorteroPage() {
   const [nextAction, setNextAction] = useState<'ENTRADA'|'SALIDA'>('ENTRADA')
   const [loading,    setLoading]    = useState(false)
   const [saving,     setSaving]     = useState(false)
-  const [toast,      setToast]      = useState<{type:'ok'|'err'; text:string}|null>(null)
+  const [toast,      setToast]      = useState<{type:'ok'|'err'|'warn'; text:string}|null>(null)
   const [recentList, setRecentList] = useState<GateRecord[]>([])
   const [clock,      setClock]      = useState('')
-  const [expected,   setExpected]   = useState<{teachers: Expected[]; staff: Expected[]; schedule: ScheduleInfo; summary: any}|null>(null)
+  const [expected,   setExpected]   = useState<ExpectedData|null>(null)
   const [loadingExp, setLoadingExp] = useState(false)
   const [showQR,     setShowQR]     = useState(false)
+  const [isClosed,   setIsClosed]   = useState(false)
   const [selectedExpected, setSelectedExpected] = useState<Expected|null>(null)
 
-  // Visitante
   const [vName,        setVName]        = useState('')
   const [vCI,          setVCI]          = useState('')
   const [vReason,      setVReason]      = useState('')
@@ -58,11 +66,11 @@ export default function PorteroPage() {
   const token = () => localStorage.getItem('token') || ''
   const auth  = () => ({ Authorization: `Bearer ${token()}` })
 
-  const notify = (type: 'ok'|'err', text: string) => {
-    setToast({type, text}); setTimeout(() => setToast(null), 4000)
+  const notify = (type: 'ok'|'err'|'warn', text: string) => {
+    setToast({type, text}); setTimeout(() => setToast(null), 5000)
   }
 
-  // Reloj
+  // Reloj + verificar cierre
   useEffect(() => {
     const tick = () => {
       const now = new Date()
@@ -73,14 +81,26 @@ export default function PorteroPage() {
     return () => clearInterval(i)
   }, [])
 
-  // Focus input
+  // Verificar estado de cierre periódicamente
+  useEffect(() => {
+    const checkClosed = async () => {
+      try {
+        const res  = await fetch(`${API}/api/gate/expected-today`, { headers: auth() })
+        const data = await res.json()
+        if (res.ok) setIsClosed(data.schedule?.isClosed || false)
+      } catch {}
+    }
+    checkClosed()
+    const i = setInterval(checkClosed, 60000) // cada minuto
+    return () => clearInterval(i)
+  }, [])
+
   useEffect(() => {
     if ((mode === 'teacher' || mode === 'staff') && step === 'input') {
       setTimeout(() => codeRef.current?.focus(), 100)
     }
   }, [mode, step])
 
-  // Limpiar scanner al cambiar de modo
   useEffect(() => {
     if (mode !== 'teacher' && mode !== 'staff') stopQRScanner()
   }, [mode])
@@ -98,7 +118,10 @@ export default function PorteroPage() {
     try {
       const res  = await fetch(`${API}/api/gate/expected-today`, { headers: auth() })
       const data = await res.json()
-      if (res.ok) setExpected(data)
+      if (res.ok) {
+        setExpected(data)
+        setIsClosed(data.schedule?.isClosed || false)
+      }
     } catch { notify('err', 'Error al cargar lista') }
     finally { setLoadingExp(false) }
   }
@@ -132,23 +155,17 @@ export default function PorteroPage() {
   }
 
   const stopQRScanner = async () => {
-  if (scannerRef.current) {
-    try {
-      const state = scannerRef.current.getState()
-      // 2 = SCANNING, 3 = PAUSED
-      if (state === 2 || state === 3) {
-        await scannerRef.current.stop()
-      }
-    } catch {}
-    try {
-      scannerRef.current.clear()
-    } catch {}
-    scannerRef.current = null
+    if (scannerRef.current) {
+      try {
+        const state = scannerRef.current.getState()
+        if (state === 2 || state === 3) await scannerRef.current.stop()
+      } catch {}
+      try { scannerRef.current.clear() } catch {}
+      scannerRef.current = null
+    }
+    setShowQR(false)
   }
-  setShowQR(false)
-}
 
-  // ── Buscar por valor directo (desde QR) ───────────
   const handleSearchCodeByValue = async (value: string) => {
     if (!value) return
     setLoading(true)
@@ -166,7 +183,6 @@ export default function PorteroPage() {
     finally { setLoading(false) }
   }
 
-  // ── Buscar por código (teclado manual) ────────────
   const handleSearchCode = async () => {
     if (!code.trim()) return
     setLoading(true)
@@ -184,7 +200,6 @@ export default function PorteroPage() {
     finally { setLoading(false) }
   }
 
-  // ── Registrar desde código ────────────────────────
   const handleRegisterByCode = async () => {
     if (!person) return
     setSaving(true)
@@ -199,8 +214,16 @@ export default function PorteroPage() {
         body: JSON.stringify(body)
       })
       const data = await res.json()
-      if (!res.ok) { notify('err', data.message); resetPerson(); return }
-      notify('ok', data.message)
+      if (!res.ok) {
+        if (data.blocked) { notify('warn', data.message); resetPerson(); return }
+        notify('err', data.message); resetPerson(); return
+      }
+      // Maestro sin clases → registrado como visitante
+      if (data.asVisitor) {
+        notify('warn', data.message)
+      } else {
+        notify('ok', data.message)
+      }
       resetPerson()
       loadRecent()
       if (expected) loadExpected()
@@ -208,13 +231,31 @@ export default function PorteroPage() {
     finally { setSaving(false) }
   }
 
-  // ── Registrar desde lista ─────────────────────────
   const handleRegisterFromList = async (exp: Expected, action: 'ENTRADA'|'SALIDA') => {
     setSaving(true)
     try {
-      const isStaff = exp.category !== 'MAESTRO'
-      const endpoint = isStaff ? `${API}/api/gate/staff` : `${API}/api/gate/teacher`
-      const body     = isStaff ? { staffId: exp.id, action } : { teacherId: exp.id, action }
+      const isStaff  = exp.category !== 'MAESTRO' && exp.category !== 'MAESTRO_VISITANTE'
+      const isNoClass = exp.category === 'MAESTRO_VISITANTE'
+
+      let endpoint: string
+      let body: any
+
+      if (isNoClass) {
+        // Registrar como visitante directamente
+        endpoint = `${API}/api/gate/visitor`
+        body = {
+          visitorName: `${exp.lastName} ${exp.firstName}`,
+          reason:      'Maestro - Sin clases hoy',
+          action,
+        }
+      } else if (isStaff) {
+        endpoint = `${API}/api/gate/staff`
+        body = { staffId: exp.id, action }
+      } else {
+        endpoint = `${API}/api/gate/teacher`
+        body = { teacherId: exp.id, action }
+      }
+
       const res  = await fetch(endpoint, {
         method: 'POST',
         headers: { ...auth(), 'Content-Type': 'application/json' },
@@ -230,7 +271,6 @@ export default function PorteroPage() {
     finally { setSaving(false) }
   }
 
-  // ── Registrar visitante ───────────────────────────
   const handleRegisterVisitor = async () => {
     if (!vName.trim()) { notify('err', 'El nombre es requerido'); return }
     setSaving(true)
@@ -255,6 +295,28 @@ export default function PorteroPage() {
   const handleLogout = () => { localStorage.removeItem('token'); localStorage.removeItem('user'); window.location.href = '/login' }
   const personLabel  = mode === 'staff' ? 'Personal' : 'Maestro'
 
+  // ── PANTALLA BLOQUEADA ────────────────────────────
+  if (isClosed) {
+    return (
+      <div style={{ textAlign: 'center', padding: '60px 20px' }}>
+        <div style={{ fontSize: 48, fontWeight: 800, color: '#F1F5F9', letterSpacing: 2, marginBottom: 24, fontVariantNumeric: 'tabular-nums' }}>
+          {clock}
+        </div>
+        <div style={{ fontSize: 64, marginBottom: 16 }}>🔒</div>
+        <div style={{ fontSize: 22, fontWeight: 800, color: '#F1F5F9', marginBottom: 8 }}>
+          Portería cerrada
+        </div>
+        <div style={{ fontSize: 14, color: '#94A3B8', marginBottom: 32 }}>
+          El turno finalizó. El módulo se habilitará nuevamente mañana.
+        </div>
+        <button onClick={handleLogout} style={{
+          background: 'rgba(255,255,255,.1)', border: 'none', borderRadius: 8,
+          padding: '10px 20px', fontSize: 13, color: '#94A3B8', cursor: 'pointer'
+        }}>Cerrar sesión</button>
+      </div>
+    )
+  }
+
   return (
     <div>
       {/* Toast */}
@@ -262,10 +324,10 @@ export default function PorteroPage() {
         <div style={{
           position: 'fixed', top: 16, left: '50%', transform: 'translateX(-50%)',
           zIndex: 999, padding: '12px 24px', borderRadius: 10, fontSize: 14, fontWeight: 600,
-          background: toast.type === 'ok' ? '#0F6E56' : '#C0392B',
-          color: '#fff', boxShadow: '0 4px 20px rgba(0,0,0,.4)', whiteSpace: 'nowrap',
+          background: toast.type === 'ok' ? '#0F6E56' : toast.type === 'warn' ? '#BA7517' : '#C0392B',
+          color: '#fff', boxShadow: '0 4px 20px rgba(0,0,0,.4)', whiteSpace: 'nowrap', maxWidth: '90vw',
         }}>
-          {toast.type === 'ok' ? '✅' : '❌'} {toast.text}
+          {toast.type === 'ok' ? '✅' : toast.type === 'warn' ? '⚠️' : '❌'} {toast.text}
         </div>
       )}
 
@@ -360,7 +422,7 @@ export default function PorteroPage() {
         </>
       )}
 
-      {/* ── CÓDIGO (maestro o staff) ── */}
+      {/* ── CÓDIGO ── */}
       {(mode === 'teacher' || mode === 'staff') && step === 'input' && (
         <div style={{ background: '#1E293B', borderRadius: 16, padding: 24 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 20 }}>
@@ -371,16 +433,11 @@ export default function PorteroPage() {
             </div>
           </div>
 
-          {/* Input código */}
           <div style={{ marginBottom: 12 }}>
-            <input
-              ref={codeRef}
-              type="text"
-              value={code}
+            <input ref={codeRef} type="text" value={code}
               onChange={e => setCode(e.target.value.toUpperCase())}
               onKeyDown={e => e.key === 'Enter' && handleSearchCode()}
-              placeholder="Ej: JCF-4827"
-              maxLength={12}
+              placeholder="Ej: JCF-4827" maxLength={12}
               style={{
                 width: '100%', padding: '18px', fontSize: 28, fontWeight: 800,
                 letterSpacing: 6, textAlign: 'center', border: '2px solid #334155',
@@ -390,7 +447,6 @@ export default function PorteroPage() {
             />
           </div>
 
-          {/* Botón cámara QR */}
           {!showQR && (
             <button onClick={startQRScanner} style={{
               width: '100%', padding: '13px', fontSize: 14, fontWeight: 700,
@@ -402,7 +458,6 @@ export default function PorteroPage() {
             </button>
           )}
 
-          {/* Scanner QR */}
           {showQR && (
             <div style={{ marginBottom: 14 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
@@ -416,7 +471,6 @@ export default function PorteroPage() {
             </div>
           )}
 
-          {/* Teclado numérico */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 8, marginBottom: 10 }}>
             {['1','2','3','4','5','6','7','8','9','⌫','0','-'].map(k => (
               <button key={k} onClick={() => {
@@ -430,9 +484,8 @@ export default function PorteroPage() {
             ))}
           </div>
 
-          {/* Teclado letras */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 5, marginBottom: 14 }}>
-            {['A','B','C','D','E','F','G','H','I','J','K','L','M','N','O','P','Q','R','S','T','U','V','W','X','Y','Z'].slice(0,18).map(k => (
+            {['A','B','C','D','E','F','G','H','I','J','K','L','M','N','O','P','Q','R'].map(k => (
               <button key={k} onClick={() => setCode(p => (p + k).slice(0, 12))} style={{
                 padding: '9px 4px', fontSize: 13, fontWeight: 700, border: 'none',
                 borderRadius: 8, cursor: 'pointer', background: '#1E3A5F', color: '#F1F5F9',
@@ -459,8 +512,8 @@ export default function PorteroPage() {
             <div style={{ fontSize: 22, fontWeight: 800, color: '#F1F5F9', marginBottom: 4 }}>
               {person.lastName} {person.firstName}
             </div>
-            {person.specialty  && <div style={{ fontSize: 13, color: '#94A3B8' }}>{person.specialty}</div>}
-            {person.staffRole  && <div style={{ fontSize: 13, color: '#94A3B8' }}>{person.staffRole}</div>}
+            {person.specialty && <div style={{ fontSize: 13, color: '#94A3B8' }}>{person.specialty}</div>}
+            {person.staffRole && <div style={{ fontSize: 13, color: '#94A3B8' }}>{person.staffRole}</div>}
             <div style={{ fontSize: 12, color: '#64748B', marginTop: 4 }}>Código: {person.attendanceCode}</div>
           </div>
 
@@ -518,7 +571,7 @@ export default function PorteroPage() {
             }}>↻</button>
           </div>
 
-          {/* Modal confirmación desde lista */}
+          {/* Modal confirmación */}
           {selectedExpected && (
             <div style={{
               position: 'fixed', inset: 0, background: 'rgba(0,0,0,.75)',
@@ -527,12 +580,14 @@ export default function PorteroPage() {
               <div style={{ background: '#1E293B', borderRadius: 16, padding: 24, width: '100%', maxWidth: 360 }}>
                 <div style={{ textAlign: 'center', marginBottom: 20 }}>
                   <div style={{ fontSize: 48, marginBottom: 8 }}>
-                    {selectedExpected.category === 'MAESTRO' ? '👨‍🏫' : '🏢'}
+                    {selectedExpected.category === 'MAESTRO_VISITANTE' ? '👨‍🏫🔸' : selectedExpected.category === 'MAESTRO' ? '👨‍🏫' : '🏢'}
                   </div>
                   <div style={{ fontSize: 18, fontWeight: 800, color: '#F1F5F9' }}>
                     {selectedExpected.lastName} {selectedExpected.firstName}
                   </div>
-                  <div style={{ fontSize: 12, color: '#94A3B8', marginTop: 4 }}>{selectedExpected.category}</div>
+                  <div style={{ fontSize: 12, color: '#94A3B8', marginTop: 4 }}>
+                    {selectedExpected.category === 'MAESTRO_VISITANTE' ? 'Maestro sin clases hoy' : selectedExpected.category}
+                  </div>
                 </div>
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 10 }}>
                   <button onClick={() => setSelectedExpected(null)} style={{
@@ -558,6 +613,7 @@ export default function PorteroPage() {
 
           {expected && !loadingExp && (
             <>
+              {/* Stats */}
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 10, marginBottom: 16 }}>
                 {[
                   { label: 'Maestros esperados',   val: expected.summary?.teachersExpected  ?? 0, color: '#1A3A7C' },
@@ -573,8 +629,9 @@ export default function PorteroPage() {
                 ))}
               </div>
 
+              {/* Maestros CON clases */}
               <div style={{ fontSize: 12, fontWeight: 700, color: '#94A3B8', textTransform: 'uppercase', letterSpacing: '.5px', marginBottom: 8 }}>
-                Maestros ({expected.teachers.length})
+                Con clases hoy ({expected.teachers.length})
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 20 }}>
                 {expected.teachers.map(t => (
@@ -589,9 +646,7 @@ export default function PorteroPage() {
                     }}>
                     <span style={{ fontSize: 22 }}>{t.isAbsent ? '❌' : t.registered ? '✅' : '⏳'}</span>
                     <div style={{ flex: 1 }}>
-                      <div style={{ fontSize: 13, fontWeight: 600, color: '#F1F5F9' }}>
-                        {t.lastName} {t.firstName}
-                      </div>
+                      <div style={{ fontSize: 13, fontWeight: 600, color: '#F1F5F9' }}>{t.lastName} {t.firstName}</div>
                       <div style={{ fontSize: 11, color: '#64748B' }}>
                         {t.isAbsent ? 'AUSENTE' : t.registered ? `Entró a las ${formatTime(t.gateRecord?.createdAt)}` : 'Sin registro'}
                       </div>
@@ -601,6 +656,37 @@ export default function PorteroPage() {
                 ))}
               </div>
 
+              {/* Maestros SIN clases */}
+              {expected.teachersWithoutPeriods?.length > 0 && (
+                <>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: '#BA7517', textTransform: 'uppercase', letterSpacing: '.5px', marginBottom: 8 }}>
+                    Sin clases hoy ({expected.teachersWithoutPeriods.length})
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 20 }}>
+                    {expected.teachersWithoutPeriods.map(t => (
+                      <button key={t.id} onClick={() => setSelectedExpected(t)}
+                        style={{
+                          display: 'flex', alignItems: 'center', gap: 12, padding: '10px 14px',
+                          borderRadius: 10, border: 'none', cursor: 'pointer', textAlign: 'left',
+                          background: t.registered ? '#1A2A0F' : '#1E293B',
+                          borderLeft: `4px solid ${t.registered ? '#639922' : '#BA7517'}`,
+                          width: '100%',
+                        }}>
+                        <span style={{ fontSize: 22 }}>{t.registered ? '👁️' : '⏳'}</span>
+                        <div style={{ flex: 1 }}>
+                          <div style={{ fontSize: 13, fontWeight: 600, color: '#F1F5F9' }}>{t.lastName} {t.firstName}</div>
+                          <div style={{ fontSize: 11, color: '#64748B' }}>
+                            {t.registered ? `Visitante — entró a las ${formatTime(t.gateRecord?.createdAt)}` : 'Sin registro hoy'}
+                          </div>
+                        </div>
+                        {!t.registered && <span style={{ fontSize: 11, color: '#94A3B8' }}>Tap →</span>}
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
+
+              {/* Staff */}
               {expected.staff.length > 0 && (
                 <>
                   <div style={{ fontSize: 12, fontWeight: 700, color: '#94A3B8', textTransform: 'uppercase', letterSpacing: '.5px', marginBottom: 8 }}>
@@ -618,9 +704,7 @@ export default function PorteroPage() {
                         }}>
                         <span style={{ fontSize: 22 }}>{s.registered ? '✅' : '⏳'}</span>
                         <div style={{ flex: 1 }}>
-                          <div style={{ fontSize: 13, fontWeight: 600, color: '#F1F5F9' }}>
-                            {s.lastName} {s.firstName}
-                          </div>
+                          <div style={{ fontSize: 13, fontWeight: 600, color: '#F1F5F9' }}>{s.lastName} {s.firstName}</div>
                           <div style={{ fontSize: 11, color: '#64748B' }}>
                             {s.category} — {s.registered ? `Entró a las ${formatTime(s.gateRecord?.createdAt)}` : 'Sin registro'}
                           </div>
@@ -661,10 +745,10 @@ export default function PorteroPage() {
             </div>
 
             {[
-              { label: 'Nombre completo *',          val: vName,        set: setVName,        ph: 'Nombre del visitante' },
-              { label: 'CI (opcional)',               val: vCI,          set: setVCI,          ph: 'Número de CI' },
-              { label: 'Motivo de visita',            val: vReason,      set: setVReason,      ph: 'Ej: Reunión, trámite...' },
-              { label: 'Destino / A quién visita',   val: vDestination, set: setVDestination, ph: 'Ej: Dirección, Secretaría...' },
+              { label: 'Nombre completo *',        val: vName,        set: setVName,        ph: 'Nombre del visitante' },
+              { label: 'CI (opcional)',             val: vCI,          set: setVCI,          ph: 'Número de CI' },
+              { label: 'Motivo de visita',          val: vReason,      set: setVReason,      ph: 'Ej: Reunión, trámite...' },
+              { label: 'Destino / A quién visita', val: vDestination, set: setVDestination, ph: 'Ej: Dirección, Secretaría...' },
             ].map(f => (
               <div key={f.label} style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                 <label style={{ fontSize: 11, fontWeight: 600, color: '#94A3B8', textTransform: 'uppercase', letterSpacing: '.5px' }}>

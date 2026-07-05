@@ -262,23 +262,15 @@ export default function CourseDetailPage() {
   }
 
   // ── Cálculos de periodos ──
-  const getDuracionEfectiva = () => {
-    if (!schoolSch) return 0
-    const cantidadRecreos  = schoolSch.breakAfter ? schoolSch.breakAfter.split(',').filter(Boolean).length : 0
-    const totalMinReceso   = cantidadRecreos * schoolSch.breakDuration
-    const minExtra         = schoolSch.periods > 0 ? totalMinReceso / schoolSch.periods : 0
-    return schoolSch.periodDuration + minExtra
-  }
-
+  // hoursPerMonth almacena horas académicas del MES (se divide entre 4 semanas).
+  // 1 hora académica = 1 periodo (40 min), por eso ya no se convierte a minutos.
   const calcPeriodosPlan = (hoursPerMonth: number) => {
     if (!schoolSch || !hoursPerMonth) return null
-    return Math.floor((hoursPerMonth / 4 * 60) / getDuracionEfectiva())
+    return Math.round(hoursPerMonth / 4)
   }
 
   const totalPeriodosAsignados = Object.values(periodsSummary).reduce((a, b) => a + b, 0)
-  const totalPeriodosPlan      = plan && schoolSch
-    ? Math.floor((plan.totalHours / 4 * 60) / getDuracionEfectiva())
-    : 0
+  const totalPeriodosPlan      = plan && schoolSch ? Math.round(plan.totalHours / 4) : 0
 
   if (loading) return <div className="center"><div className="spinner"/></div>
   if (!course)  return <div className="center"><p>Curso no encontrado</p></div>

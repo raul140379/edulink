@@ -1,8 +1,7 @@
 import { Request, Response, NextFunction } from 'express'
 import jwt from 'jsonwebtoken'
 import { Role, Permission, hasPermission } from '../config/permissions'
-
-const JWT_SECRET = process.env.JWT_SECRET || 'sgje_secret_key'
+import { env } from '../config/env'
 
 // Extender el tipo Request para incluir datos del usuario
 export interface AuthRequest extends Request {
@@ -28,7 +27,7 @@ export const verifyToken = (
   }
 
   try {
-    const decoded = jwt.verify(token, JWT_SECRET) as any
+    const decoded = jwt.verify(token, env.jwtSecret) as any
     req.userId    = decoded.id
     req.userRole  = decoded.role as Role
     req.userEmail = decoded.email
@@ -97,7 +96,7 @@ export const requireStaff = (
     return
   }
 
-  const allowed: Role[] = [Role.SUPER_ADMIN, Role.DIRECTOR, Role.STAFF]
+  const allowed: Role[] = [Role.SUPER_ADMIN, Role.DIRECTOR, Role.STAFF, Role.PORTERO]
 
   if (!allowed.includes(req.userRole)) {
     res.status(403).json({ message: 'Acceso restringido al personal autorizado' })

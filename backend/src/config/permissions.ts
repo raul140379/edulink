@@ -5,13 +5,14 @@ export enum Role {
   REGENTE      = 'REGENTE',
   SECRETARY    = 'SECRETARY',
   TEACHER      = 'TEACHER',
-  TEACHER_TUTOR = 'TEACHER_TUTOR', 
+  TEACHER_TUTOR = 'TEACHER_TUTOR',
   DELEGATE     = 'DELEGATE',
    JUNTA_ESCOLAR = 'JUNTA_ESCOLAR',  // ← AGREGA
   PARENT       = 'PARENT',
   STUDENT      = 'STUDENT',
   STUDENT_GOV  = 'STUDENT_GOV',
   STAFF        = 'STAFF',
+  PORTERO      = 'PORTERO',
 }
 
 // Definición de todos los permisos del sistema
@@ -27,10 +28,19 @@ export enum Permission {
   STUDENT_VIEW_OWN   = 'student:view:own',
   STUDENT_VERIFY     = 'student:verify',       // Solo portero
 
+  // Maestros
+  TEACHER_CREATE     = 'teacher:create',
+  TEACHER_VIEW_ALL   = 'teacher:view:all',
+
   // Padres y tutores
   PARENT_CREATE      = 'parent:create',
   PARENT_VIEW_ALL    = 'parent:view:all',
   PARENT_VERIFY      = 'parent:verify',        // Solo portero
+
+  // Portería
+  GATE_REGISTER      = 'gate:register',        // Registrar ingreso/salida (maestro, administrativo, visitante/padre)
+  GATE_VIEW          = 'gate:view',            // Ver esperados del día, historial de registros, buscar por código
+  GATE_CODES_MANAGE  = 'gate:codes:manage',    // Generar/ver/regenerar códigos de asistencia (maestro, personal)
 
   // Cursos
   COURSE_CREATE      = 'course:create',
@@ -47,8 +57,9 @@ export enum Permission {
   GRADE_VIEW_OWN     = 'grade:view:own',       // Padre/estudiante ven las propias
 
   // Asistencia
-  ATTENDANCE_CREATE  = 'attendance:create',
-  ATTENDANCE_VIEW    = 'attendance:view',
+  ATTENDANCE_CREATE       = 'attendance:create',
+  ATTENDANCE_VIEW         = 'attendance:view',
+  TEACHER_ATTENDANCE_MANAGE = 'teacher-attendance:manage', // Corregir/marcar ausente asistencia de maestros (admin)
 
   // Horarios
   SCHEDULE_CREATE    = 'schedule:create',
@@ -63,6 +74,19 @@ export enum Permission {
   // Notificaciones
   NOTIFICATION_SEND  = 'notification:send',
   NOTIFICATION_VIEW  = 'notification:view',
+
+  // Reuniones
+  MEETING_CREATE     = 'meeting:create',       // Crear/editar/eliminar reuniones y su asistencia
+  MEETING_VIEW       = 'meeting:view',
+
+  // Delegados de curso
+  DELEGATE_MANAGE    = 'delegate:manage',      // Asignar/remover delegado, ver lista (Junta Escolar)
+  DELEGATE_VIEW_OWN  = 'delegate:view:own',    // El propio delegado ve su curso asignado
+
+  // Gestión académica (años, trimestres, feriados)
+  ACADEMIC_VIEW           = 'academic:view',
+  ACADEMIC_MANAGE         = 'academic:manage',          // Crear/editar gestión, trimestres, feriados
+  ACADEMIC_TRIMESTER_CLOSE = 'academic:trimester:close', // Cerrar/reabrir trimestre — solo Director
 
   // Reportes
   REPORT_VIEW        = 'report:view',
@@ -80,6 +104,8 @@ export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
     Permission.USER_EDIT_OWN,
     Permission.STUDENT_CREATE,
     Permission.STUDENT_VIEW_ALL,
+    Permission.TEACHER_CREATE,
+    Permission.TEACHER_VIEW_ALL,
     Permission.PARENT_CREATE,
     Permission.PARENT_VIEW_ALL,
     Permission.COURSE_CREATE,
@@ -90,18 +116,32 @@ export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
     Permission.ATTENDANCE_VIEW,
     Permission.SCHEDULE_CREATE,
     Permission.SCHEDULE_VIEW_ALL,
-    Permission.CHARGE_CREATE,
+    // Sin CHARGE_CREATE: la parte administrativa no maneja recursos, eso lo administra
+    // la Junta Escolar de padres. Director solo puede ver el estado de tesorería.
     Permission.CHARGE_VIEW_ALL,
     Permission.NOTIFICATION_SEND,
     Permission.NOTIFICATION_VIEW,
     Permission.REPORT_VIEW,
     Permission.REPORT_GENERATE,
+    // Portería — requireStaff ya lo autoriza, estos permisos lo alinean
+    Permission.GATE_REGISTER,
+    Permission.GATE_VIEW,
+    Permission.GATE_CODES_MANAGE,
+    Permission.STUDENT_VERIFY,
+    Permission.PARENT_VERIFY,
+    Permission.TEACHER_ATTENDANCE_MANAGE,
+    // Gestión académica: única con permiso para cerrar/reabrir trimestres
+    Permission.ACADEMIC_VIEW,
+    Permission.ACADEMIC_MANAGE,
+    Permission.ACADEMIC_TRIMESTER_CLOSE,
   ],
 
   [Role.REGENTE]: [
     Permission.USER_EDIT_OWN,
     Permission.STUDENT_CREATE,
     Permission.STUDENT_VIEW_ALL,
+    // Sin TEACHER_CREATE: contratar/registrar un maestro nuevo queda como decisión de Dirección.
+    Permission.TEACHER_VIEW_ALL,
     Permission.PARENT_CREATE,
     Permission.PARENT_VIEW_ALL,
     Permission.COURSE_VIEW_ALL,
@@ -113,14 +153,19 @@ export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
     Permission.NOTIFICATION_SEND,
     Permission.NOTIFICATION_VIEW,
     Permission.REPORT_VIEW,
+    Permission.TEACHER_ATTENDANCE_MANAGE,
+    // Solo ver tesorería — administrarla es función de la Junta Escolar de padres.
+    Permission.CHARGE_VIEW_ALL,
   ],
 
   [Role.SECRETARY]: [
-    Permission.USER_CREATE,
+    // Sin USER_CREATE ni TEACHER_CREATE: crear cuentas de sistema (maestros, staff, otros roles) queda solo para Director/Admin.
+    // STUDENT_CREATE/PARENT_CREATE ya cubren el flujo de matrícula (crean su propio User internamente).
     Permission.USER_VIEW_ALL,
     Permission.USER_EDIT_OWN,
     Permission.STUDENT_CREATE,
     Permission.STUDENT_VIEW_ALL,
+    Permission.TEACHER_VIEW_ALL,
     Permission.PARENT_CREATE,
     Permission.PARENT_VIEW_ALL,
     Permission.COURSE_CREATE,
@@ -130,12 +175,17 @@ export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
     Permission.GRADE_VIEW_ALL,
     Permission.ATTENDANCE_VIEW,
     Permission.SCHEDULE_VIEW_ALL,
-    Permission.CHARGE_CREATE,
+    // Sin CHARGE_CREATE: la administración de recursos es función exclusiva de la
+    // Junta Escolar de padres. Secretaría solo puede ver el estado de tesorería.
     Permission.CHARGE_VIEW_ALL,
     Permission.NOTIFICATION_SEND,
     Permission.NOTIFICATION_VIEW,
     Permission.REPORT_VIEW,
-    Permission.REPORT_GENERATE,
+    // Sin REPORT_GENERATE: reportes oficiales quedan para Director/Regente.
+    Permission.TEACHER_ATTENDANCE_MANAGE,
+    // Gestión académica: puede crear/editar año, trimestres y feriados, pero no cerrar trimestres (solo Director).
+    Permission.ACADEMIC_VIEW,
+    Permission.ACADEMIC_MANAGE,
   ],
 
   [Role.TEACHER]: [
@@ -151,6 +201,8 @@ export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
     Permission.NOTIFICATION_SEND,
     Permission.NOTIFICATION_VIEW,
     Permission.REPORT_VIEW,
+    Permission.MEETING_CREATE,
+    Permission.MEETING_VIEW,
   ],
   [Role.TEACHER_TUTOR]: [
   Permission.USER_EDIT_OWN,
@@ -165,6 +217,8 @@ export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
   Permission.NOTIFICATION_SEND,
   Permission.NOTIFICATION_VIEW,
   Permission.REPORT_VIEW,
+  Permission.MEETING_CREATE,
+  Permission.MEETING_VIEW,
 ],
   [Role.DELEGATE]: [
     Permission.USER_EDIT_OWN,
@@ -176,11 +230,21 @@ export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
     Permission.CHARGE_VIEW_ALL,
     Permission.NOTIFICATION_VIEW,
     Permission.REPORT_VIEW,
+    Permission.MEETING_CREATE,
+    Permission.MEETING_VIEW,
+    Permission.DELEGATE_VIEW_OWN,
+    Permission.ACADEMIC_VIEW,
   ],
   [Role.JUNTA_ESCOLAR]: [
   Permission.USER_EDIT_OWN,
+  // Ver maestros, estudiantes y padres (representa al colectivo de padres de familia)
+  Permission.TEACHER_VIEW_ALL,
+  Permission.STUDENT_VIEW_ALL,
   Permission.PARENT_CREATE,
   Permission.PARENT_VIEW_ALL,
+  // Asistencia de maestros: ver reporte + corregir/marcar ausente
+  Permission.ATTENDANCE_VIEW,
+  Permission.TEACHER_ATTENDANCE_MANAGE,
   Permission.COURSE_VIEW_ALL,
   Permission.ENROLLMENT_VIEW,
   Permission.CHARGE_CREATE,
@@ -189,6 +253,13 @@ export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
   Permission.NOTIFICATION_VIEW,
   Permission.REPORT_VIEW,
   Permission.REPORT_GENERATE,
+  // Todas las acciones de un padre de familia (los miembros de junta son padres también)
+  Permission.STUDENT_VIEW_OWN,
+  Permission.GRADE_VIEW_OWN,
+  Permission.SCHEDULE_VIEW_OWN,
+  // Asignar/remover delegados de curso
+  Permission.DELEGATE_MANAGE,
+  Permission.ACADEMIC_VIEW,
 ],
   [Role.PARENT]: [
     Permission.USER_EDIT_OWN,
@@ -210,6 +281,7 @@ export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
   [Role.STUDENT_GOV]: [
     Permission.USER_EDIT_OWN,
     Permission.STUDENT_VIEW_OWN,
+    Permission.STUDENT_VIEW_ALL,    // Representa a todo el estudiantado (análogo a JUNTA_ESCOLAR con PARENT_VIEW_ALL)
     Permission.GRADE_VIEW_OWN,
     Permission.SCHEDULE_VIEW_OWN,
     Permission.NOTIFICATION_VIEW,
@@ -219,6 +291,21 @@ export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
   [Role.STAFF]: [
     Permission.STUDENT_VERIFY,      // Solo verificar si es estudiante de la UE
     Permission.PARENT_VERIFY,       // Solo verificar si es padre de la UE
+  ],
+
+  [Role.PORTERO]: [
+    // Visualización de los 4 actores que controla en el ingreso
+    Permission.USER_VIEW_ALL,       // ver estudiantes, maestros, padres y administrativos
+    Permission.STUDENT_VIEW_ALL,
+    Permission.TEACHER_VIEW_ALL,
+    Permission.PARENT_VIEW_ALL,
+    // Verificación de identidad en portería
+    Permission.STUDENT_VERIFY,
+    Permission.PARENT_VERIFY,
+    // Registro de ingresos/salidas
+    Permission.GATE_REGISTER,
+    // Ver esperados del día e historial (no gestiona códigos: eso es solo Director)
+    Permission.GATE_VIEW,
   ],
 }
 

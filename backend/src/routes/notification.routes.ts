@@ -1,5 +1,8 @@
 import { Router } from 'express'
-import { verifyToken } from '../middlewares/auth.middleware'
+import { verifyToken, requirePermission } from '../middlewares/auth.middleware'
+import { validateBody } from '../middlewares/validate.middleware'
+import { Permission } from '../config/permissions'
+import { sendNotificationSchema, sendBulkNotificationSchema } from '../schemas/notification.schema'
 import {
   getMyNotifications,
   markAsRead,
@@ -12,10 +15,10 @@ const router = Router()
 
 router.use(verifyToken)
 
-router.get('/',            getMyNotifications)
-router.get('/sent',        getSentNotifications)
-router.post('/send',       sendNotification)
-router.post('/send-bulk',  sendBulkNotification)
-router.patch('/:id/read',  markAsRead)
+router.get('/',            requirePermission(Permission.NOTIFICATION_VIEW), getMyNotifications)
+router.get('/sent',        requirePermission(Permission.NOTIFICATION_SEND), getSentNotifications)
+router.post('/send',       requirePermission(Permission.NOTIFICATION_SEND), validateBody(sendNotificationSchema), sendNotification)
+router.post('/send-bulk',  requirePermission(Permission.NOTIFICATION_SEND), validateBody(sendBulkNotificationSchema), sendBulkNotification)
+router.patch('/:id/read',  requirePermission(Permission.NOTIFICATION_VIEW), markAsRead)
 
 export default router
