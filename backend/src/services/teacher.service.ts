@@ -58,21 +58,21 @@ function buildWorkloadDetail(assignments: any[], includeHorasPorHorario: boolean
 
     if (!includeHorasPorHorario) return base
 
+    // 1 periodo (40 min) = 1 hora académica — sin convertir a minutos.
     const horasPorHorario = schoolSchedules.map((sh) => {
-      const minutos     = periodosAsignados * sh.periodDuration
-      const horasSemana = Math.round((minutos / 60) * 10) / 10
-      const horasMes    = Math.round(horasSemana * 4 * 10) / 10
+      const horasSemana = periodosAsignados
+      const horasMes    = horasSemana * 4
       return { horarioId: sh.id, nombre: sh.name, turno: sh.shift, isWinter: sh.isWinter, minPeriodo: sh.periodDuration, horasSemana, horasMes }
     })
 
     return { ...base, horasPorHorario }
   })
 
+  // 1 periodo (40 min) = 1 hora académica — sin convertir a minutos.
   const totalesPorHorario = schoolSchedules.map((sh) => {
     const totalPeriodos = detail.reduce((s, d) => s + d.periodosAsignados, 0)
-    const minutos        = totalPeriodos * sh.periodDuration
-    const horasSemana     = Math.round((minutos / 60) * 10) / 10
-    const horasMes        = Math.round(horasSemana * 4 * 10) / 10
+    const horasSemana    = totalPeriodos
+    const horasMes       = horasSemana * 4
     return { horarioId: sh.id, nombre: sh.name, turno: sh.shift, isWinter: sh.isWinter, minPeriodo: sh.periodDuration, totalPeriodos, horasSemana, horasMes }
   })
 

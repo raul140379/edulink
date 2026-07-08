@@ -1,0 +1,755 @@
+<title>Arquitectura del Backend — EduLink</title>
+<style>
+  :root {
+    --bg: #f6f5f2;
+    --surface: #ffffff;
+    --surface-raised: #fbfaf8;
+    --ink: #1c2227;
+    --ink-muted: #5b6670;
+    --ink-faint: #8b959c;
+    --accent: #0e7a82;
+    --accent-ink: #05474d;
+    --accent-soft: #dcecec;
+    --line: #e1dfda;
+    --line-strong: #c9c6bf;
+    --ok: #2e7d4f;
+    --ok-soft: #e3f1e8;
+    --warn: #b8791a;
+    --warn-soft: #f7ecd9;
+    --danger: #b23a34;
+    --danger-soft: #f6e3e1;
+    --code-bg: #12181b;
+    --code-ink: #dbe4e4;
+    --code-accent: #6fd6dc;
+    --code-string: #d7b98e;
+    --code-muted: #7c8a8d;
+    --shadow: 0 1px 2px rgba(28,34,39,.04), 0 8px 24px -12px rgba(28,34,39,.12);
+  }
+
+  :root[data-theme="dark"] {
+    --bg: #12181b;
+    --surface: #172023;
+    --surface-raised: #1c2629;
+    --ink: #e6eaea;
+    --ink-muted: #93a0a4;
+    --ink-faint: #647075;
+    --accent: #4fc2c9;
+    --accent-ink: #bdecee;
+    --accent-soft: #1d3336;
+    --line: #263135;
+    --line-strong: #33403f;
+    --ok: #57b382;
+    --ok-soft: #17301f;
+    --warn: #d9a03d;
+    --warn-soft: #332a15;
+    --danger: #e0685f;
+    --danger-soft: #3a2119;
+    --code-bg: #0c1113;
+    --code-ink: #d6dede;
+    --code-accent: #7fd8de;
+    --code-string: #e0c193;
+    --code-muted: #6d7a7d;
+    --shadow: 0 1px 2px rgba(0,0,0,.3), 0 8px 28px -12px rgba(0,0,0,.5);
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #12181b;
+      --surface: #172023;
+      --surface-raised: #1c2629;
+      --ink: #e6eaea;
+      --ink-muted: #93a0a4;
+      --ink-faint: #647075;
+      --accent: #4fc2c9;
+      --accent-ink: #bdecee;
+      --accent-soft: #1d3336;
+      --line: #263135;
+      --line-strong: #33403f;
+      --ok: #57b382;
+      --ok-soft: #17301f;
+      --warn: #d9a03d;
+      --warn-soft: #332a15;
+      --danger: #e0685f;
+      --danger-soft: #3a2119;
+      --code-bg: #0c1113;
+      --code-ink: #d6dede;
+      --code-accent: #7fd8de;
+      --code-string: #e0c193;
+      --code-muted: #6d7a7d;
+      --shadow: 0 1px 2px rgba(0,0,0,.3), 0 8px 28px -12px rgba(0,0,0,.5);
+    }
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: -apple-system, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+    font-size: 16px;
+    line-height: 1.65;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  code, pre, .mono, .path, .kbd {
+    font-family: ui-monospace, "Cascadia Code", "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+    font-variant-numeric: tabular-nums;
+  }
+
+  a { color: var(--accent); }
+
+  h1, h2, h3, h4 { text-wrap: balance; font-weight: 700; letter-spacing: -0.01em; }
+
+  .eyebrow {
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    color: var(--accent);
+  }
+
+  /* ── Shell layout ────────────────────────────────────── */
+  .shell {
+    display: grid;
+    grid-template-columns: 260px minmax(0, 1fr);
+    max-width: 1180px;
+    margin: 0 auto;
+    min-height: 100vh;
+  }
+
+  @media (max-width: 880px) {
+    .shell { grid-template-columns: 1fr; }
+    .nav { position: static; height: auto; border-right: none; border-bottom: 1px solid var(--line); }
+  }
+
+  .nav {
+    position: sticky;
+    top: 0;
+    height: 100vh;
+    overflow-y: auto;
+    padding: 32px 20px 32px 28px;
+    border-right: 1px solid var(--line);
+  }
+
+  .nav-title {
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--ink-faint);
+    letter-spacing: .04em;
+    text-transform: uppercase;
+    margin: 0 0 14px;
+  }
+
+  .nav ol {
+    list-style: none;
+    margin: 0 0 28px;
+    padding: 0;
+    border-left: 2px solid var(--line);
+  }
+
+  .nav li { margin: 0; }
+
+  .nav a {
+    display: block;
+    padding: 7px 0 7px 16px;
+    margin-left: -2px;
+    border-left: 2px solid transparent;
+    color: var(--ink-muted);
+    text-decoration: none;
+    font-size: 13.5px;
+    transition: color .15s, border-color .15s;
+  }
+
+  .nav a:hover { color: var(--ink); }
+
+  .nav a.active {
+    color: var(--accent-ink);
+    border-left-color: var(--accent);
+    font-weight: 600;
+  }
+
+  .nav-sub { margin-left: 14px; border-left: 1px dashed var(--line-strong); }
+  .nav-sub a { font-size: 12.5px; padding: 5px 0 5px 14px; }
+
+  main { padding: 48px 44px 96px; min-width: 0; }
+
+  @media (max-width: 640px) { main { padding: 32px 20px 72px; } }
+
+  header.doc-head {
+    margin-bottom: 56px;
+    padding-bottom: 32px;
+    border-bottom: 1px solid var(--line);
+  }
+
+  header.doc-head h1 {
+    font-size: 34px;
+    margin: 10px 0 12px;
+    line-height: 1.15;
+  }
+
+  .doc-meta {
+    display: flex;
+    gap: 18px;
+    flex-wrap: wrap;
+    color: var(--ink-faint);
+    font-size: 13px;
+    margin-top: 18px;
+  }
+
+  .doc-meta span { display: flex; align-items: center; gap: 6px; }
+
+  section { margin-bottom: 64px; scroll-margin-top: 24px; }
+  section h2 {
+    font-size: 22px;
+    margin: 0 0 6px;
+    display: flex;
+    align-items: baseline;
+    gap: 10px;
+  }
+  section h2 .num {
+    font-family: ui-monospace, monospace;
+    font-size: 14px;
+    color: var(--ink-faint);
+    font-weight: 500;
+  }
+  section > .lede {
+    color: var(--ink-muted);
+    max-width: 68ch;
+    margin: 0 0 28px;
+  }
+  section h3 { font-size: 16.5px; margin: 32px 0 10px; }
+  p { max-width: 68ch; }
+  section h3 + p, section h3 + .lede { margin-top: 0; }
+
+  /* ── Cards / panels ─────────────────────────────────── */
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 20px 22px;
+    box-shadow: var(--shadow);
+  }
+
+  .file-panel {
+    background: var(--code-bg);
+    color: var(--code-ink);
+    border-radius: 10px;
+    overflow: hidden;
+    box-shadow: var(--shadow);
+    margin: 18px 0;
+  }
+  .file-panel .fp-head {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 9px 16px;
+    background: rgba(255,255,255,.04);
+    border-bottom: 1px solid rgba(255,255,255,.08);
+    font-size: 12.5px;
+    color: var(--code-muted);
+  }
+  .file-panel .fp-head .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--code-muted); opacity: .5; }
+  .file-panel pre {
+    margin: 0;
+    padding: 16px;
+    overflow-x: auto;
+    font-size: 13px;
+    line-height: 1.6;
+  }
+  .file-panel code { font-size: inherit; }
+  .tok-kw { color: var(--code-accent); }
+  .tok-str { color: var(--code-string); }
+  .tok-com { color: var(--code-muted); font-style: italic; }
+  .tok-fn { color: #b7c9ff; }
+
+  /* ── Pipeline diagram ───────────────────────────────── */
+  .pipeline {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    margin: 28px 0 8px;
+  }
+  .stage {
+    display: grid;
+    grid-template-columns: 34px 1fr auto;
+    align-items: center;
+    gap: 16px;
+    padding: 14px 18px;
+    background: var(--surface);
+    border: 1px solid var(--line);
+  }
+  .stage:first-child { border-radius: 10px 10px 0 0; }
+  .stage:last-child { border-radius: 0 0 10px 10px; }
+  .stage:not(:last-child) { border-bottom: none; }
+  .stage .step-no {
+    width: 28px; height: 28px;
+    border-radius: 50%;
+    background: var(--accent-soft);
+    color: var(--accent-ink);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 12.5px; font-weight: 700;
+    font-family: ui-monospace, monospace;
+  }
+  .stage .step-body strong { display: block; font-size: 14.5px; }
+  .stage .step-body span { display: block; color: var(--ink-muted); font-size: 13px; margin-top: 2px; }
+  .stage .step-file {
+    font-family: ui-monospace, monospace;
+    font-size: 12px;
+    color: var(--ink-faint);
+    white-space: nowrap;
+    text-align: right;
+  }
+  .connector {
+    height: 20px;
+    margin-left: 34px;
+    border-left: 2px dashed var(--line-strong);
+  }
+
+  /* ── Layer grid ─────────────────────────────────────── */
+  .layer-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: 16px;
+    margin: 20px 0;
+  }
+  .layer-card {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 18px 20px;
+  }
+  .layer-card .layer-tag {
+    display: inline-block;
+    font-family: ui-monospace, monospace;
+    font-size: 11.5px;
+    padding: 2px 8px;
+    border-radius: 5px;
+    background: var(--accent-soft);
+    color: var(--accent-ink);
+    margin-bottom: 10px;
+  }
+  .layer-card h4 { margin: 0 0 6px; font-size: 15px; }
+  .layer-card p { margin: 0; font-size: 13.5px; color: var(--ink-muted); }
+  .layer-card ul { margin: 10px 0 0; padding-left: 18px; font-size: 13px; color: var(--ink-muted); }
+  .layer-card li { margin-bottom: 3px; }
+
+  /* ── Table ──────────────────────────────────────────── */
+  .table-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 10px; }
+  table { border-collapse: collapse; width: 100%; font-size: 13.5px; min-width: 480px; }
+  th, td { text-align: left; padding: 10px 16px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+  th:last-child, td:last-child { white-space: normal; }
+  thead th { background: var(--surface-raised); color: var(--ink-faint); font-size: 11.5px; text-transform: uppercase; letter-spacing: .05em; font-weight: 700; }
+  tbody tr:last-child td { border-bottom: none; }
+  tbody td:first-child { font-family: ui-monospace, monospace; color: var(--accent-ink); }
+
+  .pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    font-size: 12px;
+    font-weight: 600;
+    padding: 2px 9px;
+    border-radius: 100px;
+  }
+  .pill-ok { background: var(--ok-soft); color: var(--ok); }
+  .pill-warn { background: var(--warn-soft); color: var(--warn); }
+  .pill-danger { background: var(--danger-soft); color: var(--danger); }
+
+  /* ── Domain chips (appendix) ────────────────────────── */
+  .chip-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 16px;
+  }
+  .chip {
+    font-family: ui-monospace, monospace;
+    font-size: 12.5px;
+    padding: 5px 11px;
+    border-radius: 7px;
+    background: var(--surface-raised);
+    border: 1px solid var(--line);
+    color: var(--ink-muted);
+  }
+
+  /* ── Next-up list ───────────────────────────────────── */
+  .next-list { display: flex; flex-direction: column; gap: 10px; margin-top: 18px; }
+  .next-item {
+    display: flex;
+    gap: 14px;
+    align-items: flex-start;
+    padding: 14px 18px;
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-left: 3px solid var(--accent);
+    border-radius: 0 8px 8px 0;
+  }
+  .next-item .n-title { font-weight: 600; font-size: 14.5px; }
+  .next-item .n-desc { color: var(--ink-muted); font-size: 13px; margin-top: 2px; }
+
+  footer.doc-foot {
+    margin-top: 80px;
+    padding-top: 24px;
+    border-top: 1px solid var(--line);
+    color: var(--ink-faint);
+    font-size: 12.5px;
+  }
+
+  ::selection { background: var(--accent-soft); color: var(--accent-ink); }
+</style>
+
+<div class="shell">
+  <nav class="nav" aria-label="Índice del documento">
+    <p class="nav-title">EduLink · Backend</p>
+    <ol>
+      <li><a href="#resumen">Resumen</a></li>
+      <li><a href="#carpetas">Estructura de carpetas</a></li>
+      <li><a href="#flujo">Flujo de una petición</a></li>
+      <li><a href="#capas">Las capas</a>
+        <ol class="nav-sub">
+          <li><a href="#capa-routes">Routes</a></li>
+          <li><a href="#capa-middlewares">Middlewares</a></li>
+          <li><a href="#capa-controllers">Controllers</a></li>
+          <li><a href="#capa-services">Services</a></li>
+          <li><a href="#capa-repositories">Repositories</a></li>
+          <li><a href="#capa-transversal">Piezas transversales</a></li>
+        </ol>
+      </li>
+      <li><a href="#ejemplo">Ejemplo trazado</a></li>
+      <li><a href="#permisos">Sistema de permisos</a></li>
+      <li><a href="#metodologia">Metodología de migración</a></li>
+      <li><a href="#siguiente">Próximo: profundizar por capa</a></li>
+      <li><a href="#apendice">Apéndice: dominios refactorizados</a></li>
+    </ol>
+  </nav>
+
+  <main>
+    <header class="doc-head">
+      <p class="eyebrow">Documento de referencia técnica</p>
+      <h1>Arquitectura del backend de EduLink</h1>
+      <p class="lede" style="margin:0; max-width: 62ch;">
+        Cómo está organizado el backend después del refactor por capas: de dónde viene, cómo fluye
+        una petición HTTP de principio a fin, y qué responsabilidad tiene cada pieza. Sirve de mapa
+        antes de profundizar capa por capa en sesiones futuras.
+      </p>
+      <div class="doc-meta">
+        <span>📍 EduLink/backend</span>
+        <span>🧱 Node · Express · TypeScript · Prisma · PostgreSQL</span>
+        <span>🔁 ~24 dominios refactorizados</span>
+      </div>
+    </header>
+
+    <section id="resumen">
+      <h2><span class="num">§1</span> Resumen</h2>
+      <p class="lede">
+        EduLink nació como una copia aislada de <code>sgje</code> (el sistema en producción de la
+        U.E. Naciones Unidas El Torno) para poder refactorizar el backend sin riesgo. El backend
+        original mezclaba todo en el controller: rutas, reglas de negocio y consultas a Prisma en
+        el mismo archivo. Se migró, dominio por dominio, a una arquitectura en capas donde cada
+        archivo tiene una única responsabilidad.
+      </p>
+      <div class="layer-grid" style="grid-template-columns: repeat(auto-fit, minmax(200px,1fr));">
+        <div class="layer-card">
+          <span class="layer-tag">antes</span>
+          <h4>Todo en el controller</h4>
+          <p>Validación manual, reglas de negocio y <code>prisma.*</code> mezclados en la misma función. Permisos inconsistentes o ausentes.</p>
+        </div>
+        <div class="layer-card">
+          <span class="layer-tag">después</span>
+          <h4>Cinco responsabilidades separadas</h4>
+          <p>Ruta → validación → controller delgado → servicio → repositorio. Un único lugar de verdad para permisos y para acceso a datos.</p>
+        </div>
+      </div>
+    </section>
+
+    <section id="carpetas">
+      <h2><span class="num">§2</span> Estructura de carpetas</h2>
+      <p class="lede">Un archivo por dominio, en cada una de las cinco carpetas de capas, más cuatro carpetas de soporte transversal.</p>
+      <div class="file-panel">
+        <div class="fp-head"><span class="dot"></span> backend/src/</div>
+        <pre><code><span class="tok-com">// una carpeta por capa — el nombre del archivo es siempre el dominio</span>
+config/          <span class="tok-com">permissions.ts · env.ts</span>
+middlewares/     <span class="tok-com">auth.middleware.ts · validate.middleware.ts</span>
+routes/          <span class="tok-com">meeting.routes.ts, treasury.routes.ts, ...</span>
+controllers/     <span class="tok-com">meeting.controller.ts, treasury.controller.ts, ...</span>
+services/        <span class="tok-com">meeting.service.ts, treasury.service.ts, ...</span>
+repositories/    <span class="tok-com">meeting.repository.ts, treasury.repository.ts, ...</span>
+schemas/         <span class="tok-com">meeting.schema.ts, treasury.schema.ts, ...</span>
+utils/           <span class="tok-com">http-error.ts · account-generator.ts</span>
+lib/prisma.ts    <span class="tok-com">cliente Prisma, instancia única</span></code></pre>
+      </div>
+    </section>
+
+    <section id="flujo">
+      <h2><span class="num">§3</span> Flujo de una petición</h2>
+      <p class="lede">Toda petición HTTP atraviesa las mismas seis etapas, en el mismo orden, sin excepciones.</p>
+
+      <div class="pipeline">
+        <div class="stage">
+          <div class="step-no">1</div>
+          <div class="step-body"><strong>Ruta recibe la petición</strong><span>Define método + URL, encadena los middlewares en orden</span></div>
+          <div class="step-file">routes/*.routes.ts</div>
+        </div>
+        <div class="stage">
+          <div class="step-no">2</div>
+          <div class="step-body"><strong>verifyToken</strong><span>Decodifica el JWT, adjunta <code>req.userId</code> / <code>req.role</code></span></div>
+          <div class="step-file">middlewares/auth.middleware.ts</div>
+        </div>
+        <div class="stage">
+          <div class="step-no">3</div>
+          <div class="step-body"><strong>requirePermission(...)</strong><span>Consulta ROLE_PERMISSIONS; corta con 403 si el rol no lo tiene</span></div>
+          <div class="step-file">middlewares/auth.middleware.ts</div>
+        </div>
+        <div class="stage">
+          <div class="step-no">4</div>
+          <div class="step-body"><strong>validateBody(schema)</strong><span>Corre el schema de Zod contra req.body; 400 con detalle si falla</span></div>
+          <div class="step-file">middlewares/validate.middleware.ts</div>
+        </div>
+        <div class="stage">
+          <div class="step-no">5</div>
+          <div class="step-body"><strong>Controller</strong><span>Llama al service, traduce el resultado a res.json() / status</span></div>
+          <div class="step-file">controllers/*.controller.ts</div>
+        </div>
+        <div class="stage">
+          <div class="step-no">6</div>
+          <div class="step-body"><strong>Service → Repository → Prisma</strong><span>Reglas de negocio, luego la única capa que toca la base de datos</span></div>
+          <div class="step-file">services/ · repositories/</div>
+        </div>
+      </div>
+    </section>
+
+    <section id="capas">
+      <h2><span class="num">§4</span> Las capas</h2>
+      <p class="lede">Cada capa tiene una regla de una sola línea que decide qué puede y qué no puede contener.</p>
+
+      <h3 id="capa-routes">Routes</h3>
+      <p><strong>Regla:</strong> define URL + método + qué middlewares aplican. Nunca contiene lógica.</p>
+      <div class="file-panel">
+        <div class="fp-head"><span class="dot"></span> routes/meeting.routes.ts</div>
+        <pre><code><span class="tok-kw">router</span>.post(<span class="tok-str">'/'</span>,
+  requirePermission(Permission.<span class="tok-fn">MEETING_CREATE</span>),
+  validateBody(createMeetingSchema),
+  createMeeting
+)</code></pre>
+      </div>
+
+      <h3 id="capa-middlewares">Middlewares</h3>
+      <p><strong>Regla:</strong> cortan la petición antes de llegar al controller si algo no cumple; nunca contienen reglas de negocio del dominio.</p>
+      <div class="layer-grid">
+        <div class="layer-card">
+          <span class="layer-tag">auth.middleware.ts</span>
+          <h4>verifyToken / requirePermission / requireRole</h4>
+          <p>Autenticación (¿quién sos?) y autorización (¿podés hacer esto?). Es el único lugar del backend que decide permisos.</p>
+        </div>
+        <div class="layer-card">
+          <span class="layer-tag">validate.middleware.ts</span>
+          <h4>validateBody(schema)</h4>
+          <p>Corre <code>schema.safeParse(req.body)</code>; en error responde 400 con <code>{ errors: [{ field, message }] }</code>.</p>
+        </div>
+      </div>
+
+      <h3 id="capa-controllers">Controllers</h3>
+      <p><strong>Regla:</strong> solo llama al service y traduce el resultado a HTTP. Sin <code>prisma.*</code>, sin condicionales de negocio.</p>
+      <div class="file-panel">
+        <div class="fp-head"><span class="dot"></span> controllers/meeting.controller.ts</div>
+        <pre><code><span class="tok-kw">export const</span> <span class="tok-fn">createMeeting</span> = <span class="tok-kw">async</span> (req, res) => {
+  <span class="tok-kw">try</span> {
+    <span class="tok-kw">const</span> meeting = <span class="tok-kw">await</span> meetingService.createMeeting(req.userId, req.body)
+    res.status(<span class="tok-str">201</span>).json({ message: <span class="tok-str">'Reunión creada correctamente'</span>, meeting })
+  } <span class="tok-kw">catch</span> (error) { handleControllerError(res, error) }
+}</code></pre>
+      </div>
+
+      <h3 id="capa-services">Services</h3>
+      <p><strong>Regla:</strong> toda la lógica de negocio vive acá — validaciones cruzadas, cálculos, orquestar varias llamadas al repositorio. Lanza <code>HttpError</code> cuando algo no cumple una regla.</p>
+      <div class="file-panel">
+        <div class="fp-head"><span class="dot"></span> services/meeting.service.ts</div>
+        <pre><code><span class="tok-kw">async</span> <span class="tok-fn">createMeeting</span>(userId, input) {
+  <span class="tok-kw">const</span> parent = <span class="tok-kw">await</span> meetingRepository.findParentWithDelegateCourseAssignments(userId)
+  <span class="tok-kw">if</span> (!parent || !parent.delegateCourse)
+    <span class="tok-kw">throw new</span> HttpError(<span class="tok-str">404</span>, <span class="tok-str">'No tienes un curso asignado como delegado'</span>)
+
+  <span class="tok-kw">const</span> parentIds = collectTutorIds(parent.delegateCourse.assignments)
+  <span class="tok-kw">return</span> meetingRepository.createMeeting({ ...input, courseId: parent.delegateCourse.id, parentIds })
+}</code></pre>
+      </div>
+
+      <h3 id="capa-repositories">Repositories</h3>
+      <p><strong>Regla:</strong> el único lugar que importa <code>prisma</code>. Sin <code>if</code> de negocio — solo consultas parametrizadas.</p>
+      <div class="file-panel">
+        <div class="fp-head"><span class="dot"></span> repositories/meeting.repository.ts</div>
+        <pre><code><span class="tok-fn">createMeeting</span>(data) {
+  <span class="tok-kw">return</span> prisma.meeting.create({
+    data: {
+      title: data.title, date: data.date, courseId: data.courseId, createdById: data.createdById,
+      attendances: { create: data.parentIds.map(parentId => ({ parentId, present: <span class="tok-kw">false</span> })) },
+    },
+  })
+}</code></pre>
+      </div>
+
+      <h3 id="capa-transversal">Piezas transversales</h3>
+      <div class="layer-grid">
+        <div class="layer-card">
+          <span class="layer-tag">config/permissions.ts</span>
+          <h4>Role, Permission, ROLE_PERMISSIONS</h4>
+          <p>Única fuente de verdad de autorización: qué permiso tiene cada rol. Nunca se decide un permiso dentro de un controller o service.</p>
+        </div>
+        <div class="layer-card">
+          <span class="layer-tag">config/env.ts</span>
+          <h4>Variables de entorno</h4>
+          <p>Centraliza <code>PORT</code> / <code>JWT_SECRET</code>; exige el secreto explícito en producción.</p>
+        </div>
+        <div class="layer-card">
+          <span class="layer-tag">utils/http-error.ts</span>
+          <h4>HttpError · handleControllerError</h4>
+          <p>Vocabulario común de error entre service y controller: <code>throw new HttpError(status, mensaje)</code> se traduce siempre igual.</p>
+        </div>
+        <div class="layer-card">
+          <span class="layer-tag">utils/account-generator.ts</span>
+          <h4>Emails y contraseñas por defecto</h4>
+          <p>Compartido entre student / teacher / parent service para no duplicar la generación de credenciales.</p>
+        </div>
+        <div class="layer-card">
+          <span class="layer-tag">lib/prisma.ts</span>
+          <h4>Cliente Prisma único</h4>
+          <p>Una sola instancia reutilizada en todo el backend — nunca <code>new PrismaClient()</code> dentro de un controller.</p>
+        </div>
+      </div>
+    </section>
+
+    <section id="ejemplo">
+      <h2><span class="num">§5</span> Ejemplo trazado end-to-end</h2>
+      <p class="lede"><code>POST /api/meetings</code> — un padre delegado crea una reunión de curso.</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Paso</th><th>Qué pasa</th><th>Si falla</th></tr></thead>
+          <tbody>
+            <tr><td>routes</td><td>Aplica <code>MEETING_CREATE</code> + <code>createMeetingSchema</code></td><td>—</td></tr>
+            <tr><td>verifyToken</td><td>Decodifica el JWT del delegado</td><td><span class="pill pill-danger">401</span></td></tr>
+            <tr><td>requirePermission</td><td>¿El rol DELEGATE tiene MEETING_CREATE?</td><td><span class="pill pill-danger">403</span></td></tr>
+            <tr><td>validateBody</td><td>¿title y date están presentes?</td><td><span class="pill pill-warn">400</span></td></tr>
+            <tr><td>service</td><td>¿Tiene curso asignado como delegado? Arma lista de tutores</td><td><span class="pill pill-danger">404</span></td></tr>
+            <tr><td>repository</td><td><code>prisma.meeting.create(...)</code> con asistencias iniciales</td><td>—</td></tr>
+            <tr><td>controller</td><td>Responde <span class="pill pill-ok">201</span> con la reunión creada</td><td>—</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section id="permisos">
+      <h2><span class="num">§6</span> Sistema de permisos</h2>
+      <p class="lede">
+        Cada rol tiene una lista fija de permisos en <code>ROLE_PERMISSIONS</code>. <code>requirePermission(P)</code>
+        simplemente verifica si <code>ROLE_PERMISSIONS[req.role]</code> incluye <code>P</code>.
+      </p>
+      <div class="file-panel">
+        <div class="fp-head"><span class="dot"></span> config/permissions.ts</div>
+        <pre><code><span class="tok-kw">export const</span> hasPermission = (role, permission) => {
+  <span class="tok-kw">const</span> permissions = ROLE_PERMISSIONS[role]
+  <span class="tok-kw">return</span> permissions?.includes(permission) ?? <span class="tok-kw">false</span>
+}</code></pre>
+      </div>
+      <p>
+        Durante la migración, este fue el hallazgo más repetido: la mayoría de rutas no tenían
+        <code>requirePermission</code>, o reutilizaban un permiso sin relación (ej. <code>USER_CREATE</code>
+        para gestionar horarios). Se creó un permiso dedicado por dominio cuando hacía falta, siempre
+        confirmando primero — con <code>grep</code> sobre el frontend — qué rol realmente usa cada endpoint.
+      </p>
+    </section>
+
+    <section id="metodologia">
+      <h2><span class="num">§7</span> Metodología de migración</h2>
+      <p class="lede">El mismo ciclo de 8 pasos, repetido para cada uno de los ~24 dominios.</p>
+      <div class="layer-grid" style="grid-template-columns: repeat(auto-fit, minmax(210px,1fr));">
+        <div class="layer-card"><h4>1 · Leer el original</h4><p>Controller completo, sin asumir nada.</p></div>
+        <div class="layer-card"><h4>2 · Auditar permisos</h4><p>Revisar routes.ts contra el uso real en frontend.</p></div>
+        <div class="layer-card"><h4>3 · Crear las capas</h4><p>schema → repository → service → controller delgado.</p></div>
+        <div class="layer-card"><h4>4 · Compilar</h4><p><code>tsc --noEmit</code> antes de cualquier prueba.</p></div>
+        <div class="layer-card"><h4>5 · Probar en vivo</h4><p>Contra <code>edulink_dev</code>, un espejo real de producción.</p></div>
+        <div class="layer-card"><h4>6 · Verificar 403/409</h4><p>Confirmar que el rol equivocado es rechazado.</p></div>
+        <div class="layer-card"><h4>7 · Limpiar</h4><p>Revertir contraseñas y borrar datos de prueba, siempre.</p></div>
+        <div class="layer-card"><h4>8 · Documentar</h4><p>Hallazgos a memoria persistente entre sesiones.</p></div>
+      </div>
+    </section>
+
+    <section id="siguiente">
+      <h2><span class="num">§8</span> Próximo: profundizar por capa</h2>
+      <p class="lede">Temas para las siguientes sesiones, uno por uno.</p>
+      <div class="next-list">
+        <div class="next-item">
+          <div>
+            <div class="n-title">Middlewares — auth.middleware.ts en detalle</div>
+            <div class="n-desc">Cómo se decodifica el JWT, qué pasa con tokens expirados, la diferencia entre requirePermission / requireRole / requireStaff.</div>
+          </div>
+        </div>
+        <div class="next-item">
+          <div>
+            <div class="n-title">Schemas — convenciones de Zod usadas</div>
+            <div class="n-desc">Coerción de tipos, enums de Prisma reutilizados en el schema, patrones de campos opcionales.</div>
+          </div>
+        </div>
+        <div class="next-item">
+          <div>
+            <div class="n-title">Services — manejo de errores y transacciones</div>
+            <div class="n-desc">Cuándo usar HttpError vs. dejar propagar, y dónde harían falta transacciones de Prisma que hoy no existen.</div>
+          </div>
+        </div>
+        <div class="next-item">
+          <div>
+            <div class="n-title">Repositories — por qué nunca lógica de negocio ahí</div>
+            <div class="n-desc">Ejemplos reales de la migración donde un <code>if</code> se coló en el repository y hubo que moverlo.</div>
+          </div>
+        </div>
+        <div class="next-item">
+          <div>
+            <div class="n-title">Permisos — mapa completo rol × permiso</div>
+            <div class="n-desc">Tabla completa de los 13 roles contra todos los permisos definidos, con el porqué de cada decisión de negocio.</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="apendice">
+      <h2><span class="num">§9</span> Apéndice — dominios refactorizados</h2>
+      <p class="lede">Los 23 dominios que ya siguen el patrón de 5 capas.</p>
+      <div class="chip-grid">
+        <span class="chip">auth</span><span class="chip">user</span><span class="chip">student</span>
+        <span class="chip">teacher</span><span class="chip">parent</span><span class="chip">course</span>
+        <span class="chip">subject</span><span class="chip">treasury</span><span class="chip">nota</span>
+        <span class="chip">task</span><span class="chip">schedule</span><span class="chip">meeting</span>
+        <span class="chip">delegate</span><span class="chip">notification</span><span class="chip">studentAttendance</span>
+        <span class="chip">teacherAttendance</span><span class="chip">teacherSpecialty</span><span class="chip">classroom</span>
+        <span class="chip">academic</span><span class="chip">planificacion</span><span class="chip">report</span>
+        <span class="chip">gate</span><span class="chip">credentials</span>
+      </div>
+    </section>
+
+    <footer class="doc-foot">
+      Generado a partir del trabajo de refactor realizado sobre <code>EduLink/backend</code> — copia
+      aislada de <code>sgje</code> en desarrollo, sin conexión a producción.
+    </footer>
+  </main>
+</div>
+
+<script>
+  // resalta el ítem de navegación correspondiente a la sección visible
+  const links = Array.from(document.querySelectorAll('.nav a'));
+  const sections = links
+    .map(a => document.querySelector(a.getAttribute('href')))
+    .filter(Boolean);
+
+  const setActive = (id) => {
+    links.forEach(a => a.classList.toggle('active', a.getAttribute('href') === '#' + id));
+  };
+
+  if ('IntersectionObserver' in window) {
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach(entry => {
+        if (entry.isIntersecting) setActive(entry.target.id);
+      });
+    }, { rootMargin: '-15% 0px -70% 0px', threshold: 0 });
+    sections.forEach(s => observer.observe(s));
+  }
+</script>

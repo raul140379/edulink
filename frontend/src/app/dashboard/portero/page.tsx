@@ -381,6 +381,18 @@ export default function PorteroPage() {
             </button>
           </div>
 
+          <a href="/dashboard/asistencia-kiosco" style={{
+            display: 'flex', alignItems: 'center', gap: 10, textDecoration: 'none',
+            background: '#1E293B', border: '1px dashed #334155', borderRadius: 12,
+            padding: '14px 16px', marginBottom: 20,
+          }}>
+            <span style={{ fontSize: 22 }}>🕐</span>
+            <div>
+              <div style={{ fontSize: 13, fontWeight: 700, color: '#F1F5F9' }}>Autoservicio de asistencia — Maestros</div>
+              <div style={{ fontSize: 11, color: '#94A3B8' }}>Pantalla pública para que el maestro marque su propio código</div>
+            </div>
+          </a>
+
           {recentList.length > 0 && (
             <div style={{ background: '#1E293B', borderRadius: 12, padding: 16 }}>
               <div style={{ fontSize: 12, fontWeight: 700, color: '#94A3B8', textTransform: 'uppercase', letterSpacing: '.5px', marginBottom: 12 }}>

@@ -51,14 +51,15 @@ export default function LoginPage() {
       localStorage.setItem('token', data.token)
       localStorage.setItem('user', JSON.stringify(data.user))
       switch (data.user.role) {
-        case 'SUPER_ADMIN': case 'DIRECTOR': router.push('/dashboard/admin'); break
-        case 'TEACHER':       router.push('/dashboard/teacher'); break
-        case 'TEACHER_TUTOR': router.push('/dashboard/teacher-tutor'); break
-        case 'JUNTA_ESCOLAR': router.push('/dashboard/junta'); break
-        case 'PARENT':        router.push('/dashboard/parent'); break
-        case 'STUDENT':       router.push('/dashboard/estudiantes'); break
-        case 'DELEGATE':      router.push('/dashboard/delegate'); break
-        case 'PORTERO':       router.push('/dashboard/portero'); break  // ← NUEVO
+        case 'SUPER_ADMIN': case 'DIRECTOR': case 'REGENTE': case 'SECRETARY':
+          router.push('/dashboard/admin'); break
+        case 'TEACHER': case 'TEACHER_TUTOR':
+          router.push('/dashboard/plantel-docente'); break
+        case 'JUNTA_ESCOLAR': case 'PARENT': case 'DELEGATE':
+          router.push('/dashboard/padres'); break
+        case 'STUDENT': case 'STUDENT_GOV':
+          router.push('/dashboard/estudiantes'); break
+        case 'PORTERO':       router.push('/dashboard/portero'); break
         default:              router.push('/dashboard')
       }
     } catch { setLoginError('Error de conexión con el servidor') }

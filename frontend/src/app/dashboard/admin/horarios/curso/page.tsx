@@ -77,6 +77,7 @@ export default function HorarioCursoPage() {
   const router = useRouter()
   const [courses,    setCourses]    = useState<Course[]>([])
   const [selCourse,  setSelCourse]  = useState<Course | null>(null)
+  const [selGrade,   setSelGrade]   = useState<string>('')
   const [schedule,   setSchedule]   = useState<ScheduleItem[]>([])
   const [tscs,       setTscs]       = useState<TSC[]>([])
   const [schoolSch,  setSchoolSch]  = useState<any>(null)
@@ -119,6 +120,23 @@ export default function HorarioCursoPage() {
     loadTscs()
     loadSchoolSchedule()
   }, [selCourse])
+
+  const GRADE_ORDER = ['PRIMERO','SEGUNDO','TERCERO','CUARTO','QUINTO','SEXTO']
+  const gradesWithCourses = GRADE_ORDER.filter(g => courses.some(c => c.grade === g))
+  const paralelosDelGrado = courses
+    .filter(c => c.grade === selGrade)
+    .sort((a, b) => a.parallel.localeCompare(b.parallel))
+
+  const selectGrade = (grade: string) => {
+    setSelGrade(grade)
+    if (selCourse?.grade !== grade) { setSelCourse(null); setSchedule([]); setTscs([]) }
+  }
+
+  const selectParalelo = (c: Course) => {
+    setSelCourse(c)
+    setSchedule([])
+    setTscs([])
+  }
 
   const loadSchedule = async () => {
     if (!selCourse) return
@@ -321,42 +339,85 @@ export default function HorarioCursoPage() {
       )}
 
       {/* Header */}
-      <div style={{display:'flex',alignItems:'center',gap:12,marginBottom:24,flexWrap:'wrap'}}>
-        <button onClick={()=>router.push('/dashboard/admin/horarios')}
-          style={{display:'flex',alignItems:'center',gap:6,background:'none',border:'none',cursor:'pointer',color:'#6B8BB0',fontSize:13}}>
-          <ArrowLeft size={16}/> Volver
-        </button>
-        <div style={{flex:1}}>
-          <h1 style={{fontSize:20,fontWeight:700,color:'#1A3A7C',margin:0}}>Horario por Curso</h1>
-          <p style={{fontSize:13,color:'#6B8BB0',margin:0}}>Genera y asigna el horario semanal</p>
+      <div style={{display:'flex',alignItems:'center',marginBottom:24,gap:12}}>
+        <div style={{flex:1,display:'flex'}}>
+          <button onClick={()=>router.push('/dashboard/admin/horarios')}
+            style={{display:'flex',alignItems:'center',gap:6,background:'none',border:'none',cursor:'pointer',color:'#6B8BB0',fontSize:13}}>
+            <ArrowLeft size={16}/> Volver
+          </button>
         </div>
+
+        <div style={{display:'flex',flexDirection:'column',alignItems:'center',gap:8,textAlign:'center'}}>
+          <div>
+            <h1 style={{fontSize:20,fontWeight:700,color:'#1A3A7C',margin:0}}>Horario por Curso</h1>
+            <p style={{fontSize:13,color:'#6B8BB0',margin:0}}>Genera y asigna el horario semanal</p>
+          </div>
+          {selCourse && (
+            <div style={{
+              display:'flex',alignItems:'center',gap:8,
+              background:'#1A3A7C',color:'#fff',borderRadius:10,
+              padding:'8px 16px',fontSize:14,fontWeight:700,whiteSpace:'nowrap',
+            }}>
+              {GRADES[selCourse.grade]} &quot;{selCourse.parallel}&quot;
+              <span style={{fontWeight:500,fontSize:12,color:'#B9CBE8'}}>
+                · {SHIFTS[selCourse.shift]} · {selCourse.level}{selCourse.educationType==='BTH' ? ' · BTH' : ''}
+              </span>
+            </div>
+          )}
+        </div>
+
+        <div style={{flex:1}}/>
       </div>
 
-      {/* Selector de curso */}
-      <div style={{background:'#fff',border:'1px solid #CBE0F0',borderRadius:12,padding:'16px 20px',marginBottom:20}}>
-        <label style={{fontSize:11,fontWeight:700,color:'#1A3A7C',textTransform:'uppercase',letterSpacing:'.5px',display:'block',marginBottom:8}}>
+      {/* Selector de curso: tabs de grado + pastillas de paralelo */}
+      <div style={{background:'#fff',border:'1px solid #CBE0F0',borderRadius:12,padding:'14px 20px',marginBottom:20}}>
+        <label style={{fontSize:11,fontWeight:700,color:'#1A3A7C',textTransform:'uppercase',letterSpacing:'.5px',display:'block',marginBottom:10,textAlign:'center'}}>
           Seleccionar Curso
         </label>
-        <select
-          value={selCourse?.id || ''}
-          onChange={e => {
-            const c = courses.find(c => c.id === parseInt(e.target.value))
-            setSelCourse(c || null)
-            setSchedule([])
-            setTscs([])
-          }}
-          style={{padding:'10px 12px',border:'1.5px solid #CBE0F0',borderRadius:8,fontSize:13,color:'#1A3A7C',outline:'none',width:'100%',maxWidth:420}}>
-          <option value="">-- Selecciona un curso --</option>
-          {['PRIMERO','SEGUNDO','TERCERO','CUARTO','QUINTO','SEXTO'].map(grade => (
-            <optgroup key={grade} label={`${GRADES[grade]} Grado`}>
-              {courses.filter(c=>c.grade===grade).map(c=>(
-                <option key={c.id} value={c.id}>
-                  {GRADES[c.grade]} &quot;{c.parallel}&quot; · {SHIFTS[c.shift]} · {c.level}{c.educationType==='BTH'?' · BTH':''}
-                </option>
-              ))}
-            </optgroup>
-          ))}
-        </select>
+
+        <div style={{display:'flex',gap:6,flexWrap:'wrap',justifyContent:'center',borderBottom:'2px solid #EEF3F9',paddingBottom:10,marginBottom:10}}>
+          {gradesWithCourses.map(grade => {
+            const active = selGrade === grade
+            return (
+              <button key={grade} onClick={() => selectGrade(grade)}
+                style={{
+                  padding:'7px 16px',borderRadius:8,border:'none',cursor:'pointer',
+                  fontSize:13,fontWeight:700,
+                  background: active ? '#1A3A7C' : '#F0F6FC',
+                  color:      active ? '#fff'    : '#6B8BB0',
+                  transition:'background .15s,color .15s',
+                }}>
+                {GRADES[grade]}
+              </button>
+            )
+          })}
+        </div>
+
+        {selGrade && (
+          <div style={{display:'flex',gap:8,flexWrap:'wrap',alignItems:'center',justifyContent:'center'}}>
+            {paralelosDelGrado.map(c => {
+              const active = selCourse?.id === c.id
+              return (
+                <button key={c.id} onClick={() => selectParalelo(c)}
+                  style={{
+                    display:'flex',alignItems:'center',gap:6,
+                    padding:'8px 14px',borderRadius:20,cursor:'pointer',
+                    border: active ? '1.5px solid #1A3A7C' : '1.5px solid #CBE0F0',
+                    background: active ? '#E0ECF8' : '#fff',
+                    color:'#1A3A7C',fontSize:13,fontWeight:700,
+                  }}>
+                  &quot;{c.parallel}&quot;
+                  <span style={{fontWeight:500,fontSize:11.5,color:'#6B8BB0'}}>
+                    {SHIFTS[c.shift]}{c.educationType==='BTH' ? ' · BTH' : ''}
+                  </span>
+                </button>
+              )
+            })}
+            {paralelosDelGrado.length === 0 && (
+              <span style={{fontSize:12.5,color:'#8B959C'}}>Sin cursos registrados para este grado.</span>
+            )}
+          </div>
+        )}
       </div>
 
       {selCourse && (

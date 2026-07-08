@@ -41,8 +41,8 @@ export default function RootLayout({
             var path = window.location.pathname;
             var manifest = '/manifest.json';
             if (path.startsWith('/dashboard/portero')) manifest = '/manifest-portero.json';
-            else if (path.startsWith('/dashboard/teacher')) manifest = '/manifest-teacher.json';
-            else if (path.startsWith('/dashboard/parent')) manifest = '/manifest-parent.json';
+            else if (path.startsWith('/dashboard/plantel-docente')) manifest = '/manifest-teacher.json';
+            else if (path.startsWith('/dashboard/padres')) manifest = '/manifest-parent.json';
             else if (path.startsWith('/dashboard/estudiantes')) manifest = '/manifest-student.json';
             var el = document.getElementById('pwa-manifest');
             if (el) el.setAttribute('href', manifest);

@@ -112,7 +112,7 @@ export default function TeacherWorkloadPage() {
 
       {/* Tarjetas resumen */}
       <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(160px,1fr))',gap:14,marginBottom:24}}>
-        <div style={{background:'#633806',color:'#fff',borderRadius:14,padding:'20px',textAlign:'center'}}>
+        <div style={{background:'#1A3A7C',color:'#fff',borderRadius:14,padding:'20px',textAlign:'center'}}>
           <Clock size={24} color="rgba(255,255,255,0.7)" style={{marginBottom:8}}/>
           <div style={{fontSize:11,opacity:.8,textTransform:'uppercase',letterSpacing:'.5px',marginBottom:4}}>Carga contratada</div>
           <div style={{fontSize:36,fontWeight:800,lineHeight:1}}>{data.horasContratadaMes}</div>
@@ -151,8 +151,8 @@ export default function TeacherWorkloadPage() {
               const porcentaje = data.horasContratadaMes > 0
                 ? Math.min(Math.round((h.horasMes / data.horasContratadaMes) * 100), 100)
                 : 0
-              const color = porcentaje >= 100 ? '#0F6E56' : porcentaje >= 75 ? '#BA7517' : '#C0392B'
-              const bg    = porcentaje >= 100 ? '#E1F5EE' : porcentaje >= 75 ? '#FFFBEA' : '#FFF0F0'
+              const color = porcentaje >= 90 ? '#0F6E56' : porcentaje >= 75 ? '#BA7517' : '#C0392B'
+              const bg    = porcentaje >= 90 ? '#E1F5EE' : porcentaje >= 75 ? '#FFFBEA' : '#FFF0F0'
               return (
                 <div key={h.horarioId} style={{background:'#fff',border:'1px solid #CBE0F0',borderRadius:14,padding:20}}>
                   <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:16}}>
@@ -236,8 +236,8 @@ export default function TeacherWorkloadPage() {
                   <td style={td}>{SHIFTS[a.shift] || a.shift}</td>
                   <td style={{...td,textAlign:'center'}}>
                     <span style={{
-                      background: a.periodosAsignados > 0 ? '#FDF0E6' : '#F0F6FC',
-                      color:      a.periodosAsignados > 0 ? '#633806' : '#6B8BB0',
+                      background: a.periodosAsignados > 0 ? '#E0ECF8' : '#F0F6FC',
+                      color:      a.periodosAsignados > 0 ? '#1A3A7C' : '#6B8BB0',
                       padding:'3px 12px',borderRadius:20,fontSize:12,fontWeight:600
                     }}>
                       {a.periodosAsignados || 0} per.
@@ -257,7 +257,7 @@ export default function TeacherWorkloadPage() {
                   Total
                 </td>
                 <td style={{padding:'12px 14px',textAlign:'center'}}>
-                  <span style={{background:'#FDF0E6',color:'#633806',padding:'3px 12px',borderRadius:20,fontSize:13,fontWeight:700}}>
+                  <span style={{background:'#E0ECF8',color:'#1A3A7C',padding:'3px 12px',borderRadius:20,fontSize:13,fontWeight:700}}>
                     {data.totalesPorHorario[0]?.totalPeriodos || 0} per.
                   </span>
                 </td>

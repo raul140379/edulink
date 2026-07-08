@@ -1,0 +1,485 @@
+<title>Frontend por Actor — EduLink</title>
+<style>
+  :root {
+    --bg: #f6f5f2;
+    --surface: #ffffff;
+    --surface-raised: #fbfaf8;
+    --ink: #1c2227;
+    --ink-muted: #5b6670;
+    --ink-faint: #8b959c;
+    --accent: #a24e2a;
+    --accent-ink: #6e3316;
+    --accent-soft: #f3e3d8;
+    --line: #e1dfda;
+    --line-strong: #c9c6bf;
+    --ok: #2e7d4f;
+    --ok-soft: #e3f1e8;
+    --warn: #b8791a;
+    --warn-soft: #f7ecd9;
+    --danger: #b23a34;
+    --danger-soft: #f6e3e1;
+    --code-bg: #12181b;
+    --code-ink: #dbe4e4;
+    --code-accent: #f0a06e;
+    --code-muted: #7c8a8d;
+    --shadow: 0 1px 2px rgba(28,34,39,.04), 0 8px 24px -12px rgba(28,34,39,.12);
+    --a-admin: #3c5a99;
+    --a-admin-soft: #e3e9f5;
+    --a-docente: #7a5a1e;
+    --a-docente-soft: #f2ead6;
+    --a-padres: #2e7d4f;
+    --a-padres-soft: #e3f1e8;
+    --a-estudiantes: #1a7db8;
+    --a-estudiantes-soft: #dcedf5;
+  }
+
+  :root[data-theme="dark"] {
+    --bg: #14100e;
+    --surface: #1c1613;
+    --surface-raised: #221b17;
+    --ink: #ece6e1;
+    --ink-muted: #a89a8f;
+    --ink-faint: #7a6d63;
+    --accent: #e3906a;
+    --accent-ink: #f5c8ac;
+    --accent-soft: #3a2618;
+    --line: #362c25;
+    --line-strong: #473a30;
+    --ok: #57b382;
+    --ok-soft: #17301f;
+    --warn: #d9a03d;
+    --warn-soft: #332a15;
+    --danger: #e0685f;
+    --danger-soft: #3a2119;
+    --code-bg: #0c1113;
+    --code-ink: #d6dede;
+    --code-accent: #f0a06e;
+    --code-muted: #6d7a7d;
+    --shadow: 0 1px 2px rgba(0,0,0,.3), 0 8px 28px -12px rgba(0,0,0,.5);
+    --a-admin: #7d97d6;
+    --a-admin-soft: #232c40;
+    --a-docente: #d3ab5c;
+    --a-docente-soft: #362b16;
+    --a-padres: #6fca94;
+    --a-padres-soft: #17301f;
+    --a-estudiantes: #6ec2ec;
+    --a-estudiantes-soft: #16303c;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #14100e; --surface: #1c1613; --surface-raised: #221b17;
+      --ink: #ece6e1; --ink-muted: #a89a8f; --ink-faint: #7a6d63;
+      --accent: #e3906a; --accent-ink: #f5c8ac; --accent-soft: #3a2618;
+      --line: #362c25; --line-strong: #473a30;
+      --ok: #57b382; --ok-soft: #17301f;
+      --warn: #d9a03d; --warn-soft: #332a15;
+      --danger: #e0685f; --danger-soft: #3a2119;
+      --code-bg: #0c1113; --code-ink: #d6dede; --code-accent: #f0a06e; --code-muted: #6d7a7d;
+      --shadow: 0 1px 2px rgba(0,0,0,.3), 0 8px 28px -12px rgba(0,0,0,.5);
+      --a-admin: #7d97d6; --a-admin-soft: #232c40;
+      --a-docente: #d3ab5c; --a-docente-soft: #362b16;
+      --a-padres: #6fca94; --a-padres-soft: #17301f;
+      --a-estudiantes: #6ec2ec; --a-estudiantes-soft: #16303c;
+    }
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font-family: -apple-system, "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+    font-size: 16px; line-height: 1.65; -webkit-font-smoothing: antialiased;
+  }
+  code, pre, .mono { font-family: ui-monospace, "Cascadia Code", "SFMono-Regular", Consolas, Menlo, monospace; }
+  a { color: var(--accent); }
+  h1, h2, h3, h4 { text-wrap: balance; font-weight: 700; letter-spacing: -0.01em; }
+  .eyebrow { font-size: 12px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: var(--accent); }
+
+  .shell { display: grid; grid-template-columns: 250px minmax(0,1fr); max-width: 1180px; margin: 0 auto; min-height: 100vh; }
+  @media (max-width: 880px) { .shell { grid-template-columns: 1fr; } .nav { position: static; height: auto; border-right: none; border-bottom: 1px solid var(--line); } }
+  .nav { position: sticky; top: 0; height: 100vh; overflow-y: auto; padding: 32px 20px 32px 28px; border-right: 1px solid var(--line); }
+  .nav-title { font-size: 13px; font-weight: 700; color: var(--ink-faint); letter-spacing: .04em; text-transform: uppercase; margin: 0 0 14px; }
+  .nav ol { list-style: none; margin: 0 0 12px; padding: 0; border-left: 2px solid var(--line); }
+  .nav a { display: block; padding: 7px 0 7px 16px; margin-left: -2px; border-left: 2px solid transparent; color: var(--ink-muted); text-decoration: none; font-size: 13.5px; transition: color .15s, border-color .15s; }
+  .nav a:hover { color: var(--ink); }
+  .nav a.active { color: var(--accent-ink); border-left-color: var(--accent); font-weight: 600; }
+
+  main { padding: 48px 44px 96px; min-width: 0; }
+  @media (max-width: 640px) { main { padding: 32px 20px 72px; } }
+  header.doc-head { margin-bottom: 56px; padding-bottom: 32px; border-bottom: 1px solid var(--line); }
+  header.doc-head h1 { font-size: 32px; margin: 10px 0 12px; line-height: 1.18; }
+  .doc-meta { display: flex; gap: 18px; flex-wrap: wrap; color: var(--ink-faint); font-size: 13px; margin-top: 18px; }
+
+  section { margin-bottom: 64px; scroll-margin-top: 24px; }
+  section h2 { font-size: 22px; margin: 0 0 6px; display: flex; align-items: baseline; gap: 10px; }
+  section h2 .num { font-family: ui-monospace, monospace; font-size: 14px; color: var(--ink-faint); font-weight: 500; }
+  section > .lede { color: var(--ink-muted); max-width: 68ch; margin: 0 0 28px; }
+  section h3 { font-size: 16.5px; margin: 32px 0 10px; }
+  p { max-width: 68ch; }
+
+  .table-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 10px; }
+  table { border-collapse: collapse; width: 100%; font-size: 13.5px; min-width: 560px; }
+  th, td { text-align: left; padding: 10px 16px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  thead th { background: var(--surface-raised); color: var(--ink-faint); font-size: 11px; text-transform: uppercase; letter-spacing: .05em; font-weight: 700; white-space: nowrap; }
+  tbody tr:last-child td { border-bottom: none; }
+  tbody td:first-child { font-family: ui-monospace, monospace; color: var(--accent-ink); white-space: nowrap; }
+
+  .pill { display: inline-flex; align-items: center; gap: 5px; font-size: 11.5px; font-weight: 600; padding: 2px 9px; border-radius: 100px; white-space: nowrap; }
+  .pill-ok { background: var(--ok-soft); color: var(--ok); }
+  .pill-warn { background: var(--warn-soft); color: var(--warn); }
+  .pill-danger { background: var(--danger-soft); color: var(--danger); }
+
+  .issue-list { display: flex; flex-direction: column; gap: 12px; margin-top: 18px; }
+  .issue {
+    display: grid; grid-template-columns: 30px 1fr; gap: 14px;
+    padding: 16px 18px; background: var(--surface); border: 1px solid var(--line); border-radius: 10px;
+  }
+  .issue .i-badge {
+    width: 26px; height: 26px; border-radius: 7px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 13px; font-weight: 700; font-family: ui-monospace, monospace;
+    background: var(--danger-soft); color: var(--danger);
+    flex-shrink: 0;
+  }
+  .issue.sev-med .i-badge { background: var(--warn-soft); color: var(--warn); }
+  .issue.sev-low .i-badge { background: var(--surface-raised); color: var(--ink-faint); border: 1px solid var(--line); }
+  .issue h4 { margin: 0 0 4px; font-size: 14.5px; }
+  .issue p { margin: 0; font-size: 13.5px; color: var(--ink-muted); }
+  .issue .i-file { font-family: ui-monospace, monospace; font-size: 12px; color: var(--ink-faint); }
+
+  /* ── Actor cards ─────────────────────────────────────── */
+  .actor-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px,1fr)); gap: 16px; margin: 24px 0; }
+  .actor-card {
+    border-radius: 12px; padding: 20px 22px;
+    border: 1px solid var(--line);
+    background: var(--surface);
+    position: relative;
+    overflow: hidden;
+  }
+  .actor-card::before {
+    content: ""; position: absolute; top: 0; left: 0; right: 0; height: 4px;
+    background: var(--dot);
+  }
+  .actor-card .a-icon { font-size: 22px; }
+  .actor-card h4 { margin: 12px 0 4px; font-size: 16px; }
+  .actor-card .a-roles { font-size: 12px; font-family: ui-monospace, monospace; color: var(--ink-faint); margin-bottom: 10px; }
+  .actor-card p { margin: 0; font-size: 13px; color: var(--ink-muted); }
+  .actor-card[data-a="admin"] { --dot: var(--a-admin); }
+  .actor-card[data-a="docente"] { --dot: var(--a-docente); }
+  .actor-card[data-a="padres"] { --dot: var(--a-padres); }
+  .actor-card[data-a="estudiantes"] { --dot: var(--a-estudiantes); }
+
+  /* ── Folder tree ─────────────────────────────────────── */
+  .tree-compare { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin: 20px 0; }
+  @media (max-width: 760px) { .tree-compare { grid-template-columns: 1fr; } }
+  .tree-panel { background: var(--code-bg); color: var(--code-ink); border-radius: 10px; overflow: hidden; box-shadow: var(--shadow); }
+  .tree-panel .tp-head { padding: 9px 16px; font-size: 12px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; border-bottom: 1px solid rgba(255,255,255,.08); }
+  .tree-panel.before .tp-head { color: var(--danger); background: rgba(178,58,52,.12); }
+  .tree-panel.after .tp-head { color: var(--ok); background: rgba(46,125,79,.12); }
+  .tree-panel pre { margin: 0; padding: 16px; font-size: 12.5px; line-height: 1.75; overflow-x: auto; }
+  .tree-panel .muted { color: var(--code-muted); }
+  .tree-panel .hi { color: var(--code-accent); }
+
+  .layer-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px,1fr)); gap: 16px; margin: 20px 0; }
+  .layer-card { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 18px 20px; }
+  .layer-card h4 { margin: 0 0 6px; font-size: 15px; }
+  .layer-card p { margin: 0; font-size: 13.5px; color: var(--ink-muted); }
+
+  .phase-list { display: flex; flex-direction: column; gap: 0; margin: 20px 0; }
+  .phase {
+    display: grid; grid-template-columns: 34px 1fr; gap: 16px;
+    padding: 16px 18px; background: var(--surface); border: 1px solid var(--line);
+  }
+  .phase:first-child { border-radius: 10px 10px 0 0; }
+  .phase:last-child { border-radius: 0 0 10px 10px; }
+  .phase:not(:last-child) { border-bottom: none; }
+  .phase .p-no { width: 28px; height: 28px; border-radius: 50%; background: var(--accent-soft); color: var(--accent-ink); display: flex; align-items: center; justify-content: center; font-size: 12.5px; font-weight: 700; font-family: ui-monospace, monospace; }
+  .phase strong { display: block; font-size: 14.5px; }
+  .phase span.d { display: block; color: var(--ink-muted); font-size: 13px; margin-top: 2px; }
+
+  .qbox { display: flex; flex-direction: column; gap: 10px; margin-top: 18px; }
+  .q { padding: 14px 18px; background: var(--surface); border: 1px solid var(--line); border-left: 3px solid var(--accent); border-radius: 0 8px 8px 0; }
+  .q .q-title { font-weight: 600; font-size: 14.5px; }
+  .q .q-desc { color: var(--ink-muted); font-size: 13px; margin-top: 2px; }
+
+  footer.doc-foot { margin-top: 80px; padding-top: 24px; border-top: 1px solid var(--line); color: var(--ink-faint); font-size: 12.5px; }
+  ::selection { background: var(--accent-soft); color: var(--accent-ink); }
+</style>
+
+<div class="shell">
+  <nav class="nav" aria-label="Índice del documento">
+    <p class="nav-title">EduLink · Frontend</p>
+    <ol>
+      <li><a href="#resumen">Resumen</a></li>
+      <li><a href="#estado-actual">Estado actual (9 carpetas)</a></li>
+      <li><a href="#hallazgos">Hallazgos</a></li>
+      <li><a href="#actores">Los 4 actores propuestos</a></li>
+      <li><a href="#estructura">Estructura propuesta</a></li>
+      <li><a href="#pieza-comun">La pieza compartida: DashboardShell</a></li>
+      <li><a href="#fases">Plan de migración por fases</a></li>
+      <li><a href="#decisiones">Decisiones que necesito de vos</a></li>
+    </ol>
+  </nav>
+
+  <main>
+    <header class="doc-head">
+      <p class="eyebrow">Análisis + propuesta — no implementado aún</p>
+      <h1>Reorganizar el frontend en 4 dashboards por actor</h1>
+      <p class="lede" style="margin:0; max-width: 62ch;">
+        Hoy el frontend tiene 9 carpetas de dashboard, una por rol (casi). La idea que planteaste —
+        Administración / Estudiantes / Plantel Docente / Padres de Familia — ya existe a medias en el
+        código: dos de los cuatro grupos están fragmentados en 2-3 carpetas casi idénticas. Este
+        documento mapea lo que hay, señala lo que encontré roto en el camino, y propone cómo llegar
+        a los 4 dashboards limpios sin reescribir todo desde cero.
+      </p>
+      <div class="doc-meta">
+        <span>📍 EduLink/frontend/src/app/dashboard</span>
+        <span>🗂️ 9 carpetas → 82 páginas → 13 roles</span>
+      </div>
+    </header>
+
+    <section id="resumen">
+      <h2><span class="num">§1</span> Resumen ejecutivo</h2>
+      <p class="lede">
+        El frontend nunca tuvo un dashboard por rol individual de verdad — tiene un dashboard por
+        <em>subgrupo</em> que fue creciendo orgánicamente. El resultado: <strong>Plantel Docente</strong> ya
+        está partido en <code>teacher/</code> + <code>teacher-tutor/</code>, y <strong>Padres de Familia</strong>
+        ya está partido en <code>parent/</code> + <code>junta/</code> + <code>delegate/</code> — cada uno
+        con su propio layout, su propio sidebar, su propia copia del mismo código de logout/menú/PWA.
+        <strong>Administración</strong> y <strong>Estudiantes</strong> están mejor: ya son un solo dashboard
+        compartido por varios roles. Migrar a tu idea de 4 actores es, en el fondo, terminar el mismo
+        trabajo de consolidación dos veces más — y de paso corregir 3 huecos de control de acceso que
+        aparecieron mientras mapeaba todo.
+      </p>
+    </section>
+
+    <section id="estado-actual">
+      <h2><span class="num">§2</span> Estado actual — 9 carpetas, 13 roles</h2>
+      <p class="lede">Cada fila es una carpeta real bajo <code>dashboard/</code> hoy.</p>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Carpeta</th><th>Rol(es) que la usan</th><th>Guardia de acceso</th><th>Páginas</th></tr></thead>
+          <tbody>
+            <tr><td>admin/</td><td>SUPER_ADMIN, DIRECTOR, REGENTE, SECRETARY</td><td><span class="pill pill-danger">sin redirect por rol</span></td><td>33</td></tr>
+            <tr><td>secretaria/</td><td><em>ninguno</em> — kiosco público sin relación al rol</td><td><span class="pill pill-danger">huérfana</span></td><td>1</td></tr>
+            <tr><td>teacher/</td><td>TEACHER</td><td><span class="pill pill-ok">redirect correcto</span></td><td>12</td></tr>
+            <tr><td>teacher-tutor/</td><td>TEACHER_TUTOR</td><td><span class="pill pill-ok">redirect correcto</span></td><td>7</td></tr>
+            <tr><td>parent/</td><td>PARENT</td><td><span class="pill pill-ok">redirect correcto</span></td><td>7</td></tr>
+            <tr><td>junta/</td><td>JUNTA_ESCOLAR</td><td><span class="pill pill-ok">redirect correcto</span></td><td>9</td></tr>
+            <tr><td>delegate/</td><td>DELEGATE</td><td><span class="pill pill-ok">redirect correcto</span></td><td>5</td></tr>
+            <tr><td>estudiantes/</td><td>STUDENT, STUDENT_GOV</td><td><span class="pill pill-ok">redirect correcto</span></td><td>7</td></tr>
+            <tr><td>portero/</td><td>PORTERO (implícito)</td><td><span class="pill pill-danger">sin guardia alguna</span></td><td>1</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p style="margin-top:14px; font-size: 13.5px; color: var(--ink-muted);">
+        STAFF no tiene ninguna pantalla propia todavía. Los 33 archivos de <code>admin/</code> incluyen
+        varias páginas placeholder ("En Construcción": configuración, notificaciones, reportes, notas).
+      </p>
+    </section>
+
+    <section id="hallazgos">
+      <h2><span class="num">§3</span> Hallazgos</h2>
+      <p class="lede">Ordenados por qué tan urgente es corregirlos, no por dónde aparecen.</p>
+      <div class="issue-list">
+        <div class="issue">
+          <div class="i-badge">!</div>
+          <div>
+            <h4>El dashboard de Administración no verifica el rol al entrar</h4>
+            <p><code class="i-file">admin/layout.tsx</code> solo revisa que exista un token en <code>localStorage</code> — nunca compara el rol contra una lista permitida, a diferencia de las otras 6 carpetas con guardia. Cualquier usuario logueado (un padre, un estudiante) puede cargar <code>/dashboard/admin</code> y navegar a cualquier sub-URL sin que el frontend lo frene; hoy no se filtra información real porque el backend ya exige permisos en cada endpoint, pero la experiencia queda rota (menús vacíos, páginas que fallan al pedir datos) en vez de mandarlo directo a su propio dashboard.</p>
+          </div>
+        </div>
+        <div class="issue">
+          <div class="i-badge">!</div>
+          <div>
+            <h4>Portería no tiene ninguna guardia de acceso en el frontend</h4>
+            <p><code class="i-file">portero/layout.tsx</code> y <code class="i-file">portero/page.tsx</code> no verifican rol ni siquiera la presencia de token de forma explícita — dependen 100% de que el backend rechace la petición. Mismo riesgo de experiencia rota que el punto anterior.</p>
+          </div>
+        </div>
+        <div class="issue sev-med">
+          <div class="i-badge">~</div>
+          <div>
+            <h4><code class="i-file">secretaria/</code> no es el dashboard de Secretaría</h4>
+            <p>Es una página pública de kiosco para que los maestros marquen su propia asistencia por código — no tiene relación con el rol SECRETARY. El rol Secretaría en realidad ya vive dentro de <code>admin/</code>. El nombre de esta carpeta es confuso y no le pertenece a ningún actor de tu modelo de 4.</p>
+          </div>
+        </div>
+        <div class="issue sev-med">
+          <div class="i-badge">~</div>
+          <div>
+            <h4>Plantel Docente y Padres de Familia ya están fragmentados</h4>
+            <p><code>teacher/</code> + <code>teacher-tutor/</code> comparten casi las mismas 7 páginas (perfil, notas, reuniones, tesorería, notificaciones, workload) con dos layouts distintos. <code>parent/</code> + <code>junta/</code> + <code>delegate/</code> repiten el mismo patrón con 3 layouts distintos. Es exactamente el mismo problema que resolvimos en el backend — un patrón idéntico copiado varias veces en vez de compartido una sola vez.</p>
+          </div>
+        </div>
+        <div class="issue sev-low">
+          <div class="i-badge">i</div>
+          <div>
+            <h4>Cero componentes de layout compartidos entre las 9 carpetas</h4>
+            <p>Cada <code>layout.tsx</code> reimplementa su propio sidebar, logout, colapso móvil y manifest de PWA — solo cambian colores y el arreglo de menú. Solo <code>PerfilPage</code> y <code>AsistenciaReporte</code> se comparten, y ni siquiera de forma consistente (<code>parent/</code> y <code>estudiantes/</code> duplican la lógica de "cambiar contraseña" en vez de reusar <code>PerfilPage</code>).</p>
+          </div>
+        </div>
+        <div class="issue sev-low">
+          <div class="i-badge">i</div>
+          <div>
+            <h4>Colisión de nombres: dos carpetas "estudiantes"</h4>
+            <p><code>dashboard/estudiantes/</code> (portal del propio estudiante) y <code>dashboard/admin/estudiantes/</code> (planilla administrativa de todos los estudiantes) no tienen relación entre sí más que el nombre — fácil de confundir al navegar el código.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="actores">
+      <h2><span class="num">§4</span> Los 4 actores, con los roles reales que agrupan</h2>
+      <p class="lede">Tu modelo de 4 actores mapea limpio contra los 13 roles del backend — sin dejar ninguno afuera, salvo Portería, que trato aparte más abajo.</p>
+      <div class="actor-grid">
+        <div class="actor-card" data-a="admin">
+          <div class="a-icon">🏛️</div>
+          <h4>Administración</h4>
+          <div class="a-roles">SUPER_ADMIN · DIRECTOR · REGENTE · SECRETARY</div>
+          <p>Ya es un solo dashboard (<code>admin/</code>). Falta solo la guardia de rol y ordenar el menú.</p>
+        </div>
+        <div class="actor-card" data-a="docente">
+          <div class="a-icon">🍎</div>
+          <h4>Plantel Docente</h4>
+          <div class="a-roles">TEACHER · TEACHER_TUTOR</div>
+          <p>Hoy son 2 carpetas casi gemelas. Se fusionan en una, con el menú ajustado según si el maestro además es tutor de curso.</p>
+        </div>
+        <div class="actor-card" data-a="padres">
+          <div class="a-icon">👪</div>
+          <h4>Padres de Familia</h4>
+          <div class="a-roles">PARENT · JUNTA_ESCOLAR · DELEGATE</div>
+          <p>Hoy son 3 carpetas. Se fusionan en una, con secciones extra (delegados, reportes) visibles solo para Junta Escolar o el delegado del curso.</p>
+        </div>
+        <div class="actor-card" data-a="estudiantes">
+          <div class="a-icon">🎒</div>
+          <h4>Estudiantes</h4>
+          <div class="a-roles">STUDENT · STUDENT_GOV</div>
+          <p>Ya es un solo dashboard bien guardado. El de menor cambio estructural — casi queda tal cual.</p>
+        </div>
+      </div>
+      <p style="margin-top: 8px;">
+        <strong>Portería</strong> queda fuera de los 4: no es un portal personal de un actor, es una
+        terminal física compartida en la puerta (modo kiosco). Tiene más sentido dejarla como su
+        propia ruta operativa, no forzarla dentro de "Administración" — aunque su <em>gestión</em>
+        (generar códigos, ver reportes de accesos) sí puede vivir dentro del dashboard de Administración,
+        tal como ya ocurre hoy con <code>admin/portero/*</code>.
+      </p>
+    </section>
+
+    <section id="estructura">
+      <h2><span class="num">§5</span> Estructura propuesta</h2>
+      <p class="lede">De 9 carpetas a 4 + 1 (portería aparte). Comparado lado a lado:</p>
+      <div class="tree-compare">
+        <div class="tree-panel before">
+          <div class="tp-head">Hoy — 9 carpetas</div>
+          <pre><span class="muted">dashboard/</span>
+├── admin/            <span class="muted">(33 páginas)</span>
+├── secretaria/       <span class="muted">(huérfana)</span>
+├── teacher/          <span class="muted">(12 páginas)</span>
+├── teacher-tutor/    <span class="muted">(7 páginas)</span>
+├── parent/           <span class="muted">(7 páginas)</span>
+├── junta/            <span class="muted">(9 páginas)</span>
+├── delegate/         <span class="muted">(5 páginas)</span>
+├── estudiantes/      <span class="muted">(7 páginas)</span>
+└── portero/          <span class="muted">(1 página)</span></pre>
+        </div>
+        <div class="tree-panel after">
+          <div class="tp-head">Propuesta — 4 actores + portería</div>
+          <pre><span class="muted">dashboard/</span>
+├── <span class="hi">administracion/</span>   <span class="muted">SUPER_ADMIN·DIRECTOR·REGENTE·SECRETARY</span>
+├── <span class="hi">plantel-docente/</span>  <span class="muted">TEACHER·TEACHER_TUTOR</span>
+├── <span class="hi">padres/</span>           <span class="muted">PARENT·JUNTA_ESCOLAR·DELEGATE</span>
+├── <span class="hi">estudiantes/</span>      <span class="muted">STUDENT·STUDENT_GOV</span>
+└── portero/            <span class="muted">terminal de portería (sin cambios)</span>
+
+<span class="muted">components/dashboard/</span>
+└── <span class="hi">DashboardShell.tsx</span>  <span class="muted">sidebar + guardia + logout, una sola vez</span></pre>
+        </div>
+      </div>
+    </section>
+
+    <section id="pieza-comun">
+      <h2><span class="num">§6</span> La pieza compartida: <code>DashboardShell</code></h2>
+      <p class="lede">
+        El mismo principio que aplicamos en el backend (una sola implementación, parametrizada) resuelve
+        la duplicación de los 9 <code>layout.tsx</code>. Un solo componente recibe, por dashboard, lo que
+        cambia — nunca reimplementa lo que no cambia.
+      </p>
+      <div class="layer-grid">
+        <div class="layer-card"><h4>allowedRoles</h4><p>Lista de roles que pueden entrar — el <code>useEffect</code> de guardia se escribe una sola vez, ya no 9 veces.</p></div>
+        <div class="layer-card"><h4>theme</h4><p>Color de acento + nombre del actor — hoy cada carpeta define su propia paleta a mano.</p></div>
+        <div class="layer-card"><h4>menuItems</h4><p>Arreglo de secciones, cada una con su propio <code>roles: string[]</code> — el mismo patrón que ya usa <code>admin/layout.tsx</code> para diferenciar DIRECTOR de SECRETARY dentro del mismo dashboard.</p></div>
+        <div class="layer-card"><h4>manifestPath</h4><p>Qué manifest de PWA instalar (<code>manifest-docente.json</code>, <code>manifest-padres.json</code>, etc.) — hoy repartido a mano en cada layout.</p></div>
+      </div>
+      <p>
+        Con esto, <code>plantel-docente/layout.tsx</code> queda del orden de 15 líneas en vez de ~150,
+        y diferenciar qué ve un TEACHER de qué ve un TEACHER_TUTOR se resuelve con <code>roles</code>
+        por ítem de menú — exactamente como Administración ya distingue DIRECTOR de SECRETARY hoy.
+      </p>
+    </section>
+
+    <section id="fases">
+      <h2><span class="num">§7</span> Plan de migración por fases</h2>
+      <p class="lede">Cada fase deja la app funcionando — nada se rompe a mitad de camino.</p>
+      <div class="phase-list">
+        <div class="phase">
+          <div class="p-no">1</div>
+          <div><strong>Construir <code>DashboardShell</code> y migrar Administración</strong><span class="d">Es la carpeta con el bug de guardia — arreglarla de paso valida el componente compartido con el caso más complejo (4 roles, menús distintos) antes de tocar el resto.</span></div>
+        </div>
+        <div class="phase">
+          <div class="p-no">2</div>
+          <div><strong>Fusionar Plantel Docente</strong><span class="d"><code>teacher/</code> + <code>teacher-tutor/</code> → <code>plantel-docente/</code>, reusando el 90% de páginas que ya son casi idénticas entre ambos.</span></div>
+        </div>
+        <div class="phase">
+          <div class="p-no">3</div>
+          <div><strong>Fusionar Padres de Familia</strong><span class="d"><code>parent/</code> + <code>junta/</code> + <code>delegate/</code> → <code>padres/</code>, con "Delegados" y "Reportes" visibles solo para JUNTA_ESCOLAR, "Mi Curso" solo para DELEGATE.</span></div>
+        </div>
+        <div class="phase">
+          <div class="p-no">4</div>
+          <div><strong>Adoptar el Shell en Estudiantes, resolver <code>secretaria/</code></strong><span class="d">Estudiantes cambia menos: solo adopta el componente compartido. <code>secretaria/</code> se renombra/mueve a algo como <code>attendance-kiosk/</code> para dejar de ocupar un nombre que no le pertenece.</span></div>
+        </div>
+        <div class="phase">
+          <div class="p-no">5</div>
+          <div><strong>Redirecciones + limpieza final</strong><span class="d">Rutas viejas (<code>/dashboard/teacher</code>, <code>/dashboard/junta</code>, etc.) redirigen a las nuevas para no romper enlaces guardados/bookmarks, luego se borran las carpetas viejas.</span></div>
+        </div>
+      </div>
+    </section>
+
+    <section id="decisiones">
+      <h2><span class="num">§8</span> Decisiones que necesito de vos antes de tocar código</h2>
+      <div class="qbox">
+        <div class="q">
+          <div class="q-title">¿Confirmás el mapeo de los 4 actores?</div>
+          <div class="q-desc">Administración (SUPER_ADMIN/DIRECTOR/REGENTE/SECRETARY) · Plantel Docente (TEACHER/TEACHER_TUTOR) · Padres (PARENT/JUNTA_ESCOLAR/DELEGATE) · Estudiantes (STUDENT/STUDENT_GOV). Portería queda aparte.</div>
+        </div>
+        <div class="q">
+          <div class="q-title">¿Nombres de carpeta en español o inglés?</div>
+          <div class="q-desc">Arriba propuse <code>administracion/</code>, <code>plantel-docente/</code>, <code>padres/</code> — decime si preferís mantener inglés (<code>admin/</code>, <code>teachers/</code>, <code>guardians/</code>) por consistencia con el resto del código.</div>
+        </div>
+        <div class="q">
+          <div class="q-title">¿Empezamos por la Fase 1 (Administración + el componente compartido)?</div>
+          <div class="q-desc">Es la fase que arregla el bug de seguridad de UX más urgente y deja listo el componente que después reutilizan las otras 3 fases.</div>
+        </div>
+        <div class="q">
+          <div class="q-title">¿Qué hacemos con <code>secretaria/</code>?</div>
+          <div class="q-desc">¿La renombramos a algo como <code>attendance-kiosk/</code> (queda pública, sin login) o la fusionamos con el modo kiosco de <code>portero/</code> ya que ambas son terminales físicas sin dueño de rol?</div>
+        </div>
+      </div>
+    </section>
+
+    <footer class="doc-foot">
+      Análisis realizado sobre <code>EduLink/frontend/src/app/dashboard</code> — ningún archivo fue modificado todavía.
+    </footer>
+  </main>
+</div>
+
+<script>
+  const links = Array.from(document.querySelectorAll('.nav a'));
+  const sections = links.map(a => document.querySelector(a.getAttribute('href'))).filter(Boolean);
+  const setActive = (id) => links.forEach(a => a.classList.toggle('active', a.getAttribute('href') === '#' + id));
+  if ('IntersectionObserver' in window) {
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach(entry => { if (entry.isIntersecting) setActive(entry.target.id); });
+    }, { rootMargin: '-15% 0px -70% 0px', threshold: 0 });
+    sections.forEach(s => observer.observe(s));
+  }
+</script>
