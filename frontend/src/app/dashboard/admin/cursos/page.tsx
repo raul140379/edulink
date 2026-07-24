@@ -1,8 +1,15 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { Plus, X, Trash2, Users, Filter, Edit, Eye, UserPlus, Search } from 'lucide-react'
+import { Plus, Trash2, Users, Filter, Edit, Eye, UserPlus, Search } from 'lucide-react'
 import { useRouter } from 'next/navigation'
+import Button from '@/components/ui/Button'
+import { Select } from '@/components/ui/Input'
+import Card from '@/components/ui/Card'
+import Badge from '@/components/ui/Badge'
+import Modal from '@/components/ui/Modal'
+import { useToast } from '@/components/ui/ToastProvider'
+import { useConfirm } from '@/components/ui/ConfirmProvider'
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000'
 
@@ -42,21 +49,23 @@ const levelLabel = (v: string) => LEVELS.find(l => l.value === v)?.label || v
 const gradeLabel = (v: string) => GRADES.find(g => g.value === v)?.label || v
 const shiftLabel = (v: string) => SHIFTS.find(s => s.value === v)?.label || v
 
-const shiftColor: Record<string, string> = { MORNING: '#1A3A7C', AFTERNOON: '#633806', NIGHT: '#3C3489' }
-const levelColor: Record<string, string> = { INICIAL: '#0F6E56', PRIMARIA: '#1A3A7C', SECUNDARIA: '#712B13' }
+const shiftTone: Record<string, 'brand' | 'warning' | 'neutral'> = { MORNING: 'brand', AFTERNOON: 'warning', NIGHT: 'neutral' }
+const levelBorder: Record<string, string> = { INICIAL: 'border-l-success-500', PRIMARIA: 'border-l-brand-700', SECUNDARIA: 'border-l-danger-600' }
+const levelText: Record<string, string> = { INICIAL: 'text-success-700', PRIMARIA: 'text-brand-700', SECUNDARIA: 'text-danger-600' }
 
 const emptyForm = { level: 'PRIMARIA', grade: 'PRIMERO', parallel: 'A', educationType: 'REGULAR', shift: 'MORNING' }
 
 export default function CursosPage() {
   const router = useRouter()
+  const toast = useToast()
+  const confirm = useConfirm()
   const [courses,     setCourses]     = useState<Course[]>([])
   const [loading,     setLoading]     = useState(true)
   const [showModal,   setShowModal]   = useState(false)
   const [editMode,    setEditMode]    = useState(false)
   const [editId,      setEditId]      = useState<number | null>(null)
   const [saving,      setSaving]      = useState(false)
-  const [success,     setSuccess]     = useState('')
-  const [error,       setError]       = useState('')
+  const [formError,   setFormError]   = useState('')
   const [filterLevel, setFilterLevel] = useState('')
   const [filterShift, setFilterShift] = useState('')
   const [filterType,  setFilterType]  = useState('')
@@ -71,13 +80,9 @@ export default function CursosPage() {
   const [searchStudent,   setSearchStudent]   = useState('')
   const [selectedStudent, setSelectedStudent] = useState<number | null>(null)
   const [enrolling,       setEnrolling]       = useState(false)
+  const [enrollError,     setEnrollError]     = useState('')
 
   const token = typeof window !== 'undefined' ? localStorage.getItem('token') : ''
-
-  const notify = (msg: string, type: 'success' | 'error' = 'success') => {
-    if (type === 'success') { setSuccess(msg); setTimeout(() => setSuccess(''), 3000) }
-    else                    { setError(msg);   setTimeout(() => setError(''),   4000) }
-  }
 
   const checkWarning = (level: string, shift: string) => {
     if (level === 'INICIAL' && shift !== 'MORNING') {
@@ -97,8 +102,8 @@ export default function CursosPage() {
       const res  = await fetch(`${API_URL}/api/courses?${params}`, { headers: { Authorization: `Bearer ${token}` } })
       const data = await res.json()
       if (res.ok) setCourses(data)
-      else notify('Error al cargar cursos', 'error')
-    } catch { notify('Error de conexión', 'error') }
+      else toast('Error al cargar cursos', 'error')
+    } catch { toast('Error de conexión', 'error') }
     finally  { setLoading(false) }
   }
 
@@ -121,6 +126,7 @@ export default function CursosPage() {
     setSelectedStudent(null)
     setSearchStudent('')
     setStudents([])
+    setEnrollError('')
     setShowEnroll(true)
   }
 
@@ -139,17 +145,17 @@ export default function CursosPage() {
         body:    JSON.stringify({ courseId: enrollCourse.id }),
       })
       const data = await res.json()
-      if (!res.ok) { notify(data.message, 'error'); return }
-      notify(data.message)
+      if (!res.ok) { setEnrollError(data.message); return }
+      toast(data.message, 'success')
       setShowEnroll(false)
       fetchCourses()
-    } catch { notify('Error de conexión', 'error') }
+    } catch { setEnrollError('Error de conexión') }
     finally  { setEnrolling(false) }
   }
 
   const openCreate = () => {
     setEditMode(false); setEditId(null)
-    setForm(emptyForm); setError('')
+    setForm(emptyForm); setFormError('')
     checkWarning(emptyForm.level, emptyForm.shift)
     setShowModal(true)
   }
@@ -157,13 +163,13 @@ export default function CursosPage() {
   const openEdit = (c: Course) => {
     setEditMode(true); setEditId(c.id)
     setForm({ level: c.level, grade: c.grade, parallel: c.parallel, educationType: c.educationType, shift: c.shift })
-    setError('')
+    setFormError('')
     checkWarning(c.level, c.shift)
     setShowModal(true)
   }
 
   const handleSave = async () => {
-    setError(''); setSaving(true)
+    setFormError(''); setSaving(true)
     try {
       const url    = editMode ? `${API_URL}/api/courses/${editId}` : `${API_URL}/api/courses`
       const method = editMode ? 'PUT' : 'POST'
@@ -173,25 +179,26 @@ export default function CursosPage() {
         body: JSON.stringify(form),
       })
       const data = await res.json()
-      if (!res.ok) { notify(data.message, 'error'); return }
-      notify(editMode ? 'Curso actualizado correctamente' : 'Curso creado correctamente')
+      if (!res.ok) { setFormError(data.message); return }
+      toast(editMode ? 'Curso actualizado correctamente' : 'Curso creado correctamente', 'success')
       setShowModal(false)
       fetchCourses()
-    } catch { notify('Error de conexión', 'error') }
+    } catch { setFormError('Error de conexión') }
     finally  { setSaving(false) }
   }
 
   const handleDelete = async (id: number, name: string) => {
-    if (!confirm(`¿Eliminar el curso ${name}?`)) return
+    const ok = await confirm(`¿Eliminar el curso ${name}?`, { danger: true, confirmLabel: 'Eliminar' })
+    if (!ok) return
     try {
       const res  = await fetch(`${API_URL}/api/courses/${id}`, { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } })
       const data = await res.json()
-      if (res.ok) { notify(data.message); fetchCourses() }
-      else notify(data.message, 'error')
-    } catch { notify('Error al eliminar', 'error') }
+      if (res.ok) { toast(data.message, 'success'); fetchCourses() }
+      else toast(data.message, 'error')
+    } catch { toast('Error al eliminar', 'error') }
   }
 
-  const grouped   = courses.reduce((acc, c) => {
+  const grouped = courses.reduce((acc, c) => {
     if (!acc[c.level]) acc[c.level] = []
     acc[c.level].push(c)
     return acc
@@ -199,7 +206,6 @@ export default function CursosPage() {
 
   const courseName = (c: Course) => `${gradeLabel(c.grade)} ${c.parallel}`
 
-  // Filtrar estudiantes por búsqueda
   const filteredStudents = students.filter(s => {
     const q = searchStudent.toLowerCase()
     return (
@@ -210,322 +216,199 @@ export default function CursosPage() {
     )
   })
 
-  // Verificar si estudiante ya está inscrito en año activo
-  const isEnrolled = (s: Student) =>
-    s.assignments?.some(a => a.academicYear?.isActive)
+  const isEnrolled = (s: Student) => s.assignments?.some(a => a.academicYear?.isActive)
 
   return (
     <div>
-      <div className="page-header">
+      <div className="flex items-start justify-between gap-4 mb-6 flex-wrap">
         <div>
-          <h1>Gestión de Cursos</h1>
-          <p>Administra los cursos por nivel, grado, paralelo y turno</p>
+          <h1 className="text-xl font-bold text-brand-700 mb-1">Gestión de Cursos</h1>
+          <p className="text-[13px] text-neutral-500">Administra los cursos por nivel, grado, paralelo y turno</p>
         </div>
-        <button className="btn-primary" onClick={openCreate}><Plus size={16}/> Nuevo curso</button>
+        <Button onClick={openCreate}><Plus size={16} /> Nuevo curso</Button>
       </div>
 
-      {success && <div className="alert suc">{success}</div>}
-      {error && !showModal && !showEnroll && <div className="alert err">{error}</div>}
-
-      <div className="filters-bar">
-        <Filter size={15} color="#6B8BB0"/>
-        <select value={filterLevel} onChange={e => setFilterLevel(e.target.value)}>
+      <div className="flex items-center gap-2.5 mb-5 flex-wrap bg-white border border-neutral-300 rounded-[10px] px-4 py-3">
+        <Filter size={15} className="text-neutral-500" />
+        <Select value={filterLevel} onChange={e => setFilterLevel(e.target.value)} className="w-auto h-9 min-w-[140px]">
           <option value="">Todos los niveles</option>
           {LEVELS.map(l => <option key={l.value} value={l.value}>{l.label}</option>)}
-        </select>
-        <select value={filterShift} onChange={e => setFilterShift(e.target.value)}>
+        </Select>
+        <Select value={filterShift} onChange={e => setFilterShift(e.target.value)} className="w-auto h-9 min-w-[140px]">
           <option value="">Todos los turnos</option>
           {SHIFTS.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
-        </select>
-        <select value={filterType} onChange={e => setFilterType(e.target.value)}>
+        </Select>
+        <Select value={filterType} onChange={e => setFilterType(e.target.value)} className="w-auto h-9 min-w-[140px]">
           <option value="">Todos los tipos</option>
           {EDU_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
-        </select>
-        <button className="btn-outline" onClick={fetchCourses}>Filtrar</button>
+        </Select>
+        <Button variant="secondary" size="sm" onClick={fetchCourses}>Filtrar</Button>
       </div>
 
       {loading ? (
-        <div className="center"><div className="spinner"/></div>
+        <div className="flex justify-center py-12"><p className="text-sm text-neutral-500">Cargando...</p></div>
       ) : courses.length === 0 ? (
-        <div className="empty-card">
+        <Card className="flex flex-col items-center gap-3 py-12 text-neutral-500 text-sm">
           <p>No se encontraron cursos</p>
-          <button className="btn-primary" onClick={openCreate}><Plus size={14}/> Crear primer curso</button>
-        </div>
+          <Button onClick={openCreate}><Plus size={14} /> Crear primer curso</Button>
+        </Card>
       ) : (
-        <div className="levels-container">
+        <div className="flex flex-col gap-5">
           {Object.entries(grouped).map(([level, list]) => (
-            <div key={level} className="level-section">
-              <div className="level-header">
-                <span className="level-title" style={{ color: levelColor[level] }}>{levelLabel(level)}</span>
-                <span className="level-count">{list.length} cursos</span>
+            <Card key={level} padded={false} className="overflow-hidden">
+              <div className={`flex items-center justify-between px-5 py-3.5 border-b border-neutral-100 border-l-4 ${levelBorder[level] || 'border-l-brand-700'}`}>
+                <span className={`text-[15px] font-bold ${levelText[level] || 'text-brand-700'}`}>{levelLabel(level)}</span>
+                <span className="text-xs text-neutral-500">{list.length} cursos</span>
               </div>
-              <div className="courses-grid">
+              <div className="grid gap-3 p-4" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))' }}>
                 {list.map(c => (
-                  <div key={c.id} className="course-card">
-                    <div className="course-top">
-                      <div className="course-name">{courseName(c)}</div>
-                      <div className="course-badges">
-                        <span className="cbadge" style={{ background: shiftColor[c.shift]+'18', color: shiftColor[c.shift] }}>
-                          {shiftLabel(c.shift)}
-                        </span>
-                        {c.educationType === 'BTH' && <span className="cbadge bth">BTH</span>}
+                  <div key={c.id} className="bg-neutral-100/60 border border-neutral-300 rounded-[10px] p-3.5 flex flex-col gap-2.5 hover:shadow-md transition-shadow">
+                    <div className="flex flex-col gap-1.5">
+                      <div className="text-xl font-extrabold text-brand-700">{courseName(c)}</div>
+                      <div className="flex gap-1.5 flex-wrap">
+                        <Badge tone={shiftTone[c.shift]}>{shiftLabel(c.shift)}</Badge>
+                        {c.educationType === 'BTH' && <Badge tone="warning">BTH</Badge>}
                       </div>
                     </div>
-                    <div className="cstat"><Users size={12}/>{c._count.assignments} estudiantes</div>
+                    <div className="flex items-center gap-1.5 text-xs text-neutral-500"><Users size={12} />{c._count.assignments} estudiantes</div>
                     {c.tutor && (
-                      <div className="cstat tutor-info">
-                        <span>🎓 {c.tutor.teacher.lastName} {c.tutor.teacher.firstName}</span>
-                      </div>
+                      <div className="text-xs text-neutral-500">🎓 {c.tutor.teacher.lastName} {c.tutor.teacher.firstName}</div>
                     )}
-                    <div className="course-actions">
-                      <button className="icon-btn view" title="Ver detalle" onClick={() => router.push(`/dashboard/admin/cursos/${c.id}`)}>
-                        <Eye size={13}/>
+                    <div className="flex gap-1.5 justify-end mt-1">
+                      <button title="Ver detalle" onClick={() => router.push(`/dashboard/admin/cursos/${c.id}`)} className="w-7 h-7 rounded-md bg-info-500/15 text-info-500 flex items-center justify-center hover:opacity-75">
+                        <Eye size={13} />
                       </button>
-                      <button className="icon-btn edit" title="Editar" onClick={() => openEdit(c)}>
-                        <Edit size={13}/>
+                      <button title="Editar" onClick={() => openEdit(c)} className="w-7 h-7 rounded-md bg-accent-500/15 text-accent-600 flex items-center justify-center hover:opacity-75">
+                        <Edit size={13} />
                       </button>
-                      <button className="icon-btn enroll" title="Inscribir estudiante" onClick={() => openEnroll(c)}>
-                        <UserPlus size={13}/>
+                      <button title="Inscribir estudiante" onClick={() => openEnroll(c)} className="w-7 h-7 rounded-md bg-success-100 text-success-700 flex items-center justify-center hover:opacity-75">
+                        <UserPlus size={13} />
                       </button>
-                      <button className="icon-btn del" title="Eliminar" onClick={() => handleDelete(c.id, courseName(c))}>
-                        <Trash2 size={13}/>
+                      <button title="Eliminar" onClick={() => handleDelete(c.id, courseName(c))} className="w-7 h-7 rounded-md bg-danger-100 text-danger-600 flex items-center justify-center hover:opacity-75">
+                        <Trash2 size={13} />
                       </button>
                     </div>
                   </div>
                 ))}
               </div>
-            </div>
+            </Card>
           ))}
         </div>
       )}
 
-      {courses.length > 0 && <div className="summary">Total: <strong>{courses.length}</strong> cursos registrados</div>}
+      {courses.length > 0 && <div className="px-1 py-3 text-xs text-neutral-500">Total: <strong>{courses.length}</strong> cursos registrados</div>}
 
       {/* ── Modal inscribir estudiante ── */}
-      {showEnroll && enrollCourse && (
-        <div className="overlay" onClick={() => setShowEnroll(false)}>
-          <div className="modal modal-lg" onClick={e => e.stopPropagation()}>
-            <div className="mhead">
-              <div>
-                <h2>Inscribir estudiante</h2>
-                <p style={{fontSize:'12px',color:'#6B8BB0',margin:'2px 0 0'}}>
-                  {levelLabel(enrollCourse.level)} — {courseName(enrollCourse)} · {shiftLabel(enrollCourse.shift)}
-                </p>
+      <Modal
+        open={showEnroll && !!enrollCourse}
+        onClose={() => setShowEnroll(false)}
+        title="Inscribir estudiante"
+        maxWidth={700}
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setShowEnroll(false)}>Cancelar</Button>
+            <Button onClick={handleEnroll} loading={enrolling} disabled={!selectedStudent}>
+              <UserPlus size={14} /> Inscribir estudiante
+            </Button>
+          </>
+        }
+      >
+        {enrollCourse && (
+          <div className="flex flex-col gap-3.5">
+            <p className="text-xs text-neutral-500 -mt-2">
+              {levelLabel(enrollCourse.level)} — {courseName(enrollCourse)} · {shiftLabel(enrollCourse.shift)}
+            </p>
+            {enrollError && <p className="text-[13px] text-danger-600 bg-danger-100 rounded-lg px-3 py-2">{enrollError}</p>}
+
+            <div className="flex gap-2.5">
+              <div className="relative flex-1">
+                <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-info-500 pointer-events-none" />
+                <input
+                  type="text" placeholder="Buscar por nombre, CI o RUDE..."
+                  value={searchStudent} onChange={e => setSearchStudent(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && handleSearchStudent()}
+                  className="w-full h-10 pl-9 pr-3 rounded-lg border border-neutral-300 text-sm outline-none focus:border-brand-600 focus:ring-2 focus:ring-brand-600/15"
+                />
               </div>
-              <button onClick={() => setShowEnroll(false)}><X size={18}/></button>
+              <Button onClick={handleSearchStudent} loading={loadingStudents}><Search size={14} /> Buscar</Button>
             </div>
-            <div className="mbody">
-              {error && <div className="alert err">{error}</div>}
 
-              {/* Buscador */}
-              <div className="search-row">
-                <div className="search-wrap">
-                  <Search size={14} className="sicon"/>
-                  <input
-                    type="text"
-                    placeholder="Buscar por nombre, CI o RUDE..."
-                    value={searchStudent}
-                    onChange={e => setSearchStudent(e.target.value)}
-                    onKeyDown={e => e.key === 'Enter' && handleSearchStudent()}
-                  />
-                </div>
-                <button className="btn-primary" onClick={handleSearchStudent} disabled={loadingStudents}>
-                  {loadingStudents ? <span className="spinsm"/> : <Search size={14}/>}
-                  Buscar
-                </button>
-              </div>
-
-              {/* Lista de estudiantes */}
-              {loadingStudents ? (
-                <div className="center"><div className="spinner"/></div>
-              ) : filteredStudents.length === 0 && searchStudent ? (
-                <div className="no-data">No se encontraron estudiantes</div>
-              ) : filteredStudents.length === 0 ? (
-                <div className="no-data">Busca un estudiante para inscribir</div>
-              ) : (
-                <div className="students-list">
-                  {filteredStudents.map(s => {
-                    const enrolled = isEnrolled(s)
-                    const activeAssignment = s.assignments?.find(a => a.academicYear?.isActive)
-                    return (
-                      <label key={s.id} className={`student-option ${selectedStudent === s.id ? 'selected' : ''} ${enrolled ? 'enrolled' : ''}`}>
-                        <input
-                          type="radio"
-                          name="student"
-                          value={s.id}
-                          checked={selectedStudent === s.id}
-                          onChange={() => setSelectedStudent(s.id)}
-                          disabled={false}
-                        />
-                        <div className="student-data">
-                          <div className="student-name">{s.lastName} {s.firstName}</div>
-                          <div className="student-meta">
-                            {s.ci   && <span>CI: {s.ci}</span>}
-                            {s.rude && <span>RUDE: {s.rude}</span>}
-                            {enrolled && activeAssignment && (
-                              <span className="enrolled-badge">
-                                ⚠️ Ya inscrito en {gradeLabel(activeAssignment.course.grade)} {activeAssignment.course.parallel}
-                              </span>
-                            )}
-                          </div>
+            {loadingStudents ? (
+              <p className="text-center text-sm text-neutral-500 py-6">Cargando...</p>
+            ) : filteredStudents.length === 0 && searchStudent ? (
+              <p className="text-sm text-neutral-500 italic py-2">No se encontraron estudiantes</p>
+            ) : filteredStudents.length === 0 ? (
+              <p className="text-sm text-neutral-500 italic py-2">Busca un estudiante para inscribir</p>
+            ) : (
+              <div className="flex flex-col gap-2 max-h-[300px] overflow-y-auto">
+                {filteredStudents.map(s => {
+                  const enrolled = isEnrolled(s)
+                  const activeAssignment = s.assignments?.find(a => a.academicYear?.isActive)
+                  return (
+                    <label
+                      key={s.id}
+                      className={`flex items-start gap-2.5 p-3 border rounded-lg cursor-pointer ${
+                        selectedStudent === s.id ? 'border-brand-700 bg-brand-100' : enrolled ? 'border-accent-500 bg-warning-100' : 'border-neutral-300 hover:bg-neutral-100'
+                      }`}
+                    >
+                      <input type="radio" name="student" checked={selectedStudent === s.id} onChange={() => setSelectedStudent(s.id)} className="accent-brand-700 mt-0.5 shrink-0" />
+                      <div className="flex flex-col gap-0.5">
+                        <div className="text-[13px] font-semibold text-brand-700">{s.lastName} {s.firstName}</div>
+                        <div className="flex gap-2.5 flex-wrap text-[11px] text-neutral-500">
+                          {s.ci && <span>CI: {s.ci}</span>}
+                          {s.rude && <span>RUDE: {s.rude}</span>}
+                          {enrolled && activeAssignment && (
+                            <span className="text-[#8A6116] font-medium">⚠️ Ya inscrito en {gradeLabel(activeAssignment.course.grade)} {activeAssignment.course.parallel}</span>
+                          )}
                         </div>
-                      </label>
-                    )
-                  })}
-                </div>
-              )}
-            </div>
-            <div className="mfoot">
-              <button className="btn-outline" onClick={() => setShowEnroll(false)}>Cancelar</button>
-              <button
-                className="btn-primary"
-                onClick={handleEnroll}
-                disabled={enrolling || !selectedStudent}
-              >
-                {enrolling ? <span className="spinsm"/> : <UserPlus size={14}/>}
-                {enrolling ? 'Inscribiendo...' : 'Inscribir estudiante'}
-              </button>
-            </div>
+                      </div>
+                    </label>
+                  )
+                })}
+              </div>
+            )}
           </div>
-        </div>
-      )}
+        )}
+      </Modal>
 
       {/* ── Modal crear/editar curso ── */}
-      {showModal && (
-        <div className="overlay" onClick={() => setShowModal(false)}>
-          <div className="modal" onClick={e => e.stopPropagation()}>
-            <div className="mhead">
-              <h2>{editMode ? 'Editar Curso' : 'Nuevo Curso'}</h2>
-              <button onClick={() => setShowModal(false)}><X size={18}/></button>
-            </div>
-            <div className="mbody">
-              {error && <div className="alert err">{error}</div>}
-              {warning && <div className="alert warn">{warning}</div>}
-              <div className="form-grid">
-                <div className="fg">
-                  <label>Nivel *</label>
-                  <select value={form.level} onChange={e => { setForm({...form, level: e.target.value}); checkWarning(e.target.value, form.shift) }}>
-                    {LEVELS.map(l => <option key={l.value} value={l.value}>{l.label}</option>)}
-                  </select>
-                </div>
-                <div className="fg">
-                  <label>Grado *</label>
-                  <select value={form.grade} onChange={e => setForm({...form, grade: e.target.value})}>
-                    {GRADES.map(g => <option key={g.value} value={g.value}>{g.label} Grado</option>)}
-                  </select>
-                </div>
-                <div className="fg">
-                  <label>Paralelo *</label>
-                  <select value={form.parallel} onChange={e => setForm({...form, parallel: e.target.value})}>
-                    {PARALLELS.map(p => <option key={p.value} value={p.value}>Paralelo {p.label}</option>)}
-                  </select>
-                </div>
-                <div className="fg">
-                  <label>Turno *</label>
-                  <select value={form.shift} onChange={e => { setForm({...form, shift: e.target.value}); checkWarning(form.level, e.target.value) }}>
-                    {SHIFTS.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
-                  </select>
-                </div>
-                <div className="fg fg-full">
-                  <label>Tipo de educación *</label>
-                  <select value={form.educationType} onChange={e => setForm({...form, educationType: e.target.value})}>
-                    {EDU_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
-                  </select>
-                </div>
-              </div>
-              <div className="preview">
-                <span>Vista previa:</span>
-                <strong>{levelLabel(form.level)} — {gradeLabel(form.grade)} {form.parallel} · {shiftLabel(form.shift)} · {form.educationType}</strong>
-              </div>
-            </div>
-            <div className="mfoot">
-              <button className="btn-outline" onClick={() => setShowModal(false)}>Cancelar</button>
-              <button className="btn-primary" onClick={handleSave} disabled={saving}>
-                {saving ? <span className="spinsm"/> : editMode ? <Edit size={14}/> : <Plus size={14}/>}
-                {saving ? 'Guardando...' : editMode ? 'Actualizar' : 'Crear curso'}
-              </button>
-            </div>
+      <Modal
+        open={showModal}
+        onClose={() => setShowModal(false)}
+        title={editMode ? 'Editar Curso' : 'Nuevo Curso'}
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setShowModal(false)}>Cancelar</Button>
+            <Button onClick={handleSave} loading={saving}>{editMode ? 'Actualizar' : 'Crear curso'}</Button>
+          </>
+        }
+      >
+        <div className="flex flex-col gap-3.5">
+          {formError && <p className="text-[13px] text-danger-600 bg-danger-100 rounded-lg px-3 py-2">{formError}</p>}
+          {warning && <p className="text-[13px] text-[#7A6000] bg-warning-100 rounded-lg px-3 py-2">{warning}</p>}
+          <div className="grid grid-cols-2 gap-3">
+            <Select label="Nivel" required value={form.level} onChange={e => { setForm({ ...form, level: e.target.value }); checkWarning(e.target.value, form.shift) }}>
+              {LEVELS.map(l => <option key={l.value} value={l.value}>{l.label}</option>)}
+            </Select>
+            <Select label="Grado" required value={form.grade} onChange={e => setForm({ ...form, grade: e.target.value })}>
+              {GRADES.map(g => <option key={g.value} value={g.value}>{g.label} Grado</option>)}
+            </Select>
+            <Select label="Paralelo" required value={form.parallel} onChange={e => setForm({ ...form, parallel: e.target.value })}>
+              {PARALLELS.map(p => <option key={p.value} value={p.value}>Paralelo {p.label}</option>)}
+            </Select>
+            <Select label="Turno" required value={form.shift} onChange={e => { setForm({ ...form, shift: e.target.value }); checkWarning(form.level, e.target.value) }}>
+              {SHIFTS.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}
+            </Select>
+            <Select label="Tipo de educación" required value={form.educationType} onChange={e => setForm({ ...form, educationType: e.target.value })} className="col-span-2">
+              {EDU_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+            </Select>
+          </div>
+          <div className="bg-neutral-100 border border-neutral-300 rounded-lg px-3.5 py-3 text-[13px] text-neutral-500 flex flex-col gap-1">
+            <span>Vista previa:</span>
+            <strong className="text-brand-700">{levelLabel(form.level)} — {gradeLabel(form.grade)} {form.parallel} · {shiftLabel(form.shift)} · {form.educationType}</strong>
           </div>
         </div>
-      )}
-
-      <style>{`
-        .page-header{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:24px;gap:16px}
-        .page-header h1{font-size:20px;font-weight:700;color:#1A3A7C;margin-bottom:4px}
-        .page-header p{font-size:13px;color:#6B8BB0}
-        .alert{padding:10px 14px;border-radius:8px;font-size:13px;margin-bottom:16px}
-        .alert.suc{background:#E1F5EE;border:1px solid #9FE1CB;color:#0F6E56}
-        .alert.err{background:#FFF0F0;border:1px solid #FFBBBB;color:#C0392B}
-        .alert.warn{background:#FFFBEA;border:1px solid #F5C518;color:#7A6000}
-        .filters-bar{display:flex;align-items:center;gap:10px;margin-bottom:20px;flex-wrap:wrap;background:#fff;border:1px solid #CBE0F0;border-radius:10px;padding:12px 16px}
-        .filters-bar select{padding:7px 10px;border:1.5px solid #CBE0F0;border-radius:7px;font-size:13px;outline:none;color:#1A3A7C;cursor:pointer}
-        .btn-primary{display:flex;align-items:center;gap:6px;padding:9px 16px;background:#1A3A7C;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:500;cursor:pointer;white-space:nowrap}
-        .btn-primary:hover:not(:disabled){background:#4A9FD4}
-        .btn-primary:disabled{opacity:.6;cursor:not-allowed}
-        .btn-outline{display:flex;align-items:center;gap:6px;padding:8px 14px;background:#fff;color:#1A3A7C;border:1.5px solid #CBE0F0;border-radius:8px;font-size:13px;cursor:pointer}
-        .btn-outline:hover{background:#F0F6FC}
-        .center{display:flex;justify-content:center;padding:48px}
-        .empty-card{background:#fff;border:1px solid #CBE0F0;border-radius:12px;padding:48px;display:flex;flex-direction:column;align-items:center;gap:12px;color:#6B8BB0;font-size:13px}
-        .levels-container{display:flex;flex-direction:column;gap:20px}
-        .level-section{background:#fff;border:1px solid #CBE0F0;border-radius:12px;overflow:hidden}
-        .level-header{display:flex;align-items:center;justify-content:space-between;padding:14px 20px;border-bottom:1px solid #F0F6FC;border-left:4px solid #1A3A7C}
-        .level-title{font-size:15px;font-weight:700}
-        .level-count{font-size:12px;color:#6B8BB0}
-        .courses-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:12px;padding:16px}
-        .course-card{background:#F8FBFF;border:1px solid #CBE0F0;border-radius:10px;padding:14px;display:flex;flex-direction:column;gap:10px;transition:box-shadow .2s}
-        .course-card:hover{box-shadow:0 2px 12px rgba(26,58,124,.1)}
-        .course-top{display:flex;flex-direction:column;gap:6px}
-        .course-name{font-size:20px;font-weight:800;color:#1A3A7C}
-        .course-badges{display:flex;gap:6px;flex-wrap:wrap}
-        .cbadge{padding:2px 8px;border-radius:20px;font-size:11px;font-weight:500}
-        .cbadge.bth{background:#F5C518;color:#3A2F00}
-        .cstat{display:flex;align-items:center;gap:6px;font-size:12px;color:#6B8BB0}
-        .course-actions{display:flex;gap:6px;justify-content:flex-end;margin-top:4px}
-        .icon-btn{width:28px;height:28px;border:none;border-radius:6px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:opacity .2s}
-        .icon-btn.view{background:#E0ECF8;color:#1A3A7C}
-        .icon-btn.edit{background:#FAEEDA;color:#633806}
-        .icon-btn.enroll{background:#E1F5EE;color:#0F6E56}
-        .icon-btn.del{background:#FFF0F0;color:#C0392B}
-        .icon-btn:hover{opacity:.75}
-        .summary{padding:12px 4px;font-size:12px;color:#6B8BB0}
-        .overlay{position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:500;display:flex;align-items:center;justify-content:center;padding:16px}
-        .modal{background:#fff;border-radius:14px;width:100%;max-width:460px;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,0.15);max-height:90vh;display:flex;flex-direction:column}
-        .modal-lg{max-width:700px;width:95vw}
-        .mhead{display:flex;align-items:flex-start;justify-content:space-between;padding:18px 20px;border-bottom:1px solid #CBE0F0;flex-shrink:0;gap:12px}
-        .mhead h2{font-size:16px;font-weight:600;color:#1A3A7C;margin:0}
-        .mhead button{background:none;border:none;cursor:pointer;color:#6B8BB0;display:flex;padding:4px;border-radius:6px;flex-shrink:0}
-        .mhead button:hover{background:#F0F6FC;color:#1A3A7C}
-        .mbody{padding:20px;display:flex;flex-direction:column;gap:14px;overflow-y:auto;flex:1}
-        .mfoot{display:flex;justify-content:flex-end;gap:10px;padding:16px 20px;border-top:1px solid #CBE0F0;flex-shrink:0}
-        .search-row{display:flex;gap:10px}
-        .search-wrap{position:relative;flex:1}
-        .sicon{position:absolute;left:11px;top:50%;transform:translateY(-50%);color:#4A9FD4;pointer-events:none}
-        .search-wrap input{width:100%;padding:9px 12px 9px 34px;border:1.5px solid #CBE0F0;border-radius:8px;font-size:13px;outline:none;color:#1A3A7C}
-        .search-wrap input:focus{border-color:#4A9FD4}
-        .students-list{display:flex;flex-direction:column;gap:8px;max-height:300px;overflow-y:auto}
-        .student-option{display:flex;align-items:flex-start;gap:10px;padding:12px;border:1.5px solid #CBE0F0;border-radius:8px;cursor:pointer}
-        .student-option:hover{background:#F0F6FC}
-        .student-option.selected{border-color:#1A3A7C;background:#E8F0FB}
-        .student-option.enrolled{border-color:#F5C518;background:#FFFBEA}
-        .student-option input{accent-color:#1A3A7C;cursor:pointer;margin-top:3px;flex-shrink:0}
-        .student-data{display:flex;flex-direction:column;gap:3px}
-        .student-name{font-size:13px;font-weight:600;color:#1A3A7C}
-        .student-meta{display:flex;gap:10px;font-size:11px;color:#6B8BB0;flex-wrap:wrap}
-        .enrolled-badge{color:#BA7517;font-weight:500}
-        .no-data{font-size:13px;color:#6B8BB0;font-style:italic;padding:8px 0}
-        .form-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
-        .fg-full{grid-column:1/-1}
-        .fg{display:flex;flex-direction:column;gap:6px}
-        .fg label{font-size:11px;font-weight:700;color:#1A3A7C;text-transform:uppercase;letter-spacing:.6px}
-        .fg select{padding:10px 12px;border:1.5px solid #CBE0F0;border-radius:8px;font-size:13px;color:#1A3A7C;outline:none}
-        .fg select:focus{border-color:#4A9FD4;box-shadow:0 0 0 3px rgba(74,159,212,.12)}
-        .preview{background:#F0F6FC;border:1px solid #CBE0F0;border-radius:8px;padding:12px;font-size:13px;color:#6B8BB0;display:flex;flex-direction:column;gap:4px}
-        .preview strong{color:#1A3A7C}
-        .spinner{width:24px;height:24px;border:2px solid rgba(26,58,124,.2);border-top-color:#1A3A7C;border-radius:50%;animation:spin .7s linear infinite}
-        .spinsm{width:14px;height:14px;border:2px solid rgba(255,255,255,.3);border-top-color:#fff;border-radius:50%;animation:spin .7s linear infinite;display:inline-block}
-        @keyframes spin{to{transform:rotate(360deg)}}
-        @media(max-width:600px){.page-header{flex-direction:column}.form-grid{grid-template-columns:1fr}}
-      `}</style>
+      </Modal>
     </div>
   )
 }

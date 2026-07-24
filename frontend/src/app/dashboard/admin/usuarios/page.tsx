@@ -1,7 +1,14 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { Plus, Search, RefreshCw, UserCheck, UserX, EyeOff, Eye, X, KeyRound, Copy, Check, Edit, Trash2, Download, AlertTriangle } from 'lucide-react'
+import { Plus, Search, RefreshCw, UserCheck, UserX, Eye, EyeOff, KeyRound, Copy, Check, Edit, Trash2, Download, AlertTriangle } from 'lucide-react'
+import Button from '@/components/ui/Button'
+import { Input, Select } from '@/components/ui/Input'
+import Badge from '@/components/ui/Badge'
+import Modal from '@/components/ui/Modal'
+import Table, { Column } from '@/components/ui/Table'
+import { useToast } from '@/components/ui/ToastProvider'
+import { useConfirm } from '@/components/ui/ConfirmProvider'
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000'
 
@@ -18,28 +25,28 @@ interface User {
 }
 
 const roleLabels: Record<string, string> = {
-  SUPER_ADMIN: 'Super Admin', DIRECTOR: 'Director', REGENTE: 'Regente',
+  SUPER_ADMIN: 'Super Admin', DIRECTOR_DISTRITAL: 'Director Distrital', DIRECTOR: 'Director', REGENTE: 'Regente',
   SECRETARY: 'Secretaria', TEACHER: 'Maestro', DELEGATE: 'Delegado',
   JUNTA_ESCOLAR: 'Junta Escolar', TEACHER_TUTOR: 'Maestro Tutor',
   PARENT: 'Padre / Tutor', STUDENT: 'Estudiante', STUDENT_GOV: 'Gob. Estudiantil', STAFF: 'Personal',
 }
 
-const roleColors: Record<string, string> = {
-  SUPER_ADMIN: '#1A3A7C', DIRECTOR: '#0F6E56', REGENTE: '#3C3489',
-  SECRETARY: '#712B13', TEACHER: '#633806', TEACHER_TUTOR: '#0F6E56', DELEGATE: '#444441',
-  JUNTA_ESCOLAR: '#0F6E56',
-  PARENT: '#27500A', STUDENT: '#791F1F', STUDENT_GOV: '#185FA5', STAFF: '#4A4A4A',
-}
+// Roles que necesitan que se indique explícitamente a qué colegio pertenecen
+// cuando quien crea el usuario ve/administra más de un colegio (Super Admin / Director Distrital).
+const SCHOOL_SCOPED_ROLES = new Set([
+  'DIRECTOR', 'REGENTE', 'SECRETARY', 'TEACHER', 'TEACHER_TUTOR', 'DELEGATE',
+  'JUNTA_ESCOLAR', 'PARENT', 'STUDENT', 'STUDENT_GOV', 'STAFF',
+])
 
 const RESET_OPTIONS = [
-  { key: 'ALL',       label: 'Todos',          desc: 'Todos los roles permitidos',          color: '#1A3A7C' },
-  { key: 'STUDENT',   label: 'Estudiantes',    desc: 'RUDE o 4 letras apellido + año',      color: '#791F1F' },
-  { key: 'PARENT',    label: 'Padres/Tutores', desc: 'CI o 4 letras apellido + año',        color: '#27500A' },
-  { key: 'TEACHER',   label: 'Maestros',       desc: 'CI o 4 letras apellido + año',        color: '#633806' },
-  { key: 'SECRETARY', label: 'Secretaria',     desc: 'CI o 4 letras apellido + año',        color: '#712B13' },
-  { key: 'REGENTE',   label: 'Regente',        desc: 'CI o 4 letras apellido + año',        color: '#3C3489' },
-  { key: 'DELEGATE',  label: 'Delegados',      desc: 'CI o 4 letras apellido + año',        color: '#444441' },
-  { key: 'STAFF',     label: 'Personal',       desc: 'CI o 4 letras apellido + año',        color: '#4A4A4A' },
+  { key: 'ALL',       label: 'Todos',          desc: 'Todos los roles permitidos' },
+  { key: 'STUDENT',   label: 'Estudiantes',    desc: 'RUDE o 4 letras apellido + año' },
+  { key: 'PARENT',    label: 'Padres/Tutores', desc: 'CI o 4 letras apellido + año' },
+  { key: 'TEACHER',   label: 'Maestros',       desc: 'CI o 4 letras apellido + año' },
+  { key: 'SECRETARY', label: 'Secretaria',     desc: 'CI o 4 letras apellido + año' },
+  { key: 'REGENTE',   label: 'Regente',        desc: 'CI o 4 letras apellido + año' },
+  { key: 'DELEGATE',  label: 'Delegados',      desc: 'CI o 4 letras apellido + año' },
+  { key: 'STAFF',     label: 'Personal',       desc: 'CI o 4 letras apellido + año' },
 ]
 
 const getUserName = (u: User): string => {
@@ -71,11 +78,13 @@ export default function UsuariosPage() {
   const [showModal,      setShowModal]      = useState(false)
   const [showEditModal,  setShowEditModal]  = useState(false)
   const [saving,         setSaving]         = useState(false)
-  const [error,          setError]          = useState('')
-  const [success,        setSuccess]        = useState('')
+  const [formError,      setFormError]      = useState('')
+  const [editError,      setEditError]      = useState('')
   const [showPass,       setShowPass]       = useState(false)
   const [duplicateEmail, setDuplicateEmail] = useState<string | null>(null)
-  const [form,           setForm]           = useState({ email: '', password: '', role: 'PARENT' })
+  const [form,           setForm]           = useState({ email: '', password: '', role: 'PARENT', schoolId: '' })
+  const [schools,        setSchools]        = useState<{ id: number; name: string }[]>([])
+  const [currentRole,    setCurrentRole]     = useState('')
   const [editForm,       setEditForm]       = useState({ id: 0, email: '', role: '' })
   const [showResetModal,   setShowResetModal]   = useState(false)
   const [resetCredentials, setResetCredentials] = useState<{ email: string; password: string } | null>(null)
@@ -92,12 +101,9 @@ export default function UsuariosPage() {
   const [confirmMass,   setConfirmMass]   = useState(false)
   const [selectedRole,  setSelectedRole]  = useState<string | null>(null)
 
+  const toast = useToast()
+  const confirm = useConfirm()
   const token = typeof window !== 'undefined' ? localStorage.getItem('token') : ''
-
-  const notify = (msg: string, type: 'success' | 'error' = 'success') => {
-    if (type === 'success') { setSuccess(msg); setTimeout(() => setSuccess(''), 3000) }
-    else                    { setError(msg);   setTimeout(() => setError(''),   4000) }
-  }
 
   const fetchUsers = async () => {
     setLoading(true)
@@ -108,49 +114,65 @@ export default function UsuariosPage() {
       const res  = await fetch(`${API_URL}/api/users?${params}`, { headers: { Authorization: `Bearer ${token}` } })
       const data = await res.json()
       if (res.ok) setUsers(data)
-    } catch { setError('Error al cargar usuarios') }
+    } catch { toast('Error al cargar usuarios', 'error') }
     finally  { setLoading(false) }
   }
 
   useEffect(() => { fetchUsers() }, [])
 
+  useEffect(() => {
+    const raw = localStorage.getItem('user')
+    const role = raw ? JSON.parse(raw).role : ''
+    setCurrentRole(role)
+    if (role === 'SUPER_ADMIN' || role === 'DIRECTOR_DISTRITAL') {
+      fetch(`${API_URL}/api/schools`, { headers: { Authorization: `Bearer ${token}` } })
+        .then(r => r.ok ? r.json() : [])
+        .then(setSchools)
+        .catch(() => {})
+    }
+  }, [])
+
+  const needsSchoolPicker = (currentRole === 'SUPER_ADMIN' || currentRole === 'DIRECTOR_DISTRITAL') && SCHOOL_SCOPED_ROLES.has(form.role)
+
   const openCreate = () => {
-    setForm({ email: '', password: '', role: 'PARENT' })
-    setShowPass(false); setError(''); setDuplicateEmail(null); setShowModal(true)
+    setForm({ email: '', password: '', role: 'PARENT', schoolId: '' })
+    setShowPass(false); setFormError(''); setDuplicateEmail(null); setShowModal(true)
   }
 
   const openEdit = (u: User) => {
     setEditForm({ id: u.id, email: u.email, role: u.role })
-    setError(''); setShowEditModal(true)
+    setEditError(''); setShowEditModal(true)
   }
 
   const handleCreate = async () => {
-    if (!form.email || !form.password) { notify('El correo y la contraseña son requeridos', 'error'); return }
-    setError(''); setSaving(true)
+    if (!form.email || !form.password) { setFormError('El correo y la contraseña son requeridos'); return }
+    if (needsSchoolPicker && !form.schoolId) { setFormError('Selecciona a qué colegio pertenece este usuario'); return }
+    setFormError(''); setSaving(true)
     try {
+      const body = { ...form, schoolId: form.schoolId ? parseInt(form.schoolId) : undefined }
       const res  = await fetch(`${API_URL}/api/users`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-        body: JSON.stringify(form),
+        body: JSON.stringify(body),
       })
       const data = await res.json()
       if (!res.ok) {
-        notify(data.message, 'error')
+        setFormError(data.message)
         if (res.status === 409) setDuplicateEmail(form.email)
         return
       }
       setShowModal(false)
       setNewCredentials({ email: form.email, password: form.password })
       setShowNewCreds(true)
-      setForm({ email: '', password: '', role: 'PARENT' })
+      setForm({ email: '', password: '', role: 'PARENT', schoolId: '' })
       fetchUsers()
-    } catch { notify('Error de conexión', 'error') }
+    } catch { setFormError('Error de conexión') }
     finally  { setSaving(false) }
   }
 
   const handleEdit = async () => {
-    if (!editForm.email) { notify('El correo es requerido', 'error'); return }
-    setError(''); setSaving(true)
+    if (!editForm.email) { setEditError('El correo es requerido'); return }
+    setEditError(''); setSaving(true)
     try {
       const res  = await fetch(`${API_URL}/api/users/${editForm.id}`, {
         method: 'PUT',
@@ -158,28 +180,29 @@ export default function UsuariosPage() {
         body: JSON.stringify({ email: editForm.email, role: editForm.role }),
       })
       const data = await res.json()
-      if (!res.ok) { notify(data.message, 'error'); return }
-      notify('Usuario actualizado correctamente')
+      if (!res.ok) { setEditError(data.message); return }
+      toast('Usuario actualizado correctamente', 'success')
       setShowEditModal(false)
       fetchUsers()
-    } catch { notify('Error de conexión', 'error') }
+    } catch { setEditError('Error de conexión') }
     finally  { setSaving(false) }
   }
 
   const handleDelete = async (u: User) => {
-    if (!confirm(`¿Eliminar el usuario ${u.email}? Esta acción no se puede deshacer.`)) return
+    const ok = await confirm(`¿Eliminar el usuario ${u.email}? Esta acción no se puede deshacer.`, { danger: true, confirmLabel: 'Eliminar' })
+    if (!ok) return
     try {
       const res  = await fetch(`${API_URL}/api/users/${u.id}`, {
         method: 'DELETE', headers: { Authorization: `Bearer ${token}` },
       })
       const data = await res.json()
-      if (res.ok) { notify(data.message); fetchUsers() }
-      else notify(data.message, 'error')
-    } catch { notify('Error al eliminar usuario', 'error') }
+      if (res.ok) { toast(data.message, 'success'); fetchUsers() }
+      else toast(data.message, 'error')
+    } catch { toast('Error al eliminar usuario', 'error') }
   }
 
   const handleResetByEmail = async () => {
-    if (!duplicateEmail || !form.password) { notify('Ingresa una contraseña', 'error'); return }
+    if (!duplicateEmail || !form.password) { setFormError('Ingresa una contraseña'); return }
     try {
       const res  = await fetch(`${API_URL}/api/users/reset-by-email`, {
         method: 'POST',
@@ -187,29 +210,30 @@ export default function UsuariosPage() {
         body: JSON.stringify({ email: duplicateEmail, password: form.password }),
       })
       const data = await res.json()
-      if (!res.ok) { notify(data.message, 'error'); return }
+      if (!res.ok) { setFormError(data.message); return }
       setShowModal(false); setDuplicateEmail(null)
       setNewCredentials({ email: duplicateEmail, password: form.password })
       setShowNewCreds(true)
-    } catch { notify('Error de conexión', 'error') }
+    } catch { setFormError('Error de conexión') }
   }
 
-  const handleToggle = async (id: number) => {
+  const handleToggle = async (u: User) => {
     try {
-      const res  = await fetch(`${API_URL}/api/users/${id}/toggle`, { method: 'PATCH', headers: { Authorization: `Bearer ${token}` } })
+      const res  = await fetch(`${API_URL}/api/users/${u.id}/toggle`, { method: 'PATCH', headers: { Authorization: `Bearer ${token}` } })
       const data = await res.json()
-      if (res.ok) { notify(data.message); fetchUsers() }
-    } catch { notify('Error al cambiar estado', 'error') }
+      if (res.ok) { toast(data.message, 'success'); fetchUsers() }
+      else toast(data.message, 'error')
+    } catch { toast('Error al cambiar estado', 'error') }
   }
 
-  const handleResetPassword = async (id: number) => {
+  const handleResetPassword = async (u: User) => {
     try {
-      const res  = await fetch(`${API_URL}/api/users/${id}/reset-password`, { method: 'POST', headers: { Authorization: `Bearer ${token}` } })
+      const res  = await fetch(`${API_URL}/api/users/${u.id}/reset-password`, { method: 'POST', headers: { Authorization: `Bearer ${token}` } })
       const data = await res.json()
-      if (!res.ok) { notify(data.message, 'error'); return }
+      if (!res.ok) { toast(data.message, 'error'); return }
       setResetCredentials({ email: data.userEmail, password: data.newPassword })
       setShowResetModal(true)
-    } catch { notify('Error al restablecer contraseña', 'error') }
+    } catch { toast('Error al restablecer contraseña', 'error') }
   }
 
   const handleMassReset = async () => {
@@ -260,368 +284,284 @@ export default function UsuariosPage() {
 
   const selectedOpt = RESET_OPTIONS.find(o => o.key === selectedRole)
 
+  const columns: Column<User>[] = [
+    { key: 'idx',    header: '#',       render: (u) => <span className="text-neutral-500">{filtered.indexOf(u) + 1}</span> },
+    { key: 'name',   header: 'Nombre',  render: (u) => <span className="font-semibold">{getUserName(u)}</span> },
+    { key: 'email',  header: 'Correo',  render: (u) => <span className="text-neutral-500">{u.email}</span> },
+    { key: 'role',   header: 'Rol',     render: (u) => <Badge tone="brand">{roleLabels[u.role] || u.role}</Badge> },
+    { key: 'status', header: 'Estado',  render: (u) => <Badge tone={u.isActive ? 'success' : 'danger'}>{u.isActive ? 'Activo' : 'Inactivo'}</Badge> },
+    { key: 'date',   header: 'Fecha',   render: (u) => <span className="text-neutral-500">{new Date(u.createdAt).toLocaleDateString('es-BO')}</span> },
+    {
+      key: 'actions', header: 'Acciones', render: (u) => (
+        <div className="flex gap-1.5">
+          <button title="Editar" onClick={() => openEdit(u)} className="w-8 h-8 rounded-md bg-accent-500/15 text-accent-600 flex items-center justify-center hover:opacity-75">
+            <Edit size={14} />
+          </button>
+          <button title="Restablecer contraseña" onClick={() => handleResetPassword(u)} className="w-8 h-8 rounded-md bg-brand-100 text-brand-700 flex items-center justify-center hover:opacity-75">
+            <KeyRound size={14} />
+          </button>
+          <button title={u.isActive ? 'Desactivar' : 'Activar'} onClick={() => handleToggle(u)}
+            className={`w-8 h-8 rounded-md flex items-center justify-center hover:opacity-75 ${u.isActive ? 'bg-danger-100 text-danger-600' : 'bg-success-100 text-success-700'}`}>
+            {u.isActive ? <UserX size={14} /> : <UserCheck size={14} />}
+          </button>
+          <button title="Eliminar" onClick={() => handleDelete(u)} className="w-8 h-8 rounded-md bg-danger-100 text-danger-600 flex items-center justify-center hover:opacity-75">
+            <Trash2 size={14} />
+          </button>
+        </div>
+      ),
+    },
+  ]
+
   return (
     <div>
-      <div className="page-header">
+      <div className="flex items-start justify-between gap-4 mb-6 flex-wrap">
         <div>
-          <h1>Gestión de Usuarios</h1>
-          <p>Administra los usuarios y roles del sistema</p>
+          <h1 className="text-xl font-bold text-brand-700 mb-1">Gestión de Usuarios</h1>
+          <p className="text-[13px] text-neutral-500">Administra los usuarios y roles del sistema</p>
         </div>
-        <div style={{ display:'flex', gap:10 }}>
-          <button className="btn-reset-all" onClick={() => {
-            setShowMassReset(true); setConfirmMass(false)
-            setMassSuccess(false); setMassError(''); setSelectedRole(null)
-          }}>
-            <Download size={16}/> Resetear Credenciales
-          </button>
-          <button className="btn-primary" onClick={openCreate}><Plus size={16}/> Nuevo usuario</button>
+        <div className="flex gap-2.5">
+          <Button variant="secondary" onClick={() => { setShowMassReset(true); setConfirmMass(false); setMassSuccess(false); setMassError(''); setSelectedRole(null) }}>
+            <Download size={16} /> Resetear Credenciales
+          </Button>
+          <Button onClick={openCreate}><Plus size={16} /> Nuevo usuario</Button>
         </div>
       </div>
 
-      {success && <div className="alert suc">{success}</div>}
-      {error && !showModal && !showEditModal && !showResetModal && <div className="alert err">{error}</div>}
-
-      <div className="filters-bar">
-        <div className="search-wrap">
-          <Search size={15} className="sicon"/>
-          <input placeholder="Buscar por nombre o correo..." value={search}
-            onChange={e => setSearch(e.target.value)} onKeyDown={e => e.key === 'Enter' && fetchUsers()}/>
+      <div className="flex gap-2.5 mb-4 flex-wrap">
+        <div className="relative flex-1 min-w-[200px]">
+          <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-info-500 pointer-events-none" />
+          <input
+            placeholder="Buscar por nombre o correo..." value={search}
+            onChange={e => setSearch(e.target.value)} onKeyDown={e => e.key === 'Enter' && fetchUsers()}
+            className="w-full h-10 pl-9 pr-3 rounded-lg border border-neutral-300 text-sm outline-none focus:border-brand-600 focus:ring-2 focus:ring-brand-600/15"
+          />
         </div>
-        <select value={roleFilter} onChange={e => setRoleFilter(e.target.value)}>
+        <Select value={roleFilter} onChange={e => setRoleFilter(e.target.value)} className="w-auto min-w-[160px]">
           <option value="">Todos los roles</option>
-          {Object.entries(roleLabels).map(([k,v]) => <option key={k} value={k}>{v}</option>)}
-        </select>
-        <button className="btn-outline" onClick={fetchUsers}><RefreshCw size={15}/> Buscar</button>
+          {Object.entries(roleLabels).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+        </Select>
+        <Button variant="secondary" onClick={fetchUsers}><RefreshCw size={15} /> Buscar</Button>
       </div>
 
-      <div className="table-card">
-        {loading ? (
-          <div className="center-state"><div className="spinner"/><p>Cargando...</p></div>
-        ) : filtered.length === 0 ? (
-          <div className="center-state"><p>No se encontraron usuarios</p></div>
-        ) : (
-          <table>
-            <thead>
-              <tr><th>#</th><th>Nombre</th><th>Correo</th><th>Rol</th><th>Estado</th><th>Fecha</th><th>Acciones</th></tr>
-            </thead>
-            <tbody>
-              {filtered.map((u, i) => (
-                <tr key={u.id}>
-                  <td className="muted">{i+1}</td>
-                  <td><strong>{getUserName(u)}</strong></td>
-                  <td className="muted">{u.email}</td>
-                  <td><span className="rbadge" style={{ background: roleColors[u.role]+'18', color: roleColors[u.role] }}>{roleLabels[u.role] || u.role}</span></td>
-                  <td><span className={`sbadge ${u.isActive ? 'act' : 'ina'}`}>{u.isActive ? 'Activo' : 'Inactivo'}</span></td>
-                  <td className="muted">{new Date(u.createdAt).toLocaleDateString('es-BO')}</td>
-                  <td>
-                    <div className="actions">
-                      <button className="abtn btn-edit" title="Editar" onClick={() => openEdit(u)}><Edit size={14}/></button>
-                      <button className="abtn btn-reset" title="Restablecer contraseña" onClick={() => handleResetPassword(u.id)}><KeyRound size={14}/></button>
-                      <button className={`abtn ${u.isActive ? 'dng' : 'suc'}`} title={u.isActive ? 'Desactivar' : 'Activar'} onClick={() => handleToggle(u.id)}>
-                        {u.isActive ? <UserX size={14}/> : <UserCheck size={14}/>}
-                      </button>
-                      <button className="abtn btn-del" title="Eliminar" onClick={() => handleDelete(u)}><Trash2 size={14}/></button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-      </div>
-      <div className="tfooter">Total: <strong>{filtered.length}</strong> usuarios</div>
+      <Table
+        columns={columns}
+        rows={filtered}
+        rowKey={(u) => u.id}
+        loading={loading}
+        emptyLabel="No se encontraron usuarios"
+      />
+      <div className="px-3.5 py-2.5 text-xs text-neutral-500">Total: <strong>{filtered.length}</strong> usuarios</div>
 
       {/* ── Modal Reset Masivo ── */}
-      {showMassReset && (
-        <div className="overlay" onClick={() => !massResetting && setShowMassReset(false)}>
-          <div className="modal" style={{ maxWidth:480 }} onClick={e => e.stopPropagation()}>
-            <div className="mhead">
-              <h2>🔄 Resetear Credenciales</h2>
-              {!massResetting && <button onClick={() => setShowMassReset(false)}><X size={18}/></button>}
+      <Modal
+        open={showMassReset}
+        onClose={() => !massResetting && setShowMassReset(false)}
+        title="🔄 Resetear Credenciales"
+        maxWidth={480}
+        footer={massSuccess ? <Button onClick={() => setShowMassReset(false)}>Cerrar</Button> : undefined}
+      >
+        {massSuccess ? (
+          <p className="text-[13px] text-success-700 bg-success-100 rounded-lg px-3 py-2.5">
+            ✅ Credenciales reseteadas. El Excel se descargó automáticamente.
+          </p>
+        ) : (
+          <div className="flex flex-col gap-3.5">
+            <p className="text-[13px] font-semibold text-brand-700">¿A qué usuarios deseas resetear la contraseña?</p>
+
+            <div className="grid grid-cols-2 gap-2">
+              {RESET_OPTIONS.map(opt => (
+                <button
+                  key={opt.key}
+                  onClick={() => { setSelectedRole(opt.key); setConfirmMass(false) }}
+                  className={`flex items-center gap-2 px-3 py-2.5 rounded-lg text-left border-2 transition-colors ${
+                    selectedRole === opt.key ? 'border-brand-700 bg-brand-100' : 'border-neutral-300 bg-white hover:bg-neutral-100'
+                  }`}
+                >
+                  <div className="flex-1 min-w-0">
+                    <div className="text-[12px] font-bold text-brand-700">{opt.label}</div>
+                    <div className="text-[10px] text-neutral-500 truncate">{opt.desc}</div>
+                  </div>
+                  {selectedRole === opt.key && <Check size={14} className="text-brand-700 shrink-0" />}
+                </button>
+              ))}
             </div>
-            <div className="mbody">
-              {massSuccess ? (
-                <div className="alert suc" style={{ margin:0 }}>
-                  ✅ Credenciales reseteadas. El Excel se descargó automáticamente.
+
+            <div className="flex items-start gap-2 px-3 py-2.5 rounded-lg bg-warning-100 text-[12px] text-[#8A6116] leading-relaxed">
+              <AlertTriangle size={14} className="shrink-0 mt-0.5" />
+              <span><strong>Super Admin, Director y Junta Escolar NO serán afectados.</strong></span>
+            </div>
+
+            {massError && <p className="text-[13px] text-danger-600 bg-danger-100 rounded-lg px-3 py-2">{massError}</p>}
+
+            {selectedRole && !confirmMass && (
+              <Button className="w-full justify-center" onClick={() => setConfirmMass(true)}>
+                <Download size={16} /> Resetear &quot;{selectedOpt?.label}&quot; y Descargar Excel
+              </Button>
+            )}
+
+            {confirmMass && selectedRole && (
+              <div className="flex flex-col gap-2.5">
+                <p className="text-[13px] font-semibold text-danger-600 text-center bg-danger-100 rounded-lg px-3 py-2">
+                  ⚠️ ¿Confirmas resetear contraseñas de <strong>{selectedOpt?.label}</strong>?
+                </p>
+                <div className="flex gap-2.5">
+                  <Button variant="danger" loading={massResetting} onClick={handleMassReset} className="flex-1 justify-center">
+                    <Download size={15} /> Sí, confirmar
+                  </Button>
+                  <Button variant="secondary" disabled={massResetting} onClick={() => setConfirmMass(false)} className="flex-1 justify-center">
+                    Cancelar
+                  </Button>
                 </div>
-              ) : (
-                <>
-                  <div style={{ fontSize:13, fontWeight:600, color:'#1A3A7C' }}>
-                    ¿A qué usuarios deseas resetear la contraseña?
-                  </div>
-
-                  <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:8 }}>
-                    {RESET_OPTIONS.map(opt => (
-                      <button key={opt.key}
-                        onClick={() => { setSelectedRole(opt.key); setConfirmMass(false) }}
-                        style={{
-                          display:'flex', alignItems:'center', gap:8,
-                          padding:'10px 12px', borderRadius:10, cursor:'pointer',
-                          border: selectedRole === opt.key ? `2px solid ${opt.color}` : '2px solid #CBE0F0',
-                          backgroundColor: selectedRole === opt.key ? `${opt.color}12` : '#fff',
-                          textAlign:'left',
-                        }}>
-                        <div style={{ width:10, height:10, borderRadius:'50%', backgroundColor:opt.color, flexShrink:0 }}/>
-                        <div style={{ flex:1, minWidth:0 }}>
-                          <div style={{ fontSize:12, fontWeight:700, color: selectedRole === opt.key ? opt.color : '#1A3A7C' }}>
-                            {opt.label}
-                          </div>
-                          <div style={{ fontSize:10, color:'#6B8BB0', marginTop:1, whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>
-                            {opt.desc}
-                          </div>
-                        </div>
-                        {selectedRole === opt.key && <Check size={14} color={opt.color}/>}
-                      </button>
-                    ))}
-                  </div>
-
-                  <div style={{
-                    display:'flex', alignItems:'flex-start', gap:8,
-                    padding:'10px 12px', borderRadius:8,
-                    backgroundColor:'#FFFBEA', border:'1px solid #F5C518',
-                    fontSize:12, color:'#BA7517', lineHeight:1.6,
-                  }}>
-                    <AlertTriangle size={14} style={{ flexShrink:0, marginTop:2 }}/>
-                    <span><strong>Super Admin, Director y Junta Escolar NO serán afectados.</strong></span>
-                  </div>
-
-                  {massError && <div className="alert err" style={{ margin:0 }}>{massError}</div>}
-
-                  {selectedRole && !confirmMass && (
-                    <button className="btn-primary" style={{ width:'100%', justifyContent:'center' }}
-                      onClick={() => setConfirmMass(true)}>
-                      <Download size={16}/> Resetear "{selectedOpt?.label}" y Descargar Excel
-                    </button>
-                  )}
-
-                  {confirmMass && selectedRole && (
-                    <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
-                      <div style={{
-                        fontSize:13, fontWeight:600, color:'#c0392b',
-                        textAlign:'center', padding:'8px',
-                        backgroundColor:'#FDE8E8', borderRadius:8,
-                      }}>
-                        ⚠️ ¿Confirmas resetear contraseñas de <strong>{selectedOpt?.label}</strong>?
-                      </div>
-                      <div style={{ display:'flex', gap:10 }}>
-                        <button onClick={handleMassReset} disabled={massResetting} className="btn-primary"
-                          style={{ flex:1, justifyContent:'center', backgroundColor: massResetting ? '#6B8BB0' : '#c0392b' }}>
-                          {massResetting ? <><span className="spinsm"/> Procesando...</> : <><Download size={15}/> Sí, confirmar</>}
-                        </button>
-                        <button className="btn-outline" onClick={() => setConfirmMass(false)}
-                          disabled={massResetting} style={{ flex:1, justifyContent:'center' }}>
-                          Cancelar
-                        </button>
-                      </div>
-                    </div>
-                  )}
-                </>
-              )}
-            </div>
-            {massSuccess && (
-              <div className="mfoot">
-                <button className="btn-primary" onClick={() => setShowMassReset(false)}>Cerrar</button>
               </div>
             )}
           </div>
-        </div>
-      )}
+        )}
+      </Modal>
 
       {/* ── Modal nuevo usuario ── */}
-      {showModal && (
-        <div className="overlay" onClick={() => setShowModal(false)}>
-          <div className="modal" onClick={e => e.stopPropagation()}>
-            <div className="mhead"><h2>Nuevo Usuario</h2><button onClick={() => setShowModal(false)}><X size={18}/></button></div>
-            <div className="mbody">
-              {error && <div className="alert err">{error}</div>}
-              <div className="fg"><label>Correo electrónico *</label>
-                <input type="email" placeholder="usuario@nnuu.edu.bo" value={form.email}
-                  onChange={e => { setForm({...form, email: e.target.value}); setDuplicateEmail(null) }}/>
-              </div>
-              <div className="fg"><label>Rol *</label>
-                <select value={form.role} onChange={e => setForm({...form, role: e.target.value})}>
-                  {Object.entries(roleLabels).map(([k,v]) => <option key={k} value={k}>{v}</option>)}
-                </select>
-              </div>
-              <div className="fg"><label>Contraseña *</label>
-                <div className="pwrap">
-                  <input type={showPass ? 'text' : 'password'} placeholder="Escribe o genera automáticamente"
-                    value={form.password} onChange={e => setForm({...form, password: e.target.value})}/>
-                  <button type="button" onClick={() => setShowPass(!showPass)}>
-                    {showPass ? <EyeOff size={14}/> : <Eye size={14}/>}
-                  </button>
-                </div>
-                <button type="button" className="gen-pwd-btn" onClick={() => {
-                  if (!form.email) { notify('Ingresa el correo primero', 'error'); return }
-                  setForm({...form, password: generatePassword(form.email, form.role)}); setShowPass(true)
-                }}><RefreshCw size={12}/> Generar contraseña automática</button>
-                {form.password && (
-                  <div className="pwd-strength">
-                    <span className={`strength-bar ${form.password.length >= 8 ? 'good' : 'weak'}`}/>
-                    <span className="strength-label">{form.password.length < 6 ? 'Muy corta' : form.password.length < 8 ? 'Aceptable' : 'Segura'}</span>
-                  </div>
-                )}
-              </div>
-              {duplicateEmail && (
-                <div className="warn-box">⚠️ Este correo ya está registrado. ¿Deseas resetear su contraseña?
-                  <button className="link-btn" onClick={handleResetByEmail}>Sí, resetear contraseña →</button>
-                </div>
-              )}
-              <div className="infobox">💡 Después de crear el usuario podrás vincularle el perfil desde el módulo respectivo.</div>
-            </div>
-            <div className="mfoot">
-              <button className="btn-outline" onClick={() => setShowModal(false)}>Cancelar</button>
-              <button className="btn-primary" onClick={handleCreate} disabled={saving || !form.email || !form.password}>
-                {saving ? <span className="spinsm"/> : <Plus size={14}/>}{saving ? 'Guardando...' : 'Crear usuario'}
+      <Modal
+        open={showModal}
+        onClose={() => setShowModal(false)}
+        title="Nuevo Usuario"
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setShowModal(false)}>Cancelar</Button>
+            <Button onClick={handleCreate} loading={saving} disabled={!form.email || !form.password}>Crear usuario</Button>
+          </>
+        }
+      >
+        <div className="flex flex-col gap-3.5">
+          {formError && <p className="text-[13px] text-danger-600 bg-danger-100 rounded-lg px-3 py-2">{formError}</p>}
+          <Input label="Correo electrónico" required type="email" placeholder="usuario@nnuu.edu.bo" value={form.email}
+            onChange={e => { setForm({ ...form, email: e.target.value }); setDuplicateEmail(null) }} />
+          <Select label="Rol" required value={form.role} onChange={e => setForm({ ...form, role: e.target.value })}>
+            {Object.entries(roleLabels).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+          </Select>
+          {needsSchoolPicker && (
+            <Select label="Colegio" required value={form.schoolId} onChange={e => setForm({ ...form, schoolId: e.target.value })}>
+              <option value="">Selecciona un colegio</option>
+              {schools.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+            </Select>
+          )}
+          <div className="flex flex-col gap-1.5">
+            <span className="text-[13px] font-semibold text-neutral-700">Contraseña<span className="text-danger-500"> *</span></span>
+            <div className="relative flex items-center">
+              <input
+                type={showPass ? 'text' : 'password'} placeholder="Escribe o genera automáticamente"
+                value={form.password} onChange={e => setForm({ ...form, password: e.target.value })}
+                className="w-full h-10 pl-3 pr-10 rounded-lg border border-neutral-300 text-sm outline-none focus:border-brand-600 focus:ring-2 focus:ring-brand-600/15"
+              />
+              <button type="button" onClick={() => setShowPass(!showPass)} className="absolute right-3 text-neutral-500 hover:text-brand-700">
+                {showPass ? <EyeOff size={14} /> : <Eye size={14} />}
               </button>
             </div>
+            <button
+              type="button"
+              onClick={() => {
+                if (!form.email) { setFormError('Ingresa el correo primero'); return }
+                setForm({ ...form, password: generatePassword(form.email, form.role) }); setShowPass(true)
+              }}
+              className="flex items-center gap-1.5 border border-dashed border-neutral-300 text-info-500 rounded-md px-2.5 py-1.5 text-[11px] w-fit hover:bg-neutral-100 hover:border-info-500"
+            >
+              <RefreshCw size={12} /> Generar contraseña automática
+            </button>
+            {form.password && (
+              <div className="flex items-center gap-2 mt-0.5">
+                <span className={`h-1 w-16 rounded-full ${form.password.length >= 8 ? 'bg-success-500' : 'bg-accent-500'}`} />
+                <span className="text-[11px] text-neutral-500">{form.password.length < 6 ? 'Muy corta' : form.password.length < 8 ? 'Aceptable' : 'Segura'}</span>
+              </div>
+            )}
           </div>
+          {duplicateEmail && (
+            <div className="bg-warning-100 border border-accent-500 rounded-lg px-3.5 py-3 text-[13px] text-[#8A6116] leading-relaxed flex flex-col gap-2">
+              ⚠️ Este correo ya está registrado. ¿Deseas resetear su contraseña?
+              <button onClick={handleResetByEmail} className="bg-brand-700 text-white rounded-md px-3 py-1.5 text-xs font-semibold w-fit hover:bg-brand-600">
+                Sí, resetear contraseña →
+              </button>
+            </div>
+          )}
+          <p className="bg-neutral-100 border border-neutral-300 rounded-lg px-3 py-2.5 text-xs text-neutral-500 leading-relaxed">
+            💡 Después de crear el usuario podrás vincularle el perfil desde el módulo respectivo.
+          </p>
         </div>
-      )}
+      </Modal>
 
       {/* ── Modal editar usuario ── */}
-      {showEditModal && (
-        <div className="overlay" onClick={() => setShowEditModal(false)}>
-          <div className="modal" onClick={e => e.stopPropagation()}>
-            <div className="mhead"><h2>Editar Usuario</h2><button onClick={() => setShowEditModal(false)}><X size={18}/></button></div>
-            <div className="mbody">
-              {error && <div className="alert err">{error}</div>}
-              <div className="fg"><label>Correo electrónico *</label>
-                <input type="email" value={editForm.email} onChange={e => setEditForm({...editForm, email: e.target.value})}/>
-              </div>
-              <div className="fg"><label>Rol *</label>
-                <select value={editForm.role} onChange={e => setEditForm({...editForm, role: e.target.value})}>
-                  {Object.entries(roleLabels).map(([k,v]) => <option key={k} value={k}>{v}</option>)}
-                </select>
-              </div>
-              <div className="infobox">💡 Para cambiar la contraseña usa el botón de restablecer en la lista.</div>
-            </div>
-            <div className="mfoot">
-              <button className="btn-outline" onClick={() => setShowEditModal(false)}>Cancelar</button>
-              <button className="btn-primary" onClick={handleEdit} disabled={saving}>
-                {saving ? <span className="spinsm"/> : <Edit size={14}/>}{saving ? 'Guardando...' : 'Actualizar'}
-              </button>
-            </div>
-          </div>
+      <Modal
+        open={showEditModal}
+        onClose={() => setShowEditModal(false)}
+        title="Editar Usuario"
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setShowEditModal(false)}>Cancelar</Button>
+            <Button onClick={handleEdit} loading={saving}>Actualizar</Button>
+          </>
+        }
+      >
+        <div className="flex flex-col gap-3.5">
+          {editError && <p className="text-[13px] text-danger-600 bg-danger-100 rounded-lg px-3 py-2">{editError}</p>}
+          <Input label="Correo electrónico" required type="email" value={editForm.email}
+            onChange={e => setEditForm({ ...editForm, email: e.target.value })} />
+          <Select label="Rol" required value={editForm.role} onChange={e => setEditForm({ ...editForm, role: e.target.value })}>
+            {Object.entries(roleLabels).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+          </Select>
+          <p className="bg-neutral-100 border border-neutral-300 rounded-lg px-3 py-2.5 text-xs text-neutral-500 leading-relaxed">
+            💡 Para cambiar la contraseña usa el botón de restablecer en la lista.
+          </p>
         </div>
-      )}
+      </Modal>
 
       {/* ── Modal credenciales nuevo usuario ── */}
-      {showNewCreds && newCredentials && (
-        <div className="overlay"><div className="modal" onClick={e => e.stopPropagation()}>
-          <div className="mhead"><h2>✅ Credenciales del usuario</h2></div>
-          <div className="mbody">
-            <div className="cred-box">
-              <div className="cred-note green">✅ Operación realizada. Anota estas credenciales.</div>
-              <div className="cred-row"><span className="cred-label">Email:</span><span className="cred-value">{newCredentials.email}</span></div>
-              <div className="cred-row"><span className="cred-label">Contraseña:</span><span className="cred-value">{newCredentials.password}</span></div>
-              <div className="cred-note">⚠️ Esta es la única vez que verás la contraseña.</div>
-            </div>
+      <Modal
+        open={showNewCreds && !!newCredentials}
+        onClose={() => setShowNewCreds(false)}
+        title="✅ Credenciales del usuario"
+        footer={
+          <>
+            <Button variant="secondary" onClick={copyNew}>{copiedNew ? <Check size={14} /> : <Copy size={14} />} {copiedNew ? 'Copiado' : 'Copiar'}</Button>
+            <Button onClick={() => setShowNewCreds(false)}>Entendido</Button>
+          </>
+        }
+      >
+        {newCredentials && (
+          <div className="flex flex-col gap-2.5">
+            <p className="text-[12px] text-success-700 bg-success-100 rounded-lg px-3 py-2.5">✅ Operación realizada. Anota estas credenciales.</p>
+            <CredRow label="Email" value={newCredentials.email} />
+            <CredRow label="Contraseña" value={newCredentials.password} />
+            <p className="text-[12px] text-[#8A6116] bg-warning-100 rounded-lg px-3 py-2.5">⚠️ Esta es la única vez que verás la contraseña.</p>
           </div>
-          <div className="mfoot">
-            <button className="btn-outline" onClick={copyNew}>{copiedNew ? <Check size={14}/> : <Copy size={14}/>} {copiedNew ? 'Copiado' : 'Copiar'}</button>
-            <button className="btn-primary" onClick={() => setShowNewCreds(false)}>Entendido</button>
-          </div>
-        </div></div>
-      )}
+        )}
+      </Modal>
 
       {/* ── Modal resetear contraseña individual ── */}
-      {showResetModal && resetCredentials && (
-        <div className="overlay"><div className="modal" onClick={e => e.stopPropagation()}>
-          <div className="mhead"><h2>🔑 Nueva contraseña generada</h2></div>
-          <div className="mbody">
-            <div className="cred-box">
-              <div className="cred-row"><span className="cred-label">Email:</span><span className="cred-value">{resetCredentials.email}</span></div>
-              <div className="cred-row"><span className="cred-label">Contraseña:</span><span className="cred-value">{resetCredentials.password}</span></div>
-              <div className="cred-note">⚠️ Comunica esta contraseña al usuario.</div>
-            </div>
+      <Modal
+        open={showResetModal && !!resetCredentials}
+        onClose={() => setShowResetModal(false)}
+        title="🔑 Nueva contraseña generada"
+        footer={
+          <>
+            <Button variant="secondary" onClick={copyReset}>{copied ? <Check size={14} /> : <Copy size={14} />} {copied ? 'Copiado' : 'Copiar'}</Button>
+            <Button onClick={() => setShowResetModal(false)}>Entendido</Button>
+          </>
+        }
+      >
+        {resetCredentials && (
+          <div className="flex flex-col gap-2.5">
+            <CredRow label="Email" value={resetCredentials.email} />
+            <CredRow label="Contraseña" value={resetCredentials.password} />
+            <p className="text-[12px] text-[#8A6116] bg-warning-100 rounded-lg px-3 py-2.5">⚠️ Comunica esta contraseña al usuario.</p>
           </div>
-          <div className="mfoot">
-            <button className="btn-outline" onClick={copyReset}>{copied ? <Check size={14}/> : <Copy size={14}/>} {copied ? 'Copiado' : 'Copiar'}</button>
-            <button className="btn-primary" onClick={() => setShowResetModal(false)}>Entendido</button>
-          </div>
-        </div></div>
-      )}
+        )}
+      </Modal>
+    </div>
+  )
+}
 
-      <style>{`
-        .page-header{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:24px;gap:16px}
-        .page-header h1{font-size:20px;font-weight:700;color:#1A3A7C;margin-bottom:4px}
-        .page-header p{font-size:13px;color:#6B8BB0}
-        .alert{padding:10px 14px;border-radius:8px;font-size:13px;margin-bottom:16px}
-        .alert.suc{background:#E1F5EE;border:1px solid #9FE1CB;color:#0F6E56}
-        .alert.err{background:#FFF0F0;border:1px solid #FFBBBB;color:#C0392B}
-        .filters-bar{display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap}
-        .search-wrap{position:relative;flex:1;min-width:200px}
-        .sicon{position:absolute;left:11px;top:50%;transform:translateY(-50%);color:#4A9FD4;pointer-events:none}
-        .search-wrap input{width:100%;padding:9px 12px 9px 34px;border:1.5px solid #CBE0F0;border-radius:8px;font-size:13px;outline:none;color:#1A3A7C}
-        .search-wrap input:focus{border-color:#4A9FD4}
-        .filters-bar select{padding:9px 12px;border:1.5px solid #CBE0F0;border-radius:8px;font-size:13px;outline:none;color:#1A3A7C;cursor:pointer}
-        .btn-primary{display:flex;align-items:center;gap:6px;padding:9px 16px;background:#1A3A7C;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:500;cursor:pointer;white-space:nowrap}
-        .btn-primary:hover:not(:disabled){background:#4A9FD4}
-        .btn-primary:disabled{opacity:.6;cursor:not-allowed}
-        .btn-outline{display:flex;align-items:center;gap:6px;padding:9px 14px;background:#fff;color:#1A3A7C;border:1.5px solid #CBE0F0;border-radius:8px;font-size:13px;cursor:pointer;white-space:nowrap}
-        .btn-outline:hover{background:#F0F6FC}
-        .btn-reset-all{display:flex;align-items:center;gap:6px;padding:9px 16px;background:#0F6E56;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:500;cursor:pointer;white-space:nowrap}
-        .btn-reset-all:hover{background:#0a5240}
-        .table-card{background:#fff;border:1px solid #CBE0F0;border-radius:12px;overflow:hidden}
-        table{width:100%;border-collapse:collapse}
-        thead tr{background:#F0F6FC}
-        th{padding:11px 14px;text-align:left;font-size:11px;font-weight:600;color:#1A3A7C;text-transform:uppercase;letter-spacing:.5px;white-space:nowrap}
-        td{padding:12px 14px;font-size:13px;color:#1A3A7C;border-top:1px solid #F0F6FC}
-        tr:hover td{background:#FAFCFF}
-        .muted{color:#6B8BB0}
-        .rbadge{padding:3px 9px;border-radius:20px;font-size:11px;font-weight:500;white-space:nowrap}
-        .sbadge{padding:3px 9px;border-radius:20px;font-size:11px;font-weight:500}
-        .sbadge.act{background:#E1F5EE;color:#0F6E56}
-        .sbadge.ina{background:#FFF0F0;color:#C0392B}
-        .actions{display:flex;gap:5px}
-        .abtn{width:30px;height:30px;border:none;border-radius:6px;cursor:pointer;display:flex;align-items:center;justify-content:center}
-        .abtn.dng{background:#FFF0F0;color:#C0392B}
-        .abtn.suc{background:#E1F5EE;color:#0F6E56}
-        .abtn.btn-reset{background:#EEEDFE;color:#3C3489}
-        .abtn.btn-edit{background:#FAEEDA;color:#633806}
-        .abtn.btn-del{background:#FFF0F0;color:#C0392B}
-        .abtn:hover{opacity:.75}
-        .tfooter{padding:10px 14px;font-size:12px;color:#6B8BB0}
-        .center-state{display:flex;flex-direction:column;align-items:center;justify-content:center;padding:48px;gap:12px;color:#6B8BB0;font-size:13px}
-        .overlay{position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:500;display:flex;align-items:center;justify-content:center;padding:16px}
-        .modal{background:#fff;border-radius:14px;width:100%;max-width:440px;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,0.15);max-height:90vh;display:flex;flex-direction:column}
-        .mhead{display:flex;align-items:center;justify-content:space-between;padding:18px 20px;border-bottom:1px solid #CBE0F0;flex-shrink:0}
-        .mhead h2{font-size:16px;font-weight:600;color:#1A3A7C}
-        .mhead button{background:none;border:none;cursor:pointer;color:#6B8BB0;display:flex;padding:4px;border-radius:6px}
-        .mhead button:hover{background:#F0F6FC;color:#1A3A7C}
-        .mbody{padding:20px;display:flex;flex-direction:column;gap:16px;overflow-y:auto}
-        .mfoot{display:flex;justify-content:flex-end;gap:10px;padding:16px 20px;border-top:1px solid #CBE0F0;flex-shrink:0}
-        .fg{display:flex;flex-direction:column;gap:6px}
-        .fg label{font-size:11px;font-weight:700;color:#1A3A7C;text-transform:uppercase;letter-spacing:.6px}
-        .fg input,.fg select{padding:10px 12px;border:1.5px solid #CBE0F0;border-radius:8px;font-size:13px;color:#1A3A7C;outline:none;width:100%}
-        .fg input:focus,.fg select:focus{border-color:#4A9FD4;box-shadow:0 0 0 3px rgba(74,159,212,.12)}
-        .pwrap{position:relative;display:flex;align-items:center}
-        .pwrap input{flex:1;padding-right:40px}
-        .pwrap button{position:absolute;right:10px;background:none;border:none;cursor:pointer;color:#6B8BB0;display:flex}
-        .pwrap button:hover{color:#1A3A7C}
-        .gen-pwd-btn{display:flex;align-items:center;gap:5px;background:none;border:1px dashed #CBE0F0;color:#4A9FD4;border-radius:6px;padding:6px 10px;font-size:11px;cursor:pointer;width:fit-content}
-        .gen-pwd-btn:hover{background:#F0F6FC;border-color:#4A9FD4}
-        .pwd-strength{display:flex;align-items:center;gap:8px;margin-top:2px}
-        .strength-bar{height:4px;width:60px;border-radius:4px}
-        .strength-bar.weak{background:#F5C518}
-        .strength-bar.good{background:#0F6E56}
-        .strength-label{font-size:11px;color:#6B8BB0}
-        .warn-box{background:#FFFBEA;border:1px solid #F5C518;border-radius:8px;padding:12px 14px;font-size:13px;color:#BA7517;line-height:1.6;display:flex;flex-direction:column;gap:8px}
-        .link-btn{background:#1A3A7C;color:#fff;border:none;border-radius:6px;padding:6px 12px;font-size:12px;font-weight:500;cursor:pointer;width:fit-content}
-        .link-btn:hover{background:#4A9FD4}
-        .infobox{background:#F0F6FC;border:1px solid #CBE0F0;border-radius:8px;padding:12px;font-size:12px;color:#6B8BB0;line-height:1.5}
-        .cred-box{display:flex;flex-direction:column;gap:10px}
-        .cred-row{display:flex;align-items:center;gap:10px;background:#F0F6FC;border:1px solid #CBE0F0;border-radius:8px;padding:10px 14px}
-        .cred-label{font-size:12px;font-weight:600;color:#6B8BB0;min-width:80px;text-transform:uppercase;letter-spacing:.5px}
-        .cred-value{font-size:14px;font-weight:600;color:#1A3A7C;font-family:monospace;word-break:break-all}
-        .cred-note{font-size:12px;color:#BA7517;background:#FFFBEA;border:1px solid #F5C518;border-radius:8px;padding:10px;line-height:1.5}
-        .cred-note.green{background:#E1F5EE;border-color:#9FE1CB;color:#0F6E56}
-        .spinner{width:20px;height:20px;border:2px solid rgba(26,58,124,.2);border-top-color:#1A3A7C;border-radius:50%;animation:spin .7s linear infinite}
-        .spinsm{width:14px;height:14px;border:2px solid rgba(255,255,255,.3);border-top-color:#fff;border-radius:50%;animation:spin .7s linear infinite;display:inline-block}
-        @keyframes spin{to{transform:rotate(360deg)}}
-        @media(max-width:600px){.page-header{flex-direction:column}th:nth-child(6),td:nth-child(6){display:none}}
-      `}</style>
+function CredRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex items-center gap-2.5 bg-neutral-100 border border-neutral-300 rounded-lg px-3.5 py-2.5">
+      <span className="text-[11px] font-semibold text-neutral-500 uppercase tracking-wide min-w-[80px]">{label}:</span>
+      <span className="text-sm font-semibold text-brand-700 font-mono break-all">{value}</span>
     </div>
   )
 }

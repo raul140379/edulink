@@ -1,7 +1,14 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { Plus, X, Calendar, BookOpen, CheckCircle, XCircle, ChevronDown, ChevronUp, Trash2, Lock, Unlock } from 'lucide-react'
+import { Plus, Calendar, BookOpen, CheckCircle, XCircle, ChevronDown, ChevronUp, Trash2, Lock, Unlock } from 'lucide-react'
+import Button from '@/components/ui/Button'
+import { Input, Select } from '@/components/ui/Input'
+import Card from '@/components/ui/Card'
+import Badge from '@/components/ui/Badge'
+import Modal from '@/components/ui/Modal'
+import { useToast } from '@/components/ui/ToastProvider'
+import { useConfirm } from '@/components/ui/ConfirmProvider'
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000'
 
@@ -30,29 +37,26 @@ interface Holiday {
 }
 
 export default function GestionPage() {
+  const toast = useToast()
+  const confirm = useConfirm()
   const [years,       setYears]       = useState<AcademicYear[]>([])
   const [loading,     setLoading]     = useState(true)
   const [expanded,    setExpanded]    = useState<number | null>(null)
   const [trimesters,  setTrimesters]  = useState<Record<number, Trimester[]>>({})
   const [holidays,    setHolidays]    = useState<Record<number, Holiday[]>>({})
-  const [success,     setSuccess]     = useState('')
-  const [error,       setError]       = useState('')
   const [showYearModal, setShowYearModal] = useState(false)
   const [showTrimModal, setShowTrimModal] = useState(false)
   const [showHolModal,  setShowHolModal]  = useState(false)
   const [selectedYear,  setSelectedYear]  = useState<number | null>(null)
   const [saving,        setSaving]        = useState(false)
+  const [yearError,     setYearError]     = useState('')
+  const [trimError,     setTrimError]     = useState('')
+  const [holError,      setHolError]      = useState('')
   const [yearForm, setYearForm] = useState({ year: new Date().getFullYear().toString(), startDate: '', endDate: '' })
   const [trimForm, setTrimForm] = useState({ number: '1', name: '', startDate: '', endDate: '' })
   const [holForm,  setHolForm]  = useState({ date: '', description: '' })
 
   const token = typeof window !== 'undefined' ? localStorage.getItem('token') : ''
-
-  const notify = (msg: string, type: 'success' | 'error' = 'success') => {
-    if (type === 'success') setSuccess(msg)
-    else setError(msg)
-    setTimeout(() => { setSuccess(''); setError('') }, 3000)
-  }
 
   const fetchYears = async () => {
     setLoading(true)
@@ -60,7 +64,7 @@ export default function GestionPage() {
       const res  = await fetch(`${API_URL}/api/academic`, { headers: { Authorization: `Bearer ${token}` } })
       const data = await res.json()
       if (res.ok) setYears(data)
-    } catch { notify('Error al cargar gestiones', 'error') }
+    } catch { toast('Error al cargar gestiones', 'error') }
     finally  { setLoading(false) }
   }
 
@@ -88,7 +92,7 @@ export default function GestionPage() {
   }
 
   const handleCreateYear = async () => {
-    setError(''); setSaving(true)
+    setYearError(''); setSaving(true)
     try {
       const res  = await fetch(`${API_URL}/api/academic`, {
         method: 'POST',
@@ -96,43 +100,45 @@ export default function GestionPage() {
         body: JSON.stringify(yearForm),
       })
       const data = await res.json()
-      if (!res.ok) { notify(data.message, 'error'); return }
-      notify('Gestión creada correctamente')
+      if (!res.ok) { setYearError(data.message); return }
+      toast('Gestión creada correctamente', 'success')
       setShowYearModal(false)
       setYearForm({ year: (new Date().getFullYear() + 1).toString(), startDate: '', endDate: '' })
       fetchYears()
-    } catch { notify('Error de conexión', 'error') }
+    } catch { setYearError('Error de conexión') }
     finally  { setSaving(false) }
   }
 
   const handleToggleYear = async (id: number) => {
     try {
-      const res  = await fetch(`${API_URL}/api/academic/${id}/toggle`, {
-        method: 'PATCH', headers: { Authorization: `Bearer ${token}` }
-      })
+      const res  = await fetch(`${API_URL}/api/academic/${id}/toggle`, { method: 'PATCH', headers: { Authorization: `Bearer ${token}` } })
       const data = await res.json()
-      if (res.ok) { notify(data.message); fetchYears() }
-    } catch { notify('Error al cambiar estado', 'error') }
+      if (res.ok) { toast(data.message, 'success'); fetchYears() }
+    } catch { toast('Error al cambiar estado', 'error') }
   }
 
   const handleToggleCloseTrimester = async (yearId: number, trimId: number) => {
     const trim = trimesters[yearId]?.find(t => t.id === trimId)
     const accion = trim?.isClosed ? 'reabrir' : 'cerrar'
-    if (!confirm(`¿Deseas ${accion} este trimestre? ${!trim?.isClosed ? 'Una vez cerrado, los maestros no podrán modificar notas.' : ''}`)) return
+    const ok = await confirm(
+      `¿Deseas ${accion} este trimestre? ${!trim?.isClosed ? 'Una vez cerrado, los maestros no podrán modificar notas.' : ''}`,
+      { danger: !trim?.isClosed, confirmLabel: trim?.isClosed ? 'Reabrir' : 'Cerrar' }
+    )
+    if (!ok) return
     try {
       const res  = await fetch(`${API_URL}/api/academic/${yearId}/trimesters/${trimId}/toggle-close`, {
         method: 'PATCH', headers: { Authorization: `Bearer ${token}` }
       })
       const data = await res.json()
-      if (!res.ok) { notify(data.message, 'error'); return }
-      notify(data.message)
+      if (!res.ok) { toast(data.message, 'error'); return }
+      toast(data.message, 'success')
       fetchTrimesters(yearId)
-    } catch { notify('Error al cerrar trimestre', 'error') }
+    } catch { toast('Error al cerrar trimestre', 'error') }
   }
 
   const handleCreateTrim = async () => {
     if (!selectedYear) return
-    setError(''); setSaving(true)
+    setTrimError(''); setSaving(true)
     try {
       const res  = await fetch(`${API_URL}/api/academic/${selectedYear}/trimesters`, {
         method: 'POST',
@@ -140,18 +146,18 @@ export default function GestionPage() {
         body: JSON.stringify(trimForm),
       })
       const data = await res.json()
-      if (!res.ok) { notify(data.message, 'error'); return }
-      notify('Trimestre creado')
+      if (!res.ok) { setTrimError(data.message); return }
+      toast('Trimestre creado', 'success')
       setShowTrimModal(false)
       setTrimForm({ number: '1', name: '', startDate: '', endDate: '' })
       fetchTrimesters(selectedYear)
-    } catch { notify('Error de conexión', 'error') }
+    } catch { setTrimError('Error de conexión') }
     finally  { setSaving(false) }
   }
 
   const handleCreateHol = async () => {
     if (!selectedYear) return
-    setError(''); setSaving(true)
+    setHolError(''); setSaving(true)
     try {
       const res  = await fetch(`${API_URL}/api/academic/${selectedYear}/holidays`, {
         method: 'POST',
@@ -159,119 +165,107 @@ export default function GestionPage() {
         body: JSON.stringify(holForm),
       })
       const data = await res.json()
-      if (!res.ok) { notify(data.message, 'error'); return }
-      notify('Feriado registrado')
+      if (!res.ok) { setHolError(data.message); return }
+      toast('Feriado registrado', 'success')
       setShowHolModal(false)
       setHolForm({ date: '', description: '' })
       const hRes  = await fetch(`${API_URL}/api/academic/${selectedYear}/holidays`, { headers: { Authorization: `Bearer ${token}` } })
       const hData = await hRes.json()
       if (hRes.ok) setHolidays(p => ({ ...p, [selectedYear]: hData }))
-    } catch { notify('Error de conexión', 'error') }
+    } catch { setHolError('Error de conexión') }
     finally  { setSaving(false) }
   }
 
   const handleDeleteHol = async (yearId: number, holId: number) => {
     try {
-      const res = await fetch(`${API_URL}/api/academic/${yearId}/holidays/${holId}`, {
-        method: 'DELETE', headers: { Authorization: `Bearer ${token}` }
-      })
+      const res = await fetch(`${API_URL}/api/academic/${yearId}/holidays/${holId}`, { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } })
       if (res.ok) {
-        notify('Feriado eliminado')
+        toast('Feriado eliminado', 'success')
         setHolidays(p => ({ ...p, [yearId]: p[yearId].filter(h => h.id !== holId) }))
       }
-    } catch { notify('Error al eliminar', 'error') }
+    } catch { toast('Error al eliminar', 'error') }
   }
 
-  const fmt = (d: string) => new Date(d).toLocaleDateString('es-BO', { day:'2-digit', month:'short', year:'numeric' })
+  const fmt = (d: string) => new Date(d).toLocaleDateString('es-BO', { day: '2-digit', month: 'short', year: 'numeric' })
 
   return (
     <div>
-      <div className="page-header">
+      <div className="flex items-start justify-between gap-4 mb-6 flex-wrap">
         <div>
-          <h1>Gestión Académica</h1>
-          <p>Administra los años escolares, trimestres y días feriados</p>
+          <h1 className="text-xl font-bold text-brand-700 mb-1">Gestión Académica</h1>
+          <p className="text-[13px] text-neutral-500">Administra los años escolares, trimestres y días feriados</p>
         </div>
-        <button className="btn-primary" onClick={() => setShowYearModal(true)}>
-          <Plus size={16}/> Nueva gestión
-        </button>
+        <Button onClick={() => setShowYearModal(true)}><Plus size={16} /> Nueva gestión</Button>
       </div>
 
-      {success && <div className="alert suc">{success}</div>}
-      {error   && <div className="alert err">{error}</div>}
-
       {loading ? (
-        <div className="center"><div className="spinner"/></div>
+        <div className="flex justify-center py-12"><p className="text-sm text-neutral-500">Cargando...</p></div>
       ) : years.length === 0 ? (
-        <div className="empty-card">
-          <Calendar size={40} color="#CBE0F0"/>
+        <Card className="flex flex-col items-center gap-3 py-12 text-neutral-500 text-sm">
+          <Calendar size={40} className="text-neutral-300" />
           <p>No hay gestiones registradas</p>
-          <button className="btn-primary" onClick={() => setShowYearModal(true)}>
-            <Plus size={14}/> Crear primera gestión
-          </button>
-        </div>
+          <Button onClick={() => setShowYearModal(true)}><Plus size={14} /> Crear primera gestión</Button>
+        </Card>
       ) : (
-        <div className="years-list">
+        <div className="flex flex-col gap-3">
           {years.map(y => (
-            <div key={y.id} className={`year-card ${y.isActive ? 'active-card' : ''}`}>
-              <div className="year-header">
-                <div className="year-left">
-                  <div className={`year-badge ${y.isActive ? 'ybadge-active' : 'ybadge-inactive'}`}>
+            <Card key={y.id} padded={false} className={`overflow-hidden ${y.isActive ? 'ring-2 ring-info-500/40 !border-info-500' : ''}`}>
+              <div className="flex items-center justify-between gap-4 px-5 py-4 flex-wrap">
+                <div className="flex items-center gap-3.5">
+                  <div className={`text-xl font-extrabold px-3.5 py-2 rounded-[10px] min-w-[80px] text-center ${y.isActive ? 'bg-brand-700 text-white' : 'bg-neutral-100 text-neutral-500'}`}>
                     {y.year}
                   </div>
-                  <div className="year-info">
-                    <div className="year-dates">{fmt(y.startDate)} — {fmt(y.endDate)}</div>
-                    <div className="year-counts">
+                  <div className="flex flex-col gap-1">
+                    <div className="text-[13px] font-medium text-brand-700">{fmt(y.startDate)} — {fmt(y.endDate)}</div>
+                    <div className="flex gap-3 text-xs text-neutral-500 flex-wrap">
                       <span>📚 {y._count.trimesters} trimestres</span>
                       <span>🎓 {y._count.assignments} inscripciones</span>
                       <span>📅 {y._count.holidays} feriados</span>
                     </div>
                   </div>
                 </div>
-                <div className="year-actions">
+                <div className="flex items-center gap-2 flex-wrap">
                   {y.isActive
-                    ? <span className="active-pill"><CheckCircle size={12}/> Activa</span>
-                    : <span className="inactive-pill"><XCircle size={12}/> Inactiva</span>
-                  }
-                  <button className={`toggle-btn ${y.isActive ? 'tbtn-off' : 'tbtn-on'}`} onClick={() => handleToggleYear(y.id)}>
+                    ? <Badge tone="success"><CheckCircle size={12} /> Activa</Badge>
+                    : <Badge tone="neutral"><XCircle size={12} /> Inactiva</Badge>}
+                  <Button size="sm" variant={y.isActive ? 'danger' : 'primary'} onClick={() => handleToggleYear(y.id)}>
                     {y.isActive ? 'Desactivar' : 'Activar'}
-                  </button>
-                  <button className="expand-btn" onClick={() => handleExpand(y.id)}>
-                    {expanded === y.id ? <ChevronUp size={16}/> : <ChevronDown size={16}/>}
+                  </Button>
+                  <button onClick={() => handleExpand(y.id)} className="w-8 h-8 rounded-lg bg-neutral-100 text-brand-700 flex items-center justify-center hover:bg-neutral-100/70">
+                    {expanded === y.id ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
                   </button>
                 </div>
               </div>
 
               {expanded === y.id && (
-                <div className="year-detail">
-                  {/* Trimestres */}
-                  <div className="detail-section">
-                    <div className="detail-header">
-                      <span><BookOpen size={14}/> Trimestres</span>
-                      <button className="btn-sm" onClick={() => { setSelectedYear(y.id); setShowTrimModal(true) }}>
-                        <Plus size={12}/> Agregar
-                      </button>
+                <div className="border-t border-neutral-100 p-5 flex flex-col gap-5 bg-neutral-100/40">
+                  <div className="flex flex-col gap-2.5">
+                    <div className="flex items-center justify-between text-[13px] font-semibold text-brand-700">
+                      <span className="flex items-center gap-1.5"><BookOpen size={14} /> Trimestres</span>
+                      <Button size="sm" onClick={() => { setSelectedYear(y.id); setTrimError(''); setShowTrimModal(true) }}><Plus size={12} /> Agregar</Button>
                     </div>
                     {!trimesters[y.id] || trimesters[y.id].length === 0 ? (
-                      <p className="no-data">Sin trimestres registrados</p>
+                      <p className="text-xs text-neutral-500 italic py-1">Sin trimestres registrados</p>
                     ) : (
-                      <div className="trim-grid">
+                      <div className="grid gap-2.5" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(260px, 1fr))' }}>
                         {trimesters[y.id].map(t => (
-                          <div key={t.id} className={`trim-card ${t.isClosed ? 'trim-closed' : ''}`}>
-                            <div className="trim-num" style={{color: t.isClosed ? '#E67E22' : '#4A9FD4'}}>
-                              {t.number}°
-                            </div>
-                            <div style={{flex:1}}>
-                              <div className="trim-name">{t.name}</div>
-                              <div className="trim-dates">{fmt(t.startDate)} — {fmt(t.endDate)}</div>
-                              {t.isClosed
-                                ? <span className="trim-status closed"><Lock size={10}/> Cerrado</span>
-                                : <span className="trim-status open"><CheckCircle size={10}/> Abierto</span>}
+                          <div key={t.id} className={`bg-white border rounded-lg p-3 flex items-center gap-2.5 ${t.isClosed ? 'border-accent-500 bg-warning-100/40' : 'border-neutral-300'}`}>
+                            <div className={`text-xl font-extrabold min-w-[32px] text-center ${t.isClosed ? 'text-accent-600' : 'text-info-500'}`}>{t.number}°</div>
+                            <div className="flex-1">
+                              <div className="text-[13px] font-medium text-brand-700">{t.name}</div>
+                              <div className="text-[11px] text-neutral-500 mt-0.5">{fmt(t.startDate)} — {fmt(t.endDate)}</div>
+                              <div className="mt-1">
+                                {t.isClosed ? <Badge tone="warning"><Lock size={10} /> Cerrado</Badge> : <Badge tone="success"><CheckCircle size={10} /> Abierto</Badge>}
+                              </div>
                             </div>
                             <button
-                              className={`btn-trim-close ${t.isClosed ? 'reopen' : 'close'}`}
                               onClick={() => handleToggleCloseTrimester(y.id, t.id)}
-                              title={t.isClosed ? 'Reabrir trimestre' : 'Cerrar trimestre'}>
-                              {t.isClosed ? <Unlock size={14}/> : <Lock size={14}/>}
+                              title={t.isClosed ? 'Reabrir trimestre' : 'Cerrar trimestre'}
+                              className={`inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg text-[11px] font-medium whitespace-nowrap ${
+                                t.isClosed ? 'bg-success-100 text-success-700 hover:bg-success-700 hover:text-white' : 'bg-warning-100 text-accent-600 hover:bg-accent-600 hover:text-white'
+                              } transition-colors`}
+                            >
+                              {t.isClosed ? <Unlock size={14} /> : <Lock size={14} />}
                               {t.isClosed ? 'Reabrir' : 'Cerrar'}
                             </button>
                           </div>
@@ -280,29 +274,25 @@ export default function GestionPage() {
                     )}
                   </div>
 
-                  {/* Leyenda */}
-                  <div className="trim-legend">
-                    <span><Lock size={11} color="#E67E22"/> Cerrado = maestros no pueden modificar notas</span>
-                    <span><Unlock size={11} color="#0F6E56"/> Abierto = maestros pueden registrar y editar notas</span>
+                  <div className="flex gap-5 flex-wrap text-[11px] text-neutral-500 py-2 border-t border-dashed border-neutral-300">
+                    <span className="flex items-center gap-1"><Lock size={11} className="text-accent-600" /> Cerrado = maestros no pueden modificar notas</span>
+                    <span className="flex items-center gap-1"><Unlock size={11} className="text-success-700" /> Abierto = maestros pueden registrar y editar notas</span>
                   </div>
 
-                  {/* Feriados */}
-                  <div className="detail-section">
-                    <div className="detail-header">
-                      <span><Calendar size={14}/> Días feriados</span>
-                      <button className="btn-sm" onClick={() => { setSelectedYear(y.id); setShowHolModal(true) }}>
-                        <Plus size={12}/> Agregar
-                      </button>
+                  <div className="flex flex-col gap-2.5">
+                    <div className="flex items-center justify-between text-[13px] font-semibold text-brand-700">
+                      <span className="flex items-center gap-1.5"><Calendar size={14} /> Días feriados</span>
+                      <Button size="sm" onClick={() => { setSelectedYear(y.id); setHolError(''); setShowHolModal(true) }}><Plus size={12} /> Agregar</Button>
                     </div>
                     {!holidays[y.id] || holidays[y.id].length === 0 ? (
-                      <p className="no-data">Sin feriados registrados</p>
+                      <p className="text-xs text-neutral-500 italic py-1">Sin feriados registrados</p>
                     ) : (
-                      <div className="hol-list">
+                      <div className="flex flex-col gap-1.5">
                         {holidays[y.id].map(h => (
-                          <div key={h.id} className="hol-item">
-                            <span className="hol-date">{fmt(h.date)}</span>
-                            <span className="hol-desc">{h.description}</span>
-                            <button className="del-btn" onClick={() => handleDeleteHol(y.id, h.id)}><Trash2 size={13}/></button>
+                          <div key={h.id} className="flex items-center gap-2.5 bg-white border border-neutral-300 rounded-lg px-3 py-2.5">
+                            <span className="text-xs font-semibold text-brand-700 whitespace-nowrap min-w-[110px]">{fmt(h.date)}</span>
+                            <span className="flex-1 text-[13px] text-brand-700">{h.description}</span>
+                            <button onClick={() => handleDeleteHol(y.id, h.id)} className="text-danger-600 hover:bg-danger-100 rounded-md p-1"><Trash2 size={13} /></button>
                           </div>
                         ))}
                       </div>
@@ -310,178 +300,74 @@ export default function GestionPage() {
                   </div>
                 </div>
               )}
-            </div>
+            </Card>
           ))}
         </div>
       )}
 
       {/* Modal Nueva Gestión */}
-      {showYearModal && (
-        <div className="overlay" onClick={() => setShowYearModal(false)}>
-          <div className="modal" onClick={e => e.stopPropagation()}>
-            <div className="mhead"><h2>Nueva Gestión Académica</h2>
-              <button onClick={() => setShowYearModal(false)}><X size={18}/></button>
-            </div>
-            <div className="mbody">
-              <div className="fg"><label>Año *</label>
-                <input type="number" min="2020" max="2100" value={yearForm.year}
-                  onChange={e => setYearForm({...yearForm, year: e.target.value})}/></div>
-              <div className="fg"><label>Fecha de inicio *</label>
-                <input type="date" value={yearForm.startDate}
-                  onChange={e => setYearForm({...yearForm, startDate: e.target.value})}/></div>
-              <div className="fg"><label>Fecha de fin *</label>
-                <input type="date" value={yearForm.endDate}
-                  onChange={e => setYearForm({...yearForm, endDate: e.target.value})}/></div>
-            </div>
-            <div className="mfoot">
-              <button className="btn-outline" onClick={() => setShowYearModal(false)}>Cancelar</button>
-              <button className="btn-primary" onClick={handleCreateYear} disabled={saving}>
-                {saving ? <span className="spinsm"/> : <Plus size={14}/>}
-                {saving ? 'Guardando...' : 'Crear gestión'}
-              </button>
-            </div>
-          </div>
+      <Modal
+        open={showYearModal}
+        onClose={() => setShowYearModal(false)}
+        title="Nueva Gestión Académica"
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setShowYearModal(false)}>Cancelar</Button>
+            <Button onClick={handleCreateYear} loading={saving}>Crear gestión</Button>
+          </>
+        }
+      >
+        <div className="flex flex-col gap-3.5">
+          {yearError && <p className="text-[13px] text-danger-600 bg-danger-100 rounded-lg px-3 py-2">{yearError}</p>}
+          <Input label="Año" required type="number" min={2020} max={2100} value={yearForm.year} onChange={e => setYearForm({ ...yearForm, year: e.target.value })} />
+          <Input label="Fecha de inicio" required type="date" value={yearForm.startDate} onChange={e => setYearForm({ ...yearForm, startDate: e.target.value })} />
+          <Input label="Fecha de fin" required type="date" value={yearForm.endDate} onChange={e => setYearForm({ ...yearForm, endDate: e.target.value })} />
         </div>
-      )}
+      </Modal>
 
       {/* Modal Trimestre */}
-      {showTrimModal && (
-        <div className="overlay" onClick={() => setShowTrimModal(false)}>
-          <div className="modal" onClick={e => e.stopPropagation()}>
-            <div className="mhead"><h2>Agregar Trimestre</h2>
-              <button onClick={() => setShowTrimModal(false)}><X size={18}/></button>
-            </div>
-            <div className="mbody">
-              <div className="fg"><label>Número *</label>
-                <select value={trimForm.number} onChange={e => setTrimForm({...trimForm, number: e.target.value})}>
-                  <option value="1">1° Trimestre</option>
-                  <option value="2">2° Trimestre</option>
-                  <option value="3">3° Trimestre</option>
-                </select></div>
-              <div className="fg"><label>Nombre (opcional)</label>
-                <input type="text" placeholder="Ej: Primer Trimestre" value={trimForm.name}
-                  onChange={e => setTrimForm({...trimForm, name: e.target.value})}/></div>
-              <div className="fg"><label>Fecha inicio *</label>
-                <input type="date" value={trimForm.startDate}
-                  onChange={e => setTrimForm({...trimForm, startDate: e.target.value})}/></div>
-              <div className="fg"><label>Fecha fin *</label>
-                <input type="date" value={trimForm.endDate}
-                  onChange={e => setTrimForm({...trimForm, endDate: e.target.value})}/></div>
-            </div>
-            <div className="mfoot">
-              <button className="btn-outline" onClick={() => setShowTrimModal(false)}>Cancelar</button>
-              <button className="btn-primary" onClick={handleCreateTrim} disabled={saving}>
-                {saving ? <span className="spinsm"/> : <Plus size={14}/>}
-                {saving ? 'Guardando...' : 'Agregar trimestre'}
-              </button>
-            </div>
-          </div>
+      <Modal
+        open={showTrimModal}
+        onClose={() => setShowTrimModal(false)}
+        title="Agregar Trimestre"
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setShowTrimModal(false)}>Cancelar</Button>
+            <Button onClick={handleCreateTrim} loading={saving}>Agregar trimestre</Button>
+          </>
+        }
+      >
+        <div className="flex flex-col gap-3.5">
+          {trimError && <p className="text-[13px] text-danger-600 bg-danger-100 rounded-lg px-3 py-2">{trimError}</p>}
+          <Select label="Número" required value={trimForm.number} onChange={e => setTrimForm({ ...trimForm, number: e.target.value })}>
+            <option value="1">1° Trimestre</option>
+            <option value="2">2° Trimestre</option>
+            <option value="3">3° Trimestre</option>
+          </Select>
+          <Input label="Nombre (opcional)" placeholder="Ej: Primer Trimestre" value={trimForm.name} onChange={e => setTrimForm({ ...trimForm, name: e.target.value })} />
+          <Input label="Fecha inicio" required type="date" value={trimForm.startDate} onChange={e => setTrimForm({ ...trimForm, startDate: e.target.value })} />
+          <Input label="Fecha fin" required type="date" value={trimForm.endDate} onChange={e => setTrimForm({ ...trimForm, endDate: e.target.value })} />
         </div>
-      )}
+      </Modal>
 
       {/* Modal Feriado */}
-      {showHolModal && (
-        <div className="overlay" onClick={() => setShowHolModal(false)}>
-          <div className="modal" onClick={e => e.stopPropagation()}>
-            <div className="mhead"><h2>Registrar Día Feriado</h2>
-              <button onClick={() => setShowHolModal(false)}><X size={18}/></button>
-            </div>
-            <div className="mbody">
-              <div className="fg"><label>Fecha *</label>
-                <input type="date" value={holForm.date}
-                  onChange={e => setHolForm({...holForm, date: e.target.value})}/></div>
-              <div className="fg"><label>Descripción *</label>
-                <input type="text" placeholder="Ej: Día de la Independencia" value={holForm.description}
-                  onChange={e => setHolForm({...holForm, description: e.target.value})}/></div>
-            </div>
-            <div className="mfoot">
-              <button className="btn-outline" onClick={() => setShowHolModal(false)}>Cancelar</button>
-              <button className="btn-primary" onClick={handleCreateHol} disabled={saving}>
-                {saving ? <span className="spinsm"/> : <Plus size={14}/>}
-                {saving ? 'Guardando...' : 'Registrar feriado'}
-              </button>
-            </div>
-          </div>
+      <Modal
+        open={showHolModal}
+        onClose={() => setShowHolModal(false)}
+        title="Registrar Día Feriado"
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setShowHolModal(false)}>Cancelar</Button>
+            <Button onClick={handleCreateHol} loading={saving}>Registrar feriado</Button>
+          </>
+        }
+      >
+        <div className="flex flex-col gap-3.5">
+          {holError && <p className="text-[13px] text-danger-600 bg-danger-100 rounded-lg px-3 py-2">{holError}</p>}
+          <Input label="Fecha" required type="date" value={holForm.date} onChange={e => setHolForm({ ...holForm, date: e.target.value })} />
+          <Input label="Descripción" required placeholder="Ej: Día de la Independencia" value={holForm.description} onChange={e => setHolForm({ ...holForm, description: e.target.value })} />
         </div>
-      )}
-
-      <style>{`
-        .page-header{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:24px;gap:16px}
-        .page-header h1{font-size:20px;font-weight:700;color:#1A3A7C;margin-bottom:4px}
-        .page-header p{font-size:13px;color:#6B8BB0}
-        .alert{padding:10px 14px;border-radius:8px;font-size:13px;margin-bottom:16px}
-        .alert.suc{background:#E1F5EE;border:1px solid #9FE1CB;color:#0F6E56}
-        .alert.err{background:#FFF0F0;border:1px solid #FFBBBB;color:#C0392B}
-        .center{display:flex;justify-content:center;padding:48px}
-        .empty-card{background:#fff;border:1px solid #CBE0F0;border-radius:12px;padding:48px;display:flex;flex-direction:column;align-items:center;gap:12px;color:#6B8BB0;font-size:13px}
-        .years-list{display:flex;flex-direction:column;gap:12px}
-        .year-card{background:#fff;border:1px solid #CBE0F0;border-radius:12px;overflow:hidden}
-        .active-card{border-color:#4A9FD4;box-shadow:0 0 0 2px rgba(74,159,212,.15)}
-        .year-header{display:flex;align-items:center;justify-content:space-between;padding:16px 20px;gap:16px;flex-wrap:wrap}
-        .year-left{display:flex;align-items:center;gap:14px}
-        .year-badge{font-size:22px;font-weight:800;padding:8px 14px;border-radius:10px;min-width:80px;text-align:center}
-        .ybadge-active{background:#1A3A7C;color:#fff}
-        .ybadge-inactive{background:#F0F6FC;color:#6B8BB0}
-        .year-info{display:flex;flex-direction:column;gap:4px}
-        .year-dates{font-size:13px;font-weight:500;color:#1A3A7C}
-        .year-counts{display:flex;gap:12px;font-size:12px;color:#6B8BB0;flex-wrap:wrap}
-        .year-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
-        .active-pill{display:flex;align-items:center;gap:4px;font-size:11px;font-weight:500;color:#0F6E56;background:#E1F5EE;padding:4px 10px;border-radius:20px}
-        .inactive-pill{display:flex;align-items:center;gap:4px;font-size:11px;font-weight:500;color:#6B8BB0;background:#F0F6FC;padding:4px 10px;border-radius:20px}
-        .toggle-btn{padding:6px 12px;border:none;border-radius:8px;font-size:12px;font-weight:500;cursor:pointer}
-        .tbtn-on{background:#E1F5EE;color:#0F6E56}
-        .tbtn-off{background:#FFF0F0;color:#C0392B}
-        .expand-btn{background:#F0F6FC;border:none;border-radius:8px;width:32px;height:32px;display:flex;align-items:center;justify-content:center;cursor:pointer;color:#1A3A7C}
-        .year-detail{border-top:1px solid #F0F6FC;padding:20px;display:flex;flex-direction:column;gap:20px;background:#FAFCFF}
-        .detail-section{display:flex;flex-direction:column;gap:10px}
-        .detail-header{display:flex;align-items:center;justify-content:space-between;font-size:13px;font-weight:600;color:#1A3A7C}
-        .detail-header span{display:flex;align-items:center;gap:6px}
-        .btn-sm{display:flex;align-items:center;gap:4px;padding:5px 10px;background:#1A3A7C;color:#fff;border:none;border-radius:6px;font-size:12px;cursor:pointer}
-        .btn-sm:hover{background:#4A9FD4}
-        .no-data{font-size:12px;color:#6B8BB0;font-style:italic;padding:8px 0}
-        .trim-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:10px}
-        .trim-card{background:#fff;border:1px solid #CBE0F0;border-radius:8px;padding:12px;display:flex;align-items:center;gap:10px}
-        .trim-closed{border-color:#F39C12;background:#FFFBF5}
-        .trim-num{font-size:20px;font-weight:800;min-width:32px;text-align:center}
-        .trim-name{font-size:13px;font-weight:500;color:#1A3A7C}
-        .trim-dates{font-size:11px;color:#6B8BB0;margin-top:2px}
-        .trim-status{display:inline-flex;align-items:center;gap:3px;font-size:10px;font-weight:600;padding:2px 7px;border-radius:20px;margin-top:4px}
-        .trim-status.closed{background:#FFF3E0;color:#E67E22}
-        .trim-status.open{background:#E1F5EE;color:#0F6E56}
-        .btn-trim-close{display:inline-flex;align-items:center;gap:4px;padding:5px 10px;border:none;border-radius:7px;font-size:11px;font-weight:500;cursor:pointer;white-space:nowrap}
-        .btn-trim-close.close{background:#FFF3E0;color:#E67E22}
-        .btn-trim-close.close:hover{background:#E67E22;color:#fff}
-        .btn-trim-close.reopen{background:#E1F5EE;color:#0F6E56}
-        .btn-trim-close.reopen:hover{background:#0F6E56;color:#fff}
-        .trim-legend{display:flex;gap:20px;flex-wrap:wrap;font-size:11px;color:#6B8BB0;padding:8px 0;border-top:1px dashed #CBE0F0}
-        .trim-legend span{display:flex;align-items:center;gap:4px}
-        .hol-list{display:flex;flex-direction:column;gap:6px}
-        .hol-item{display:flex;align-items:center;gap:10px;background:#fff;border:1px solid #CBE0F0;border-radius:8px;padding:10px 12px}
-        .hol-date{font-size:12px;font-weight:600;color:#1A3A7C;white-space:nowrap;min-width:110px}
-        .hol-desc{flex:1;font-size:13px;color:#1A3A7C}
-        .del-btn{background:none;border:none;cursor:pointer;color:#C0392B;display:flex;align-items:center;padding:4px;border-radius:4px}
-        .del-btn:hover{background:#FFF0F0}
-        .btn-primary{display:flex;align-items:center;gap:6px;padding:9px 16px;background:#1A3A7C;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:500;cursor:pointer;white-space:nowrap}
-        .btn-primary:hover:not(:disabled){background:#4A9FD4}
-        .btn-primary:disabled{opacity:.6;cursor:not-allowed}
-        .btn-outline{display:flex;align-items:center;gap:6px;padding:9px 14px;background:#fff;color:#1A3A7C;border:1.5px solid #CBE0F0;border-radius:8px;font-size:13px;cursor:pointer}
-        .btn-outline:hover{background:#F0F6FC}
-        .overlay{position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:500;display:flex;align-items:center;justify-content:center;padding:16px}
-        .modal{background:#fff;border-radius:14px;width:100%;max-width:420px;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,0.15)}
-        .mhead{display:flex;align-items:center;justify-content:space-between;padding:18px 20px;border-bottom:1px solid #CBE0F0}
-        .mhead h2{font-size:16px;font-weight:600;color:#1A3A7C}
-        .mhead button{background:none;border:none;cursor:pointer;color:#6B8BB0;display:flex;padding:4px;border-radius:6px}
-        .mhead button:hover{background:#F0F6FC;color:#1A3A7C}
-        .mbody{padding:20px;display:flex;flex-direction:column;gap:14px}
-        .mfoot{display:flex;justify-content:flex-end;gap:10px;padding:16px 20px;border-top:1px solid #CBE0F0}
-        .fg{display:flex;flex-direction:column;gap:6px}
-        .fg label{font-size:11px;font-weight:700;color:#1A3A7C;text-transform:uppercase;letter-spacing:.6px}
-        .fg input,.fg select{padding:10px 12px;border:1.5px solid #CBE0F0;border-radius:8px;font-size:13px;color:#1A3A7C;outline:none}
-        .fg input:focus,.fg select:focus{border-color:#4A9FD4;box-shadow:0 0 0 3px rgba(74,159,212,.12)}
-        .spinner{width:24px;height:24px;border:2px solid rgba(26,58,124,.2);border-top-color:#1A3A7C;border-radius:50%;animation:spin .7s linear infinite}
-        .spinsm{width:14px;height:14px;border:2px solid rgba(255,255,255,.3);border-top-color:#fff;border-radius:50%;animation:spin .7s linear infinite;display:inline-block}
-        @keyframes spin{to{transform:rotate(360deg)}}
-      `}</style>
+      </Modal>
     </div>
   )
-} 
+}

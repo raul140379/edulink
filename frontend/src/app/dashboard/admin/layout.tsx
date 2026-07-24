@@ -1,21 +1,23 @@
 'use client'
 
+import { useEffect, useState } from 'react'
 import {
   LayoutDashboard, Users, GraduationCap, BookOpen,
   ClipboardList, Clock, DollarSign, Bell, FileBarChart,
-  Settings, ShieldCheck, Calendar, ClipboardCheck
+  Settings, ShieldCheck, Calendar, ClipboardCheck, Building2, Megaphone
 } from 'lucide-react'
 import DashboardShell, { MenuGroup } from '@/components/layout/DashboardShell'
 
 const ADMIN_ROLES = ['SUPER_ADMIN', 'DIRECTOR', 'REGENTE', 'SECRETARY']
+const DISTRICT_ROLES = ['SUPER_ADMIN', 'DIRECTOR_DISTRITAL']
 
 const menuGroups: MenuGroup[] = [
   {
     label: 'Dashboard',
     icon:  <LayoutDashboard size={15}/>,
-    roles: ADMIN_ROLES,
+    roles: [...ADMIN_ROLES, ...DISTRICT_ROLES],
     items: [
-      { label: 'Dashboard', href: '/dashboard/admin', icon: <LayoutDashboard size={15}/>, roles: ADMIN_ROLES },
+      { label: 'Dashboard', href: '/dashboard/admin', icon: <LayoutDashboard size={15}/>, roles: [...ADMIN_ROLES, ...DISTRICT_ROLES] },
     ]
   },
   {
@@ -62,9 +64,11 @@ const menuGroups: MenuGroup[] = [
   {
     label: 'Sistema',
     icon:  <Settings size={15}/>,
-    roles: ['SUPER_ADMIN','DIRECTOR','SECRETARY'],
+    roles: ['SUPER_ADMIN','DIRECTOR','SECRETARY', ...DISTRICT_ROLES],
     items: [
-      { label: 'Usuarios',      href: '/dashboard/admin/usuarios',      icon: <Users size={16}/>,    roles: ['SUPER_ADMIN','DIRECTOR','SECRETARY'] },
+      { label: 'Colegios',      href: '/dashboard/admin/colegios',      icon: <Building2 size={16}/>, roles: DISTRICT_ROLES },
+      { label: 'Comunicados',   href: '/dashboard/admin/comunicados',   icon: <Megaphone size={16}/>, roles: DISTRICT_ROLES },
+      { label: 'Usuarios',      href: '/dashboard/admin/usuarios',      icon: <Users size={16}/>,    roles: ['SUPER_ADMIN','DIRECTOR','SECRETARY', ...DISTRICT_ROLES] },
       { label: 'Configuración', href: '/dashboard/admin/configuracion', icon: <Settings size={16}/>, roles: ['SUPER_ADMIN'] },
     ]
   },
@@ -79,12 +83,23 @@ const menuGroups: MenuGroup[] = [
 ]
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
+  const [isDistrict, setIsDistrict] = useState(false)
+
+  useEffect(() => {
+    try {
+      const user = JSON.parse(localStorage.getItem('user') || 'null')
+      setIsDistrict(!!user && DISTRICT_ROLES.includes(user.role))
+    } catch {
+      setIsDistrict(false)
+    }
+  }, [])
+
   return (
     <DashboardShell
-      allowedRoles={ADMIN_ROLES}
-      brandName="U.E. Naciones Unidas"
+      allowedRoles={[...ADMIN_ROLES, ...DISTRICT_ROLES]}
+      brandName={isDistrict ? 'Distrito Educativo El Torno' : 'U.E. Naciones Unidas'}
       brandLoc="El Torno · Santa Cruz"
-      logoSrc="/logo-nnuu.jpeg"
+      logoSrc={isDistrict ? '/escudo-el-torno.png' : '/logo-nnuu.jpeg'}
       homeHref="/dashboard/admin"
       profileHref="/dashboard/admin/perfil"
       notificationsHref="/dashboard/admin/notificaciones"
