@@ -3,6 +3,8 @@
 import { useEffect, useState } from 'react'
 import { BookOpen, ChevronDown, ChevronUp, CheckCircle, AlertCircle } from 'lucide-react'
 import { useSearchParams } from 'next/navigation'
+import Card from '@/components/ui/Card'
+import Badge from '@/components/ui/Badge'
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000'
 
@@ -24,15 +26,6 @@ interface NotaTrimestre {
   cerrado:        boolean
 }
 
-interface NotaMateria {
-  subject:  { id: number; name: string; campo?: string | null }
-  course:   { grade: string; parallel: string; level: string }
-  t1:       NotaTrimestre | null
-  t2:       NotaTrimestre | null
-  t3:       NotaTrimestre | null
-  promedio: number
-}
-
 interface Trimestre { id: number; number: number; name?: string }
 
 interface ParentData {
@@ -50,25 +43,22 @@ const CAMPO_LABEL: Record<string, string> = {
   COSMOS_PENSAMIENTO:            'Cosmos y Pensamiento',
   CIENCIA_TECNOLOGIA_PRODUCCION: 'Ciencia, Tecnología y Producción',
 }
-
-const CAMPO_COLOR: Record<string, string> = {
-  VIDA_TIERRA_TERRITORIO:        '#0F6E56',
-  COMUNIDAD_SOCIEDAD:            '#1A3A7C',
-  COSMOS_PENSAMIENTO:            '#633806',
-  CIENCIA_TECNOLOGIA_PRODUCCION: '#8B1A7C',
+const CAMPO_TONE: Record<string, 'success' | 'brand' | 'warning' | 'info'> = {
+  VIDA_TIERRA_TERRITORIO:        'success',
+  COMUNIDAD_SOCIEDAD:            'brand',
+  COSMOS_PENSAMIENTO:            'warning',
+  CIENCIA_TECNOLOGIA_PRODUCCION: 'info',
 }
 
-const scoreColor = (v?: number|null) => v==null?'#6B8BB0':v>=51?'#0F6E56':'#c0392b'
+const scoreClass = (v?: number|null) => v==null ? 'text-neutral-500' : v>=51 ? 'text-success-700' : 'text-danger-600'
 
-const dimBar = (val: number|null, max: number, color: string) => (
-  <div style={{display:'flex',alignItems:'center',gap:4,marginBottom:3}}>
-    <div style={{flex:1,background:'#F0F6FC',borderRadius:3,height:5,overflow:'hidden'}}>
-      <div style={{width:`${val!=null?Math.min((val/max)*100,100):0}%`,background:color,height:'100%',borderRadius:3}}/>
+const DimBar = ({ val, max, colorVar }: { val: number|null; max: number; colorVar: string }) => (
+  <div className="flex items-center gap-1 mb-0.5">
+    <div className="flex-1 bg-neutral-100 rounded h-1.5 overflow-hidden">
+      <div className="h-full rounded" style={{ width: `${val != null ? Math.min((val / max) * 100, 100) : 0}%`, background: colorVar }}/>
     </div>
-    <span style={{fontSize:10,fontWeight:700,color,minWidth:24,textAlign:'right'}}>
-      {val!=null?val.toFixed(1):'—'}
-    </span>
-    <span style={{fontSize:9,color:'#6B8BB0'}}>/{max}</span>
+    <span className="text-[10px] font-bold min-w-[24px] text-right" style={{ color: colorVar }}>{val != null ? val.toFixed(1) : '—'}</span>
+    <span className="text-[9px] text-neutral-500">/{max}</span>
   </div>
 )
 
@@ -103,6 +93,7 @@ export default function ParentCalificacionesPage() {
       finally  { setLoading(false) }
     }
     init()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   useEffect(() => {
@@ -124,19 +115,19 @@ export default function ParentCalificacionesPage() {
       finally  { setLoadingNotas(false) }
     }
     load()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selStudentId])
 
-  if (loading) return <div className="center"><div className="spinner"/></div>
-  if (error)   return <div className="center"><p style={{color:'#C0392B'}}>{error}</p></div>
+  if (loading) return <div className="flex justify-center py-16"><p className="text-sm text-neutral-500">Cargando...</p></div>
+  if (error)   return <div className="flex justify-center py-16"><p className="text-sm text-danger-600">{error}</p></div>
   if (!parent) return null
 
   const myStudents       = parent.students.filter(ps => ps.isTutor).map(ps => ps.student)
   const selStudent       = myStudents.find(s => s.id === selStudentId)
   const activeAssignment = selStudent?.assignments?.find(a => a.academicYear?.isActive)
 
-  // Procesar notas con dimensiones
   const notasProcesadas = notas.map((n: any) => {
-    const getTrim = (tk: string) => {
+    const getTrim = (tk: string): NotaTrimestre | null => {
       const t = n[tk]
       if (!t) return null
       return { notaId: t.notaId, saber: t.saber, hacer: t.hacer, ser: t.ser, autoEvaluacion: t.autoEvaluacion, total: t.total, cerrado: t.cerrado }
@@ -153,7 +144,6 @@ export default function ParentCalificacionesPage() {
     }
   })
 
-  // Agrupar por campo
   const porCampo: Record<string, typeof notasProcesadas> = {}
   notasProcesadas.forEach(n => {
     const campo = n.subject?.campo || 'SIN_CAMPO'
@@ -172,20 +162,19 @@ export default function ParentCalificacionesPage() {
 
   return (
     <div>
-      <div className="page-header">
-        <div>
-          <h1>Calificaciones</h1>
-          <p>Gestión {year} · Saber(45) + Hacer(40) + Ser(10) + Autoevaluación(5) = 100 pts</p>
-        </div>
+      <div className="mb-6">
+        <h1 className="text-xl font-bold text-brand-700 mb-1">Calificaciones</h1>
+        <p className="text-xs text-neutral-500">Gestión {year} · Saber(45) + Hacer(40) + Ser(10) + Autoevaluación(5) = 100 pts</p>
       </div>
 
-      {/* Selector de hijo */}
       {myStudents.length > 1 && (
-        <div className="student-selector">
+        <div className="flex gap-2 flex-wrap mb-4">
           {myStudents.map(s => (
-            <button key={s.id} className={`stu-btn${selStudentId===s.id?' active':''}`}
-              onClick={()=>setSelStudentId(s.id)}>
-              {s.gender==='MASCULINO'?'👦':'👧'} {s.lastName} {s.firstName}
+            <button
+              key={s.id} onClick={() => setSelStudentId(s.id)}
+              className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-[13px] font-medium border transition-colors ${selStudentId === s.id ? 'bg-brand-700 text-white border-brand-700' : 'bg-white text-brand-700 border-neutral-300 hover:border-brand-500'}`}
+            >
+              {s.gender === 'MASCULINO' ? '👦' : '👧'} {s.lastName} {s.firstName}
             </button>
           ))}
         </div>
@@ -193,202 +182,134 @@ export default function ParentCalificacionesPage() {
 
       {selStudent && (
         <>
-          {/* Info del estudiante */}
-          <div className="stu-info-card">
-            <div className="stu-avatar">{selStudent.gender==='MASCULINO'?'👦':'👧'}</div>
+          <Card className="flex items-center gap-3.5 mb-4">
+            <div className="text-4xl shrink-0">{selStudent.gender === 'MASCULINO' ? '👦' : '👧'}</div>
             <div>
-              <div className="stu-name">{selStudent.lastName} {selStudent.firstName}</div>
+              <div className="text-base font-bold text-brand-700 mb-1">{selStudent.lastName} {selStudent.firstName}</div>
               {activeAssignment && (
-                <div className="stu-course">
+                <div className="text-xs text-neutral-500">
                   📚 {LEVELS[activeAssignment.course.level]} —{' '}
                   {GRADES[activeAssignment.course.grade]} &quot;{activeAssignment.course.parallel}&quot; ·{' '}
                   {SHIFTS[activeAssignment.course.shift]}
                 </div>
               )}
             </div>
-          </div>
+          </Card>
 
           {loadingNotas ? (
-            <div className="center"><div className="spinner"/></div>
+            <div className="flex justify-center py-16"><p className="text-sm text-neutral-500">Cargando...</p></div>
           ) : notasProcesadas.length === 0 ? (
-            <div className="empty-state">
-              <BookOpen size={40} color="#CBE0F0"/>
-              <p>No hay calificaciones registradas aún para la gestión {year}</p>
-            </div>
+            <Card className="flex flex-col items-center gap-3 py-14 text-neutral-500">
+              <BookOpen size={40} className="text-neutral-300"/>
+              <p className="text-[13px]">No hay calificaciones registradas aún para la gestión {year}</p>
+            </Card>
           ) : (
             <>
-              {/* Stats */}
-              <div className="stats-grid">
-                <div className="stat-card"><div className="stat-num" style={{color:'#1A3A7C'}}>{notasProcesadas.length}</div><div className="stat-lbl">Materias</div></div>
-                <div className="stat-card"><div className="stat-num" style={{color:'#0F6E56'}}>{aprobados}</div><div className="stat-lbl">Aprobadas</div></div>
-                <div className="stat-card"><div className="stat-num" style={{color:reprobados>0?'#C0392B':'#0F6E56'}}>{reprobados}</div><div className="stat-lbl">Reprobadas</div></div>
-                <div className="stat-card">
-                  <div className="stat-num" style={{color:parseFloat(promGeneral)>=51?'#0F6E56':'#C0392B'}}>{promGeneral}</div>
-                  <div className="stat-lbl">Promedio general</div>
-                </div>
+              <div className="grid grid-cols-4 gap-3 mb-4">
+                <Card className="text-center"><div className="text-[28px] font-extrabold text-brand-700">{notasProcesadas.length}</div><div className="text-xs text-neutral-500 mt-1">Materias</div></Card>
+                <Card className="text-center"><div className="text-[28px] font-extrabold text-success-700">{aprobados}</div><div className="text-xs text-neutral-500 mt-1">Aprobadas</div></Card>
+                <Card className="text-center"><div className={`text-[28px] font-extrabold ${reprobados > 0 ? 'text-danger-600' : 'text-success-700'}`}>{reprobados}</div><div className="text-xs text-neutral-500 mt-1">Reprobadas</div></Card>
+                <Card className="text-center"><div className={`text-[28px] font-extrabold ${parseFloat(promGeneral) >= 51 ? 'text-success-700' : 'text-danger-600'}`}>{promGeneral}</div><div className="text-xs text-neutral-500 mt-1">Promedio general</div></Card>
               </div>
 
-              {reprobados===0 && withNota.length>0
-                ? <div className="alert-ok"><CheckCircle size={14}/> ¡Todas las materias aprobadas!</div>
-                : reprobados>0
-                ? <div className="alert-warn"><AlertCircle size={14}/> {reprobados} materia{reprobados!==1?'s':''} reprobada{reprobados!==1?'s':''}</div>
+              {reprobados === 0 && withNota.length > 0
+                ? <div className="flex items-center gap-2 px-3.5 py-2.5 bg-success-100 border border-success-500/40 rounded-lg text-[13px] text-success-700 mb-4"><CheckCircle size={14}/> ¡Todas las materias aprobadas!</div>
+                : reprobados > 0
+                ? <div className="flex items-center gap-2 px-3.5 py-2.5 bg-warning-100 border border-warning-500/40 rounded-lg text-[13px] text-[#7A6000] mb-4"><AlertCircle size={14}/> {reprobados} materia{reprobados!==1?'s':''} reprobada{reprobados!==1?'s':''}</div>
                 : null}
 
-              {/* Materias agrupadas por campo */}
               {Object.entries(porCampo).map(([campo, materias]) => (
-                <div key={campo} style={{marginBottom:20}}>
-                  {/* Encabezado campo */}
-                  <div style={{
-                    display:'flex',alignItems:'center',gap:10,marginBottom:10,
-                    padding:'10px 16px',borderRadius:10,
-                    background:CAMPO_COLOR[campo]?`${CAMPO_COLOR[campo]}15`:'#F0F6FC',
-                    borderLeft:`4px solid ${CAMPO_COLOR[campo]||'#6B8BB0'}`,
-                  }}>
-                    <div style={{width:10,height:10,borderRadius:'50%',background:CAMPO_COLOR[campo]||'#6B8BB0',flexShrink:0}}/>
-                    <span style={{fontWeight:700,fontSize:13,color:CAMPO_COLOR[campo]||'#6B8BB0'}}>
-                      {campo==='SIN_CAMPO'?'Sin campo asignado':CAMPO_LABEL[campo]||campo}
-                    </span>
-                    <span style={{fontSize:12,color:'#6B8BB0',marginLeft:'auto'}}>{materias.length} materia{materias.length!==1?'s':''}</span>
+                <div key={campo} className="mb-5">
+                  <div className="flex items-center gap-2.5 mb-2.5">
+                    <Badge tone={CAMPO_TONE[campo] || 'neutral'}>{campo === 'SIN_CAMPO' ? 'Sin campo asignado' : CAMPO_LABEL[campo] || campo}</Badge>
+                    <span className="text-xs text-neutral-500 ml-auto">{materias.length} materia{materias.length!==1?'s':''}</span>
                   </div>
 
-                  {/* Lista de materias */}
-                  <div style={{display:'flex',flexDirection:'column',gap:8,paddingLeft:8}}>
+                  <div className="flex flex-col gap-2 pl-2">
                     {materias.map(n => {
-                      const isOpen = expanded===n.subject.id
+                      const isOpen = expanded === n.subject.id
                       return (
-                        <div key={n.subject.id} style={{background:'#fff',borderRadius:10,border:'1px solid #CBE0F0',overflow:'hidden'}}>
-                          {/* Cabecera materia */}
-                          <div style={{display:'flex',alignItems:'center',padding:'12px 16px',cursor:'pointer',gap:12}}
-                            onClick={()=>setExpanded(isOpen?null:n.subject.id)}>
-                            <div style={{flex:1}}>
-                              <div style={{fontWeight:700,fontSize:14,color:'#1A3A7C'}}>{n.subject.name}</div>
+                        <Card key={n.subject.id} padded={false} className="overflow-hidden">
+                          <div className="flex items-center px-4 py-3 cursor-pointer gap-3" onClick={() => setExpanded(isOpen ? null : n.subject.id)}>
+                            <div className="flex-1">
+                              <div className="font-bold text-sm text-brand-700">{n.subject.name}</div>
                             </div>
-                            {/* Totales por trimestre */}
-                            <div style={{display:'flex',gap:16,alignItems:'center'}}>
+                            <div className="flex gap-4 items-center">
                               {trimestres.map(t => {
                                 const tk = `t${t.number}` as 't1'|'t2'|'t3'
-                                const val = n[tk]?.total ?? null
+                                const val = (n as any)[tk]?.total ?? null
                                 return (
-                                  <div key={t.id} style={{textAlign:'center',minWidth:46}}>
-                                    <div style={{fontSize:10,color:'#6B8BB0',marginBottom:2}}>{trimLabel(t)}</div>
-                                    <div style={{fontSize:15,fontWeight:800,color:scoreColor(val)}}>
-                                      {val!=null?val.toFixed(1):'—'}
-                                    </div>
+                                  <div key={t.id} className="text-center min-w-[46px]">
+                                    <div className="text-[10px] text-neutral-500 mb-0.5">{trimLabel(t)}</div>
+                                    <div className={`text-[15px] font-extrabold ${scoreClass(val)}`}>{val != null ? val.toFixed(1) : '—'}</div>
                                   </div>
                                 )
                               })}
-                              <div style={{textAlign:'center',minWidth:56,borderLeft:'1px solid #F0F6FC',paddingLeft:12}}>
-                                <div style={{fontSize:10,color:'#6B8BB0',marginBottom:2}}>Promedio</div>
-                                <div style={{fontSize:17,fontWeight:800,color:scoreColor(n.promedio>0?n.promedio:null)}}>
-                                  {n.promedio>0?n.promedio.toFixed(1):'—'}
-                                </div>
-                                {n.promedio>0 && (
-                                  <div style={{fontSize:10,fontWeight:600,color:n.promedio>=51?'#0F6E56':'#c0392b'}}>
-                                    {n.promedio>=51?'Aprobado':'Reprobado'}
-                                  </div>
-                                )}
+                              <div className="text-center min-w-[56px] border-l border-neutral-100 pl-3">
+                                <div className="text-[10px] text-neutral-500 mb-0.5">Promedio</div>
+                                <div className={`text-[17px] font-extrabold ${scoreClass(n.promedio > 0 ? n.promedio : null)}`}>{n.promedio > 0 ? n.promedio.toFixed(1) : '—'}</div>
+                                {n.promedio > 0 && <Badge tone={n.promedio >= 51 ? 'success' : 'danger'}>{n.promedio >= 51 ? 'Aprobado' : 'Reprobado'}</Badge>}
                               </div>
                             </div>
-                            {isOpen?<ChevronUp size={15} color="#6B8BB0"/>:<ChevronDown size={15} color="#6B8BB0"/>}
+                            {isOpen ? <ChevronUp size={15} className="text-neutral-500"/> : <ChevronDown size={15} className="text-neutral-500"/>}
                           </div>
 
-                          {/* Detalle por trimestre */}
                           {isOpen && (
-                            <div style={{borderTop:'1px solid #F0F6FC',padding:'14px 16px',background:'#FAFCFF'}}>
-                              <div style={{display:'grid',gridTemplateColumns:`repeat(${trimestres.length},1fr)`,gap:10}}>
+                            <div className="border-t border-neutral-100 p-3.5 bg-neutral-100/40">
+                              <div className="grid gap-2.5" style={{ gridTemplateColumns: `repeat(${trimestres.length}, 1fr)` }}>
                                 {trimestres.map(t => {
                                   const tk  = `t${t.number}` as 't1'|'t2'|'t3'
-                                  const det = n[tk] as NotaTrimestre|null
+                                  const det = (n as any)[tk] as NotaTrimestre|null
                                   return (
-                                    <div key={t.id} style={{
-                                      background:'#fff',borderRadius:8,padding:12,
-                                      border:`1px solid ${det?.cerrado?'#F39C12':'#CBE0F0'}`,
-                                    }}>
-                                      <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:10}}>
-                                        <span style={{fontWeight:700,fontSize:12,color:'#1A3A7C'}}>{trimLabel(t)}</span>
-                                        {det?.cerrado && (
-                                          <span style={{fontSize:9,background:'#FFF3E0',color:'#E67E22',padding:'2px 6px',borderRadius:20,fontWeight:600}}>
-                                            🔒
-                                          </span>
-                                        )}
+                                    <Card key={t.id} className={det?.cerrado ? '!border-warning-500' : ''}>
+                                      <div className="flex items-center justify-between mb-2.5">
+                                        <span className="font-bold text-xs text-brand-700">{trimLabel(t)}</span>
+                                        {det?.cerrado && <Badge tone="warning">🔒</Badge>}
                                       </div>
                                       {det ? (
                                         <>
-                                          {dimBar(det.saber, 45, '#1A3A7C')}
-                                          <div style={{fontSize:9,color:'#6B8BB0',marginBottom:6}}>Saber /45</div>
-                                          {dimBar(det.hacer, 40, '#0F6E56')}
-                                          <div style={{fontSize:9,color:'#6B8BB0',marginBottom:6}}>Hacer /40</div>
-                                          {dimBar(det.ser, 10, '#633806')}
-                                          <div style={{fontSize:9,color:'#6B8BB0',marginBottom:6}}>Ser /10</div>
-                                          {dimBar(det.autoEvaluacion, 5, '#4A9FD4')}
-                                          <div style={{fontSize:9,color:'#6B8BB0',marginBottom:8}}>Autoevaluación /5</div>
-                                          <div style={{textAlign:'center',padding:'6px',background:'#F8FBFF',borderRadius:6}}>
-                                            <div style={{fontSize:9,color:'#6B8BB0'}}>TOTAL</div>
-                                            <div style={{fontSize:20,fontWeight:800,color:scoreColor(det.total)}}>
-                                              {det.total!=null?det.total.toFixed(1):'—'}
-                                            </div>
-                                            {det.total!=null && (
-                                              <div style={{fontSize:9,fontWeight:700,color:det.total>=51?'#0F6E56':'#c0392b'}}>
-                                                {det.total>=51?'✅ Aprobado':'❌ Reprobado'}
+                                          <DimBar val={det.saber} max={45} colorVar="var(--color-brand-700)"/>
+                                          <div className="text-[9px] text-neutral-500 mb-1.5">Saber /45</div>
+                                          <DimBar val={det.hacer} max={40} colorVar="var(--color-success-500)"/>
+                                          <div className="text-[9px] text-neutral-500 mb-1.5">Hacer /40</div>
+                                          <DimBar val={det.ser} max={10} colorVar="var(--color-warning-500)"/>
+                                          <div className="text-[9px] text-neutral-500 mb-1.5">Ser /10</div>
+                                          <DimBar val={det.autoEvaluacion} max={5} colorVar="var(--color-info-500)"/>
+                                          <div className="text-[9px] text-neutral-500 mb-2">Autoevaluación /5</div>
+                                          <div className="text-center p-1.5 bg-neutral-100 rounded-md">
+                                            <div className="text-[9px] text-neutral-500">TOTAL</div>
+                                            <div className={`text-xl font-extrabold ${scoreClass(det.total)}`}>{det.total != null ? det.total.toFixed(1) : '—'}</div>
+                                            {det.total != null && (
+                                              <div className={`text-[9px] font-bold ${det.total >= 51 ? 'text-success-700' : 'text-danger-600'}`}>
+                                                {det.total >= 51 ? '✅ Aprobado' : '❌ Reprobado'}
                                               </div>
                                             )}
                                           </div>
                                         </>
                                       ) : (
-                                        <div style={{textAlign:'center',color:'#6B8BB0',fontSize:11,padding:'16px 0'}}>
-                                          Sin notas
-                                        </div>
+                                        <div className="text-center text-neutral-500 text-[11px] py-4">Sin notas</div>
                                       )}
-                                    </div>
+                                    </Card>
                                   )
                                 })}
                               </div>
                             </div>
                           )}
-                        </div>
+                        </Card>
                       )
                     })}
                   </div>
                 </div>
               ))}
 
-              {/* Leyenda */}
-              <div className="leyenda">
-                <span className="ley-item"><span className="ley-dot" style={{background:'#0F6E56'}}/> Aprobado (≥51)</span>
-                <span className="ley-item"><span className="ley-dot" style={{background:'#c0392b'}}/> Reprobado (&lt;51)</span>
+              <div className="flex gap-4 flex-wrap text-xs text-neutral-500 py-1 mt-2">
+                <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-success-500 shrink-0"/> Aprobado (≥51)</span>
+                <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 rounded-full bg-danger-500 shrink-0"/> Reprobado (&lt;51)</span>
               </div>
             </>
           )}
         </>
       )}
-
-      <style>{`
-        .page-header{margin-bottom:24px}
-        .page-header h1{font-size:20px;font-weight:700;color:#00838F;margin-bottom:4px}
-        .page-header p{font-size:12px;color:#6B8BB0}
-        .center{display:flex;justify-content:center;align-items:center;padding:48px;color:#6B8BB0}
-        .student-selector{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px}
-        .stu-btn{display:flex;align-items:center;gap:6px;padding:8px 16px;border:1.5px solid #CBE0F0;border-radius:8px;background:#fff;color:#1A3A7C;font-size:13px;font-weight:500;cursor:pointer}
-        .stu-btn:hover{border-color:#00838F}
-        .stu-btn.active{background:#00838F;color:#fff;border-color:#00838F}
-        .stu-info-card{background:#fff;border:1px solid #CBE0F0;border-radius:12px;padding:16px;display:flex;align-items:center;gap:14px;margin-bottom:16px}
-        .stu-avatar{font-size:36px;flex-shrink:0}
-        .stu-name{font-size:16px;font-weight:700;color:#1A3A7C;margin-bottom:4px}
-        .stu-course{font-size:12px;color:#6B8BB0}
-        .stats-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px}
-        .stat-card{background:#fff;border:1px solid #CBE0F0;border-radius:12px;padding:16px;text-align:center}
-        .stat-num{font-size:28px;font-weight:800}
-        .stat-lbl{font-size:12px;color:#6B8BB0;margin-top:4px}
-        .alert-ok{display:flex;align-items:center;gap:8px;padding:10px 14px;background:#E1F5EE;border:1px solid #9FE1CB;border-radius:8px;font-size:13px;color:#0F6E56;margin-bottom:16px}
-        .alert-warn{display:flex;align-items:center;gap:8px;padding:10px 14px;background:#FFFBEA;border:1px solid #F5C518;border-radius:8px;font-size:13px;color:#7A6000;margin-bottom:16px}
-        .empty-state{display:flex;flex-direction:column;align-items:center;gap:12px;padding:60px;color:#6B8BB0;font-size:13px;background:#fff;border:1px solid #CBE0F0;border-radius:12px}
-        .leyenda{display:flex;gap:16px;flex-wrap:wrap;font-size:12px;color:#6B8BB0;padding:4px 0;margin-top:8px}
-        .ley-item{display:flex;align-items:center;gap:6px}
-        .ley-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0}
-        .spinner{width:24px;height:24px;border:2px solid rgba(0,131,143,.2);border-top-color:#00838F;border-radius:50%;animation:spin .7s linear infinite}
-        @keyframes spin{to{transform:rotate(360deg)}}
-        @media(max-width:600px){.stats-grid{grid-template-columns:1fr 1fr}}
-      `}</style>
     </div>
   )
 }

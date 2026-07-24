@@ -2,9 +2,17 @@
 
 import { useState, useEffect, useCallback } from 'react'
 import {
-  Plus, X, BookOpen, Users, CheckCircle, AlertCircle,
+  Plus, BookOpen, Users, CheckCircle,
   Trash2, Edit3, Link, FileText, Clock, ChevronRight, Save
 } from 'lucide-react'
+import Card from '@/components/ui/Card'
+import Badge from '@/components/ui/Badge'
+import Button from '@/components/ui/Button'
+import Modal from '@/components/ui/Modal'
+import { Input, Select, Textarea } from '@/components/ui/Input'
+import Table, { Column } from '@/components/ui/Table'
+import { useConfirm } from '@/components/ui/ConfirmProvider'
+import { useToast } from '@/components/ui/ToastProvider'
 
 const API = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000'
 
@@ -33,11 +41,13 @@ const GRADES: Record<string,string> = {
 }
 
 const TASK_TYPES = [
-  { value: 'EVALUACION', label: 'Examen',  dim: 'SABER', color: '#1A3A7C', bg: '#EAF0FF' },
-  { value: 'TRABAJO',    label: 'Tarea',   dim: 'HACER', color: '#0F6E56', bg: '#E6F4F1' },
+  { value: 'EVALUACION', label: 'Examen',  dim: 'SABER', tone: 'brand' as const },
+  { value: 'TRABAJO',    label: 'Tarea',   dim: 'HACER', tone: 'success' as const },
 ]
 
 export default function TeacherTareasPage() {
+  const confirm = useConfirm()
+  const toast   = useToast()
   const [teacherId,  setTeacherId]  = useState<number|null>(null)
   const [trimestres, setTrimestres] = useState<Trimester[]>([])
   const [materias,   setMaterias]   = useState<TeacherSubject[]>([])
@@ -46,9 +56,7 @@ export default function TeacherTareasPage() {
   const [tasks,      setTasks]      = useState<Task[]>([])
   const [students,   setStudents]   = useState<Student[]>([])
   const [loading,    setLoading]    = useState(false)
-  const [toast,      setToast]      = useState<{type:'ok'|'err';text:string}|null>(null)
 
-  // Modal crear tarea
   const [showModal,  setShowModal]  = useState(false)
   const [editTask,   setEditTask]   = useState<Task|null>(null)
   const [form, setForm] = useState({
@@ -57,7 +65,6 @@ export default function TeacherTareasPage() {
   })
   const [saving, setSaving] = useState(false)
 
-  // Panel de calificaciones
   const [selTask,   setSelTask]   = useState<Task|null>(null)
   const [submissions, setSubmissions] = useState<Submission[]>([])
   const [grades,    setGrades]    = useState<Record<number,string>>({})
@@ -65,20 +72,14 @@ export default function TeacherTareasPage() {
   const [grading,   setGrading]   = useState(false)
 
   const year  = new Date().getFullYear()
-  const token = () => typeof window !== 'undefined' ? localStorage.getItem('token')||'' : ''
-  const auth  = () => ({ Authorization: `Bearer ${token()}` })
+  const auth  = () => ({ Authorization: `Bearer ${localStorage.getItem('token') || ''}` })
 
-  const showToast = (type:'ok'|'err', text:string) => {
-    setToast({type,text}); setTimeout(()=>setToast(null),4000)
-  }
-
-  // Carga inicial
   useEffect(() => {
     const init = async () => {
       try {
         const me = await fetch(`${API}/api/auth/me`,{headers:auth()}).then(r=>r.json())
         const tid = me.teacher?.id
-        if (!tid) { showToast('err','No se encontró el perfil del maestro'); return }
+        if (!tid) { toast('No se encontró el perfil del maestro', 'error'); return }
         setTeacherId(tid)
         const [trims, mats] = await Promise.all([
           fetch(`${API}/api/notas/trimestres?year=${year}`,{headers:auth()}).then(r=>r.json()),
@@ -87,12 +88,12 @@ export default function TeacherTareasPage() {
         setTrimestres(Array.isArray(trims)?trims:[])
         setMaterias(Array.isArray(mats)?mats:[])
         if (Array.isArray(trims)&&trims.length>0) setSelTrim(trims[0])
-      } catch { showToast('err','Error al cargar datos') }
+      } catch { toast('Error al cargar datos', 'error') }
     }
     init()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // Cargar tareas y estudiantes
   const loadData = useCallback(async () => {
     if (!selMateria||!selTrim) return
     setLoading(true); setTasks([]); setSelTask(null)
@@ -103,13 +104,13 @@ export default function TeacherTareasPage() {
       ])
       setTasks(Array.isArray(tasksRes)?tasksRes:[])
       setStudents(Array.isArray(studsRes)?studsRes:[])
-    } catch { showToast('err','Error al cargar tareas') }
+    } catch { toast('Error al cargar tareas', 'error') }
     finally { setLoading(false) }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   },[selMateria,selTrim])
 
   useEffect(()=>{ loadData() },[loadData])
 
-  // Abrir panel de calificaciones
   const openGrading = async (task: Task) => {
     setSelTask(task)
     try {
@@ -124,10 +125,9 @@ export default function TeacherTareasPage() {
         })
       }
       setGrades(gMap); setNotes(nMap)
-    } catch { showToast('err','Error al cargar calificaciones') }
+    } catch { toast('Error al cargar calificaciones', 'error') }
   }
 
-  // Guardar calificaciones
   const saveGrades = async () => {
     if (!selTask||!selMateria||!selTrim||!teacherId) return
     setGrading(true)
@@ -136,7 +136,7 @@ export default function TeacherTareasPage() {
         .filter(s => grades[s.id] !== undefined && grades[s.id] !== '')
         .map(s => ({ studentId: s.id, score: parseFloat(grades[s.id]), note: notes[s.id]||null }))
 
-      if (payload.length === 0) { showToast('err','No hay calificaciones para guardar'); return }
+      if (payload.length === 0) { toast('No hay calificaciones para guardar', 'error'); return }
 
       const res = await fetch(`${API}/api/tasks/${selTask.id}/submissions/bulk`,{
         method:'PATCH', headers:{...auth(),'Content-Type':'application/json'},
@@ -149,16 +149,15 @@ export default function TeacherTareasPage() {
         })
       })
       const data = await res.json()
-      if (!res.ok) { showToast('err',data.message||'Error'); return }
-      showToast('ok',data.message||'Calificaciones guardadas')
+      if (!res.ok) { toast(data.message||'Error', 'error'); return }
+      toast(data.message||'Calificaciones guardadas', 'success')
       openGrading(selTask)
-    } catch { showToast('err','Error de conexión') }
+    } catch { toast('Error de conexión', 'error') }
     finally { setGrading(false) }
   }
 
-  // Crear / editar tarea
   const handleSaveTask = async () => {
-    if (!form.title||!selMateria||!selTrim) { showToast('err','Completa los campos requeridos'); return }
+    if (!form.title||!selMateria||!selTrim) { toast('Completa los campos requeridos', 'error'); return }
     setSaving(true)
     try {
       const body = {
@@ -181,21 +180,21 @@ export default function TeacherTareasPage() {
         body: JSON.stringify(body)
       })
       const data = await res.json()
-      if (!res.ok) { showToast('err',data.message||'Error'); return }
-      showToast('ok', data.message||'Tarea guardada')
+      if (!res.ok) { toast(data.message||'Error', 'error'); return }
+      toast(data.message||'Tarea guardada', 'success')
       setShowModal(false); setEditTask(null)
       resetForm()
       loadData()
-    } catch { showToast('err','Error de conexión') }
+    } catch { toast('Error de conexión', 'error') }
     finally { setSaving(false) }
   }
 
   const handleDeleteTask = async (taskId: number) => {
-    if (!confirm('¿Eliminar esta tarea? Se eliminarán también las calificaciones.')) return
+    if (!await confirm('¿Eliminar esta tarea? Se eliminarán también las calificaciones.', { danger: true })) return
     try {
       const res = await fetch(`${API}/api/tasks/${taskId}`,{method:'DELETE',headers:auth()})
-      if (res.ok) { showToast('ok','Tarea eliminada'); loadData() }
-    } catch { showToast('err','Error al eliminar') }
+      if (res.ok) { toast('Tarea eliminada', 'success'); loadData() }
+    } catch { toast('Error al eliminar', 'error') }
   }
 
   const openEdit = (task: Task) => {
@@ -227,86 +226,118 @@ export default function TeacherTareasPage() {
     ? students.filter(s=>grades[s.id]!==undefined&&grades[s.id]!=='').length
     : 0
 
+  const gradeColumns: Column<Student>[] = [
+    { key: 'num', header: '#', render: (s) => <span className="text-xs text-neutral-500">{students.indexOf(s) + 1}</span> },
+    { key: 'estudiante', header: 'Estudiante', render: s => <span className="font-medium text-brand-700">{s.lastName} {s.firstName}</span> },
+    { key: 'kardex', header: 'Kardex', render: s => <span className="text-xs text-neutral-500 font-mono">{s.kardex ?? '—'}</span> },
+    {
+      key: 'nota', header: `Nota (0–${selTask?.maxScore ?? 0})`, className: 'text-center', render: s => (
+        <input
+          type="number" min={0} max={selTask?.maxScore} step={0.5}
+          value={grades[s.id] ?? ''} placeholder="—"
+          className="w-20 text-center px-2 py-1.5 border border-neutral-300 rounded-lg text-[13px] text-brand-700 outline-none focus:border-info-500"
+          onChange={e => {
+            const v = e.target.value
+            if (v === '' || parseFloat(v) <= (selTask?.maxScore ?? 0)) setGrades(p => ({ ...p, [s.id]: v }))
+          }}
+        />
+      )
+    },
+    {
+      key: 'comentario', header: 'Comentario', render: s => (
+        <input
+          type="text" value={notes[s.id] || ''} placeholder="Comentario opcional"
+          className="w-full px-2 py-1.5 border border-neutral-300 rounded-lg text-xs text-brand-700 outline-none focus:border-info-500"
+          onChange={e => setNotes(p => ({ ...p, [s.id]: e.target.value }))}
+        />
+      )
+    },
+    {
+      key: 'estado', header: 'Estado', className: 'text-center', render: s => {
+        const sub = submissions.find(sub => sub.student.id === s.id)
+        return sub?.status === 'CALIFICADO' ? <Badge tone="success">Calificado</Badge> : <Badge tone="neutral">Pendiente</Badge>
+      }
+    },
+  ]
+
   return (
     <div>
-      <div className="page-header">
+      <div className="flex items-start justify-between gap-4 mb-6 flex-wrap">
         <div>
-          <h1>Tareas y Exámenes</h1>
-          <p>Gestión {year} · Exámenes → Saber · Tareas → Hacer</p>
+          <h1 className="text-xl font-bold text-brand-700 mb-1">Tareas y Exámenes</h1>
+          <p className="text-xs text-neutral-500">Gestión {year} · Exámenes → Saber · Tareas → Hacer</p>
         </div>
         {selMateria && !selTask && (
-          <button className="btn-primary" onClick={()=>{resetForm();setEditTask(null);setShowModal(true)}}>
+          <Button onClick={()=>{resetForm();setEditTask(null);setShowModal(true)}}>
             <Plus size={15}/> Nueva tarea/examen
-          </button>
+          </Button>
         )}
       </div>
 
-      {toast && (
-        <div className={`alert ${toast.type==='ok'?'suc':'err'}`}>
-          {toast.type==='ok'?<CheckCircle size={14}/>:<AlertCircle size={14}/>} {toast.text}
-        </div>
-      )}
-
-      {/* Filtros */}
-      <div className="filter-card">
-        <div className="filter-group">
-          <div className="filter-label">Trimestre</div>
-          <div className="trim-btns">
+      <Card className="flex flex-wrap gap-5 mb-5">
+        <div className="flex flex-col gap-2">
+          <div className="text-[11px] font-bold text-neutral-500 uppercase tracking-wide">Trimestre</div>
+          <div className="flex gap-2 flex-wrap">
             {trimestres.map(t=>(
-              <button key={t.id} className={`trim-btn${selTrim?.id===t.id?' active':''}`}
-                onClick={()=>{setSelTrim(t);setSelTask(null)}}>
+              <button
+                key={t.id}
+                onClick={()=>{setSelTrim(t);setSelTask(null)}}
+                className={`px-4 py-1.5 rounded-lg text-[13px] font-medium border transition-colors ${selTrim?.id===t.id ? 'bg-brand-700 text-white border-brand-700' : 'bg-white text-brand-700 border-neutral-300 hover:border-brand-500'}`}
+              >
                 {t.name||`${t.number}° Trimestre`}
               </button>
             ))}
           </div>
         </div>
-        <div className="filter-group" style={{flex:1,minWidth:240}}>
-          <div className="filter-label">Materia</div>
-          <select className="filter-select" value={selMateria?.id??''}
-            onChange={e=>{setSelMateria(materias.find(m=>m.id===parseInt(e.target.value))??null);setSelTask(null)}}>
+        <div className="flex flex-col gap-2 flex-1" style={{ minWidth: 240 }}>
+          <div className="text-[11px] font-bold text-neutral-500 uppercase tracking-wide">Materia</div>
+          <Select
+            value={selMateria?.id??''}
+            onChange={e=>{setSelMateria(materias.find(m=>m.id===parseInt(e.target.value))??null);setSelTask(null)}}
+          >
             <option value="">— Seleccionar materia —</option>
             {materias.map(m=>(
               <option key={m.id} value={m.id}>
-                {m.subject.name} · {GRADES[m.course.grade]||m.course.grade} "{m.course.parallel}"
+                {m.subject.name} · {GRADES[m.course.grade]||m.course.grade} &quot;{m.course.parallel}&quot;
               </option>
             ))}
-          </select>
+          </Select>
         </div>
-      </div>
+      </Card>
 
       {!selMateria && (
-        <div className="empty-state"><BookOpen size={48} color="#CBE0F0"/><p>Selecciona un trimestre y una materia</p></div>
+        <Card className="flex flex-col items-center gap-3 py-14 text-neutral-500">
+          <BookOpen size={48} className="text-neutral-300"/>
+          <p>Selecciona un trimestre y una materia</p>
+        </Card>
       )}
 
-      {selMateria && loading && <div className="center"><div className="spinner"/></div>}
+      {selMateria && loading && <div className="flex justify-center py-12"><p className="text-sm text-neutral-500">Cargando...</p></div>}
 
-      {/* Panel de calificaciones */}
       {selTask && (
-        <div className="grading-panel">
-          <div className="grading-header">
-            <button className="btn-back" onClick={()=>setSelTask(null)}>← Volver</button>
+        <Card className="mb-5">
+          <div className="flex items-center gap-3.5 mb-4 flex-wrap">
+            <Button variant="secondary" size="sm" onClick={()=>setSelTask(null)}>← Volver</Button>
             <div>
-              <div className="grading-title">{selTask.title}</div>
-              <div className="grading-sub">
-                <span className={`type-badge`} style={{background:typeInfo(selTask.type).bg,color:typeInfo(selTask.type).color}}>
-                  {typeInfo(selTask.type).label} → {typeInfo(selTask.type).dim}
-                </span>
+              <div className="text-[15px] font-bold text-brand-700">{selTask.title}</div>
+              <div className="flex items-center gap-2.5 text-xs text-neutral-500 mt-1 flex-wrap">
+                <Badge tone={typeInfo(selTask.type).tone}>{typeInfo(selTask.type).label} → {typeInfo(selTask.type).dim}</Badge>
                 <span>Puntaje máximo: {selTask.maxScore}</span>
                 {selTask.trimester && <span>{selTask.trimester.number}° Trimestre</span>}
               </div>
             </div>
-            <button className="btn-save-grades" onClick={saveGrades} disabled={grading}>
-              <Save size={14}/> {grading?'Guardando...':'Guardar calificaciones'}
-            </button>
+            <Button onClick={saveGrades} loading={grading} className="ml-auto">
+              {!grading && <Save size={14}/>} {grading?'Guardando...':'Guardar calificaciones'}
+            </Button>
           </div>
 
           {selTask.attachmentUrl && (
-            <a href={selTask.attachmentUrl} target="_blank" rel="noopener noreferrer" className="attachment-link">
+            <a href={selTask.attachmentUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 text-xs text-info-500 hover:underline mb-3">
               <Link size={13}/> Ver documento adjunto
             </a>
           )}
 
-          <div className="grading-stats">
+          <div className="text-xs text-neutral-500 flex gap-2 mb-3">
             <span>{students.length} estudiantes</span>
             <span>·</span>
             <span>{calificados} calificados</span>
@@ -314,103 +345,57 @@ export default function TeacherTareasPage() {
             <span>{students.length - calificados} pendientes</span>
           </div>
 
-          <table className="grade-table">
-            <thead>
-              <tr>
-                <th>#</th><th>Estudiante</th><th>Kardex</th>
-                <th style={{textAlign:'center'}}>Nota (0–{selTask.maxScore})</th>
-                <th>Comentario</th>
-                <th style={{textAlign:'center'}}>Estado</th>
-              </tr>
-            </thead>
-            <tbody>
-              {students.map((s,i)=>{
-                const sub  = submissions.find(sub=>sub.student.id===s.id)
-                const val  = grades[s.id]??''
-                const nota = parseFloat(val)
-                return (
-                  <tr key={s.id}>
-                    <td className="muted">{i+1}</td>
-                    <td style={{fontWeight:500}}>{s.lastName} {s.firstName}</td>
-                    <td className="muted mono">{s.kardex??'—'}</td>
-                    <td style={{textAlign:'center'}}>
-                      <input type="number" min={0} max={selTask.maxScore} step={0.5}
-                        value={val} placeholder="—" className="grade-input"
-                        onChange={e=>{
-                          const v = e.target.value
-                          if (v===''||parseFloat(v)<=selTask.maxScore) setGrades(p=>({...p,[s.id]:v}))
-                        }}/>
-                    </td>
-                    <td>
-                      <input type="text" value={notes[s.id]||''} placeholder="Comentario opcional"
-                        className="note-input"
-                        onChange={e=>setNotes(p=>({...p,[s.id]:e.target.value}))}/>
-                    </td>
-                    <td style={{textAlign:'center'}}>
-                      {sub?.status==='CALIFICADO'
-                        ? <span className="badge apr">Calificado</span>
-                        : <span className="badge sin">Pendiente</span>}
-                    </td>
-                  </tr>
-                )
-              })}
-            </tbody>
-          </table>
+          <Table columns={gradeColumns} rows={students} rowKey={s => s.id} />
 
-          <div className="grading-footer">
-            <span className="muted">{calificados} de {students.length} calificados</span>
-            <button className="btn-save-grades" onClick={saveGrades} disabled={grading}>
-              <Save size={14}/> {grading?'Guardando...':'Guardar calificaciones'}
-            </button>
+          <div className="flex items-center justify-between pt-3 mt-3 border-t border-neutral-100">
+            <span className="text-xs text-neutral-500">{calificados} de {students.length} calificados</span>
+            <Button onClick={saveGrades} loading={grading}>
+              {!grading && <Save size={14}/>} {grading?'Guardando...':'Guardar calificaciones'}
+            </Button>
           </div>
-        </div>
+        </Card>
       )}
 
-      {/* Lista de tareas */}
       {selMateria && !loading && !selTask && (
         <>
           {tasks.length === 0 ? (
-            <div className="empty-state">
-              <FileText size={40} color="#CBE0F0"/>
+            <Card className="flex flex-col items-center gap-3 py-14 text-neutral-500">
+              <FileText size={40} className="text-neutral-300"/>
               <p>No hay tareas ni exámenes para este trimestre y materia.</p>
-              <button className="btn-primary" onClick={()=>{resetForm();setShowModal(true)}}>
+              <Button onClick={()=>{resetForm();setShowModal(true)}}>
                 <Plus size={14}/> Crear primera tarea
-              </button>
-            </div>
+              </Button>
+            </Card>
           ) : (
-            <div className="tasks-grid">
+            <div className="grid gap-3.5" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))' }}>
               {tasks.map(task=>{
                 const ti = typeInfo(task.type)
                 const calTotal = task._count.submissions
                 return (
-                  <div key={task.id} className="task-card">
-                    <div className="task-top">
-                      <span className="type-badge" style={{background:ti.bg,color:ti.color}}>
-                        {ti.label} → {ti.dim}
-                      </span>
-                      <div style={{display:'flex',gap:6}}>
-                        <button className="btn-icon" onClick={()=>openEdit(task)}><Edit3 size={14}/></button>
-                        <button className="btn-icon danger" onClick={()=>handleDeleteTask(task.id)}><Trash2 size={14}/></button>
+                  <Card key={task.id} className="flex flex-col gap-2.5">
+                    <div className="flex items-center justify-between">
+                      <Badge tone={ti.tone}>{ti.label} → {ti.dim}</Badge>
+                      <div className="flex gap-1.5">
+                        <button onClick={()=>openEdit(task)} className="p-1.5 rounded-md text-neutral-500 hover:bg-neutral-100 hover:text-brand-700 transition-colors"><Edit3 size={14}/></button>
+                        <button onClick={()=>handleDeleteTask(task.id)} className="p-1.5 rounded-md text-neutral-500 hover:bg-danger-100 hover:text-danger-600 transition-colors"><Trash2 size={14}/></button>
                       </div>
                     </div>
-                    <div className="task-title">{task.title}</div>
-                    {task.description && <div className="task-desc">{task.description}</div>}
-                    <div className="task-meta">
-                      {task.dueDate && (
-                        <span><Clock size={11}/> {new Date(task.dueDate).toLocaleDateString('es-BO')}</span>
-                      )}
+                    <div className="text-sm font-bold text-brand-700">{task.title}</div>
+                    {task.description && <div className="text-xs text-neutral-500 leading-relaxed">{task.description}</div>}
+                    <div className="flex gap-2.5 flex-wrap text-[11px] text-neutral-500 items-center">
+                      {task.dueDate && <span className="flex items-center gap-1"><Clock size={11}/> {new Date(task.dueDate).toLocaleDateString('es-BO')}</span>}
                       <span>Puntaje máx: {task.maxScore}</span>
-                      <span><Users size={11}/> {calTotal} estudiantes</span>
+                      <span className="flex items-center gap-1"><Users size={11}/> {calTotal} estudiantes</span>
                     </div>
                     {task.attachmentUrl && (
-                      <a href={task.attachmentUrl} target="_blank" rel="noopener noreferrer" className="task-link">
+                      <a href={task.attachmentUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 text-xs text-info-500 hover:underline">
                         <Link size={11}/> Ver documento adjunto
                       </a>
                     )}
-                    <button className="btn-grade" onClick={()=>openGrading(task)}>
+                    <Button variant="secondary" size="sm" onClick={()=>openGrading(task)} className="mt-1">
                       <CheckCircle size={13}/> Calificar <ChevronRight size={12}/>
-                    </button>
-                  </div>
+                    </Button>
+                  </Card>
                 )
               })}
             </div>
@@ -419,187 +404,104 @@ export default function TeacherTareasPage() {
       )}
 
       {/* Modal crear/editar tarea */}
-      {showModal && (
-        <div className="overlay" onClick={()=>{setShowModal(false);setEditTask(null)}}>
-          <div className="modal" onClick={e=>e.stopPropagation()}>
-            <div className="mhead">
-              <h2>{editTask?'Editar':'Nueva'} Tarea / Examen</h2>
-              <button onClick={()=>{setShowModal(false);setEditTask(null)}}><X size={18}/></button>
+      <Modal
+        open={showModal} onClose={()=>{setShowModal(false);setEditTask(null)}}
+        title={`${editTask?'Editar':'Nueva'} Tarea / Examen`}
+        footer={
+          <>
+            <Button variant="secondary" onClick={()=>{setShowModal(false);setEditTask(null)}}>Cancelar</Button>
+            <Button onClick={handleSaveTask} loading={saving}>
+              {!saving && <Save size={14}/>}
+              {saving?'Guardando...':editTask?'Actualizar':'Crear tarea'}
+            </Button>
+          </>
+        }
+      >
+        <div className="flex flex-col gap-4">
+          <div>
+            <label className="text-[11px] font-bold text-brand-700 uppercase tracking-wide block mb-1.5">Tipo *</label>
+            <div className="flex gap-2">
+              {TASK_TYPES.map(t=>(
+                <button
+                  key={t.value}
+                  onClick={()=>setForm(p=>({...p,type:t.value,maxScore:String(t.value==='EVALUACION'?45:40)}))}
+                  className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg border text-[13px] transition-colors ${form.type===t.value ? 'bg-brand-700 border-brand-700 text-white' : 'bg-white border-neutral-300 text-brand-700 hover:border-brand-500'}`}
+                >
+                  {t.label} <span className="text-[10px] opacity-80">→ {t.dim}</span>
+                </button>
+              ))}
             </div>
-            <div className="mbody">
-              <div className="fg">
-                <label>Tipo *</label>
-                <div style={{display:'flex',gap:8}}>
-                  {TASK_TYPES.map(t=>(
-                    <button key={t.value}
-                      className={`type-btn${form.type===t.value?' selected':''}`}
-                      style={form.type===t.value?{background:t.color,color:'#fff',borderColor:t.color}:{}}
-                     onClick={()=>setForm(p=>({...p,type:t.value,maxScore:String(t.value==='EVALUACION'?45:40)}))}>
-                      {t.label} <span style={{fontSize:10,opacity:.8}}>→ {t.dim}</span>
-                    </button>
+          </div>
+
+          <Input
+            label="Título" required placeholder="Ej: Examen parcial 1 / Trabajo grupal"
+            value={form.title} onChange={e=>setForm(p=>({...p,title:e.target.value}))}
+          />
+
+          <Textarea
+            label="Descripción" rows={2} placeholder="Instrucciones o descripción..."
+            value={form.description} onChange={e=>setForm(p=>({...p,description:e.target.value}))}
+          />
+
+          <div className="grid grid-cols-2 gap-3">
+            <Input
+              label="Puntaje máximo" type="number" readOnly value={form.type==='EVALUACION'?45:40}
+              hint={form.type==='EVALUACION'?'Examen → Saber (máx 45 pts)':'Tarea → Hacer (máx 40 pts)'}
+              className="!bg-neutral-100 !cursor-not-allowed !text-neutral-500"
+            />
+            <Input
+              label="Fecha de entrega" type="date" value={form.dueDate}
+              onChange={e=>setForm(p=>({...p,dueDate:e.target.value}))}
+            />
+          </div>
+
+          <Input
+            label="Enlace de documento (Google Drive, OneDrive, etc.)" type="url" placeholder="https://drive.google.com/..."
+            value={form.attachmentUrl} onChange={e=>setForm(p=>({...p,attachmentUrl:e.target.value}))}
+          />
+
+          {!editTask && (
+            <div>
+              <label className="text-[11px] font-bold text-brand-700 uppercase tracking-wide block mb-1.5">Asignar a</label>
+              <div className="flex gap-2">
+                <button
+                  onClick={()=>setForm(p=>({...p,assignToAll:true,studentIds:[]}))}
+                  className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg border text-[13px] transition-colors ${form.assignToAll ? 'bg-brand-700 border-brand-700 text-white' : 'bg-white border-neutral-300 text-brand-700 hover:border-brand-500'}`}
+                >
+                  <Users size={13}/> Todo el curso
+                </button>
+                <button
+                  onClick={()=>setForm(p=>({...p,assignToAll:false}))}
+                  className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg border text-[13px] transition-colors ${!form.assignToAll ? 'bg-brand-700 border-brand-700 text-white' : 'bg-white border-neutral-300 text-brand-700 hover:border-brand-500'}`}
+                >
+                  Estudiantes específicos
+                </button>
+              </div>
+              {!form.assignToAll && (
+                <div className="flex flex-col gap-1.5 max-h-[200px] overflow-y-auto border border-neutral-300 rounded-lg p-2.5 mt-2">
+                  {students.map(s=>(
+                    <label key={s.id} className="flex items-center gap-2 text-[13px] text-brand-700 cursor-pointer px-1 py-1 hover:bg-neutral-100 rounded-md">
+                      <input
+                        type="checkbox"
+                        checked={form.studentIds.includes(s.id)}
+                        onChange={e=>{
+                          setForm(p=>({...p,
+                            studentIds: e.target.checked
+                              ? [...p.studentIds, s.id]
+                              : p.studentIds.filter(id=>id!==s.id)
+                          }))
+                        }}
+                        className="w-4 h-4 accent-[var(--color-brand-700)]"
+                      />
+                      {s.lastName} {s.firstName}
+                    </label>
                   ))}
-                </div>
-              </div>
-              <div className="fg">
-                <label>Título *</label>
-                <input type="text" placeholder="Ej: Examen parcial 1 / Trabajo grupal"
-                  value={form.title} onChange={e=>setForm(p=>({...p,title:e.target.value}))}/>
-              </div>
-              <div className="fg">
-                <label>Descripción</label>
-                <textarea rows={2} placeholder="Instrucciones o descripción..."
-                  value={form.description} onChange={e=>setForm(p=>({...p,description:e.target.value}))}/>
-              </div>
-              <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
-                <div className="fg">
-                <label>Puntaje máximo</label>
-                <input type="number" 
-                  value={form.type==='EVALUACION'?45:40}
-                  readOnly
-                  style={{background:'#F0F6FC',cursor:'not-allowed',color:'#6B8BB0'}}/>
-                <span style={{fontSize:11,color:'#6B8BB0'}}>
-                  {form.type==='EVALUACION'?'Examen → Saber (máx 45 pts)':'Tarea → Hacer (máx 40 pts)'}
-                </span>
-              </div>
-                <div className="fg">
-                  <label>Fecha de entrega</label>
-                  <input type="date" value={form.dueDate}
-                    onChange={e=>setForm(p=>({...p,dueDate:e.target.value}))}/>
-                </div>
-              </div>
-              <div className="fg">
-                <label>Enlace de documento (Google Drive, OneDrive, etc.)</label>
-                <input type="url" placeholder="https://drive.google.com/..."
-                  value={form.attachmentUrl} onChange={e=>setForm(p=>({...p,attachmentUrl:e.target.value}))}/>
-              </div>
-              {!editTask && (
-                <div className="fg">
-                  <label>Asignar a</label>
-                  <div style={{display:'flex',gap:8}}>
-                    <button className={`type-btn${form.assignToAll?' selected':''}`}
-                      style={form.assignToAll?{background:'#1A3A7C',color:'#fff',borderColor:'#1A3A7C'}:{}}
-                      onClick={()=>setForm(p=>({...p,assignToAll:true,studentIds:[]}))}>
-                      <Users size={13}/> Todo el curso
-                    </button>
-                    <button className={`type-btn${!form.assignToAll?' selected':''}`}
-                      style={!form.assignToAll?{background:'#1565C0',color:'#fff',borderColor:'#1565C0'}:{}}
-                      onClick={()=>setForm(p=>({...p,assignToAll:false}))}>
-                      Estudiantes específicos
-                    </button>
-                  </div>
-                  {!form.assignToAll && (
-                    <div className="students-select">
-                      {students.map(s=>(
-                        <label key={s.id} className="student-check">
-                          <input type="checkbox"
-                            checked={form.studentIds.includes(s.id)}
-                            onChange={e=>{
-                              setForm(p=>({...p,
-                                studentIds: e.target.checked
-                                  ? [...p.studentIds, s.id]
-                                  : p.studentIds.filter(id=>id!==s.id)
-                              }))
-                            }}/>
-                          {s.lastName} {s.firstName}
-                        </label>
-                      ))}
-                    </div>
-                  )}
                 </div>
               )}
             </div>
-            <div className="mfoot">
-              <button className="btn-outline" onClick={()=>{setShowModal(false);setEditTask(null)}}>Cancelar</button>
-              <button className="btn-primary" onClick={handleSaveTask} disabled={saving}>
-                {saving?<span className="spinsm"/>:<Save size={14}/>}
-                {saving?'Guardando...':editTask?'Actualizar':'Crear tarea'}
-              </button>
-            </div>
-          </div>
+          )}
         </div>
-      )}
-
-      <style>{`
-        .page-header{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:24px;gap:16px;flex-wrap:wrap}
-        .page-header h1{font-size:20px;font-weight:700;color:#1565C0;margin-bottom:4px}
-        .page-header p{font-size:12px;color:#6B8BB0}
-        .alert{display:flex;align-items:center;gap:8px;padding:10px 14px;border-radius:8px;font-size:13px;margin-bottom:16px}
-        .alert.suc{background:#E1F5EE;border:1px solid #9FE1CB;color:#0F6E56}
-        .alert.err{background:#FFF0F0;border:1px solid #FFBBBB;color:#C0392B}
-        .filter-card{background:#fff;border:1px solid #CBE0F0;border-radius:12px;padding:20px;margin-bottom:20px;display:flex;flex-wrap:wrap;gap:20px}
-        .filter-group{display:flex;flex-direction:column;gap:8px}
-        .filter-label{font-size:11px;font-weight:700;color:#6B8BB0;text-transform:uppercase;letter-spacing:.6px}
-        .trim-btns{display:flex;gap:8px;flex-wrap:wrap}
-        .trim-btn{padding:7px 16px;border-radius:8px;font-size:13px;font-weight:500;border:1.5px solid #CBE0F0;background:#fff;color:#1A3A7C;cursor:pointer}
-        .trim-btn:hover{border-color:#4A9FD4}
-        .trim-btn.active{background:#1565C0;color:#fff;border-color:#1565C0}
-        .filter-select{padding:9px 12px;border:1.5px solid #CBE0F0;border-radius:8px;font-size:13px;color:#1A3A7C;outline:none;width:100%}
-        .tasks-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:14px}
-        .task-card{background:#fff;border:1px solid #CBE0F0;border-radius:12px;padding:16px;display:flex;flex-direction:column;gap:10px}
-        .task-top{display:flex;align-items:center;justify-content:space-between}
-        .type-badge{font-size:11px;font-weight:700;padding:3px 10px;border-radius:20px}
-        .task-title{font-size:14px;font-weight:700;color:#1A3A7C}
-        .task-desc{font-size:12px;color:#6B8BB0;line-height:1.5}
-        .task-meta{display:flex;gap:10px;flex-wrap:wrap;font-size:11px;color:#6B8BB0;align-items:center}
-        .task-meta span{display:flex;align-items:center;gap:3px}
-        .task-link{display:inline-flex;align-items:center;gap:5px;font-size:12px;color:#4A9FD4;text-decoration:none}
-        .task-link:hover{text-decoration:underline}
-        .btn-grade{display:flex;align-items:center;gap:6px;padding:8px 14px;background:#F0F6FC;border:1.5px solid #CBE0F0;border-radius:8px;color:#1A3A7C;font-size:13px;cursor:pointer;margin-top:4px}
-        .btn-grade:hover{border-color:#1565C0;color:#1565C0}
-        .btn-icon{background:none;border:none;cursor:pointer;padding:5px;border-radius:6px;color:#6B8BB0}
-        .btn-icon:hover{background:#F0F6FC;color:#1A3A7C}
-        .btn-icon.danger:hover{background:#FFF0F0;color:#C0392B}
-        .grading-panel{background:#fff;border:1px solid #CBE0F0;border-radius:12px;padding:20px;margin-bottom:20px}
-        .grading-header{display:flex;align-items:center;gap:14px;margin-bottom:16px;flex-wrap:wrap}
-        .btn-back{padding:7px 14px;border:1.5px solid #CBE0F0;border-radius:8px;background:#fff;color:#1A3A7C;font-size:13px;cursor:pointer;white-space:nowrap}
-        .btn-back:hover{border-color:#1565C0;color:#1565C0}
-        .grading-title{font-size:15px;font-weight:700;color:#1A3A7C}
-        .grading-sub{display:flex;align-items:center;gap:10px;font-size:12px;color:#6B8BB0;margin-top:4px;flex-wrap:wrap}
-        .btn-save-grades{display:inline-flex;align-items:center;gap:6px;padding:8px 16px;background:#1565C0;color:#fff;border:none;border-radius:8px;font-size:13px;cursor:pointer;margin-left:auto;white-space:nowrap}
-        .btn-save-grades:disabled{opacity:.6}
-        .attachment-link{display:inline-flex;align-items:center;gap:6px;font-size:12px;color:#4A9FD4;text-decoration:none;margin-bottom:12px}
-        .grading-stats{font-size:12px;color:#6B8BB0;display:flex;gap:8px;margin-bottom:12px}
-        .grade-table{width:100%;border-collapse:collapse;margin-bottom:12px}
-        .grade-table th{padding:8px 12px;text-align:left;font-size:10px;font-weight:600;color:#1A3A7C;text-transform:uppercase;background:#F0F6FC;border-bottom:1px solid #CBE0F0}
-        .grade-table td{padding:8px 12px;font-size:13px;color:#1A3A7C;border-top:1px solid #F8FBFF}
-        .grade-table tr:hover td{background:#FAFCFF}
-        .grade-input{width:80px;text-align:center;padding:6px 8px;border:1.5px solid #CBE0F0;border-radius:8px;font-size:13px;color:#1A3A7C;outline:none}
-        .grade-input:focus{border-color:#4A9FD4}
-        .note-input{width:100%;padding:6px 8px;border:1.5px solid #CBE0F0;border-radius:8px;font-size:12px;color:#1A3A7C;outline:none}
-        .note-input:focus{border-color:#4A9FD4}
-        .grading-footer{display:flex;align-items:center;justify-content:space-between;padding-top:12px;border-top:1px solid #F0F6FC}
-        .badge{display:inline-flex;align-items:center;gap:4px;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:600}
-        .badge.apr{background:#E1F5EE;color:#0F6E56}
-        .badge.sin{background:#F5F5F5;color:#888}
-        .muted{color:#6B8BB0;font-size:12px}
-        .mono{font-family:monospace}
-        .empty-state{display:flex;flex-direction:column;align-items:center;justify-content:center;padding:60px;gap:12px;color:#6B8BB0;font-size:13px}
-        .center{display:flex;justify-content:center;padding:48px}
-        .spinner{width:24px;height:24px;border:2px solid rgba(99,56,6,.2);border-top-color:#1565C0;border-radius:50%;animation:spin .7s linear infinite}
-        @keyframes spin{to{transform:rotate(360deg)}}
-        .overlay{position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:500;display:flex;align-items:center;justify-content:center;padding:16px}
-        .modal{background:#fff;border-radius:14px;width:100%;max-width:500px;max-height:90vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,0.15)}
-        .mhead{display:flex;align-items:center;justify-content:space-between;padding:18px 20px;border-bottom:1px solid #CBE0F0;position:sticky;top:0;background:#fff;z-index:1}
-        .mhead h2{font-size:16px;font-weight:600;color:#1A3A7C}
-        .mhead button{background:none;border:none;cursor:pointer;color:#6B8BB0;padding:4px;border-radius:6px}
-        .mbody{padding:20px;display:flex;flex-direction:column;gap:14px}
-        .mfoot{display:flex;justify-content:flex-end;gap:10px;padding:16px 20px;border-top:1px solid #CBE0F0;position:sticky;bottom:0;background:#fff}
-        .fg{display:flex;flex-direction:column;gap:6px}
-        .fg label{font-size:11px;font-weight:700;color:#1A3A7C;text-transform:uppercase;letter-spacing:.6px}
-        .fg input,.fg select,.fg textarea{padding:10px 12px;border:1.5px solid #CBE0F0;border-radius:8px;font-size:13px;color:#1A3A7C;outline:none;font-family:inherit}
-        .fg input:focus,.fg select:focus,.fg textarea:focus{border-color:#4A9FD4}
-        .fg textarea{resize:vertical}
-        .type-btn{padding:7px 14px;border:1.5px solid #CBE0F0;border-radius:8px;background:#fff;color:#1A3A7C;font-size:13px;cursor:pointer;display:flex;align-items:center;gap:5px}
-        .btn-primary{display:flex;align-items:center;gap:6px;padding:9px 16px;background:#1565C0;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:500;cursor:pointer}
-        .btn-primary:hover:not(:disabled){background:#7A4A0A}
-        .btn-primary:disabled{opacity:.6;cursor:not-allowed}
-        .btn-outline{display:flex;align-items:center;gap:6px;padding:9px 14px;background:#fff;color:#1A3A7C;border:1.5px solid #CBE0F0;border-radius:8px;font-size:13px;cursor:pointer}
-        .students-select{display:flex;flex-direction:column;gap:6px;max-height:200px;overflow-y:auto;border:1px solid #CBE0F0;border-radius:8px;padding:10px}
-        .student-check{display:flex;align-items:center;gap:8px;font-size:13px;color:#1A3A7C;cursor:pointer;padding:4px}
-        .student-check:hover{background:#F8FBFF;border-radius:6px}
-        .spinsm{width:14px;height:14px;border:2px solid rgba(255,255,255,.3);border-top-color:#fff;border-radius:50%;animation:spin .7s linear infinite;display:inline-block}
-        @media(max-width:600px){.tasks-grid{grid-template-columns:1fr}}
-      `}</style>
+      </Modal>
     </div>
   )
 }

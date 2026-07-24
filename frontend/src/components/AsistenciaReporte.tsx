@@ -2,6 +2,9 @@
 
 import { useEffect, useState } from 'react'
 import { ChevronLeft, ChevronRight, ChevronDown, ChevronUp } from 'lucide-react'
+import Card from '@/components/ui/Card'
+import Badge from '@/components/ui/Badge'
+import { Input } from '@/components/ui/Input'
 
 const API = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000'
 
@@ -20,11 +23,13 @@ interface ReportData {
   totalRecords: number
 }
 
-const STATUS_CONFIG: Record<string, { label: string; bg: string; color: string }> = {
-  PRESENTE: { label: 'Presente', bg: '#E1F5EE', color: '#0F6E56' },
-  RETRASO:  { label: 'Retraso',  bg: '#FFFBEA', color: '#BA7517' },
-  AUSENTE:  { label: 'Ausente',  bg: '#FFF0F0', color: '#C0392B' },
-  LICENCIA: { label: 'Licencia', bg: '#E0ECF8', color: '#1A3A7C' },
+type Tone = 'success' | 'warning' | 'danger' | 'brand'
+
+const STATUS_CONFIG: Record<string, { label: string; tone: Tone }> = {
+  PRESENTE: { label: 'Presente', tone: 'success' },
+  RETRASO:  { label: 'Retraso',  tone: 'warning' },
+  AUSENTE:  { label: 'Ausente',  tone: 'danger' },
+  LICENCIA: { label: 'Licencia', tone: 'brand' },
 }
 
 const MONTHS = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre']
@@ -44,8 +49,7 @@ export default function AsistenciaReporte() {
   const [expanded, setExpanded] = useState<number | null>(null)
   const [search,   setSearch]   = useState('')
 
-  const token = () => localStorage.getItem('token') || ''
-  const auth  = () => ({ Authorization: `Bearer ${token()}` })
+  const auth = () => ({ Authorization: `Bearer ${localStorage.getItem('token') || ''}` })
 
   const loadReport = async () => {
     setLoading(true)
@@ -88,187 +92,168 @@ export default function AsistenciaReporte() {
 
   return (
     <div>
-      {/* Header */}
-      <div style={{marginBottom:24}}>
-        <h1 style={{fontSize:20,fontWeight:700,color:'#1A3A7C',marginBottom:4}}>Reporte de Asistencia</h1>
-        <p style={{fontSize:13,color:'#6B8BB0'}}>Control de asistencia de maestros — U.E. Naciones Unidas</p>
+      <div className="mb-6">
+        <h1 className="text-xl font-bold text-brand-700 mb-1">Reporte de Asistencia</h1>
+        <p className="text-[13px] text-neutral-500">Control de asistencia de maestros — U.E. Naciones Unidas</p>
       </div>
 
       {/* Controles */}
-      <div style={{background:'#fff',border:'1px solid #CBE0F0',borderRadius:12,padding:'16px 20px',marginBottom:20,display:'flex',flexWrap:'wrap',gap:16,alignItems:'center'}}>
-
-        {/* Modo */}
-        <div style={{display:'flex',gap:6}}>
-          {(['diario','semanal','mensual'] as const).map(m=>(
-            <button key={m} onClick={()=>setMode(m)} style={{
-              padding:'6px 16px',borderRadius:20,border:'none',cursor:'pointer',fontSize:12,fontWeight:600,
-              background:mode===m?'#1A3A7C':'#F0F6FC',
-              color:mode===m?'#fff':'#1A3A7C',
-            }}>{m.charAt(0).toUpperCase()+m.slice(1)}</button>
+      <Card className="flex flex-wrap gap-4 items-center mb-5">
+        <div className="flex gap-1.5">
+          {(['diario','semanal','mensual'] as const).map(m => (
+            <button
+              key={m} onClick={() => setMode(m)}
+              className={`px-4 py-1.5 rounded-full text-xs font-semibold transition-colors ${mode === m ? 'bg-brand-700 text-white' : 'bg-neutral-100 text-brand-700 hover:bg-brand-100'}`}
+            >
+              {m.charAt(0).toUpperCase()+m.slice(1)}
+            </button>
           ))}
         </div>
 
-        {/* Selector diario */}
-        {mode==='diario' && (
-          <input type="date" value={selDate} onChange={e=>setSelDate(e.target.value)}
-            style={{padding:'7px 12px',border:'1.5px solid #CBE0F0',borderRadius:8,fontSize:13,color:'#1A3A7C',outline:'none'}}/>
+        {mode === 'diario' && (
+          <input
+            type="date" value={selDate} onChange={e => setSelDate(e.target.value)}
+            className="px-3 py-1.5 border border-neutral-300 rounded-lg text-[13px] text-brand-700 outline-none focus:border-info-500"
+          />
         )}
 
-        {/* Navegación mes */}
-        {(mode==='semanal'||mode==='mensual') && (
-          <div style={{display:'flex',alignItems:'center',gap:8}}>
-            <button onClick={prevMonth} style={{background:'#F0F6FC',border:'none',borderRadius:8,width:32,height:32,display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',color:'#1A3A7C'}}>
+        {(mode === 'semanal' || mode === 'mensual') && (
+          <div className="flex items-center gap-2">
+            <button onClick={prevMonth} className="bg-neutral-100 rounded-lg w-8 h-8 flex items-center justify-center text-brand-700 hover:bg-brand-100 transition-colors">
               <ChevronLeft size={16}/>
             </button>
-            <span style={{fontSize:14,fontWeight:700,color:'#1A3A7C',minWidth:130,textAlign:'center'}}>
-              {MONTHS[month-1]} {year}
-            </span>
-            <button onClick={nextMonth} style={{background:'#F0F6FC',border:'none',borderRadius:8,width:32,height:32,display:'flex',alignItems:'center',justifyContent:'center',cursor:'pointer',color:'#1A3A7C'}}>
+            <span className="text-sm font-bold text-brand-700 min-w-[130px] text-center">{MONTHS[month-1]} {year}</span>
+            <button onClick={nextMonth} className="bg-neutral-100 rounded-lg w-8 h-8 flex items-center justify-center text-brand-700 hover:bg-brand-100 transition-colors">
               <ChevronRight size={16}/>
             </button>
           </div>
         )}
 
-        {/* Semanas */}
-        {mode==='semanal' && (
-          <div style={{display:'flex',alignItems:'center',gap:6}}>
-            <span style={{fontSize:12,color:'#6B8BB0'}}>Semana:</span>
-            {[1,2,3,4,5].map(w=>(
-              <button key={w} onClick={()=>setWeek(w)} style={{
-                width:32,height:32,borderRadius:8,border:'none',cursor:'pointer',fontSize:12,fontWeight:600,
-                background:week===w?'#1A3A7C':'#F0F6FC',
-                color:week===w?'#fff':'#1A3A7C',
-              }}>{w}</button>
+        {mode === 'semanal' && (
+          <div className="flex items-center gap-1.5">
+            <span className="text-xs text-neutral-500">Semana:</span>
+            {[1,2,3,4,5].map(w => (
+              <button
+                key={w} onClick={() => setWeek(w)}
+                className={`w-8 h-8 rounded-lg text-xs font-semibold transition-colors ${week === w ? 'bg-brand-700 text-white' : 'bg-neutral-100 text-brand-700 hover:bg-brand-100'}`}
+              >
+                {w}
+              </button>
             ))}
           </div>
         )}
 
-        {/* Búsqueda */}
-        <input type="text" placeholder="Buscar maestro..." value={search}
-          onChange={e=>setSearch(e.target.value)}
-          style={{padding:'8px 12px',border:'1.5px solid #CBE0F0',borderRadius:8,fontSize:13,color:'#1A3A7C',outline:'none',marginLeft:'auto',width:200}}/>
-      </div>
+        <Input
+          placeholder="Buscar maestro..." value={search} onChange={e => setSearch(e.target.value)}
+          className="!w-[200px] ml-auto"
+        />
+      </Card>
 
-      {/* Período activo */}
-      {mode==='diario' && (
-        <div style={{background:'#E0ECF8',border:'1px solid #CBE0F0',borderRadius:8,padding:'8px 16px',marginBottom:16,fontSize:13,color:'#1A3A7C',fontWeight:600,textTransform:'capitalize'}}>
+      {mode === 'diario' && (
+        <div className="bg-brand-100 border border-neutral-300 rounded-lg px-4 py-2 mb-4 text-[13px] font-semibold text-brand-700 capitalize">
           📅 {fmtDateFull(selDate)}
         </div>
       )}
 
       {/* Totales */}
       {data && (
-        <div style={{display:'grid',gridTemplateColumns:'repeat(5,1fr)',gap:10,marginBottom:20}}>
+        <div className="grid grid-cols-5 gap-2.5 mb-5">
           {[
-            {label:'Presente',   value:totals.presente, color:'#0F6E56', bg:'#E1F5EE'},
-            {label:'Retraso',    value:totals.retraso,  color:'#BA7517', bg:'#FFFBEA'},
-            {label:'Ausente',    value:totals.ausente,  color:'#C0392B', bg:'#FFF0F0'},
-            {label:'Licencia',   value:totals.licencia, color:'#1A3A7C', bg:'#E0ECF8'},
-            {label:'Total días', value:totals.total,    color:'#633806', bg:'#FDF0E6'},
-          ].map(s=>(
-            <div key={s.label} style={{background:s.bg,borderRadius:10,padding:'12px 14px',textAlign:'center',border:`1px solid ${s.color}22`}}>
-              <div style={{fontSize:24,fontWeight:800,color:s.color}}>{String(s.value)}</div>
-              <div style={{fontSize:11,color:s.color,fontWeight:600,marginTop:2}}>{s.label}</div>
-            </div>
+            { label:'Presente',   value: totals.presente, tone: 'success' as Tone },
+            { label:'Retraso',    value: totals.retraso,  tone: 'warning' as Tone },
+            { label:'Ausente',    value: totals.ausente,  tone: 'danger'  as Tone },
+            { label:'Licencia',   value: totals.licencia, tone: 'brand'   as Tone },
+            { label:'Total días', value: totals.total,    tone: 'brand'   as Tone },
+          ].map(s => (
+            <Card key={s.label} className="text-center">
+              <div className={`text-2xl font-extrabold ${s.tone === 'success' ? 'text-success-700' : s.tone === 'warning' ? 'text-[#BA7517]' : s.tone === 'danger' ? 'text-danger-600' : 'text-brand-700'}`}>
+                {String(s.value)}
+              </div>
+              <div className="mt-0.5"><Badge tone={s.tone}>{s.label}</Badge></div>
+            </Card>
           ))}
         </div>
       )}
 
       {/* Lista de maestros */}
       {loading ? (
-        <div style={{display:'flex',justifyContent:'center',padding:48}}><div className="spinner"/></div>
+        <div className="flex justify-center py-16"><p className="text-sm text-neutral-500">Cargando...</p></div>
       ) : filteredTeachers.length === 0 ? (
-        <div style={{background:'#fff',border:'1px solid #CBE0F0',borderRadius:12,padding:48,textAlign:'center',color:'#6B8BB0'}}>
-          No hay registros para el período seleccionado
-        </div>
+        <Card className="text-center py-12 text-neutral-500">No hay registros para el período seleccionado</Card>
       ) : (
-        <div style={{display:'flex',flexDirection:'column',gap:10}}>
+        <div className="flex flex-col gap-2.5">
           {filteredTeachers.map(t => {
             const isOpen = expanded === t.teacher.id
             const pct    = t.summary.total > 0 ? Math.round(((t.summary.presente || 0) / t.summary.total) * 100) : 0
             return (
-              <div key={t.teacher.id} style={{background:'#fff',border:'1px solid #CBE0F0',borderRadius:12,overflow:'hidden'}}>
-                <div style={{display:'flex',alignItems:'center',padding:'14px 18px',cursor:'pointer',gap:16}}
-                  onClick={()=>setExpanded(isOpen?null:t.teacher.id)}>
-                  <div style={{width:38,height:38,borderRadius:'50%',background:'#1A3A7C',color:'#fff',display:'flex',alignItems:'center',justifyContent:'center',fontWeight:700,fontSize:14,flexShrink:0}}>
+              <Card key={t.teacher.id} padded={false} className="overflow-hidden">
+                <div className="flex items-center px-4.5 py-3.5 cursor-pointer gap-4" onClick={() => setExpanded(isOpen ? null : t.teacher.id)}>
+                  <div className="w-[38px] h-[38px] rounded-full bg-brand-700 text-white flex items-center justify-center font-bold text-sm shrink-0">
                     {t.teacher.lastName.charAt(0)}
                   </div>
-                  <div style={{flex:1}}>
-                    <div style={{fontWeight:700,fontSize:14,color:'#1A3A7C'}}>{t.teacher.lastName} {t.teacher.firstName}</div>
-                    {t.teacher.ci && <div style={{fontSize:12,color:'#6B8BB0'}}>CI: {t.teacher.ci}</div>}
+                  <div className="flex-1">
+                    <div className="font-bold text-sm text-brand-700">{t.teacher.lastName} {t.teacher.firstName}</div>
+                    {t.teacher.ci && <div className="text-xs text-neutral-500">CI: {t.teacher.ci}</div>}
                   </div>
 
-                  {/* Modo diario: entrada/salida directo */}
-                  {mode==='diario' && t.records[0] ? (
-                    <div style={{display:'flex',gap:20,alignItems:'center'}}>
-                      <div style={{textAlign:'center'}}>
-                        <div style={{fontSize:10,color:'#6B8BB0',marginBottom:2}}>Entrada</div>
-                        <div style={{fontSize:15,fontWeight:800,color:'#0F6E56'}}>{fmtTime(t.records[0].checkIn)}</div>
+                  {mode === 'diario' && t.records[0] ? (
+                    <div className="flex gap-5 items-center">
+                      <div className="text-center">
+                        <div className="text-[10px] text-neutral-500 mb-0.5">Entrada</div>
+                        <div className="text-[15px] font-extrabold text-success-700">{fmtTime(t.records[0].checkIn)}</div>
                       </div>
-                      <div style={{textAlign:'center'}}>
-                        <div style={{fontSize:10,color:'#6B8BB0',marginBottom:2}}>Salida</div>
-                        <div style={{fontSize:15,fontWeight:800,color:'#C0392B'}}>{fmtTime(t.records[0].checkOut)}</div>
+                      <div className="text-center">
+                        <div className="text-[10px] text-neutral-500 mb-0.5">Salida</div>
+                        <div className="text-[15px] font-extrabold text-danger-600">{fmtTime(t.records[0].checkOut)}</div>
                       </div>
-                      <span style={{
-                        background:STATUS_CONFIG[t.records[0].status]?.bg,
-                        color:STATUS_CONFIG[t.records[0].status]?.color,
-                        padding:'3px 10px',borderRadius:20,fontSize:11,fontWeight:600
-                      }}>
-                        {STATUS_CONFIG[t.records[0].status]?.label}
-                      </span>
+                      <Badge tone={STATUS_CONFIG[t.records[0].status]?.tone || 'neutral'}>{STATUS_CONFIG[t.records[0].status]?.label}</Badge>
                     </div>
                   ) : (
-                    /* Modo semanal/mensual: resumen */
-                    <div style={{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}}>
+                    <div className="flex gap-2 items-center flex-wrap">
                       {[
-                        {key:'presente', label:'P', color:'#0F6E56', bg:'#E1F5EE', val:t.summary.presente||0},
-                        {key:'retraso',  label:'R', color:'#BA7517', bg:'#FFFBEA', val:t.summary.retraso||0},
-                        {key:'ausente',  label:'A', color:'#C0392B', bg:'#FFF0F0', val:t.summary.ausente||0},
-                        {key:'licencia', label:'L', color:'#1A3A7C', bg:'#E0ECF8', val:t.summary.licencia||0},
-                      ].map(s=>(
-                        <div key={s.key} style={{textAlign:'center',minWidth:36}}>
-                          <div style={{fontSize:14,fontWeight:800,color:s.color}}>{String(s.val)}</div>
-                          <div style={{fontSize:9,background:s.bg,color:s.color,padding:'1px 5px',borderRadius:10,fontWeight:600}}>{s.label}</div>
+                        { key:'presente', label:'P', tone:'success' as Tone, val:t.summary.presente||0 },
+                        { key:'retraso',  label:'R', tone:'warning' as Tone, val:t.summary.retraso||0 },
+                        { key:'ausente',  label:'A', tone:'danger'  as Tone, val:t.summary.ausente||0 },
+                        { key:'licencia', label:'L', tone:'brand'   as Tone, val:t.summary.licencia||0 },
+                      ].map(s => (
+                        <div key={s.key} className="text-center min-w-[36px]">
+                          <div className={`text-sm font-extrabold ${s.tone === 'success' ? 'text-success-700' : s.tone === 'warning' ? 'text-[#BA7517]' : s.tone === 'danger' ? 'text-danger-600' : 'text-brand-700'}`}>{String(s.val)}</div>
+                          <Badge tone={s.tone}>{s.label}</Badge>
                         </div>
                       ))}
-                      <div style={{marginLeft:8}}>
-                        <div style={{fontSize:11,color:'#6B8BB0',marginBottom:3,textAlign:'right'}}>{String(pct)}% asistencia</div>
-                        <div style={{width:80,height:6,background:'#F0F6FC',borderRadius:3,overflow:'hidden'}}>
-                          <div style={{width:`${pct}%`,height:'100%',background:pct>=80?'#0F6E56':pct>=60?'#BA7517':'#C0392B',borderRadius:3}}/>
+                      <div className="ml-2">
+                        <div className="text-[11px] text-neutral-500 mb-0.5 text-right">{String(pct)}% asistencia</div>
+                        <div className="w-20 h-1.5 bg-neutral-100 rounded overflow-hidden">
+                          <div className={`h-full rounded ${pct>=80?'bg-success-500':pct>=60?'bg-warning-500':'bg-danger-500'}`} style={{ width: `${pct}%` }}/>
                         </div>
                       </div>
                     </div>
                   )}
-                  {mode!=='diario' && (isOpen?<ChevronUp size={15} color="#6B8BB0"/>:<ChevronDown size={15} color="#6B8BB0"/>)}
+                  {mode !== 'diario' && (isOpen ? <ChevronUp size={15} className="text-neutral-500"/> : <ChevronDown size={15} className="text-neutral-500"/>)}
                 </div>
 
-                {/* Detalle días (semanal/mensual) */}
-                {isOpen && mode!=='diario' && (
-                  <div style={{borderTop:'1px solid #F0F6FC',background:'#FAFCFF'}}>
-                    <table style={{width:'100%',borderCollapse:'collapse'}}>
+                {isOpen && mode !== 'diario' && (
+                  <div className="border-t border-neutral-100 bg-neutral-100/40">
+                    <table className="w-full border-collapse">
                       <thead>
-                        <tr style={{background:'#F0F6FC'}}>
-                          <th style={th}>Fecha</th>
-                          <th style={{...th,textAlign:'center'}}>Estado</th>
-                          <th style={{...th,textAlign:'center'}}>Entrada</th>
-                          <th style={{...th,textAlign:'center'}}>Salida</th>
-                          <th style={th}>Observación</th>
+                        <tr className="bg-neutral-100">
+                          <th className="px-3.5 py-2.5 text-left text-[11px] font-semibold text-brand-700 uppercase tracking-wide">Fecha</th>
+                          <th className="px-3.5 py-2.5 text-center text-[11px] font-semibold text-brand-700 uppercase tracking-wide">Estado</th>
+                          <th className="px-3.5 py-2.5 text-center text-[11px] font-semibold text-brand-700 uppercase tracking-wide">Entrada</th>
+                          <th className="px-3.5 py-2.5 text-center text-[11px] font-semibold text-brand-700 uppercase tracking-wide">Salida</th>
+                          <th className="px-3.5 py-2.5 text-left text-[11px] font-semibold text-brand-700 uppercase tracking-wide">Observación</th>
                         </tr>
                       </thead>
                       <tbody>
                         {t.records.map(r => {
                           const st = STATUS_CONFIG[r.status] || STATUS_CONFIG['AUSENTE']
                           return (
-                            <tr key={r.id}>
-                              <td style={td}>{fmtDate(r.date)}</td>
-                              <td style={{...td,textAlign:'center'}}>
-                                <span style={{background:st.bg,color:st.color,padding:'2px 8px',borderRadius:20,fontSize:11,fontWeight:600}}>
-                                  {st.label}
-                                </span>
-                              </td>
-                              <td style={{...td,textAlign:'center',color:'#0F6E56',fontWeight:600}}>{fmtTime(r.checkIn)}</td>
-                              <td style={{...td,textAlign:'center',color:'#C0392B',fontWeight:600}}>{fmtTime(r.checkOut)}</td>
-                              <td style={{...td,color:'#6B8BB0',fontSize:12}}>{r.note||'—'}</td>
+                            <tr key={r.id} className="border-t border-neutral-100">
+                              <td className="px-3.5 py-2.5 text-[13px] text-brand-700">{fmtDate(r.date)}</td>
+                              <td className="px-3.5 py-2.5 text-center"><Badge tone={st.tone}>{st.label}</Badge></td>
+                              <td className="px-3.5 py-2.5 text-center text-[13px] font-semibold text-success-700">{fmtTime(r.checkIn)}</td>
+                              <td className="px-3.5 py-2.5 text-center text-[13px] font-semibold text-danger-600">{fmtTime(r.checkOut)}</td>
+                              <td className="px-3.5 py-2.5 text-xs text-neutral-500">{r.note||'—'}</td>
                             </tr>
                           )
                         })}
@@ -276,20 +261,11 @@ export default function AsistenciaReporte() {
                     </table>
                   </div>
                 )}
-              </div>
+              </Card>
             )
           })}
         </div>
       )}
-
-      <style>{`
-        .spinner{width:24px;height:24px;border:2px solid rgba(26,58,124,.2);border-top-color:#1A3A7C;border-radius:50%;animation:spin .7s linear infinite}
-        @keyframes spin{to{transform:rotate(360deg)}}
-        @media(max-width:600px){div[style*="grid-template-columns: repeat(5"]{grid-template-columns:repeat(3,1fr) !important}}
-      `}</style>
     </div>
   )
 }
-
-const th: React.CSSProperties = { padding:'9px 14px', textAlign:'left', fontSize:11, fontWeight:600, color:'#1A3A7C', textTransform:'uppercase', letterSpacing:'.5px' }
-const td: React.CSSProperties = { padding:'10px 14px', fontSize:13, color:'#1A3A7C', borderTop:'1px solid #F0F6FC' }

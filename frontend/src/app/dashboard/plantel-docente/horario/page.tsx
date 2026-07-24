@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import Card from '@/components/ui/Card'
 
 const API = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000'
 
@@ -15,20 +16,7 @@ interface ScheduleItem {
 
 const GRADES: Record<string,string> = { PRIMERO:'1°', SEGUNDO:'2°', TERCERO:'3°', CUARTO:'4°', QUINTO:'5°', SEXTO:'6°' }
 const DAYS = ['', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado']
-const DAYS_SHORT = ['', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb']
 
-const CAMPO_COLOR: Record<string,string> = {
-  VIDA_TIERRA_TERRITORIO:        '#0F6E56',
-  COMUNIDAD_SOCIEDAD:            '#1A3A7C',
-  COSMOS_PENSAMIENTO:            '#1565C0',
-  CIENCIA_TECNOLOGIA_PRODUCCION: '#8B1A7C',
-}
-const CAMPO_BG: Record<string,string> = {
-  VIDA_TIERRA_TERRITORIO:        '#E8F5F0',
-  COMUNIDAD_SOCIEDAD:            '#E8EEF8',
-  COSMOS_PENSAMIENTO:            '#F5EEE8',
-  CIENCIA_TECNOLOGIA_PRODUCCION: '#F5E8F5',
-}
 const SUBJECT_EMOJI: Record<string,string> = {
   'Matemática':                                  '🔢',
   'Lenguas Castellana y Originaria':             '📖',
@@ -52,8 +40,7 @@ export default function TeacherHorarioPage() {
   const [loading,  setLoading]  = useState(true)
   const [view,     setView]     = useState<'grilla'|'lista'>('grilla')
 
-  const token = () => localStorage.getItem('token') || ''
-  const auth  = () => ({ Authorization: `Bearer ${token()}` })
+  const auth = () => ({ Authorization: `Bearer ${localStorage.getItem('token') || ''}` })
 
   useEffect(() => {
     const load = async () => {
@@ -71,83 +58,73 @@ export default function TeacherHorarioPage() {
     load()
   }, [])
 
-  // Obtener días y periodos únicos
   const days    = [...new Set(schedule.map(s => s.dayOfWeek))].sort()
   const periods = [...new Set(schedule.map(s => s.period))].sort((a,b)=>a-b)
 
   const getCell = (day: number, period: number) =>
     schedule.find(s => s.dayOfWeek === day && s.period === period)
 
-  // Agrupar por día para vista lista
   const byDay: Record<number, ScheduleItem[]> = {}
   schedule.forEach(s => {
     if (!byDay[s.dayOfWeek]) byDay[s.dayOfWeek] = []
     byDay[s.dayOfWeek].push(s)
   })
 
-  // Stats
   const totalClases   = schedule.length
   const totalCursos   = new Set(schedule.map(s => s.course.id)).size
   const totalMaterias = new Set(schedule.map(s => s.teacherSubjectCourse.subject.name)).size
 
-  if (loading) return (
-    <div style={{display:'flex',justifyContent:'center',padding:48}}>
-      <div className="spinner"/>
-    </div>
-  )
+  if (loading) return <div className="flex justify-center py-16"><p className="text-sm text-neutral-500">Cargando...</p></div>
 
   return (
     <div>
-      {/* Header */}
-      <div style={{marginBottom:24}}>
-        <h1 style={{fontSize:20,fontWeight:700,color:'#1565C0',marginBottom:4}}>Mi Horario Semanal</h1>
-        <p style={{fontSize:13,color:'#6B8BB0'}}>Distribución de clases por día y periodo</p>
+      <div className="mb-6">
+        <h1 className="text-xl font-bold text-brand-700 mb-1">Mi Horario Semanal</h1>
+        <p className="text-[13px] text-neutral-500">Distribución de clases por día y periodo</p>
       </div>
 
-      {/* Stats */}
-      <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:12,marginBottom:20}}>
-        {[
-          {label:'Total clases/semana', value:totalClases, color:'#1565C0', bg:'#E3F2FD'},
-          {label:'Cursos',              value:totalCursos,   color:'#1A3A7C', bg:'#E0ECF8'},
-          {label:'Materias',            value:totalMaterias, color:'#0F6E56', bg:'#E1F5EE'},
-        ].map(s=>(
-          <div key={s.label} style={{background:s.bg,borderRadius:10,padding:'14px 16px',border:`1px solid ${s.color}22`}}>
-            <div style={{fontSize:24,fontWeight:800,color:s.color}}>{String(s.value)}</div>
-            <div style={{fontSize:11,color:s.color,fontWeight:600,marginTop:2}}>{s.label}</div>
-          </div>
-        ))}
+      <div className="grid grid-cols-3 gap-3 mb-5">
+        <Card>
+          <div className="text-2xl font-extrabold text-brand-700">{totalClases}</div>
+          <div className="text-[11px] font-semibold text-brand-700 mt-0.5">Total clases/semana</div>
+        </Card>
+        <Card>
+          <div className="text-2xl font-extrabold text-brand-700">{totalCursos}</div>
+          <div className="text-[11px] font-semibold text-brand-700 mt-0.5">Cursos</div>
+        </Card>
+        <Card>
+          <div className="text-2xl font-extrabold text-success-700">{totalMaterias}</div>
+          <div className="text-[11px] font-semibold text-success-700 mt-0.5">Materias</div>
+        </Card>
       </div>
 
       {schedule.length === 0 ? (
-        <div style={{background:'#fff',border:'1px dashed #CBE0F0',borderRadius:12,padding:48,textAlign:'center',color:'#6B8BB0'}}>
-          <div style={{fontSize:40,marginBottom:12}}>📅</div>
-          <p>No tienes horario asignado aún.</p>
-          <p style={{fontSize:12,marginTop:4}}>Contacta al administrador para que asigne tu horario.</p>
-        </div>
+        <Card className="text-center py-12 border-dashed">
+          <div className="text-4xl mb-3">📅</div>
+          <p className="text-neutral-500">No tienes horario asignado aún.</p>
+          <p className="text-xs text-neutral-500 mt-1">Contacta al administrador para que asigne tu horario.</p>
+        </Card>
       ) : (
         <>
-          {/* Toggle vista */}
-          <div style={{display:'flex',gap:8,marginBottom:16}}>
-            {(['grilla','lista'] as const).map(v=>(
-              <button key={v} onClick={()=>setView(v)} style={{
-                padding:'6px 16px',borderRadius:20,border:'none',cursor:'pointer',fontSize:12,fontWeight:600,
-                background:view===v?'#1565C0':'#F0F6FC',
-                color:view===v?'#fff':'#1565C0',
-              }}>
-                {v==='grilla'?'📊 Grilla':'📋 Lista'}
+          <div className="flex gap-2 mb-4">
+            {(['grilla','lista'] as const).map(v => (
+              <button
+                key={v} onClick={() => setView(v)}
+                className={`px-4 py-1.5 rounded-full text-xs font-semibold transition-colors ${view === v ? 'bg-brand-700 text-white' : 'bg-neutral-100 text-brand-700 hover:bg-brand-100'}`}
+              >
+                {v === 'grilla' ? '📊 Grilla' : '📋 Lista'}
               </button>
             ))}
           </div>
 
-          {/* Vista Grilla */}
-          {view==='grilla' && (
-            <div style={{overflowX:'auto',borderRadius:10,border:'1px solid #CBE0F0'}}>
-              <table style={{borderCollapse:'collapse',width:'100%',minWidth:600}}>
+          {view === 'grilla' && (
+            <div className="overflow-x-auto rounded-[10px] border border-neutral-300">
+              <table className="border-collapse w-full" style={{ minWidth: 600 }}>
                 <thead>
                   <tr>
-                    <th style={thStyle}>Periodo</th>
-                    {days.map(d=>(
-                      <th key={d} style={thStyle}>{DAYS[d]}</th>
+                    <th className="p-2.5 bg-neutral-100 text-xs font-bold text-brand-700 text-center border border-neutral-300">Periodo</th>
+                    {days.map(d => (
+                      <th key={d} className="p-2.5 bg-neutral-100 text-xs font-bold text-brand-700 text-center border border-neutral-300">{DAYS[d]}</th>
                     ))}
                   </tr>
                 </thead>
@@ -156,40 +133,31 @@ export default function TeacherHorarioPage() {
                     const firstCell = schedule.find(s => s.period === period)
                     return (
                       <tr key={period}>
-                        <td style={{...tdStyle,textAlign:'center',background:'#F8FBFF',fontWeight:700,fontSize:11,whiteSpace:'nowrap'}}>
-                          <div style={{color:'#1565C0'}}>P{period}</div>
+                        <td className="p-2 border border-neutral-300 align-top text-center bg-neutral-100/60 font-bold text-[11px] whitespace-nowrap">
+                          <div className="text-brand-700">P{period}</div>
                           {firstCell && (
                             <>
-                              <div style={{fontSize:10,color:'#6B8BB0'}}>{firstCell.startTime}</div>
-                              <div style={{fontSize:10,color:'#6B8BB0'}}>{firstCell.endTime}</div>
+                              <div className="text-[10px] text-neutral-500">{firstCell.startTime}</div>
+                              <div className="text-[10px] text-neutral-500">{firstCell.endTime}</div>
                             </>
                           )}
                         </td>
                         {days.map(day => {
-                          const cell  = getCell(day, period)
-                          const campo = cell?.teacherSubjectCourse?.subject?.campo
+                          const cell = getCell(day, period)
                           return (
-                            <td key={day} style={{
-                              ...tdStyle,
-                              background: cell ? (campo?CAMPO_BG[campo]||'#F0F6FC':'#F0F6FC') : '#FAFCFF',
-                              borderStyle: cell ? 'solid' : 'dashed',
-                              borderColor: cell ? (campo?CAMPO_COLOR[campo]+'33':'#CBE0F0') : '#E0EAF5',
-                              minWidth: 120,
-                            }}>
+                            <td
+                              key={day}
+                              className={`p-2 align-top ${cell ? 'bg-brand-100/40 border border-neutral-300' : 'bg-neutral-100/30 border border-dashed border-neutral-300'}`}
+                              style={{ minWidth: 120 }}
+                            >
                               {cell ? (
                                 <div>
-                                  <div style={{fontSize:16,marginBottom:3}}>
-                                    {SUBJECT_EMOJI[cell.teacherSubjectCourse.subject.name]||'📚'}
-                                  </div>
-                                  <div style={{fontSize:11,fontWeight:700,color:campo?CAMPO_COLOR[campo]:'#1A3A7C',lineHeight:1.3}}>
-                                    {cell.teacherSubjectCourse.subject.name}
-                                  </div>
-                                  <div style={{fontSize:10,color:'#6B8BB0',marginTop:2}}>
-                                    {GRADES[cell.course.grade]} "{cell.course.parallel}"
-                                  </div>
+                                  <div className="text-base mb-0.5">{SUBJECT_EMOJI[cell.teacherSubjectCourse.subject.name]||'📚'}</div>
+                                  <div className="text-[11px] font-bold text-brand-700 leading-tight">{cell.teacherSubjectCourse.subject.name}</div>
+                                  <div className="text-[10px] text-neutral-500 mt-0.5">{GRADES[cell.course.grade]} &quot;{cell.course.parallel}&quot;</div>
                                 </div>
                               ) : (
-                                <div style={{textAlign:'center',color:'#E0EAF5',fontSize:18}}>—</div>
+                                <div className="text-center text-neutral-300 text-lg">—</div>
                               )}
                             </td>
                           )
@@ -202,66 +170,38 @@ export default function TeacherHorarioPage() {
             </div>
           )}
 
-          {/* Vista Lista */}
-          {view==='lista' && (
-            <div style={{display:'flex',flexDirection:'column',gap:12}}>
-              {Object.entries(byDay).sort(([a],[b])=>parseInt(a)-parseInt(b)).map(([day, items]) => (
-                <div key={day} style={{background:'#fff',border:'1px solid #CBE0F0',borderRadius:12,overflow:'hidden'}}>
-                  <div style={{background:'#E3F2FD',padding:'10px 16px',fontWeight:700,fontSize:13,color:'#1565C0',borderBottom:'1px solid #CBE0F0'}}>
+          {view === 'lista' && (
+            <div className="flex flex-col gap-3">
+              {Object.entries(byDay).sort(([a],[b]) => parseInt(a) - parseInt(b)).map(([day, items]) => (
+                <Card key={day} padded={false} className="overflow-hidden">
+                  <div className="bg-brand-100 px-4 py-2.5 font-bold text-[13px] text-brand-700 border-b border-neutral-300/60">
                     📅 {DAYS[parseInt(day)]}
                   </div>
-                  <div style={{display:'flex',flexDirection:'column'}}>
-                    {items.sort((a,b)=>a.period-b.period).map(item => {
-                      const campo = item.teacherSubjectCourse.subject.campo
-                      return (
-                        <div key={item.id} style={{
-                          display:'flex',alignItems:'center',gap:14,padding:'12px 16px',
-                          borderTop:'1px solid #F0F6FC',
-                        }}>
-                          <div style={{textAlign:'center',minWidth:50}}>
-                            <div style={{fontSize:11,fontWeight:700,color:'#1565C0'}}>P{item.period}</div>
-                            <div style={{fontSize:10,color:'#6B8BB0'}}>{item.startTime}</div>
-                            <div style={{fontSize:10,color:'#6B8BB0'}}>{item.endTime}</div>
-                          </div>
-                          <div style={{fontSize:20}}>{SUBJECT_EMOJI[item.teacherSubjectCourse.subject.name]||'📚'}</div>
-                          <div style={{flex:1}}>
-                            <div style={{fontWeight:700,fontSize:13,color:campo?CAMPO_COLOR[campo]:'#1A3A7C'}}>
-                              {item.teacherSubjectCourse.subject.name}
-                            </div>
-                            <div style={{fontSize:12,color:'#6B8BB0',marginTop:2}}>
-                              {GRADES[item.course.grade]} "{item.course.parallel}"
-                            </div>
-                          </div>
-                          <div style={{
-                            background:campo?CAMPO_BG[campo]:'#F0F6FC',
-                            color:campo?CAMPO_COLOR[campo]:'#1A3A7C',
-                            padding:'3px 10px',borderRadius:20,fontSize:11,fontWeight:600,
-                          }}>
-                            {item.startTime} — {item.endTime}
-                          </div>
+                  <div className="flex flex-col">
+                    {items.sort((a,b) => a.period - b.period).map(item => (
+                      <div key={item.id} className="flex items-center gap-3.5 px-4 py-3 border-t border-neutral-100 first:border-t-0">
+                        <div className="text-center min-w-[50px]">
+                          <div className="text-[11px] font-bold text-brand-700">P{item.period}</div>
+                          <div className="text-[10px] text-neutral-500">{item.startTime}</div>
+                          <div className="text-[10px] text-neutral-500">{item.endTime}</div>
                         </div>
-                      )
-                    })}
+                        <div className="text-xl">{SUBJECT_EMOJI[item.teacherSubjectCourse.subject.name]||'📚'}</div>
+                        <div className="flex-1">
+                          <div className="font-bold text-[13px] text-brand-700">{item.teacherSubjectCourse.subject.name}</div>
+                          <div className="text-xs text-neutral-500 mt-0.5">{GRADES[item.course.grade]} &quot;{item.course.parallel}&quot;</div>
+                        </div>
+                        <div className="bg-brand-100 text-brand-700 px-2.5 py-0.5 rounded-full text-[11px] font-semibold whitespace-nowrap">
+                          {item.startTime} — {item.endTime}
+                        </div>
+                      </div>
+                    ))}
                   </div>
-                </div>
+                </Card>
               ))}
             </div>
           )}
         </>
       )}
-
-      <style>{`
-        .spinner{width:24px;height:24px;border:2px solid rgba(99,56,6,.2);border-top-color:#1565C0;border-radius:50%;animation:spin .7s linear infinite}
-        @keyframes spin{to{transform:rotate(360deg)}}
-      `}</style>
     </div>
   )
-}
-
-const thStyle: React.CSSProperties = {
-  padding:'10px 12px', background:'#F0F6FC', fontSize:12, fontWeight:700,
-  color:'#1565C0', textAlign:'center', border:'1px solid #CBE0F0',
-}
-const tdStyle: React.CSSProperties = {
-  padding:'8px 10px', border:'1px solid #CBE0F0', verticalAlign:'top', fontSize:12,
 }

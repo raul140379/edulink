@@ -3,6 +3,9 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { ArrowLeft, DollarSign, AlertCircle, CheckCircle, Users, MessageCircle } from 'lucide-react'
+import Card from '@/components/ui/Card'
+import Badge from '@/components/ui/Badge'
+import { Input } from '@/components/ui/Input'
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000'
 
@@ -33,6 +36,10 @@ const TYPE_LABELS: Record<string, string> = {
   ACTIVIDAD: 'Actividad', MATERIAL_ESCOLAR: 'Material Escolar', OTRO: 'Otro',
 }
 
+const STATUS_TONE: Record<string, 'danger' | 'warning' | 'success' | 'neutral'> = {
+  PENDIENTE: 'danger', PARCIAL: 'warning', PAGADO: 'success', ANULADO: 'neutral',
+}
+
 const fmt = (n: number) => `Bs. ${n.toFixed(2)}`
 
 export default function TeacherTesoreriaPage() {
@@ -42,10 +49,9 @@ export default function TeacherTesoreriaPage() {
   const [error,    setError]    = useState('')
   const [search,   setSearch]   = useState('')
 
-  const token = typeof window !== 'undefined' ? localStorage.getItem('token') : ''
-
   useEffect(() => {
     const fetchData = async () => {
+      const token = localStorage.getItem('token')
       setLoading(true)
       try {
         const res  = await fetch(`${API_URL}/api/teachers/my-course`, {
@@ -54,7 +60,6 @@ export default function TeacherTesoreriaPage() {
         const data = await res.json()
         if (!res.ok) { setError(data.message); return }
 
-        // Extraer tutores únicos con sus cargos
         const parentMap = new Map<number, any>()
         for (const a of data.assignments) {
           for (const ps of a.student.parents) {
@@ -64,7 +69,6 @@ export default function TeacherTesoreriaPage() {
           }
         }
 
-        // Obtener estado de cuenta de cada tutor
         const tutorIds = Array.from(parentMap.keys())
         const parentsWithAccount = await Promise.all(
           tutorIds.map(async (parentId) => {
@@ -95,138 +99,94 @@ export default function TeacherTesoreriaPage() {
   const totalPending = parents.reduce((s, p) => s + p.summary.totalPending, 0)
   const withDebt     = parents.filter(p => p.summary.totalPending > 0).length
 
-  if (loading) return <div className="center"><div className="spinner"/></div>
-  if (error)   return <div className="center"><p className="err">{error}</p></div>
+  if (loading) return <div className="flex justify-center py-16"><p className="text-sm text-neutral-500">Cargando...</p></div>
+  if (error)   return <div className="flex justify-center py-16"><p className="text-sm text-danger-600">{error}</p></div>
 
   return (
     <div>
-      <div className="page-header">
-        <button className="back-btn" onClick={() => router.back()}>
+      <div className="flex items-center gap-4 mb-6 flex-wrap">
+        <button onClick={() => router.back()} className="flex items-center gap-1.5 text-neutral-500 hover:text-brand-700 text-[13px]">
           <ArrowLeft size={16}/> Volver
         </button>
         <div>
-          <h1>Estado de Cuentas</h1>
-          <p>Vista de solo lectura — gestiona pagos desde el panel de Junta Escolar</p>
+          <h1 className="text-xl font-bold text-brand-700 mb-1">Estado de Cuentas</h1>
+          <p className="text-xs text-neutral-500">Vista de solo lectura — gestiona pagos desde el panel de Junta Escolar</p>
         </div>
       </div>
 
-      {/* Resumen */}
-      <div className="summary-grid">
-        <div className="sum-card"><div className="sum-icon blue"><DollarSign size={18}/></div>
-          <div><div className="sum-label">Total cargado</div><div className="sum-value">{fmt(totalDebt)}</div></div>
-        </div>
-        <div className="sum-card"><div className="sum-icon green"><CheckCircle size={18}/></div>
-          <div><div className="sum-label">Recaudado</div><div className="sum-value">{fmt(totalPaid)}</div></div>
-        </div>
-        <div className="sum-card"><div className="sum-icon red"><AlertCircle size={18}/></div>
-          <div><div className="sum-label">Pendiente</div><div className="sum-value">{fmt(totalPending)}</div></div>
-        </div>
-        <div className="sum-card"><div className="sum-icon gray"><Users size={18}/></div>
-          <div><div className="sum-label">Con deuda</div><div className="sum-value">{withDebt} de {parents.length}</div></div>
-        </div>
+      <div className="grid gap-3 mb-4" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))' }}>
+        <Card className="flex items-center gap-2.5">
+          <div className="p-2 rounded-lg bg-brand-100 text-brand-700"><DollarSign size={18}/></div>
+          <div><div className="text-[10px] text-neutral-500 uppercase tracking-wide mb-0.5">Total cargado</div><div className="text-base font-bold text-brand-700">{fmt(totalDebt)}</div></div>
+        </Card>
+        <Card className="flex items-center gap-2.5">
+          <div className="p-2 rounded-lg bg-success-100 text-success-700"><CheckCircle size={18}/></div>
+          <div><div className="text-[10px] text-neutral-500 uppercase tracking-wide mb-0.5">Recaudado</div><div className="text-base font-bold text-brand-700">{fmt(totalPaid)}</div></div>
+        </Card>
+        <Card className="flex items-center gap-2.5">
+          <div className="p-2 rounded-lg bg-danger-100 text-danger-600"><AlertCircle size={18}/></div>
+          <div><div className="text-[10px] text-neutral-500 uppercase tracking-wide mb-0.5">Pendiente</div><div className="text-base font-bold text-brand-700">{fmt(totalPending)}</div></div>
+        </Card>
+        <Card className="flex items-center gap-2.5">
+          <div className="p-2 rounded-lg bg-neutral-100 text-neutral-500"><Users size={18}/></div>
+          <div><div className="text-[10px] text-neutral-500 uppercase tracking-wide mb-0.5">Con deuda</div><div className="text-base font-bold text-brand-700">{withDebt} de {parents.length}</div></div>
+        </Card>
       </div>
 
-      {/* Buscador */}
-      <div className="search-bar">
-        <input placeholder="Buscar tutor por nombre o CI..."
-          value={search} onChange={e => setSearch(e.target.value)}/>
+      <div className="mb-4">
+        <Input placeholder="Buscar tutor por nombre o CI..." value={search} onChange={e => setSearch(e.target.value)} />
       </div>
 
-      {/* Lista */}
       {filtered.map(parent => (
-        <div key={parent.id} className="parent-card">
-          <div className="parent-header">
+        <Card key={parent.id} padded={false} className="overflow-hidden mb-3">
+          <div className="flex items-center justify-between gap-2 px-4.5 py-3.5 border-b border-neutral-100 flex-wrap">
             <div>
-              <div className="parent-name">{parent.lastName} {parent.firstName}</div>
-              <div className="parent-meta">
+              <div className="text-[15px] font-bold text-brand-700 mb-1">{parent.lastName} {parent.firstName}</div>
+              <div className="flex items-center gap-3 text-xs text-neutral-500 flex-wrap">
                 {parent.ci    && <span>CI: {parent.ci}</span>}
                 {parent.phone && (
-                  <a href={`https://wa.me/591${parent.phone.replace(/\D/g,'')}?text=Estimado tutor, le contactamos de la U.E. Naciones Unidas.`}
-                    target="_blank" rel="noreferrer" className="wa-btn">
+                  <a
+                    href={`https://wa.me/591${parent.phone.replace(/\D/g,'')}?text=Estimado tutor, le contactamos de la U.E. Naciones Unidas.`}
+                    target="_blank" rel="noreferrer"
+                    className="flex items-center gap-1 bg-[#25D366] text-white px-2 py-0.5 rounded-[10px] text-[11px] hover:bg-[#1DA851] transition-colors"
+                  >
                     <MessageCircle size={11}/> {parent.phone}
                   </a>
                 )}
               </div>
             </div>
-            <div className={`balance ${parent.summary.totalPending > 0 ? 'red' : 'green'}`}>
+            <Badge tone={parent.summary.totalPending > 0 ? 'danger' : 'success'}>
               {parent.summary.totalPending > 0 ? `Debe: ${fmt(parent.summary.totalPending)}` : '✅ Al día'}
-            </div>
+            </Badge>
           </div>
 
           {parent.charges.filter(c => c.status !== 'ANULADO').length > 0 && (
-            <div className="charges-list">
+            <div className="flex flex-col">
               {parent.charges.filter(c => c.status !== 'ANULADO').map(c => (
-                <div key={c.id} className="charge-item">
-                  <div className="charge-info">
-                    <span className="charge-type">{TYPE_LABELS[c.type] || c.type}</span>
-                    <span className="charge-title">{c.title}</span>
-                    <span className="charge-year">{c.academicYear.year}</span>
+                <div key={c.id} className="flex items-center justify-between gap-3 px-4.5 py-2.5 border-t border-neutral-100">
+                  <div className="flex items-center gap-2 flex-wrap flex-1">
+                    <Badge tone="brand">{TYPE_LABELS[c.type] || c.type}</Badge>
+                    <span className="text-[13px] font-medium text-brand-700">{c.title}</span>
+                    <span className="text-[11px] text-neutral-500">{c.academicYear.year}</span>
                   </div>
-                  <div className="charge-amounts">
-                    <span className="amount-total">{fmt(c.amount)}</span>
-                    <span className={`status-badge ${c.status.toLowerCase()}`}>{c.status}</span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[13px] font-bold text-brand-700">{fmt(c.amount)}</span>
+                    <Badge tone={STATUS_TONE[c.status] || 'neutral'}>{c.status}</Badge>
                   </div>
                 </div>
               ))}
             </div>
           )}
-        </div>
+        </Card>
       ))}
 
       {filtered.length === 0 && (
-        <div className="center"><p>No se encontraron tutores</p></div>
+        <div className="flex justify-center py-12"><p className="text-sm text-neutral-500">No se encontraron tutores</p></div>
       )}
 
-      <div className="readonly-notice">
+      <div className="text-center text-xs text-neutral-500 p-4 bg-neutral-100/60 border border-neutral-300 rounded-lg mt-2">
         🔒 Vista de solo lectura. Para registrar pagos, contacta a la Junta Escolar.
       </div>
-
-      <style>{`
-        .center{display:flex;justify-content:center;align-items:center;padding:48px;color:#6B8BB0}
-        .err{color:#C0392B}
-        .page-header{display:flex;align-items:center;gap:16px;margin-bottom:24px;flex-wrap:wrap}
-        .page-header h1{font-size:20px;font-weight:700;color:#1A3A7C;margin-bottom:4px}
-        .page-header p{font-size:12px;color:#6B8BB0}
-        .back-btn{display:flex;align-items:center;gap:6px;background:none;border:none;cursor:pointer;color:#6B8BB0;font-size:13px;padding:0}
-        .back-btn:hover{color:#1A3A7C}
-        .summary-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:16px}
-        .sum-card{background:#fff;border:1px solid #CBE0F0;border-radius:12px;padding:14px;display:flex;align-items:center;gap:10px}
-        .sum-icon{padding:8px;border-radius:8px;display:flex}
-        .sum-icon.blue{background:#E0ECF8;color:#1A3A7C}
-        .sum-icon.green{background:#E1F5EE;color:#0F6E56}
-        .sum-icon.red{background:#FFF0F0;color:#C0392B}
-        .sum-icon.gray{background:#F0F6FC;color:#6B8BB0}
-        .sum-label{font-size:10px;color:#6B8BB0;text-transform:uppercase;letter-spacing:.5px;margin-bottom:2px}
-        .sum-value{font-size:16px;font-weight:700;color:#1A3A7C}
-        .search-bar{margin-bottom:16px}
-        .search-bar input{width:100%;padding:10px 14px;border:1.5px solid #CBE0F0;border-radius:8px;font-size:13px;outline:none;color:#1A3A7C}
-        .search-bar input:focus{border-color:#4A9FD4}
-        .parent-card{background:#fff;border:1px solid #CBE0F0;border-radius:12px;margin-bottom:12px;overflow:hidden}
-        .parent-header{display:flex;align-items:center;justify-content:space-between;padding:14px 18px;border-bottom:1px solid #F0F6FC;flex-wrap:wrap;gap:8px}
-        .parent-name{font-size:15px;font-weight:700;color:#1A3A7C;margin-bottom:4px}
-        .parent-meta{display:flex;align-items:center;gap:12px;font-size:12px;color:#6B8BB0;flex-wrap:wrap}
-        .wa-btn{display:flex;align-items:center;gap:4px;background:#25D366;color:#fff;padding:3px 8px;border-radius:10px;font-size:11px;text-decoration:none}
-        .wa-btn:hover{background:#1DA851}
-        .balance{font-size:13px;font-weight:600;padding:4px 12px;border-radius:20px}
-        .balance.red{background:#FFF0F0;color:#C0392B}
-        .balance.green{background:#E1F5EE;color:#0F6E56}
-        .charges-list{display:flex;flex-direction:column}
-        .charge-item{display:flex;align-items:center;justify-content:space-between;padding:10px 18px;border-top:1px solid #F0F6FC;gap:12px}
-        .charge-info{display:flex;align-items:center;gap:8px;flex-wrap:wrap;flex:1}
-        .charge-type{font-size:10px;font-weight:600;background:#E0ECF8;color:#1A3A7C;padding:1px 7px;border-radius:10px;text-transform:uppercase}
-        .charge-title{font-size:13px;font-weight:500;color:#1A3A7C}
-        .charge-year{font-size:11px;color:#6B8BB0}
-        .charge-amounts{display:flex;align-items:center;gap:8px}
-        .amount-total{font-size:13px;font-weight:700;color:#1A3A7C}
-        .status-badge{font-size:10px;font-weight:500;padding:2px 7px;border-radius:10px}
-        .status-badge.pendiente{background:#FFF0F0;color:#C0392B}
-        .status-badge.parcial{background:#FFFBEA;color:#7A6000}
-        .status-badge.pagado{background:#E1F5EE;color:#0F6E56}
-        .readonly-notice{text-align:center;font-size:12px;color:#6B8BB0;padding:16px;background:#F8FBFF;border:1px solid #CBE0F0;border-radius:8px;margin-top:8px}
-        .spinner{width:24px;height:24px;border:2px solid rgba(26,58,124,.2);border-top-color:#1A3A7C;border-radius:50%;animation:spin .7s linear infinite}
-        @keyframes spin{to{transform:rotate(360deg)}}
-        @media(max-width:600px){.summary-grid{grid-template-columns:1fr 1fr}}
-      `}</style>
     </div>
   )
 }

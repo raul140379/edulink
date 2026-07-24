@@ -2,6 +2,9 @@
 
 import { useEffect, useState } from 'react'
 import { ClipboardList, Clock, CheckCircle, BookOpen, Filter } from 'lucide-react'
+import Card from '@/components/ui/Card'
+import Badge from '@/components/ui/Badge'
+import { Select } from '@/components/ui/Input'
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000'
 
@@ -28,18 +31,11 @@ const TYPE_LABEL: Record<string, string> = {
   DECIDIR:    'Decidir',
 }
 
-const TYPE_COLOR: Record<string, string> = {
-  EVALUACION: '#c0392b',
-  TRABAJO:    '#1A3A7C',
-  SER:        '#0F6E56',
-  DECIDIR:    '#633806',
-}
-
-const TYPE_MAX: Record<string, number> = {
-  EVALUACION: 45,
-  TRABAJO:    40,
-  SER:        10,
-  DECIDIR:    5,
+const TYPE_TONE: Record<string, 'danger' | 'brand' | 'success' | 'warning'> = {
+  EVALUACION: 'danger',
+  TRABAJO:    'brand',
+  SER:        'success',
+  DECIDIR:    'warning',
 }
 
 export default function TareasPage() {
@@ -69,7 +65,7 @@ export default function TareasPage() {
        tasks.filter(t => t.score !== null).length).toFixed(1)
     : '—'
 
-const tareasFiltradas = tasks.filter(t => {
+  const tareasFiltradas = tasks.filter(t => {
     if (filterStatus  !== 'todos' && t.status       !== filterStatus)      return false
     if (filterType    !== 'todos' && t.type         !== filterType)        return false
     if (filterSubject !== 'todos' && t.subject.name !== filterSubject)     return false
@@ -91,265 +87,157 @@ const tareasFiltradas = tasks.filter(t => {
     return new Date(dueDate) < new Date()
   }
 
-  if (loading) return (
-    <div style={{ display:'flex', alignItems:'center', justifyContent:'center', minHeight:300 }}>
-      <div className="spinner"/>
-    </div>
-  )
+  if (loading) return <div className="flex justify-center py-16"><p className="text-sm text-neutral-500">Cargando...</p></div>
 
   return (
     <div>
       {/* Header */}
-      <div style={{
-        background:'linear-gradient(135deg,#1A3A7C,#2756B8)',
-        borderRadius:12, padding:'20px 24px', marginBottom:24, color:'#fff',
-      }}>
-        <div style={{ fontSize:13, opacity:.75, marginBottom:4, display:'flex', alignItems:'center', gap:6 }}>
-          <ClipboardList size={14}/> Tareas y Actividades
-        </div>
-        <div style={{ fontSize:20, fontWeight:800 }}>Mis Tareas</div>
-        <div style={{ fontSize:13, opacity:.8, marginTop:4 }}>
-          Evaluaciones, trabajos y actividades de todas las materias
-        </div>
+      <div
+        className="rounded-xl px-6 py-5 mb-6 text-white"
+        style={{ background: 'linear-gradient(135deg, var(--color-brand-700), var(--color-brand-500))' }}
+      >
+        <div className="flex items-center gap-1.5 text-[13px] text-white/75 mb-1"><ClipboardList size={14}/> Tareas y Actividades</div>
+        <div className="text-xl font-extrabold">Mis Tareas</div>
+        <div className="text-[13px] text-white/80 mt-1">Evaluaciones, trabajos y actividades de todas las materias</div>
       </div>
 
       {/* Stats */}
-      <div className="stats-grid" style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:16, marginBottom:24 }}>
-        {[
-          { label:'Pendientes',  value: pendientes,  color:'#BA7517', icon:<Clock size={18}/> },
-          { label:'Calificadas', value: calificadas, color:'#0F6E56', icon:<CheckCircle size={18}/> },
-          { label:'Promedio',    value: promedio,    color:'#1A3A7C', icon:<BookOpen size={18}/> },
-        ].map(s => (
-          <div key={s.label} style={{
-            backgroundColor:'#fff', borderRadius:10, padding:'16px 18px',
-            boxShadow:'0 1px 4px rgba(26,58,124,.08)',
-          }}>
-            <div style={{ display:'flex', alignItems:'center', gap:8, color:s.color, marginBottom:8 }}>
-              {s.icon}
-              <span style={{ fontSize:11, fontWeight:600, textTransform:'uppercase', letterSpacing:'.4px' }}>
-                {s.label}
-              </span>
-            </div>
-            <div style={{ fontSize:28, fontWeight:800, color:'#1A3A7C' }}>{s.value}</div>
-          </div>
-        ))}
+      <div className="grid grid-cols-3 gap-4 mb-6">
+        <Card className="flex flex-col gap-2">
+          <div className="flex items-center gap-2 text-[#BA7517]"><Clock size={18}/><span className="text-[11px] font-semibold uppercase tracking-wide">Pendientes</span></div>
+          <div className="text-[28px] font-extrabold text-brand-700">{pendientes}</div>
+        </Card>
+        <Card className="flex flex-col gap-2">
+          <div className="flex items-center gap-2 text-success-700"><CheckCircle size={18}/><span className="text-[11px] font-semibold uppercase tracking-wide">Calificadas</span></div>
+          <div className="text-[28px] font-extrabold text-brand-700">{calificadas}</div>
+        </Card>
+        <Card className="flex flex-col gap-2">
+          <div className="flex items-center gap-2 text-brand-700"><BookOpen size={18}/><span className="text-[11px] font-semibold uppercase tracking-wide">Promedio</span></div>
+          <div className="text-[28px] font-extrabold text-brand-700">{promedio}</div>
+        </Card>
       </div>
 
       {/* Filtros */}
-      <div style={{
-        backgroundColor:'#fff', borderRadius:10, padding:'14px 18px',
-        boxShadow:'0 1px 4px rgba(26,58,124,.08)', marginBottom:20,
-        display:'flex', flexWrap:'wrap', gap:16, alignItems:'center',
-      }}>
-        <div style={{ display:'flex', alignItems:'center', gap:6 }}>
-          <Filter size={14} color="#6B8BB0"/>
-          <span style={{ fontSize:12, color:'#6B8BB0', fontWeight:600 }}>Filtros:</span>
+      <Card className="flex flex-wrap gap-4 items-center mb-5">
+        <div className="flex items-center gap-1.5">
+          <Filter size={14} className="text-neutral-500"/>
+          <span className="text-xs text-neutral-500 font-semibold">Filtros:</span>
         </div>
 
-        {/* Estado */}
-        <div style={{ display:'flex', gap:6, alignItems:'center' }}>
-          <span style={{ fontSize:11, color:'#6B8BB0' }}>Estado:</span>
+        <div className="flex gap-1.5 items-center">
+          <span className="text-[11px] text-neutral-500">Estado:</span>
           {[
             { label:'Todos',      value:'todos'      },
             { label:'Pendiente',  value:'PENDIENTE'  },
             { label:'Calificado', value:'CALIFICADO' },
           ].map(opt => (
-            <button key={opt.value} onClick={() => setFilterStatus(opt.value as any)}
-              style={{
-                padding:'4px 12px', borderRadius:20, border:'none', cursor:'pointer', fontSize:12,
-                backgroundColor: filterStatus === opt.value ? '#1A3A7C' : '#F0F6FC',
-                color:           filterStatus === opt.value ? '#fff'    : '#1A3A7C',
-                fontWeight:      filterStatus === opt.value ? 600       : 400,
-              }}>
+            <button
+              key={opt.value} onClick={() => setFilterStatus(opt.value as 'todos' | 'PENDIENTE' | 'CALIFICADO')}
+              className={`px-3 py-1 rounded-full text-xs transition-colors ${filterStatus === opt.value ? 'bg-brand-700 text-white font-semibold' : 'bg-neutral-100 text-brand-700 hover:bg-brand-100'}`}
+            >
               {opt.label}
             </button>
           ))}
         </div>
 
-        {/* Tipo */}
-        <div style={{ display:'flex', gap:6, alignItems:'center', flexWrap:'wrap' }}>
-          <span style={{ fontSize:11, color:'#6B8BB0' }}>Tipo:</span>
-          <button onClick={() => setFilterType('todos')}
-            style={{
-              padding:'4px 12px', borderRadius:20, border:'none', cursor:'pointer', fontSize:12,
-              backgroundColor: filterType === 'todos' ? '#1A3A7C' : '#F0F6FC',
-              color:           filterType === 'todos' ? '#fff'    : '#1A3A7C',
-              fontWeight:      filterType === 'todos' ? 600       : 400,
-            }}>Todos</button>
+        <div className="flex gap-1.5 items-center flex-wrap">
+          <span className="text-[11px] text-neutral-500">Tipo:</span>
+          <button
+            onClick={() => setFilterType('todos')}
+            className={`px-3 py-1 rounded-full text-xs transition-colors ${filterType === 'todos' ? 'bg-brand-700 text-white font-semibold' : 'bg-neutral-100 text-brand-700 hover:bg-brand-100'}`}
+          >
+            Todos
+          </button>
           {tipos.map(t => (
-            <button key={t} onClick={() => setFilterType(t)}
-              style={{
-                padding:'4px 12px', borderRadius:20, border:'none', cursor:'pointer', fontSize:12,
-                backgroundColor: filterType === t ? TYPE_COLOR[t] || '#1A3A7C' : '#F0F6FC',
-                color:           filterType === t ? '#fff' : '#1A3A7C',
-                fontWeight:      filterType === t ? 600    : 400,
-              }}>
+            <button
+              key={t} onClick={() => setFilterType(t)}
+              className={`px-3 py-1 rounded-full text-xs transition-colors ${filterType === t ? 'bg-brand-700 text-white font-semibold' : 'bg-neutral-100 text-brand-700 hover:bg-brand-100'}`}
+            >
               {TYPE_LABEL[t] || t}
             </button>
           ))}
         </div>
 
-        {/* Materia */}
         {materias.length > 1 && (
-          <div style={{ display:'flex', gap:6, alignItems:'center' }}>
-            <span style={{ fontSize:11, color:'#6B8BB0' }}>Materia:</span>
-            <select
-              value={filterSubject}
-              onChange={e => setFilterSubject(e.target.value)}
-              style={{
-                padding:'4px 10px', borderRadius:8, border:'1px solid #E0EAF5',
-                fontSize:12, color:'#1A3A7C', backgroundColor:'#F0F6FC', cursor:'pointer',
-              }}>
+          <div className="flex gap-1.5 items-center">
+            <span className="text-[11px] text-neutral-500">Materia:</span>
+            <Select value={filterSubject} onChange={e => setFilterSubject(e.target.value)} className="!h-8 !text-xs w-auto">
               <option value="todos">Todas</option>
               {materias.map(m => <option key={m} value={m}>{m}</option>)}
-            </select>
+            </Select>
           </div>
         )}
-      </div>
+      </Card>
 
       {/* Lista de tareas */}
       {tareasFiltradas.length === 0 ? (
-        <div style={{
-          backgroundColor:'#fff', borderRadius:10, padding:48,
-          textAlign:'center', color:'#6B8BB0',
-          boxShadow:'0 1px 4px rgba(26,58,124,.08)',
-        }}>
-          <ClipboardList size={40} style={{ marginBottom:12, opacity:.4 }}/>
-          <div style={{ fontSize:15 }}>No hay tareas con los filtros seleccionados.</div>
-        </div>
+        <Card className="text-center py-12">
+          <ClipboardList size={40} className="mx-auto mb-3 opacity-40"/>
+          <div className="text-[15px] text-neutral-500">No hay tareas con los filtros seleccionados.</div>
+        </Card>
       ) : (
-        <div style={{ display:'flex', flexDirection:'column', gap:12 }}>
+        <div className="flex flex-col gap-3">
           {tareasFiltradas.map(task => {
-            const overdue  = isOverdue(task.dueDate, task.status)
-            const pct      = task.score !== null ? Math.round((task.score / task.maxScore) * 100) : null
+            const overdue = isOverdue(task.dueDate, task.status)
+            const pct     = task.score !== null ? Math.round((task.score / task.maxScore) * 100) : null
+            const passed  = task.score !== null && task.score >= (task.maxScore * 0.51)
 
             return (
-              <div key={task.id} style={{
-                backgroundColor:'#fff', borderRadius:10,
-                boxShadow:'0 1px 4px rgba(26,58,124,.08)',
-                border: overdue ? '1px solid #FECDD3' : '1px solid transparent',
-                overflow:'hidden',
-              }}>
-                <div style={{ display:'flex', alignItems:'stretch' }}>
-                  {/* Barra lateral de color por tipo */}
-                  <div style={{
-                    width:4, flexShrink:0,
-                    backgroundColor: TYPE_COLOR[task.type] || '#6B8BB0',
-                  }}/>
-
-                  <div style={{ flex:1, padding:'16px 18px', display:'flex', gap:16, alignItems:'center' }}>
-                    {/* Info principal */}
-                    <div style={{ flex:1 }}>
-                      <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:6, flexWrap:'wrap' }}>
-                        <span style={{
-                          fontSize:10, fontWeight:700, padding:'2px 8px', borderRadius:20,
-                          backgroundColor: TYPE_COLOR[task.type] || '#6B8BB0', color:'#fff',
-                        }}>
-                          {TYPE_LABEL[task.type] || task.type}
-                        </span>
-                        <span style={{
-                          fontSize:10, fontWeight:600, padding:'2px 8px', borderRadius:20,
-                          backgroundColor: task.status === 'CALIFICADO' ? '#E8F8F2' : '#FFFBEA',
-                          color:           task.status === 'CALIFICADO' ? '#0F6E56' : '#BA7517',
-                        }}>
-                          {task.status === 'CALIFICADO' ? 'Calificado' : 'Pendiente'}
-                        </span>
-                        {overdue && (
-                          <span style={{
-                            fontSize:10, fontWeight:600, padding:'2px 8px', borderRadius:20,
-                            backgroundColor:'#FDE8E8', color:'#c0392b',
-                          }}>Vencido</span>
-                        )}
+              <Card key={task.id} padded={false} className={`overflow-hidden ${overdue ? '!border-danger-100' : ''}`}>
+                <div className="flex items-stretch">
+                  <div className={`w-1 shrink-0 ${TYPE_TONE[task.type] === 'danger' ? 'bg-danger-500' : TYPE_TONE[task.type] === 'success' ? 'bg-success-500' : TYPE_TONE[task.type] === 'warning' ? 'bg-warning-500' : 'bg-brand-700'}`}/>
+                  <div className="flex-1 px-4.5 py-4 flex gap-4 items-center">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2 mb-1.5 flex-wrap">
+                        <Badge tone={TYPE_TONE[task.type] || 'neutral'}>{TYPE_LABEL[task.type] || task.type}</Badge>
+                        <Badge tone={task.status === 'CALIFICADO' ? 'success' : 'warning'}>{task.status === 'CALIFICADO' ? 'Calificado' : 'Pendiente'}</Badge>
+                        {overdue && <Badge tone="danger">Vencido</Badge>}
                       </div>
-
-                      <div style={{ fontSize:15, fontWeight:700, color:'#1A3A7C', marginBottom:4 }}>
-                        {task.title}
-                      </div>
-
-                      {task.description && (
-                        <div style={{ fontSize:12, color:'#6B8BB0', marginBottom:6, lineHeight:1.5 }}>
-                          {task.description}
-                        </div>
-                      )}
-
-                      <div style={{ display:'flex', gap:16, flexWrap:'wrap' }}>
-                        <span style={{ fontSize:12, color:'#6B8BB0' }}>
-                          📚 {task.subject.name}
-                        </span>
-                        <span style={{ fontSize:12, color:'#6B8BB0' }}>
-                          👤 {task.teacher}
-                        </span>
-                        {task.trimester && (
-                          <span style={{ fontSize:12, color:'#6B8BB0' }}>
-                            📅 {task.trimester.name || `${task.trimester.number}er Trimestre`}
-                          </span>
-                        )}
+                      <div className="text-[15px] font-bold text-brand-700 mb-1">{task.title}</div>
+                      {task.description && <div className="text-xs text-neutral-500 mb-1.5 leading-relaxed">{task.description}</div>}
+                      <div className="flex gap-4 flex-wrap">
+                        <span className="text-xs text-neutral-500">📚 {task.subject.name}</span>
+                        <span className="text-xs text-neutral-500">👤 {task.teacher}</span>
+                        {task.trimester && <span className="text-xs text-neutral-500">📅 {task.trimester.name || `${task.trimester.number}er Trimestre`}</span>}
                         {task.dueDate && (
-                          <span style={{ fontSize:12, color: overdue ? '#c0392b' : '#6B8BB0', fontWeight: overdue ? 600 : 400 }}>
+                          <span className={`text-xs ${overdue ? 'text-danger-600 font-semibold' : 'text-neutral-500'}`}>
                             ⏰ Entrega: {formatDate(task.dueDate)}
                           </span>
                         )}
                       </div>
-
                       {task.note && (
-                        <div style={{
-                          marginTop:8, padding:'8px 12px', borderRadius:8,
-                          backgroundColor:'#F0F6FC', fontSize:12, color:'#1A3A7C',
-                        }}>
-                          💬 {task.note}
-                        </div>
+                        <div className="mt-2 px-3 py-2 rounded-lg bg-neutral-100 text-xs text-brand-700">💬 {task.note}</div>
                       )}
                     </div>
 
-                    {/* Calificación */}
-                    <div style={{ flexShrink:0, textAlign:'center', minWidth:80 }}>
+                    <div className="shrink-0 text-center" style={{ minWidth: 80 }}>
                       {task.score !== null ? (
                         <div>
-                          <div style={{
-                            fontSize:32, fontWeight:800,
-                            color: task.score >= (task.maxScore * 0.51) ? '#0F6E56' : '#c0392b',
-                          }}>
-                            {task.score}
-                          </div>
-                          <div style={{ fontSize:11, color:'#6B8BB0' }}>de {task.maxScore}</div>
+                          <div className={`text-[32px] font-extrabold ${passed ? 'text-success-700' : 'text-danger-600'}`}>{task.score}</div>
+                          <div className="text-[11px] text-neutral-500">de {task.maxScore}</div>
                           {pct !== null && (
-                            <div style={{ marginTop:6 }}>
-                              <div style={{
-                                height:4, width:70, backgroundColor:'#F0F6FC',
-                                borderRadius:2, overflow:'hidden',
-                              }}>
-                                <div style={{
-                                  height:'100%', borderRadius:2,
-                                  width:`${Math.min(pct,100)}%`,
-                                  backgroundColor: task.score >= (task.maxScore * 0.51) ? '#0F6E56' : '#c0392b',
-                                }}/>
+                            <div className="mt-1.5">
+                              <div className="h-1 bg-neutral-100 rounded overflow-hidden" style={{ width: 70 }}>
+                                <div className={`h-full rounded ${passed ? 'bg-success-500' : 'bg-danger-500'}`} style={{ width: `${Math.min(pct, 100)}%` }}/>
                               </div>
-                              <div style={{ fontSize:10, color:'#6B8BB0', marginTop:2 }}>{pct}%</div>
+                              <div className="text-[10px] text-neutral-500 mt-0.5">{pct}%</div>
                             </div>
                           )}
                         </div>
                       ) : (
                         <div>
-                          <div style={{ fontSize:11, color:'#BA7517', fontWeight:600 }}>Sin nota</div>
-                          <div style={{ fontSize:10, color:'#6B8BB0', marginTop:2 }}>
-                            Máx: {task.maxScore}
-                          </div>
+                          <div className="text-[11px] text-[#BA7517] font-semibold">Sin nota</div>
+                          <div className="text-[10px] text-neutral-500 mt-0.5">Máx: {task.maxScore}</div>
                         </div>
                       )}
                     </div>
                   </div>
                 </div>
-              </div>
+              </Card>
             )
           })}
         </div>
       )}
-
-      <style>{`
-        .spinner{width:24px;height:24px;border:2px solid rgba(26,58,124,.2);border-top-color:#1A3A7C;border-radius:50%;animation:spin .7s linear infinite}
-        @keyframes spin{to{transform:rotate(360deg)}}
-        @media(max-width:768px){.stats-grid{grid-template-columns:1fr 1fr}}
-      `}</style>
     </div>
   )
 }

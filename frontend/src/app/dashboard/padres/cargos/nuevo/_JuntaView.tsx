@@ -3,6 +3,10 @@
 import { useEffect, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { ArrowLeft, Plus, Users } from 'lucide-react'
+import Card from '@/components/ui/Card'
+import Button from '@/components/ui/Button'
+import { Input, Select } from '@/components/ui/Input'
+import { useToast } from '@/components/ui/ToastProvider'
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000'
 
@@ -30,13 +34,12 @@ export default function NuevoCargoPage() {
   const router       = useRouter()
   const searchParams = useSearchParams()
   const preParentId  = searchParams.get('parentId')
+  const toast = useToast()
 
   const [parents,       setParents]       = useState<Parent[]>([])
   const [academicYears, setAcademicYears] = useState<AcademicYear[]>([])
   const [loading,       setLoading]       = useState(true)
   const [saving,        setSaving]        = useState(false)
-  const [error,         setError]         = useState('')
-  const [success,       setSuccess]       = useState('')
   const [bulk,          setBulk]          = useState(false)
   const [selectedParents, setSelectedParents] = useState<number[]>([])
 
@@ -54,9 +57,8 @@ export default function NuevoCargoPage() {
     toleranceNote: '',
   })
 
-  const token = typeof window !== 'undefined' ? localStorage.getItem('token') : ''
-
   const fetchData = async () => {
+    const token = localStorage.getItem('token')
     setLoading(true)
     try {
       const [pRes, yRes] = await Promise.all([
@@ -70,14 +72,13 @@ export default function NuevoCargoPage() {
         const active = yData.find((y: AcademicYear) => y.isActive)
         if (active) setForm(f => ({ ...f, academicYearId: String(active.id) }))
       }
-    } catch { setError('Error de conexión') }
+    } catch { toast('Error de conexión', 'error') }
     finally  { setLoading(false) }
   }
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { fetchData() }, [])
 
-  // Cuando cambia el tipo, actualiza el target automáticamente
   const handleTypeChange = (type: string) => {
     const option = TYPE_OPTIONS.find(o => o.value === type)
     setForm(f => ({ ...f, type, target: option?.target || 'TUTOR', studentId: '' }))
@@ -87,16 +88,17 @@ export default function NuevoCargoPage() {
 
   const handleSave = async () => {
     if (!form.title || !form.amount || !form.academicYearId) {
-      setError('Título, monto y gestión son requeridos'); return
+      toast('Título, monto y gestión son requeridos', 'error'); return
     }
     if (!bulk && !form.parentId) {
-      setError('Selecciona un tutor'); return
+      toast('Selecciona un tutor', 'error'); return
     }
     if (bulk && selectedParents.length === 0) {
-      setError('Selecciona al menos un tutor'); return
+      toast('Selecciona al menos un tutor', 'error'); return
     }
 
-    setSaving(true); setError('')
+    const token = localStorage.getItem('token')
+    setSaving(true)
     try {
       if (bulk) {
         const res  = await fetch(`${API_URL}/api/treasury/bulk`, {
@@ -113,9 +115,9 @@ export default function NuevoCargoPage() {
           }),
         })
         const data = await res.json()
-        if (!res.ok) { setError(data.message); return }
-        setSuccess(data.message)
-       setTimeout(() => router.push('/dashboard/padres/tesoreria'), 1500)
+        if (!res.ok) { toast(data.message, 'error'); return }
+        toast(data.message, 'success')
+        setTimeout(() => router.push('/dashboard/padres/tesoreria'), 1500)
       } else {
         const res  = await fetch(`${API_URL}/api/treasury`, {
           method: 'POST',
@@ -135,14 +137,14 @@ export default function NuevoCargoPage() {
           }),
         })
         const data = await res.json()
-        if (!res.ok) { setError(data.message); return }
-        setSuccess('Cargo registrado correctamente')
+        if (!res.ok) { toast(data.message, 'error'); return }
+        toast('Cargo registrado correctamente', 'success')
         setTimeout(() => {
           if (preParentId) router.push(`/dashboard/padres/tesoreria/${preParentId}`)
           else router.push('/dashboard/padres/tesoreria')
         }, 1500)
       }
-    } catch { setError('Error de conexión') }
+    } catch { toast('Error de conexión', 'error') }
     finally  { setSaving(false) }
   }
 
@@ -153,48 +155,49 @@ export default function NuevoCargoPage() {
   const isForStudent = currentType?.target === 'ESTUDIANTE'
 
   return (
-    <div className="container">
-      <div className="page-header">
-        <button className="back-btn" onClick={() => router.back()}>
+    <div className="max-w-[700px] mx-auto">
+      <div className="flex items-center gap-4 mb-6">
+        <button onClick={() => router.back()} className="flex items-center gap-1.5 text-neutral-500 hover:text-brand-700 text-[13px]">
           <ArrowLeft size={16}/> Volver
         </button>
-        <h1>Nuevo Cargo</h1>
+        <h1 className="text-xl font-bold text-brand-700">Nuevo Cargo</h1>
       </div>
 
-      {success && <div className="alert suc">{success}</div>}
-      {error   && <div className="alert err">{error}</div>}
-
       {loading ? (
-        <div className="center"><div className="spinner"/></div>
+        <div className="flex justify-center py-16"><p className="text-sm text-neutral-500">Cargando...</p></div>
       ) : (
-        <div className="form-card">
-
-          {/* Modo: individual o masivo */}
-          <div className="mode-toggle">
-            <button className={`mode-btn ${!bulk ? 'active' : ''}`} onClick={() => setBulk(false)}>
+        <Card className="flex flex-col gap-4.5">
+          <div className="flex bg-neutral-100 rounded-[10px] p-1 gap-1">
+            <button
+              onClick={() => setBulk(false)}
+              className={`flex-1 py-2 rounded-lg text-[13px] transition-colors ${!bulk ? 'bg-white text-brand-700 font-semibold shadow-sm' : 'text-neutral-500'}`}
+            >
               Cargo individual
             </button>
-            <button className={`mode-btn ${bulk ? 'active' : ''}`} onClick={() => setBulk(true)}>
+            <button
+              onClick={() => setBulk(true)}
+              className={`flex-1 py-2 rounded-lg text-[13px] flex items-center justify-center gap-1.5 transition-colors ${bulk ? 'bg-white text-brand-700 font-semibold shadow-sm' : 'text-neutral-500'}`}
+            >
               <Users size={14}/> Cargo masivo
             </button>
           </div>
 
           {bulk && (
-            <div className="info-box">
+            <div className="bg-neutral-100 border border-neutral-300 rounded-lg p-3 text-xs text-neutral-500 leading-relaxed">
               💡 El cargo masivo crea el mismo cargo para múltiples tutores a la vez. Ideal para cuota inicial, mingas y multas de asamblea.
             </div>
           )}
 
-          <div className="section-lbl">Datos del cargo</div>
-          <div className="form-grid">
-            <div className="fg fg-full">
-              <label>Título *</label>
-              <input type="text" placeholder="Ej: Cuota inicial 2026, Minga marzo..."
-                value={form.title} onChange={e => setForm({...form, title: e.target.value})}/>
+          <div className="text-xs font-bold text-brand-700 uppercase tracking-wide pb-1 border-b border-neutral-100">Datos del cargo</div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="col-span-2">
+              <Input
+                label="Título" required placeholder="Ej: Cuota inicial 2026, Minga marzo..."
+                value={form.title} onChange={e => setForm({ ...form, title: e.target.value })}
+              />
             </div>
-            <div className="fg">
-              <label>Tipo de cargo *</label>
-              <select value={form.type} onChange={e => handleTypeChange(e.target.value)}>
+            <div>
+              <Select label="Tipo de cargo" required value={form.type} onChange={e => handleTypeChange(e.target.value)}>
                 <optgroup label="Por Tutor Legal">
                   {TYPE_OPTIONS.filter(o => o.target === 'TUTOR').map(o => (
                     <option key={o.value} value={o.value}>{o.label}</option>
@@ -205,106 +208,94 @@ export default function NuevoCargoPage() {
                     <option key={o.value} value={o.value}>{o.label}</option>
                   ))}
                 </optgroup>
-              </select>
-              <span className="field-hint">
+              </Select>
+              <span className="text-[11px] text-neutral-500 mt-1 block">
                 {isForStudent ? '📚 Cargo por estudiante — el tutor paga' : '👤 Cargo al tutor legal'}
               </span>
             </div>
-            <div className="fg">
-              <label>Monto (Bs.) *</label>
-              <input type="number" step="0.01" min="0" placeholder="0.00"
-                value={form.amount} onChange={e => setForm({...form, amount: e.target.value})}/>
-            </div>
-            <div className="fg">
-              <label>Gestión *</label>
-              <select value={form.academicYearId} onChange={e => setForm({...form, academicYearId: e.target.value})}>
-                <option value="">Selecciona gestión</option>
-                {academicYears.map(y => (
-                  <option key={y.id} value={y.id}>{y.year}{y.isActive ? ' (Activa)' : ''}</option>
-                ))}
-              </select>
-            </div>
-            <div className="fg">
-              <label>Fecha de vencimiento</label>
-              <input type="date" value={form.dueDate}
-                onChange={e => setForm({...form, dueDate: e.target.value})}/>
-            </div>
-            <div className="fg fg-full">
-              <label>Descripción</label>
-              <input type="text" placeholder="Descripción adicional (opcional)"
-                value={form.description} onChange={e => setForm({...form, description: e.target.value})}/>
+            <Input
+              label="Monto (Bs.)" required type="number" step="0.01" min="0" placeholder="0.00"
+              value={form.amount} onChange={e => setForm({ ...form, amount: e.target.value })}
+            />
+            <Select label="Gestión" required value={form.academicYearId} onChange={e => setForm({ ...form, academicYearId: e.target.value })}>
+              <option value="">Selecciona gestión</option>
+              {academicYears.map(y => (
+                <option key={y.id} value={y.id}>{y.year}{y.isActive ? ' (Activa)' : ''}</option>
+              ))}
+            </Select>
+            <Input
+              label="Fecha de vencimiento" type="date"
+              value={form.dueDate} onChange={e => setForm({ ...form, dueDate: e.target.value })}
+            />
+            <div className="col-span-2">
+              <Input
+                label="Descripción" placeholder="Descripción adicional (opcional)"
+                value={form.description} onChange={e => setForm({ ...form, description: e.target.value })}
+              />
             </div>
           </div>
 
-          {/* Tutor individual */}
           {!bulk && (
             <>
-              <div className="section-lbl">Asignar a tutor</div>
-              <div className="fg">
-                <label>Tutor legal *</label>
-                <select value={form.parentId} onChange={e => setForm({...form, parentId: e.target.value, studentId: ''})}>
-                  <option value="">Selecciona un tutor</option>
-                  {parents.map(p => (
-                    <option key={p.id} value={p.id}>{p.lastName} {p.firstName}{p.ci ? ` — CI: ${p.ci}` : ''}</option>
-                  ))}
-                </select>
-              </div>
+              <div className="text-xs font-bold text-brand-700 uppercase tracking-wide pb-1 border-b border-neutral-100">Asignar a tutor</div>
+              <Select label="Tutor legal" required value={form.parentId} onChange={e => setForm({ ...form, parentId: e.target.value, studentId: '' })}>
+                <option value="">Selecciona un tutor</option>
+                {parents.map(p => (
+                  <option key={p.id} value={p.id}>{p.lastName} {p.firstName}{p.ci ? ` — CI: ${p.ci}` : ''}</option>
+                ))}
+              </Select>
 
-              {/* Si el cargo es por estudiante, mostrar selector de estudiante */}
               {isForStudent && selectedParent && selectedParent.students.length > 0 && (
-                <div className="fg">
-                  <label>Estudiante *</label>
-                  <select value={form.studentId} onChange={e => setForm({...form, studentId: e.target.value})}>
-                    <option value="">Selecciona el estudiante</option>
-                    {selectedParent.students.map(ps => (
-                      <option key={ps.student.id} value={ps.student.id}>
-                        {ps.student.lastName} {ps.student.firstName}
-                      </option>
-                    ))}
-                  </select>
-                </div>
+                <Select label="Estudiante" required value={form.studentId} onChange={e => setForm({ ...form, studentId: e.target.value })}>
+                  <option value="">Selecciona el estudiante</option>
+                  {selectedParent.students.map(ps => (
+                    <option key={ps.student.id} value={ps.student.id}>{ps.student.lastName} {ps.student.firstName}</option>
+                  ))}
+                </Select>
               )}
 
-              {/* Tolerancia — solo para deuda anterior */}
               {form.type === 'DEUDA_ANTERIOR' && (
-                <div className="tolerance-box">
-                  <label className="checkbox-label">
-                    <input type="checkbox" checked={form.tolerance}
-                      onChange={e => setForm({...form, tolerance: e.target.checked})}/>
+                <div className="bg-warning-100 border border-warning-500 rounded-lg p-3 flex flex-col gap-2">
+                  <label className="flex items-center gap-2 text-[13px] text-[#7A6000] cursor-pointer">
+                    <input
+                      type="checkbox" className="w-4 h-4 accent-[var(--color-accent-500)] cursor-pointer"
+                      checked={form.tolerance} onChange={e => setForm({ ...form, tolerance: e.target.checked })}
+                    />
                     <span>⚠️ Aplicar tolerancia (caso especial)</span>
                   </label>
                   {form.tolerance && (
-                    <div className="fg" style={{marginTop: 8}}>
-                      <label>Nota de tolerancia</label>
-                      <input type="text" placeholder="Ej: Familia con recursos limitados, acuerdo de pago..."
-                        value={form.toleranceNote} onChange={e => setForm({...form, toleranceNote: e.target.value})}/>
-                    </div>
+                    <Input
+                      label="Nota de tolerancia" placeholder="Ej: Familia con recursos limitados, acuerdo de pago..."
+                      value={form.toleranceNote} onChange={e => setForm({ ...form, toleranceNote: e.target.value })}
+                    />
                   )}
                 </div>
               )}
             </>
           )}
 
-          {/* Cargo masivo — selección de tutores */}
           {bulk && (
             <>
-              <div className="section-lbl">Seleccionar tutores ({selectedParents.length} seleccionados)</div>
-              <div className="bulk-actions">
-                <button className="btn-sm-outline" onClick={() => setSelectedParents(parents.map(p => p.id))}>
-                  Seleccionar todos
-                </button>
-                <button className="btn-sm-outline" onClick={() => setSelectedParents([])}>
-                  Limpiar selección
-                </button>
+              <div className="text-xs font-bold text-brand-700 uppercase tracking-wide pb-1 border-b border-neutral-100">
+                Seleccionar tutores ({selectedParents.length} seleccionados)
               </div>
-              <div className="parents-select">
+              <div className="flex gap-2">
+                <Button variant="secondary" size="sm" onClick={() => setSelectedParents(parents.map(p => p.id))}>Seleccionar todos</Button>
+                <Button variant="secondary" size="sm" onClick={() => setSelectedParents([])}>Limpiar selección</Button>
+              </div>
+              <div className="flex flex-col gap-1.5 max-h-[280px] overflow-y-auto border border-neutral-300 rounded-lg p-2">
                 {parents.map(p => (
-                  <label key={p.id} className={`parent-option ${selectedParents.includes(p.id) ? 'selected' : ''}`}>
-                    <input type="checkbox" checked={selectedParents.includes(p.id)}
-                      onChange={() => toggleParent(p.id)}/>
+                  <label
+                    key={p.id}
+                    className={`flex items-center gap-2.5 p-2.5 rounded-md cursor-pointer border ${selectedParents.includes(p.id) ? 'bg-brand-100 border-neutral-300' : 'border-transparent hover:bg-neutral-100'}`}
+                  >
+                    <input
+                      type="checkbox" className="w-4 h-4 accent-[var(--color-brand-700)] cursor-pointer shrink-0"
+                      checked={selectedParents.includes(p.id)} onChange={() => toggleParent(p.id)}
+                    />
                     <div>
-                      <div className="parent-name">{p.lastName} {p.firstName}</div>
-                      {p.ci && <div className="parent-ci">CI: {p.ci}</div>}
+                      <div className="text-[13px] font-medium text-brand-700">{p.lastName} {p.firstName}</div>
+                      {p.ci && <div className="text-[11px] text-neutral-500">CI: {p.ci}</div>}
                     </div>
                   </label>
                 ))}
@@ -312,63 +303,15 @@ export default function NuevoCargoPage() {
             </>
           )}
 
-          <div className="form-actions">
-            <button className="btn-outline" onClick={() => router.back()}>Cancelar</button>
-            <button className="btn-primary" onClick={handleSave} disabled={saving}>
-              {saving ? <span className="spinsm"/> : <Plus size={14}/>}
+          <div className="flex justify-end gap-2.5 pt-2 border-t border-neutral-100">
+            <Button variant="secondary" onClick={() => router.back()}>Cancelar</Button>
+            <Button onClick={handleSave} loading={saving}>
+              {!saving && <Plus size={14}/>}
               {saving ? 'Registrando...' : bulk ? `Crear ${selectedParents.length} cargos` : 'Registrar cargo'}
-            </button>
+            </Button>
           </div>
-        </div>
+        </Card>
       )}
-
-      <style>{`
-        .container{max-width:700px;margin:0 auto}
-        .page-header{display:flex;align-items:center;gap:16px;margin-bottom:24px}
-        .page-header h1{font-size:20px;font-weight:700;color:#1A3A7C}
-        .back-btn{display:flex;align-items:center;gap:6px;background:none;border:none;cursor:pointer;color:#6B8BB0;font-size:13px;padding:0}
-        .back-btn:hover{color:#1A3A7C}
-        .alert{padding:10px 14px;border-radius:8px;font-size:13px;margin-bottom:16px}
-        .alert.suc{background:#E1F5EE;border:1px solid #9FE1CB;color:#0F6E56}
-        .alert.err{background:#FFF0F0;border:1px solid #FFBBBB;color:#C0392B}
-        .center{display:flex;justify-content:center;padding:48px}
-        .form-card{background:#fff;border:1px solid #CBE0F0;border-radius:14px;padding:24px;display:flex;flex-direction:column;gap:18px}
-        .mode-toggle{display:flex;background:#F0F6FC;border-radius:10px;padding:4px;gap:4px}
-        .mode-btn{flex:1;padding:8px;border:none;border-radius:8px;font-size:13px;cursor:pointer;background:transparent;color:#6B8BB0;display:flex;align-items:center;justify-content:center;gap:6px;transition:all .15s}
-        .mode-btn.active{background:#fff;color:#1A3A7C;font-weight:600;box-shadow:0 1px 4px rgba(0,0,0,.1)}
-        .info-box{background:#F0F6FC;border:1px solid #CBE0F0;border-radius:8px;padding:12px;font-size:12px;color:#6B8BB0;line-height:1.6}
-        .section-lbl{font-size:12px;font-weight:700;color:#1A3A7C;text-transform:uppercase;letter-spacing:.6px;padding-bottom:4px;border-bottom:1px solid #F0F6FC}
-        .form-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
-        .fg-full{grid-column:1/-1}
-        .fg{display:flex;flex-direction:column;gap:6px}
-        .fg label{font-size:11px;font-weight:700;color:#1A3A7C;text-transform:uppercase;letter-spacing:.6px}
-        .fg input,.fg select{padding:10px 12px;border:1.5px solid #CBE0F0;border-radius:8px;font-size:13px;color:#1A3A7C;outline:none}
-        .fg input:focus,.fg select:focus{border-color:#4A9FD4;box-shadow:0 0 0 3px rgba(74,159,212,.12)}
-        .field-hint{font-size:11px;color:#6B8BB0;margin-top:2px}
-        .tolerance-box{background:#FFFBEA;border:1px solid #F5C518;border-radius:8px;padding:12px;display:flex;flex-direction:column;gap:8px}
-        .checkbox-label{display:flex;align-items:center;gap:8px;font-size:13px;color:#7A6000;cursor:pointer}
-        .checkbox-label input{accent-color:#F5C518;cursor:pointer;width:16px;height:16px}
-        .bulk-actions{display:flex;gap:8px}
-        .btn-sm-outline{padding:6px 12px;background:#fff;color:#1A3A7C;border:1.5px solid #CBE0F0;border-radius:6px;font-size:12px;cursor:pointer}
-        .btn-sm-outline:hover{background:#F0F6FC}
-        .parents-select{display:flex;flex-direction:column;gap:6px;max-height:280px;overflow-y:auto;border:1.5px solid #CBE0F0;border-radius:8px;padding:8px}
-        .parent-option{display:flex;align-items:center;gap:10px;padding:10px;border-radius:6px;cursor:pointer;border:1px solid transparent}
-        .parent-option:hover{background:#F0F6FC}
-        .parent-option.selected{background:#E0ECF8;border-color:#CBE0F0}
-        .parent-option input{accent-color:#1A3A7C;cursor:pointer;width:16px;height:16px;flex-shrink:0}
-        .parent-name{font-size:13px;font-weight:500;color:#1A3A7C}
-        .parent-ci{font-size:11px;color:#6B8BB0}
-        .form-actions{display:flex;justify-content:flex-end;gap:10px;padding-top:8px;border-top:1px solid #F0F6FC}
-        .btn-primary{display:flex;align-items:center;gap:6px;padding:10px 20px;background:#1A3A7C;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:500;cursor:pointer}
-        .btn-primary:hover:not(:disabled){background:#4A9FD4}
-        .btn-primary:disabled{opacity:.6;cursor:not-allowed}
-        .btn-outline{display:flex;align-items:center;gap:6px;padding:10px 16px;background:#fff;color:#1A3A7C;border:1.5px solid #CBE0F0;border-radius:8px;font-size:13px;cursor:pointer}
-        .btn-outline:hover{background:#F0F6FC}
-        .spinner{width:24px;height:24px;border:2px solid rgba(26,58,124,.2);border-top-color:#1A3A7C;border-radius:50%;animation:spin .7s linear infinite}
-        .spinsm{width:14px;height:14px;border:2px solid rgba(255,255,255,.3);border-top-color:#fff;border-radius:50%;animation:spin .7s linear infinite;display:inline-block}
-        @keyframes spin{to{transform:rotate(360deg)}}
-        @media(max-width:600px){.form-grid{grid-template-columns:1fr}}
-      `}</style>
     </div>
   )
 }

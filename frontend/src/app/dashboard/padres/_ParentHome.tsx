@@ -3,6 +3,8 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Users, DollarSign, BookOpen, Bell, CheckCircle } from 'lucide-react'
+import Card from '@/components/ui/Card'
+import Badge from '@/components/ui/Badge'
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000'
 
@@ -40,6 +42,7 @@ const TYPE_LABELS: Record<string,string> = {
   MULTA_REUNION:'Multa Reunión', ACTIVIDAD:'Actividad',
   MATERIAL_ESCOLAR:'Material Escolar', OTRO:'Otro',
 }
+const CHARGE_TONE: Record<string, 'danger' | 'warning' | 'success'> = { PENDIENTE: 'danger', PARCIAL: 'warning', PAGADO: 'success' }
 
 const fmt     = (n: number) => `Bs. ${n.toFixed(2)}`
 const fmtDate = (d: string) => new Date(d).toLocaleDateString('es-BO', { day:'2-digit', month:'short', year:'numeric' })
@@ -71,8 +74,8 @@ export default function ParentDashboard() {
     fetchData()
   }, [])
 
-  if (loading) return <div className="center"><div className="spinner"/></div>
-  if (error)   return <div className="center"><p className="err">{error}</p></div>
+  if (loading) return <div className="flex justify-center py-16"><p className="text-sm text-neutral-500">Cargando...</p></div>
+  if (error)   return <div className="flex justify-center py-16"><p className="text-sm text-danger-600">{error}</p></div>
   if (!parent) return null
 
   const myStudents = parent.students.filter(ps => ps.isTutor).map(ps => ps.student)
@@ -85,173 +88,121 @@ export default function ParentDashboard() {
 
   return (
     <div>
-      <div className="welcome-header">
-        <div className="welcome-avatar">{parent.lastName.charAt(0)}</div>
+      <Card className="flex items-center gap-4 mb-6">
+        <div className="w-14 h-14 rounded-2xl bg-brand-700 text-white flex items-center justify-center text-xl font-extrabold shrink-0">
+          {parent.lastName.charAt(0)}
+        </div>
         <div>
-          <h1>Bienvenido/a, {parent.firstName} {parent.lastName}</h1>
-          <p>Panel de seguimiento escolar — U.E. Naciones Unidas</p>
+          <h1 className="text-lg font-bold text-brand-700 mb-1">Bienvenido/a, {parent.firstName} {parent.lastName}</h1>
+          <p className="text-[13px] text-neutral-500">Panel de seguimiento escolar — U.E. Naciones Unidas</p>
         </div>
-      </div>
+      </Card>
 
-      <div className="stats-grid">
-        <div className="stat-card">
-          <div className="stat-icon green"><Users size={20}/></div>
-          <div><div className="stat-label">Mis hijos</div><div className="stat-value">{myStudents.length}</div></div>
-        </div>
-        <div className="stat-card" style={{cursor:'pointer'}} onClick={() => router.push('/dashboard/padres/tesoreria')}>
-          <div className={`stat-icon ${totalDebt > 0 ? 'red' : 'green'}`}><DollarSign size={20}/></div>
+      <div className="grid gap-3 mb-4" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))' }}>
+        <Card className="flex items-center gap-3">
+          <div className="p-2.5 rounded-[10px] bg-success-100 text-success-700"><Users size={20} /></div>
+          <div><div className="text-[11px] text-neutral-500 uppercase tracking-wide mb-0.5">Mis hijos</div><div className="text-lg font-bold text-brand-700">{myStudents.length}</div></div>
+        </Card>
+        <Card className="flex items-center gap-3 cursor-pointer" onClick={() => router.push('/dashboard/padres/tesoreria')}>
+          <div className={`p-2.5 rounded-[10px] ${totalDebt > 0 ? 'bg-danger-100 text-danger-600' : 'bg-success-100 text-success-700'}`}><DollarSign size={20} /></div>
           <div>
-            <div className="stat-label">Deuda pendiente</div>
-            <div className="stat-value" style={{color: totalDebt > 0 ? '#C0392B' : '#0F6E56'}}>{fmt(totalDebt)}</div>
+            <div className="text-[11px] text-neutral-500 uppercase tracking-wide mb-0.5">Deuda pendiente</div>
+            <div className={`text-lg font-bold ${totalDebt > 0 ? 'text-danger-600' : 'text-success-700'}`}>{fmt(totalDebt)}</div>
           </div>
-        </div>
-        <div className="stat-card" style={{cursor:'pointer'}} onClick={() => router.push('/dashboard/padres/tesoreria')}>
-          <div className="stat-icon green"><CheckCircle size={20}/></div>
-          <div><div className="stat-label">Total pagado</div><div className="stat-value">{fmt(totalPaid)}</div></div>
-        </div>
-        <div className="stat-card" style={{cursor:'pointer'}} onClick={() => router.push('/dashboard/padres/notificaciones')}>
-          <div className={`stat-icon ${unread > 0 ? 'yellow' : 'blue'}`}><Bell size={20}/></div>
+        </Card>
+        <Card className="flex items-center gap-3 cursor-pointer" onClick={() => router.push('/dashboard/padres/tesoreria')}>
+          <div className="p-2.5 rounded-[10px] bg-success-100 text-success-700"><CheckCircle size={20} /></div>
+          <div><div className="text-[11px] text-neutral-500 uppercase tracking-wide mb-0.5">Total pagado</div><div className="text-lg font-bold text-brand-700">{fmt(totalPaid)}</div></div>
+        </Card>
+        <Card className="flex items-center gap-3 cursor-pointer" onClick={() => router.push('/dashboard/padres/notificaciones')}>
+          <div className={`p-2.5 rounded-[10px] ${unread > 0 ? 'bg-warning-100 text-[#8A6116]' : 'bg-brand-100 text-brand-700'}`}><Bell size={20} /></div>
           <div>
-            <div className="stat-label">Notificaciones</div>
-            <div className="stat-value">{unread > 0 ? `${unread} nuevas` : 'Al día'}</div>
+            <div className="text-[11px] text-neutral-500 uppercase tracking-wide mb-0.5">Notificaciones</div>
+            <div className="text-lg font-bold text-brand-700">{unread > 0 ? `${unread} nuevas` : 'Al día'}</div>
           </div>
-        </div>
+        </Card>
       </div>
 
       {/* Mis hijos */}
-      <div className="section-card">
-        <div className="section-title"><Users size={15}/> Mis hijos</div>
+      <Card padded={false} className="overflow-hidden mb-4">
+        <div className="flex items-center gap-2 px-4.5 py-3.5 border-b border-neutral-100 text-[13px] font-bold text-brand-700">
+          <Users size={15} /> Mis hijos
+        </div>
         {myStudents.length === 0 ? (
-          <div className="no-data">No tienes hijos registrados como tutor legal</div>
+          <p className="px-4.5 py-5 text-[13px] text-neutral-500 italic">No tienes hijos registrados como tutor legal</p>
         ) : (
-          <div className="students-grid">
+          <div className="grid gap-3 p-4" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))' }}>
             {myStudents.map(s => {
               const assignment = getActiveAssignment(s)
               return (
-                <div key={s.id} className="student-card"
-                  onClick={() => router.push(`/dashboard/padres/calificaciones?studentId=${s.id}`)}>
-                  <div className="student-avatar">{s.gender === 'MASCULINO' ? '👦' : '👧'}</div>
-                  <div className="student-info">
-                    <div className="student-name">{s.lastName} {s.firstName}</div>
-                    {s.ci && <div className="student-sub">CI: {s.ci}</div>}
+                <div
+                  key={s.id}
+                  onClick={() => router.push(`/dashboard/padres/calificaciones?studentId=${s.id}`)}
+                  className="flex items-center gap-3 p-3.5 bg-neutral-100/60 border border-neutral-300 rounded-[10px] cursor-pointer hover:shadow-md hover:border-info-500 transition-shadow"
+                >
+                  <div className="text-3xl shrink-0">{s.gender === 'MASCULINO' ? '👦' : '👧'}</div>
+                  <div className="flex-1">
+                    <div className="text-sm font-semibold text-brand-700 mb-0.5">{s.lastName} {s.firstName}</div>
+                    {s.ci && <div className="text-[11px] text-neutral-500 mb-1">CI: {s.ci}</div>}
                     {assignment ? (
-                      <div className="course-pill">
-                        📚 {LEVELS[assignment.course.level]} — {GRADES[assignment.course.grade]} &quot;{assignment.course.parallel}&quot; {SHIFTS[assignment.course.shift]}
-                      </div>
-                    ) : <div className="no-course">Sin curso inscrito</div>}
+                      <Badge tone="success">📚 {LEVELS[assignment.course.level]} — {GRADES[assignment.course.grade]} &quot;{assignment.course.parallel}&quot; {SHIFTS[assignment.course.shift]}</Badge>
+                    ) : <span className="text-[11px] text-danger-600 italic">Sin curso inscrito</span>}
                   </div>
-                  <div className="student-arrow">→</div>
+                  <div className="text-neutral-500">→</div>
                 </div>
               )
             })}
           </div>
         )}
-      </div>
+      </Card>
 
-      <div className="two-cols">
-        <div className="section-card">
-          <div className="section-title">
-            <DollarSign size={15}/> Estado de cuenta
-            <button className="ver-mas" onClick={() => router.push('/dashboard/padres/tesoreria')}>Ver todo →</button>
+      <div className="grid gap-4" style={{ gridTemplateColumns: '1fr 1fr' }}>
+        <Card padded={false} className="overflow-hidden">
+          <div className="flex items-center gap-2 px-4.5 py-3.5 border-b border-neutral-100 text-[13px] font-bold text-brand-700">
+            <DollarSign size={15} /> Estado de cuenta
+            <button onClick={() => router.push('/dashboard/padres/tesoreria')} className="ml-auto text-xs font-semibold text-brand-600 hover:underline">Ver todo →</button>
           </div>
           {withDebt.length === 0 ? (
-            <div className="no-data">🎉 ¡Estás al día con todos los pagos!</div>
+            <p className="px-4.5 py-5 text-[13px] text-neutral-500 italic">🎉 ¡Estás al día con todos los pagos!</p>
           ) : (
-            <div className="charges-list">
+            <div className="flex flex-col">
               {withDebt.slice(0, 4).map(c => (
-                <div key={c.id} className="charge-item">
-                  <div className="charge-info">
-                    <div className="charge-type">{TYPE_LABELS[c.type] || c.type}</div>
-                    {c.description && <div className="charge-desc">{c.description}</div>}
-                    {c.dueDate && <div className="charge-date">Vence: {fmtDate(c.dueDate)}</div>}
+                <div key={c.id} className="flex items-center justify-between gap-3 px-4.5 py-3 border-t border-neutral-100 first:border-t-0">
+                  <div className="flex-1">
+                    <div className="text-[13px] font-medium text-brand-700">{TYPE_LABELS[c.type] || c.type}</div>
+                    {c.description && <div className="text-[11px] text-neutral-500 mt-0.5">{c.description}</div>}
+                    {c.dueDate && <div className="text-[11px] text-[#BA7517] mt-0.5">Vence: {fmtDate(c.dueDate)}</div>}
                   </div>
-                  <div className="charge-amounts">
-                    <div className="charge-pending">{fmt(c.amount - c.paidAmount)}</div>
-                    <div className={`charge-status ${c.status.toLowerCase()}`}>{c.status}</div>
+                  <div className="text-right shrink-0">
+                    <div className="text-sm font-bold text-danger-600">{fmt(c.amount - c.paidAmount)}</div>
+                    <Badge tone={CHARGE_TONE[c.status] || 'neutral'}>{c.status}</Badge>
                   </div>
                 </div>
               ))}
             </div>
           )}
-        </div>
+        </Card>
 
-        <div className="section-card">
-          <div className="section-title">
-            <Bell size={15}/> Notificaciones recientes
-            <button className="ver-mas" onClick={() => router.push('/dashboard/padres/notificaciones')}>Ver todas →</button>
+        <Card padded={false} className="overflow-hidden">
+          <div className="flex items-center gap-2 px-4.5 py-3.5 border-b border-neutral-100 text-[13px] font-bold text-brand-700">
+            <Bell size={15} /> Notificaciones recientes
+            <button onClick={() => router.push('/dashboard/padres/notificaciones')} className="ml-auto text-xs font-semibold text-brand-600 hover:underline">Ver todas →</button>
           </div>
           {notifications.length === 0 ? (
-            <div className="no-data">No tienes notificaciones</div>
+            <p className="px-4.5 py-5 text-[13px] text-neutral-500 italic">No tienes notificaciones</p>
           ) : (
-            <div className="notif-list">
+            <div className="flex flex-col">
               {notifications.map(n => (
-                <div key={n.id} className={`notif-item ${!n.isRead ? 'unread' : ''}`}>
-                  <div className="notif-title">{n.title}</div>
-                  <div className="notif-msg">{n.message}</div>
-                  <div className="notif-date">{fmtDate(n.createdAt)}</div>
+                <div key={n.id} className={`px-4.5 py-3 border-t border-neutral-100 first:border-t-0 ${!n.isRead ? 'bg-brand-100/40 border-l-2 border-l-brand-700' : ''}`}>
+                  <div className="text-[13px] font-semibold text-brand-700 mb-0.5">{n.title}</div>
+                  <div className="text-xs text-neutral-500 leading-relaxed mb-1">{n.message}</div>
+                  <div className="text-[11px] text-neutral-500">{fmtDate(n.createdAt)}</div>
                 </div>
               ))}
             </div>
           )}
-        </div>
+        </Card>
       </div>
-
-      <style>{`
-        .center{display:flex;justify-content:center;align-items:center;padding:48px;color:#6B8BB0}
-        .err{color:#C0392B;font-size:14px}
-        .welcome-header{display:flex;align-items:center;gap:16px;margin-bottom:24px;background:#fff;border:1px solid #CBE0F0;border-radius:14px;padding:20px}
-        .welcome-avatar{width:56px;height:56px;border-radius:14px;background:#00838F;color:#fff;display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:800;flex-shrink:0}
-        .welcome-header h1{font-size:18px;font-weight:700;color:#1A3A7C;margin-bottom:4px}
-        .welcome-header p{font-size:13px;color:#6B8BB0}
-        .stats-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:16px}
-        .stat-card{background:#fff;border:1px solid #CBE0F0;border-radius:12px;padding:16px;display:flex;align-items:center;gap:12px}
-        .stat-icon{padding:10px;border-radius:10px;display:flex}
-        .stat-icon.green{background:#E1F5EE;color:#0F6E56}
-        .stat-icon.red{background:#FFF0F0;color:#C0392B}
-        .stat-icon.blue{background:#E0ECF8;color:#1A3A7C}
-        .stat-icon.yellow{background:#FFFBEA;color:#7A6000}
-        .stat-label{font-size:11px;color:#6B8BB0;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px}
-        .stat-value{font-size:18px;font-weight:700;color:#1A3A7C}
-        .section-card{background:#fff;border:1px solid #CBE0F0;border-radius:12px;overflow:hidden;margin-bottom:16px}
-        .section-title{display:flex;align-items:center;gap:8px;padding:14px 18px;border-bottom:1px solid #F0F6FC;font-size:13px;font-weight:700;color:#1A3A7C}
-        .ver-mas{margin-left:auto;background:none;border:none;color:#00838F;font-size:12px;font-weight:600;cursor:pointer}
-        .ver-mas:hover{text-decoration:underline}
-        .no-data{padding:20px 18px;font-size:13px;color:#6B8BB0;font-style:italic}
-        .students-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:12px;padding:16px}
-        .student-card{display:flex;align-items:center;gap:12px;padding:14px;background:#F8FBFF;border:1px solid #CBE0F0;border-radius:10px;cursor:pointer;transition:box-shadow .2s}
-        .student-card:hover{box-shadow:0 2px 12px rgba(26,58,124,.1);border-color:#4A9FD4}
-        .student-avatar{font-size:32px;flex-shrink:0}
-        .student-info{flex:1}
-        .student-name{font-size:14px;font-weight:600;color:#1A3A7C;margin-bottom:2px}
-        .student-sub{font-size:11px;color:#6B8BB0;margin-bottom:4px}
-        .course-pill{font-size:11px;background:#E1F5EE;color:#00838F;padding:3px 10px;border-radius:20px;display:inline-block;font-weight:500}
-        .no-course{font-size:11px;color:#C0392B;font-style:italic}
-        .student-arrow{color:#6B8BB0;font-size:16px}
-        .two-cols{display:grid;grid-template-columns:1fr 1fr;gap:16px}
-        .charges-list{display:flex;flex-direction:column}
-        .charge-item{display:flex;align-items:center;justify-content:space-between;padding:12px 18px;border-bottom:1px solid #F0F6FC;gap:12px}
-        .charge-item:last-child{border-bottom:none}
-        .charge-info{flex:1}
-        .charge-type{font-size:13px;font-weight:500;color:#1A3A7C}
-        .charge-desc{font-size:11px;color:#6B8BB0;margin-top:2px}
-        .charge-date{font-size:11px;color:#BA7517;margin-top:2px}
-        .charge-amounts{text-align:right}
-        .charge-pending{font-size:14px;font-weight:700;color:#C0392B}
-        .charge-status{font-size:10px;font-weight:600;padding:2px 8px;border-radius:20px;margin-top:3px;display:inline-block}
-        .charge-status.pendiente{background:#FFF0F0;color:#C0392B}
-        .charge-status.parcial{background:#FFFBEA;color:#7A6000}
-        .charge-status.pagado{background:#E1F5EE;color:#0F6E56}
-        .notif-list{display:flex;flex-direction:column}
-        .notif-item{padding:12px 18px;border-bottom:1px solid #F0F6FC}
-        .notif-item:last-child{border-bottom:none}
-        .notif-item.unread{background:#E0F7FA;border-left:3px solid #00838F}
-        .notif-title{font-size:13px;font-weight:600;color:#1A3A7C;margin-bottom:2px}
-        .notif-msg{font-size:12px;color:#6B8BB0;line-height:1.4;margin-bottom:4px}
-        .notif-date{font-size:11px;color:#6B8BB0}
-        .spinner{width:24px;height:24px;border:2px solid rgba(0,131,143,.2);border-top-color:#00838F;border-radius:50%;animation:spin .7s linear infinite}
-        @keyframes spin{to{transform:rotate(360deg)}}
-        @media(max-width:768px){.two-cols{grid-template-columns:1fr}.stats-grid{grid-template-columns:1fr 1fr}}
-      `}</style>
     </div>
   )
 }

@@ -2,7 +2,14 @@
 
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { DollarSign, Users, AlertCircle, CheckCircle, TrendingUp, Plus, ArrowRight, RefreshCw, Trash2, Eye, X, Copy, Check } from 'lucide-react'
+import { DollarSign, Users, AlertCircle, CheckCircle, TrendingUp, Plus, ArrowRight, RefreshCw, Trash2, Copy, Check } from 'lucide-react'
+import Card from '@/components/ui/Card'
+import Badge from '@/components/ui/Badge'
+import Button from '@/components/ui/Button'
+import Modal from '@/components/ui/Modal'
+import Table, { Column } from '@/components/ui/Table'
+import { useConfirm } from '@/components/ui/ConfirmProvider'
+import { useToast } from '@/components/ui/ToastProvider'
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000'
 
@@ -64,7 +71,9 @@ const TYPE_LABELS: Record<string, string> = {
 const fmt = (n: number) => `Bs. ${n.toFixed(2)}`
 
 export default function JuntaDashboard() {
-  const router = useRouter()
+  const router  = useRouter()
+  const confirm = useConfirm()
+  const toast   = useToast()
   const [summary,   setSummary]   = useState<Summary | null>(null)
   const [parents,   setParents]   = useState<ParentBalance[]>([])
   const [delegates, setDelegates] = useState<Delegate[]>([])
@@ -72,17 +81,9 @@ export default function JuntaDashboard() {
   const [working,   setWorking]   = useState<number | null>(null)
   const [creds,     setCreds]     = useState<Credentials | null>(null)
   const [copied,    setCopied]    = useState(false)
-  const [success,   setSuccess]   = useState('')
-  const [error,     setError]     = useState('')
-
-  const token = typeof window !== 'undefined' ? localStorage.getItem('token') : ''
-
-  const notify = (msg: string, type: 'ok' | 'err' = 'ok') => {
-    if (type === 'ok') { setSuccess(msg); setTimeout(() => setSuccess(''), 3000) }
-    else               { setError(msg);   setTimeout(() => setError(''),   4000) }
-  }
 
   const fetchData = async () => {
+    const token = localStorage.getItem('token')
     setLoading(true)
     try {
       const [sRes, pRes, dRes] = await Promise.all([
@@ -94,7 +95,6 @@ export default function JuntaDashboard() {
       if (sRes.ok) setSummary(sData)
       if (pRes.ok) setParents(pData.slice(0, 5))
       if (dRes.ok) {
-        // Extraer solo cursos que tienen delegado asignado
         const withDelegate = dData
           .filter((c: any) => c.delegate)
           .map((c: any) => ({
@@ -111,35 +111,37 @@ export default function JuntaDashboard() {
   useEffect(() => { fetchData() }, [])
 
   const handleResetPassword = async (courseId: number, delegate: Delegate) => {
-    if (!confirm(`¿Resetear la contraseña de ${delegate.lastName} ${delegate.firstName}?`)) return
+    if (!await confirm(`¿Resetear la contraseña de ${delegate.lastName} ${delegate.firstName}?`)) return
+    const token = localStorage.getItem('token')
     setWorking(delegate.id)
     try {
       const res  = await fetch(`${API_URL}/api/courses/${courseId}/delegate-user/reset`, {
         method: 'POST', headers: { Authorization: `Bearer ${token}` }
       })
       const data = await res.json()
-      if (!res.ok) { notify(data.message, 'err'); return }
+      if (!res.ok) { toast(data.message, 'error'); return }
       setCreds({
         accessEmail:     delegate.delegateUser?.email || '',
         defaultPassword: data.defaultPassword,
         delegateName:    `${delegate.lastName} ${delegate.firstName}`,
         courseLabel:     `${GRADE_LABELS[delegate.delegateCourse?.grade || '']} "${delegate.delegateCourse?.parallel}" ${SHIFT_LABELS[delegate.delegateCourse?.shift || '']}`,
       })
-    } catch { notify('Error de conexión', 'err') }
+    } catch { toast('Error de conexión', 'error') }
     finally  { setWorking(null) }
   }
 
   const handleRemoveDelegate = async (courseId: number, name: string) => {
-    if (!confirm(`¿Quitar a ${name} como delegado?`)) return
+    if (!await confirm(`¿Quitar a ${name} como delegado?`, { danger: true })) return
+    const token = localStorage.getItem('token')
     setWorking(courseId)
     try {
       const res  = await fetch(`${API_URL}/api/delegates/course/${courseId}/remove`, {
         method: 'DELETE', headers: { Authorization: `Bearer ${token}` }
       })
       const data = await res.json()
-      if (res.ok) { notify(data.message); fetchData() }
-      else notify(data.message, 'err')
-    } catch { notify('Error de conexión', 'err') }
+      if (res.ok) { toast(data.message, 'success'); fetchData() }
+      else toast(data.message, 'error')
+    } catch { toast('Error de conexión', 'error') }
     finally  { setWorking(null) }
   }
 
@@ -156,362 +158,260 @@ export default function JuntaDashboard() {
       : 0
     : 0
 
+  const debtorColumns: Column<ParentBalance>[] = [
+    {
+      key: 'tutor', header: 'Tutor', render: p => (
+        <div>
+          <div className="font-medium text-brand-700">{p.lastName} {p.firstName}</div>
+          {p.ci && <div className="text-[11px] text-neutral-500 mt-0.5">CI: {p.ci}</div>}
+        </div>
+      )
+    },
+    {
+      key: 'students', header: 'Estudiantes', render: p => (
+        <div className="flex flex-wrap gap-1">
+          {p.students.map(ps => (
+            <span key={ps.student.id} className="text-[11px] bg-brand-100 text-brand-700 px-2 py-0.5 rounded-full">
+              {ps.student.lastName} {ps.student.firstName}
+            </span>
+          ))}
+        </div>
+      )
+    },
+    { key: 'pendiente', header: 'Pendiente', render: p => <span className="font-semibold text-danger-600 whitespace-nowrap">{fmt(p.summary.totalPending)}</span> },
+    {
+      key: 'accion', header: 'Acción', render: p => (
+        <Button size="sm" onClick={() => router.push(`/dashboard/padres/tesoreria/${p.id}`)}>Ver cuenta</Button>
+      )
+    },
+  ]
+
+  const delegateColumns: Column<Delegate>[] = [
+    { key: 'delegado', header: 'Delegado', render: d => <div className="font-medium text-brand-700">{d.lastName} {d.firstName}</div> },
+    {
+      key: 'contacto', header: 'CI / Teléfono', render: d => (
+        <>
+          {d.ci && <div className="text-[11px] text-neutral-500">CI: {d.ci}</div>}
+          {d.phone && <div className="text-[11px] text-neutral-500">📱 {d.phone}</div>}
+          {!d.ci && !d.phone && <span className="text-xs text-neutral-500">—</span>}
+        </>
+      )
+    },
+    {
+      key: 'curso', header: 'Curso', render: d => {
+        const label = d.delegateCourse
+          ? `${GRADE_LABELS[d.delegateCourse.grade]} "${d.delegateCourse.parallel}" ${SHIFT_LABELS[d.delegateCourse.shift]}`
+          : '—'
+        return <Badge tone="success">{label}</Badge>
+      }
+    },
+    {
+      key: 'usuario', header: 'Usuario', render: d => d.delegateUser ? (
+        <div>
+          <div className="text-[11px] text-success-700">✅ Activo</div>
+          <div className="text-[10px] text-neutral-500 font-mono">{d.delegateUser.email}</div>
+        </div>
+      ) : <span className="text-[11px] text-danger-600">❌ Sin usuario</span>
+    },
+    {
+      key: 'acciones', header: 'Acciones', render: d => {
+        const isWorking = working === d.id
+        const courseId  = d.delegateCourse?.id
+        return (
+          <div className="flex gap-1.5">
+            {d.delegateUser && courseId && (
+              <button
+                title="Resetear contraseña" disabled={isWorking}
+                onClick={() => handleResetPassword(courseId, d)}
+                className="w-7 h-7 rounded-md bg-brand-100 text-brand-700 hover:bg-info-500 hover:text-white transition-colors flex items-center justify-center disabled:opacity-50"
+              >
+                {isWorking ? <span className="w-3 h-3 border-2 border-white/40 border-t-current rounded-full animate-spin"/> : <RefreshCw size={13}/>}
+              </button>
+            )}
+            {courseId && (
+              <button
+                title="Quitar delegado" disabled={isWorking}
+                onClick={() => handleRemoveDelegate(courseId, `${d.lastName} ${d.firstName}`)}
+                className="w-7 h-7 rounded-md bg-danger-100 text-danger-600 hover:bg-danger-500 hover:text-white transition-colors flex items-center justify-center disabled:opacity-50"
+              >
+                <Trash2 size={13}/>
+              </button>
+            )}
+          </div>
+        )
+      }
+    },
+  ]
+
   return (
     <div>
-      <div className="page-header">
+      <div className="flex items-start justify-between gap-4 mb-6">
         <div>
-          <h1>Panel de Junta Escolar</h1>
-          <p>Gestión económica y delegados — U.E. Naciones Unidas</p>
+          <h1 className="text-xl font-bold text-brand-700 mb-1">Panel de Junta Escolar</h1>
+          <p className="text-[13px] text-neutral-500">Gestión económica y delegados — U.E. Naciones Unidas</p>
         </div>
-        <button className="btn-primary" onClick={() => router.push('/dashboard/padres/cargos/nuevo')}>
+        <Button onClick={() => router.push('/dashboard/padres/cargos/nuevo')}>
           <Plus size={16}/> Nuevo cargo
-        </button>
+        </Button>
       </div>
 
-      {success && <div className="alert ok">{success}</div>}
-      {error   && <div className="alert err">{error}</div>}
-
       {loading ? (
-        <div className="center"><div className="spinner"/></div>
+        <div className="flex justify-center py-16"><p className="text-sm text-neutral-500">Cargando...</p></div>
       ) : (
         <>
           {/* Tarjetas resumen */}
-          <div className="summary-grid">
-            <div className="sum-card">
-              <div className="sum-icon blue"><DollarSign size={22}/></div>
-              <div>
-                <div className="sum-label">Total cobrado</div>
-                <div className="sum-value">{fmt(summary?.totalCharged || 0)}</div>
-              </div>
-            </div>
-            <div className="sum-card">
-              <div className="sum-icon green"><CheckCircle size={22}/></div>
-              <div>
-                <div className="sum-label">Recaudado</div>
-                <div className="sum-value">{fmt(summary?.totalCollected || 0)}</div>
-              </div>
-            </div>
-            <div className="sum-card">
-              <div className="sum-icon red"><AlertCircle size={22}/></div>
-              <div>
-                <div className="sum-label">Pendiente</div>
-                <div className="sum-value">{fmt(summary?.totalPending || 0)}</div>
-              </div>
-            </div>
-            <div className="sum-card">
-              <div className="sum-icon yellow"><TrendingUp size={22}/></div>
-              <div>
-                <div className="sum-label">% Recaudado</div>
-                <div className="sum-value">{porcentaje}%</div>
-              </div>
-            </div>
+          <div className="grid gap-3 mb-4" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))' }}>
+            <Card className="flex items-center gap-3">
+              <div className="p-2.5 rounded-[10px] bg-brand-100 text-brand-700"><DollarSign size={22} /></div>
+              <div><div className="text-[11px] text-neutral-500 uppercase tracking-wide mb-0.5">Total cobrado</div><div className="text-lg font-bold text-brand-700">{fmt(summary?.totalCharged || 0)}</div></div>
+            </Card>
+            <Card className="flex items-center gap-3">
+              <div className="p-2.5 rounded-[10px] bg-success-100 text-success-700"><CheckCircle size={22} /></div>
+              <div><div className="text-[11px] text-neutral-500 uppercase tracking-wide mb-0.5">Recaudado</div><div className="text-lg font-bold text-brand-700">{fmt(summary?.totalCollected || 0)}</div></div>
+            </Card>
+            <Card className="flex items-center gap-3">
+              <div className="p-2.5 rounded-[10px] bg-danger-100 text-danger-600"><AlertCircle size={22} /></div>
+              <div><div className="text-[11px] text-neutral-500 uppercase tracking-wide mb-0.5">Pendiente</div><div className="text-lg font-bold text-brand-700">{fmt(summary?.totalPending || 0)}</div></div>
+            </Card>
+            <Card className="flex items-center gap-3">
+              <div className="p-2.5 rounded-[10px] bg-warning-100 text-[#8A6116]"><TrendingUp size={22} /></div>
+              <div><div className="text-[11px] text-neutral-500 uppercase tracking-wide mb-0.5">% Recaudado</div><div className="text-lg font-bold text-brand-700">{porcentaje}%</div></div>
+            </Card>
           </div>
 
           {/* Barra de progreso */}
-          <div className="progress-card">
-            <div className="progress-header">
+          <Card className="mb-4">
+            <div className="flex justify-between text-[13px] font-semibold text-brand-700 mb-2.5">
               <span>Progreso de recaudación</span>
-              <span className="progress-pct">{porcentaje}%</span>
+              <span className="text-success-700">{porcentaje}%</span>
             </div>
-            <div className="progress-bar">
-              <div className="progress-fill" style={{ width: `${porcentaje}%` }}/>
+            <div className="h-3 bg-neutral-100 rounded-full overflow-hidden mb-2">
+              <div
+                className="h-full rounded-full transition-[width] duration-500"
+                style={{ width: `${porcentaje}%`, background: 'linear-gradient(90deg, var(--color-success-500), var(--color-info-500))' }}
+              />
             </div>
-            <div className="progress-footer">
-              <span className="green">{fmt(summary?.totalCollected || 0)} recaudado</span>
-              <span className="red">{fmt(summary?.totalPending || 0)} pendiente</span>
+            <div className="flex justify-between text-xs">
+              <span className="text-success-700">{fmt(summary?.totalCollected || 0)} recaudado</span>
+              <span className="text-danger-600">{fmt(summary?.totalPending || 0)} pendiente</span>
             </div>
-          </div>
+          </Card>
 
-          <div className="two-cols">
+          <div className="grid gap-4 mb-4" style={{ gridTemplateColumns: '1fr 1fr' }}>
             {/* Estado por tipo de cargo */}
-            <div className="section-card">
-              <div className="section-title">📊 Por tipo de cargo</div>
+            <Card padded={false} className="overflow-hidden">
+              <div className="px-4.5 py-3.5 border-b border-neutral-100 text-[13px] font-bold text-brand-700">📊 Por tipo de cargo</div>
               {summary && Object.keys(summary.byType).length === 0 ? (
-                <div className="no-data">Sin cargos registrados</div>
+                <p className="px-4.5 py-5 text-[13px] text-neutral-500 italic">Sin cargos registrados</p>
               ) : (
-                <div className="type-list">
+                <div className="flex flex-col px-4.5 pb-3.5">
                   {summary && Object.entries(summary.byType).map(([type, data]) => (
-                    <div key={type} className="type-item">
-                      <div className="type-info">
-                        <span className="type-name">{TYPE_LABELS[type] || type}</span>
-                        <span className="type-count">{data.count} cargos</span>
+                    <div key={type} className="flex items-center justify-between py-2.5 border-b border-neutral-100 last:border-b-0">
+                      <div className="flex flex-col gap-0.5">
+                        <span className="text-[13px] font-medium text-brand-700">{TYPE_LABELS[type] || type}</span>
+                        <span className="text-[11px] text-neutral-500">{data.count} cargos</span>
                       </div>
-                      <div className="type-amounts">
-                        <span className="green">{fmt(data.collected)}</span>
-                        <span className="slash">/</span>
-                        <span className="muted">{fmt(data.amount)}</span>
+                      <div className="flex items-center gap-1 text-[13px] font-semibold">
+                        <span className="text-success-700">{fmt(data.collected)}</span>
+                        <span className="text-neutral-300">/</span>
+                        <span className="text-neutral-500">{fmt(data.amount)}</span>
                       </div>
                     </div>
                   ))}
                 </div>
               )}
-            </div>
+            </Card>
 
             {/* Estado de cargos */}
-            <div className="section-card">
-              <div className="section-title">📋 Estado de cargos</div>
-              <div className="status-list">
-                <div className="status-item red">
-                  <div className="status-left"><AlertCircle size={16}/><span>Pendientes</span></div>
-                  <span className="status-count">{summary?.byStatus.PENDIENTE || 0}</span>
+            <Card padded={false} className="overflow-hidden">
+              <div className="px-4.5 py-3.5 border-b border-neutral-100 text-[13px] font-bold text-brand-700">📋 Estado de cargos</div>
+              <div className="flex flex-col px-4.5 pb-3.5">
+                <div className="flex items-center justify-between py-3 border-b border-neutral-100">
+                  <div className="flex items-center gap-2 text-[13px] font-medium text-danger-600"><AlertCircle size={16}/><span>Pendientes</span></div>
+                  <span className="text-lg font-bold text-brand-700">{summary?.byStatus.PENDIENTE || 0}</span>
                 </div>
-                <div className="status-item yellow">
-                  <div className="status-left"><TrendingUp size={16}/><span>Parciales</span></div>
-                  <span className="status-count">{summary?.byStatus.PARCIAL || 0}</span>
+                <div className="flex items-center justify-between py-3 border-b border-neutral-100">
+                  <div className="flex items-center gap-2 text-[13px] font-medium text-[#7A6000]"><TrendingUp size={16}/><span>Parciales</span></div>
+                  <span className="text-lg font-bold text-brand-700">{summary?.byStatus.PARCIAL || 0}</span>
                 </div>
-                <div className="status-item green">
-                  <div className="status-left"><CheckCircle size={16}/><span>Pagados</span></div>
-                  <span className="status-count">{summary?.byStatus.PAGADO || 0}</span>
+                <div className="flex items-center justify-between py-3">
+                  <div className="flex items-center gap-2 text-[13px] font-medium text-success-700"><CheckCircle size={16}/><span>Pagados</span></div>
+                  <span className="text-lg font-bold text-brand-700">{summary?.byStatus.PAGADO || 0}</span>
                 </div>
               </div>
-            </div>
+            </Card>
           </div>
 
           {/* Tutores con deuda */}
-          <div className="section-card">
-            <div className="section-header">
-              <div className="section-title"><Users size={15}/> Tutores con deuda pendiente</div>
-              <button className="btn-ver-todos" onClick={() => router.push('/dashboard/padres/tesoreria')}>
+          <Card padded={false} className="overflow-hidden mb-4">
+            <div className="flex items-center justify-between px-4.5 py-3.5 border-b border-neutral-100">
+              <div className="flex items-center gap-2 text-[13px] font-bold text-brand-700"><Users size={15}/> Tutores con deuda pendiente</div>
+              <button onClick={() => router.push('/dashboard/padres/tesoreria')} className="flex items-center gap-1 text-xs font-semibold text-brand-600 hover:underline">
                 Ver todos <ArrowRight size={13}/>
               </button>
             </div>
             {parents.length === 0 ? (
-              <div className="no-data">🎉 ¡Todos los tutores están al día!</div>
+              <p className="px-4.5 py-5 text-[13px] text-neutral-500 italic">🎉 ¡Todos los tutores están al día!</p>
             ) : (
-              <table>
-                <thead>
-                  <tr><th>Tutor</th><th>Estudiantes</th><th>Pendiente</th><th>Acción</th></tr>
-                </thead>
-                <tbody>
-                  {parents.map(p => (
-                    <tr key={p.id}>
-                      <td>
-                        <div className="tname">{p.lastName} {p.firstName}</div>
-                        {p.ci && <div className="tsub">CI: {p.ci}</div>}
-                      </td>
-                      <td>
-                        {p.students.map(ps => (
-                          <span key={ps.student.id} className="student-chip">
-                            {ps.student.lastName} {ps.student.firstName}
-                          </span>
-                        ))}
-                      </td>
-                      <td className="amount red">{fmt(p.summary.totalPending)}</td>
-                      <td>
-                        <button className="btn-ver" onClick={() => router.push(`/dashboard/padres/tesoreria/${p.id}`)}>
-                          Ver cuenta
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+              <div className="p-4">
+                <Table columns={debtorColumns} rows={parents} rowKey={p => p.id} />
+              </div>
             )}
-          </div>
+          </Card>
 
-          {/* ── Delegados ── */}
-          <div className="section-card">
-            <div className="section-header">
-              <div className="section-title"><Users size={15}/> Delegados de curso ({delegates.length})</div>
-              <button className="btn-ver-todos" onClick={() => router.push('/dashboard/padres/delegados')}>
+          {/* Delegados */}
+          <Card padded={false} className="overflow-hidden">
+            <div className="flex items-center justify-between px-4.5 py-3.5 border-b border-neutral-100">
+              <div className="flex items-center gap-2 text-[13px] font-bold text-brand-700"><Users size={15}/> Delegados de curso ({delegates.length})</div>
+              <button onClick={() => router.push('/dashboard/padres/delegados')} className="flex items-center gap-1 text-xs font-semibold text-brand-600 hover:underline">
                 Gestionar <ArrowRight size={13}/>
               </button>
             </div>
             {delegates.length === 0 ? (
-              <div className="no-data">No hay delegados asignados aún</div>
+              <p className="px-4.5 py-5 text-[13px] text-neutral-500 italic">No hay delegados asignados aún</p>
             ) : (
-              <table>
-                <thead>
-                  <tr>
-                    <th>Delegado</th>
-                    <th>CI / Teléfono</th>
-                    <th>Curso</th>
-                    <th>Usuario</th>
-                    <th>Acciones</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {delegates.map(d => {
-                    const isWorking = working === d.id
-                    const courseId  = d.delegateCourse?.id
-                    const courseLabel = d.delegateCourse
-                      ? `${GRADE_LABELS[d.delegateCourse.grade]} "${d.delegateCourse.parallel}" ${SHIFT_LABELS[d.delegateCourse.shift]}`
-                      : '—'
-                    return (
-                      <tr key={d.id}>
-                        <td>
-                          <div className="tname">{d.lastName} {d.firstName}</div>
-                        </td>
-                        <td>
-                          {d.ci && <div className="tsub">CI: {d.ci}</div>}
-                          {d.phone && <div className="tsub">📱 {d.phone}</div>}
-                          {!d.ci && !d.phone && <span className="muted">—</span>}
-                        </td>
-                        <td>
-                          <span className="course-chip">{courseLabel}</span>
-                        </td>
-                        <td>
-                          {d.delegateUser ? (
-                            <div>
-                              <div style={{fontSize:'11px',color:'#0F6E56'}}>✅ Activo</div>
-                              <div style={{fontSize:'10px',color:'#6B8BB0',fontFamily:'monospace'}}>{d.delegateUser.email}</div>
-                            </div>
-                          ) : (
-                            <span style={{fontSize:'11px',color:'#C0392B'}}>❌ Sin usuario</span>
-                          )}
-                        </td>
-                        <td>
-                          <div className="actions">
-                            {d.delegateUser && courseId && (
-                              <button className="icon-btn reset" title="Resetear contraseña"
-                                disabled={isWorking}
-                                onClick={() => handleResetPassword(courseId, d)}>
-                                {isWorking ? <span className="spinsm"/> : <RefreshCw size={13}/>}
-                              </button>
-                            )}
-                            {courseId && (
-                              <button className="icon-btn del" title="Quitar delegado"
-                                disabled={isWorking}
-                                onClick={() => handleRemoveDelegate(courseId, `${d.lastName} ${d.firstName}`)}>
-                                <Trash2 size={13}/>
-                              </button>
-                            )}
-                          </div>
-                        </td>
-                      </tr>
-                    )
-                  })}
-                </tbody>
-              </table>
+              <div className="p-4">
+                <Table columns={delegateColumns} rows={delegates} rowKey={d => d.id} />
+              </div>
             )}
-          </div>
+          </Card>
         </>
       )}
 
       {/* Modal credenciales */}
-      {creds && (
-        <div className="overlay" onClick={() => setCreds(null)}>
-          <div className="modal" onClick={e => e.stopPropagation()}>
-            <div className="mhead">
-              <h2>✅ Contraseña reseteada</h2>
-              <button onClick={() => setCreds(null)}><X size={18}/></button>
+      <Modal
+        open={!!creds}
+        onClose={() => setCreds(null)}
+        title="✅ Contraseña reseteada"
+        footer={
+          <>
+            <Button variant="secondary" onClick={copyCreds}>
+              {copied ? <Check size={14}/> : <Copy size={14}/>}
+              {copied ? 'Copiado' : 'Copiar'}
+            </Button>
+            <Button onClick={() => setCreds(null)}>Entendido</Button>
+          </>
+        }
+      >
+        {creds && (
+          <div className="flex flex-col gap-3">
+            <div className="bg-neutral-100 border border-neutral-300 rounded-lg p-3 text-sm text-brand-700">
+              <strong>{creds.delegateName}</strong> — {creds.courseLabel}
             </div>
-            <div className="mbody">
-              <div className="info-box"><strong>{creds.delegateName}</strong> — {creds.courseLabel}</div>
-              <div className="cred-row">
-                <span className="cred-label">Email:</span>
-                <span className="cred-value">{creds.accessEmail}</span>
-              </div>
-              <div className="cred-row">
-                <span className="cred-label">Contraseña:</span>
-                <span className="cred-value">{creds.defaultPassword}</span>
-              </div>
-              <div className="cred-note">⚠️ Entrega estas credenciales al delegado.</div>
+            <div className="flex items-center gap-2.5 bg-neutral-100 border border-neutral-300 rounded-lg px-3.5 py-2.5">
+              <span className="text-xs font-semibold text-neutral-500 uppercase tracking-wide min-w-[80px]">Email:</span>
+              <span className="text-[13px] font-semibold text-brand-700 font-mono break-all">{creds.accessEmail}</span>
             </div>
-            <div className="mfoot">
-              <button className="btn-outline" onClick={copyCreds}>
-                {copied ? <Check size={14}/> : <Copy size={14}/>}
-                {copied ? 'Copiado' : 'Copiar'}
-              </button>
-              <button className="btn-primary" onClick={() => setCreds(null)}>Entendido</button>
+            <div className="flex items-center gap-2.5 bg-neutral-100 border border-neutral-300 rounded-lg px-3.5 py-2.5">
+              <span className="text-xs font-semibold text-neutral-500 uppercase tracking-wide min-w-[80px]">Contraseña:</span>
+              <span className="text-[13px] font-semibold text-brand-700 font-mono break-all">{creds.defaultPassword}</span>
+            </div>
+            <div className="text-xs text-[#BA7517] bg-warning-100 border border-warning-500 rounded-lg p-2.5">
+              ⚠️ Entrega estas credenciales al delegado.
             </div>
           </div>
-        </div>
-      )}
-
-      <style>{`
-        .page-header{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:24px;gap:16px}
-        .page-header h1{font-size:20px;font-weight:700;color:#0F6E56;margin-bottom:4px}
-        .page-header p{font-size:13px;color:#6B8BB0}
-        .alert{padding:10px 14px;border-radius:8px;font-size:13px;margin-bottom:14px}
-        .alert.ok{background:#E1F5EE;border:1px solid #9FE1CB;color:#0F6E56}
-        .alert.err{background:#FFF0F0;border:1px solid #FFBBBB;color:#C0392B}
-        .center{display:flex;justify-content:center;padding:48px}
-        .summary-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-bottom:16px}
-        .sum-card{background:#fff;border:1px solid #CBE0F0;border-radius:12px;padding:16px;display:flex;align-items:center;gap:12px}
-        .sum-icon{padding:10px;border-radius:10px;display:flex;align-items:center;justify-content:center}
-        .sum-icon.blue{background:#E0ECF8;color:#1A3A7C}
-        .sum-icon.green{background:#E1F5EE;color:#0F6E56}
-        .sum-icon.red{background:#FFF0F0;color:#C0392B}
-        .sum-icon.yellow{background:#FFFBEA;color:#7A6000}
-        .sum-label{font-size:11px;color:#6B8BB0;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px}
-        .sum-value{font-size:18px;font-weight:700;color:#1A3A7C}
-        .progress-card{background:#fff;border:1px solid #CBE0F0;border-radius:12px;padding:18px;margin-bottom:16px}
-        .progress-header{display:flex;justify-content:space-between;font-size:13px;font-weight:600;color:#1A3A7C;margin-bottom:10px}
-        .progress-pct{color:#0F6E56}
-        .progress-bar{height:12px;background:#F0F6FC;border-radius:20px;overflow:hidden;margin-bottom:8px}
-        .progress-fill{height:100%;background:linear-gradient(90deg,#0F6E56,#4A9FD4);border-radius:20px;transition:width .5s ease}
-        .progress-footer{display:flex;justify-content:space-between;font-size:12px}
-        .two-cols{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px}
-        .section-card{background:#fff;border:1px solid #CBE0F0;border-radius:12px;overflow:hidden;margin-bottom:16px}
-        .section-header{display:flex;align-items:center;justify-content:space-between;padding:14px 18px;border-bottom:1px solid #F0F6FC}
-        .section-title{display:flex;align-items:center;gap:8px;padding:14px 18px;border-bottom:1px solid #F0F6FC;font-size:13px;font-weight:700;color:#1A3A7C}
-        .section-card .section-title{border-bottom:none;padding-bottom:0}
-        .section-header .section-title{border-bottom:none;padding:0}
-        .btn-ver-todos{display:flex;align-items:center;gap:4px;background:none;border:none;color:#0F6E56;font-size:12px;font-weight:600;cursor:pointer}
-        .btn-ver-todos:hover{text-decoration:underline}
-        .type-list{display:flex;flex-direction:column;padding:0 18px 14px}
-        .type-item{display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px solid #F0F6FC}
-        .type-item:last-child{border-bottom:none}
-        .type-info{display:flex;flex-direction:column;gap:2px}
-        .type-name{font-size:13px;font-weight:500;color:#1A3A7C}
-        .type-count{font-size:11px;color:#6B8BB0}
-        .type-amounts{display:flex;align-items:center;gap:4px;font-size:13px;font-weight:600}
-        .slash{color:#CBE0F0}
-        .status-list{display:flex;flex-direction:column;padding:0 18px 14px}
-        .status-item{display:flex;align-items:center;justify-content:space-between;padding:12px 0;border-bottom:1px solid #F0F6FC}
-        .status-item:last-child{border-bottom:none}
-        .status-left{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:500}
-        .status-item.red .status-left{color:#C0392B}
-        .status-item.yellow .status-left{color:#7A6000}
-        .status-item.green .status-left{color:#0F6E56}
-        .status-count{font-size:18px;font-weight:700;color:#1A3A7C}
-        .no-data{padding:20px 18px;font-size:13px;color:#6B8BB0;font-style:italic}
-        table{width:100%;border-collapse:collapse}
-        thead tr{background:#F0F6FC}
-        th{padding:11px 16px;text-align:left;font-size:11px;font-weight:600;color:#1A3A7C;text-transform:uppercase;letter-spacing:.5px}
-        td{padding:11px 16px;font-size:13px;color:#1A3A7C;border-top:1px solid #F0F6FC;vertical-align:middle}
-        tr:hover td{background:#FAFCFF}
-        .tname{font-weight:500}
-        .tsub{font-size:11px;color:#6B8BB0;margin-top:2px}
-        .muted{color:#6B8BB0;font-size:12px}
-        .student-chip{font-size:11px;background:#E0ECF8;color:#1A3A7C;padding:2px 8px;border-radius:20px;display:inline-block;margin:1px}
-        .course-chip{font-size:11px;background:#E1F5EE;color:#0F6E56;padding:3px 10px;border-radius:20px;font-weight:500}
-        .amount{font-weight:600;white-space:nowrap}
-        .amount.red{color:#C0392B}
-        .green{color:#0F6E56}
-        .red{color:#C0392B}
-        .actions{display:flex;gap:6px}
-        .icon-btn{width:28px;height:28px;border:none;border-radius:6px;cursor:pointer;display:flex;align-items:center;justify-content:center}
-        .icon-btn.reset{background:#E0ECF8;color:#1A3A7C}
-        .icon-btn.reset:hover:not(:disabled){background:#4A9FD4;color:#fff}
-        .icon-btn.del{background:#FFF0F0;color:#C0392B}
-        .icon-btn.del:hover:not(:disabled){background:#FFD5D5}
-        .icon-btn:disabled{opacity:.5;cursor:not-allowed}
-        .btn-ver{padding:6px 12px;background:#0F6E56;color:#fff;border:none;border-radius:6px;font-size:12px;cursor:pointer}
-        .btn-ver:hover{background:#0A5040}
-        .btn-primary{display:flex;align-items:center;gap:6px;padding:9px 16px;background:#0F6E56;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:500;cursor:pointer}
-        .btn-primary:hover{background:#0A5040}
-        .btn-outline{display:flex;align-items:center;gap:6px;padding:9px 14px;background:#fff;color:#1A3A7C;border:1.5px solid #CBE0F0;border-radius:8px;font-size:13px;cursor:pointer}
-        .btn-outline:hover{background:#F0F6FC}
-        .overlay{position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:500;display:flex;align-items:center;justify-content:center;padding:16px}
-        .modal{background:#fff;border-radius:14px;width:100%;max-width:420px;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,0.15)}
-        .mhead{display:flex;align-items:center;justify-content:space-between;padding:18px 20px;border-bottom:1px solid #CBE0F0}
-        .mhead h2{font-size:16px;font-weight:600;color:#1A3A7C;margin:0}
-        .mhead button{background:none;border:none;cursor:pointer;color:#6B8BB0;display:flex;padding:4px;border-radius:6px}
-        .mhead button:hover{background:#F0F6FC}
-        .mbody{padding:20px;display:flex;flex-direction:column;gap:12px}
-        .mfoot{display:flex;justify-content:flex-end;gap:10px;padding:16px 20px;border-top:1px solid #CBE0F0}
-        .info-box{background:#F0F6FC;border:1px solid #CBE0F0;border-radius:8px;padding:12px;font-size:13px;color:#1A3A7C}
-        .cred-row{display:flex;align-items:center;gap:10px;background:#F0F6FC;border:1px solid #CBE0F0;border-radius:8px;padding:10px 14px}
-        .cred-label{font-size:12px;font-weight:600;color:#6B8BB0;min-width:80px;text-transform:uppercase;letter-spacing:.5px}
-        .cred-value{font-size:13px;font-weight:600;color:#1A3A7C;font-family:monospace;word-break:break-all}
-        .cred-note{font-size:12px;color:#BA7517;background:#FFFBEA;border:1px solid #F5C518;border-radius:8px;padding:10px}
-        .spinner{width:24px;height:24px;border:2px solid rgba(15,110,86,.2);border-top-color:#0F6E56;border-radius:50%;animation:spin .7s linear infinite}
-        .spinsm{width:12px;height:12px;border:2px solid rgba(255,255,255,.3);border-top-color:currentColor;border-radius:50%;animation:spin .7s linear infinite;display:inline-block}
-        @keyframes spin{to{transform:rotate(360deg)}}
-        @media(max-width:768px){.two-cols{grid-template-columns:1fr}.summary-grid{grid-template-columns:1fr 1fr}}
-      `}</style>
+        )}
+      </Modal>
     </div>
   )
 }

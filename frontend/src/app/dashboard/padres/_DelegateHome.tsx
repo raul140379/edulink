@@ -3,6 +3,9 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Users, DollarSign, AlertCircle, CheckCircle, BookOpen, Phone, CreditCard, UserCircle } from 'lucide-react'
+import Card from '@/components/ui/Card'
+import Badge from '@/components/ui/Badge'
+import Table, { Column } from '@/components/ui/Table'
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000'
 
@@ -66,20 +69,16 @@ export default function DelegateDashboard() {
   const [loading, setLoading] = useState(true)
   const [error,   setError]   = useState('')
 
-  const token = typeof window !== 'undefined' ? localStorage.getItem('token') : ''
-
   useEffect(() => {
     const fetchCourse = async () => {
+      const token = localStorage.getItem('token')
       setLoading(true)
       try {
         const res  = await fetch(`${API_URL}/api/delegates/my-course`, {
           headers: { Authorization: `Bearer ${token}` }
         })
         const data = await res.json()
-       if (res.ok) {
-  setCourse(data) 
-}
-          
+        if (res.ok) setCourse(data)
         else setError(data.message)
       } catch { setError('Error de conexión') }
       finally  { setLoading(false) }
@@ -87,8 +86,8 @@ export default function DelegateDashboard() {
     fetchCourse()
   }, [])
 
-  if (loading) return <div className="center"><div className="spinner"/></div>
-  if (error)   return <div className="center"><p className="err">{error}</p></div>
+  if (loading) return <div className="flex justify-center py-16"><p className="text-sm text-neutral-500">Cargando...</p></div>
+  if (error)   return <div className="flex justify-center py-16"><p className="text-sm text-danger-600">{error}</p></div>
   if (!course) return null
 
   const allParents = new Map<number, Parent>()
@@ -106,183 +105,133 @@ export default function DelegateDashboard() {
   const totalPending = totalDebt - totalPaid
   const withDebt     = parents.filter(p => p.charges.some(c => c.status === 'PENDIENTE' || c.status === 'PARCIAL')).length
 
+  const columns: Column<Assignment>[] = [
+    { key: 'num', header: '#', render: (a) => <span className="text-xs text-neutral-500">{course.assignments.indexOf(a) + 1}</span> },
+    {
+      key: 'estudiante', header: 'Estudiante', render: a => (
+        <div>
+          <div className="font-medium text-brand-700">{a.student.lastName} {a.student.firstName}</div>
+          {a.student.rude && <div className="text-[11px] text-neutral-500 mt-0.5">RUDE: {a.student.rude}</div>}
+        </div>
+      )
+    },
+    { key: 'ci', header: 'CI', render: a => <span className="text-xs text-neutral-500">{a.student.ci || '—'}</span> },
+    {
+      key: 'tutor', header: 'Tutor Legal', render: a => {
+        const tutor = a.student.parents.find(ps => ps.isTutor)
+        return tutor ? (
+          <div>
+            <div className="font-medium text-brand-700">{tutor.parent.lastName} {tutor.parent.firstName}</div>
+            <div className="text-[11px] text-neutral-500 mt-0.5">{tutor.relationType}</div>
+          </div>
+        ) : <span className="text-[11px] text-neutral-500 italic">Sin tutor</span>
+      }
+    },
+    {
+      key: 'telefono', header: 'Teléfono', render: a => {
+        const tutor = a.student.parents.find(ps => ps.isTutor)
+        return tutor?.parent.phone
+          ? <span className="flex items-center gap-1 text-xs text-neutral-500"><Phone size={11}/> {tutor.parent.phone}</span>
+          : <span className="text-xs text-neutral-500">—</span>
+      }
+    },
+    {
+      key: 'estado', header: 'Estado', render: a => {
+        const tutor = a.student.parents.find(ps => ps.isTutor)
+        const pendiente = tutor
+          ? tutor.parent.charges.reduce((sum, c) => sum + (c.amount - c.paidAmount), 0)
+          : 0
+        return pendiente > 0
+          ? <Badge tone="danger">{fmt(pendiente)}</Badge>
+          : <Badge tone="success">Al día</Badge>
+      }
+    },
+  ]
+
   return (
     <div>
       {/* Header del curso */}
-      <div className="course-header">
-        <div className="course-avatar">
+      <Card className="flex items-start gap-4 mb-6">
+        <div className="w-16 h-16 rounded-2xl bg-brand-700 text-white flex items-center justify-center text-lg font-extrabold shrink-0">
           {GRADE_LABELS[course.grade]}{course.parallel}
         </div>
-        <div style={{ flex:1 }}>
-          <h1>{LEVEL_LABELS[course.level]} — {GRADE_LABELS[course.grade]} "{course.parallel}"</h1>
-          <div className="course-meta">
-            <span className="meta-pill">{SHIFT_LABELS[course.shift]}</span>
-            {course.educationType === 'BTH' && <span className="meta-pill bth">BTH</span>}
-            {course.tutor && (
-              <span className="meta-pill tutor">
-                Tutor: {course.tutor.teacher.lastName} {course.tutor.teacher.firstName}
-              </span>
-            )}
+        <div className="flex-1">
+          <h1 className="text-xl font-extrabold text-brand-700 mb-2">
+            {LEVEL_LABELS[course.level]} — {GRADE_LABELS[course.grade]} &quot;{course.parallel}&quot;
+          </h1>
+          <div className="flex gap-2 flex-wrap mb-2">
+            <Badge tone="brand">{SHIFT_LABELS[course.shift]}</Badge>
+            {course.educationType === 'BTH' && <Badge tone="warning">BTH</Badge>}
+            {course.tutor && <Badge tone="success">Tutor: {course.tutor.teacher.lastName} {course.tutor.teacher.firstName}</Badge>}
           </div>
-          {/* Delegado */}
           {course.delegate && (
-            <div className="delegate-info">
-              <UserCircle size={14} color="#00838F"/>
-              <span>Delegado/a:</span>
-              <strong>{course.delegate.lastName} {course.delegate.firstName}</strong>
+            <div className="flex items-center gap-1.5 text-xs text-brand-700 bg-neutral-100 rounded-lg px-2.5 py-1.5 w-fit flex-wrap">
+              <UserCircle size={14} className="text-brand-700"/>
+              <span className="text-neutral-500">Delegado/a:</span>
+              <strong className="font-bold">{course.delegate.lastName} {course.delegate.firstName}</strong>
               {course.delegate.phone && (
-                <span style={{ display:'flex', alignItems:'center', gap:3 }}>
-                  <Phone size={11}/> {course.delegate.phone}
-                </span>
+                <span className="flex items-center gap-1"><Phone size={11}/> {course.delegate.phone}</span>
               )}
             </div>
           )}
         </div>
-      </div>
+      </Card>
 
       {/* Resumen */}
-      <div className="summary-grid">
-        <div className="sum-card">
-          <div className="sum-icon blue"><Users size={20}/></div>
-          <div>
-            <div className="sum-label">Estudiantes</div>
-            <div className="sum-value">{course.assignments.length}</div>
-          </div>
-        </div>
-        <div className="sum-card">
-          <div className="sum-icon red"><AlertCircle size={20}/></div>
-          <div>
-            <div className="sum-label">Con deuda</div>
-            <div className="sum-value">{withDebt}</div>
-          </div>
-        </div>
-        <div className="sum-card">
-          <div className="sum-icon green"><CheckCircle size={20}/></div>
-          <div>
-            <div className="sum-label">Recaudado</div>
-            <div className="sum-value">{fmt(totalPaid)}</div>
-          </div>
-        </div>
-        <div className="sum-card">
-          <div className="sum-icon red"><DollarSign size={20}/></div>
-          <div>
-            <div className="sum-label">Pendiente</div>
-            <div className="sum-value">{fmt(totalPending)}</div>
-          </div>
-        </div>
+      <div className="grid gap-3 mb-4" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))' }}>
+        <Card className="flex items-center gap-3">
+          <div className="p-2.5 rounded-[10px] bg-brand-100 text-brand-700"><Users size={20} /></div>
+          <div><div className="text-[11px] text-neutral-500 uppercase tracking-wide mb-0.5">Estudiantes</div><div className="text-lg font-bold text-brand-700">{course.assignments.length}</div></div>
+        </Card>
+        <Card className="flex items-center gap-3">
+          <div className="p-2.5 rounded-[10px] bg-danger-100 text-danger-600"><AlertCircle size={20} /></div>
+          <div><div className="text-[11px] text-neutral-500 uppercase tracking-wide mb-0.5">Con deuda</div><div className="text-lg font-bold text-brand-700">{withDebt}</div></div>
+        </Card>
+        <Card className="flex items-center gap-3">
+          <div className="p-2.5 rounded-[10px] bg-success-100 text-success-700"><CheckCircle size={20} /></div>
+          <div><div className="text-[11px] text-neutral-500 uppercase tracking-wide mb-0.5">Recaudado</div><div className="text-lg font-bold text-brand-700">{fmt(totalPaid)}</div></div>
+        </Card>
+        <Card className="flex items-center gap-3">
+          <div className="p-2.5 rounded-[10px] bg-danger-100 text-danger-600"><DollarSign size={20} /></div>
+          <div><div className="text-[11px] text-neutral-500 uppercase tracking-wide mb-0.5">Pendiente</div><div className="text-lg font-bold text-brand-700">{fmt(totalPending)}</div></div>
+        </Card>
       </div>
 
       {/* Acciones rápidas */}
-      <div className="quick-actions">
-        <button className="action-btn blue" onClick={() => router.push('/dashboard/padres/tesoreria')}>
+      <div className="flex gap-2.5 mb-4 flex-wrap">
+        <button
+          className="flex items-center gap-2 px-4.5 py-2.5 bg-brand-700 text-white rounded-[10px] text-[13px] font-semibold hover:bg-brand-500 transition-colors"
+          onClick={() => router.push('/dashboard/padres/tesoreria')}
+        >
           <DollarSign size={18}/> Ver estado de cuentas
         </button>
-        <button className="action-btn green" onClick={() => router.push('/dashboard/padres/cargos/nuevo')}>
+        <button
+          className="flex items-center gap-2 px-4.5 py-2.5 bg-success-500 text-white rounded-[10px] text-[13px] font-semibold hover:bg-success-700 transition-colors"
+          onClick={() => router.push('/dashboard/padres/cargos/nuevo')}
+        >
           <CreditCard size={18}/> Nuevo cargo
         </button>
-        <button className="action-btn purple" onClick={() => router.push('/dashboard/padres/asistencia')}>
+        <button
+          className="flex items-center gap-2 px-4.5 py-2.5 bg-info-500 text-white rounded-[10px] text-[13px] font-semibold hover:bg-brand-700 transition-colors"
+          onClick={() => router.push('/dashboard/padres/asistencia')}
+        >
           <Users size={18}/> Registrar asistencia
         </button>
       </div>
 
       {/* Lista de estudiantes */}
-      <div className="section-card">
-        <div className="section-title"><BookOpen size={15}/> Estudiantes del curso</div>
+      <Card padded={false} className="overflow-hidden">
+        <div className="flex items-center gap-2 px-4.5 py-3.5 border-b border-neutral-100 text-[13px] font-bold text-brand-700">
+          <BookOpen size={15}/> Estudiantes del curso
+        </div>
         {course.assignments.length === 0 ? (
-          <div className="no-data">No hay estudiantes inscritos</div>
+          <p className="px-4.5 py-5 text-[13px] text-neutral-500 italic">No hay estudiantes inscritos</p>
         ) : (
-          <table>
-            <thead>
-              <tr><th>#</th><th>Estudiante</th><th>CI</th><th>Tutor Legal</th><th>Teléfono</th><th>Estado</th></tr>
-            </thead>
-            <tbody>
-              {course.assignments.map((a, i) => {
-                const tutor = a.student.parents.find(ps => ps.isTutor)
-                const totalPendiente = tutor
-                  ? tutor.parent.charges.reduce((sum, c) => sum + (c.amount - c.paidAmount), 0)
-                  : 0
-                return (
-                  <tr key={a.id}>
-                    <td className="muted">{i + 1}</td>
-                    <td>
-                      <div className="sname">{a.student.lastName} {a.student.firstName}</div>
-                      {a.student.rude && <div className="ssub">RUDE: {a.student.rude}</div>}
-                    </td>
-                    <td className="muted">{a.student.ci || '—'}</td>
-                    <td>
-                      {tutor ? (
-                        <div>
-                          <div className="sname">{tutor.parent.lastName} {tutor.parent.firstName}</div>
-                          <div className="ssub">{tutor.relationType}</div>
-                        </div>
-                      ) : <span className="no-data-sm">Sin tutor</span>}
-                    </td>
-                    <td className="muted">
-                      {tutor?.parent.phone
-                        ? <span style={{ display:'flex', alignItems:'center', gap:3 }}><Phone size={11}/> {tutor.parent.phone}</span>
-                        : '—'}
-                    </td>
-                    <td>
-                      {totalPendiente > 0
-                        ? <span className="sbadge red">{fmt(totalPendiente)}</span>
-                        : <span className="sbadge green">Al día</span>
-                      }
-                    </td>
-                  </tr>
-                )
-              })}
-            </tbody>
-          </table>
+          <div className="p-4">
+            <Table columns={columns} rows={course.assignments} rowKey={a => a.id} />
+          </div>
         )}
-      </div>
-
-      <style>{`
-        .center{display:flex;justify-content:center;align-items:center;padding:48px;color:#6B8BB0}
-        .err{color:#C0392B;font-size:14px}
-        .course-header{display:flex;align-items:flex-start;gap:16px;margin-bottom:24px;background:#fff;border:1px solid #CBE0F0;border-radius:14px;padding:20px}
-        .course-avatar{width:64px;height:64px;border-radius:14px;background:#00838F;color:#fff;display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:800;flex-shrink:0}
-        .course-header h1{font-size:20px;font-weight:800;color:#1A3A7C;margin-bottom:8px}
-        .course-meta{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px}
-        .meta-pill{background:#F0F6FC;color:#00838F;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:500}
-        .meta-pill.bth{background:#FFF3CC;color:#7A6000}
-        .meta-pill.tutor{background:#E1F5EE;color:#0F6E56}
-        .delegate-info{display:flex;align-items:center;gap:6px;font-size:12px;color:#00838F;background:#F5F5F4;border-radius:8px;padding:6px 10px;width:fit-content;flex-wrap:wrap}
-        .delegate-info strong{font-weight:700;color:#1A3A7C}
-        .summary-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin-bottom:16px}
-        .sum-card{background:#fff;border:1px solid #CBE0F0;border-radius:12px;padding:16px;display:flex;align-items:center;gap:12px}
-        .sum-icon{padding:10px;border-radius:10px;display:flex;align-items:center;justify-content:center}
-        .sum-icon.blue{background:#E0ECF8;color:#1A3A7C}
-        .sum-icon.green{background:#E1F5EE;color:#0F6E56}
-        .sum-icon.red{background:#FFF0F0;color:#C0392B}
-        .sum-label{font-size:11px;color:#6B8BB0;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px}
-        .sum-value{font-size:18px;font-weight:700;color:#1A3A7C}
-        .quick-actions{display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap}
-        .action-btn{display:flex;align-items:center;gap:8px;padding:10px 18px;border:none;border-radius:10px;font-size:13px;font-weight:600;cursor:pointer}
-        .action-btn.blue{background:#1A3A7C;color:#fff}
-        .action-btn.blue:hover{background:#4A9FD4}
-        .action-btn.green{background:#0F6E56;color:#fff}
-        .action-btn.green:hover{background:#0A5040}
-        .action-btn.purple{background:#3C3489;color:#fff}
-        .action-btn.purple:hover{background:#2D2768}
-        .section-card{background:#fff;border:1px solid #CBE0F0;border-radius:12px;overflow:hidden}
-        .section-title{display:flex;align-items:center;gap:8px;padding:14px 18px;border-bottom:1px solid #F0F6FC;font-size:13px;font-weight:700;color:#1A3A7C}
-        table{width:100%;border-collapse:collapse}
-        thead tr{background:#F0F6FC}
-        th{padding:10px 14px;text-align:left;font-size:11px;font-weight:600;color:#1A3A7C;text-transform:uppercase;letter-spacing:.5px}
-        td{padding:11px 14px;font-size:13px;color:#1A3A7C;border-top:1px solid #F0F6FC;vertical-align:top}
-        tr:hover td{background:#FAFCFF}
-        .muted{color:#6B8BB0;font-size:12px}
-        .sname{font-weight:500;color:#1A3A7C}
-        .ssub{font-size:11px;color:#6B8BB0;margin-top:2px}
-        .no-data{padding:20px;font-size:13px;color:#6B8BB0;font-style:italic}
-        .no-data-sm{font-size:11px;color:#6B8BB0;font-style:italic}
-        .sbadge{padding:3px 9px;border-radius:20px;font-size:11px;font-weight:500}
-        .sbadge.green{background:#E1F5EE;color:#0F6E56}
-        .sbadge.red{background:#FFF0F0;color:#C0392B}
-        .spinner{width:24px;height:24px;border:2px solid rgba(26,58,124,.2);border-top-color:#1A3A7C;border-radius:50%;animation:spin .7s linear infinite}
-        @keyframes spin{to{transform:rotate(360deg)}}
-        @media(max-width:600px){.quick-actions{flex-direction:column}.summary-grid{grid-template-columns:1fr 1fr}}
-      `}</style>
+      </Card>
     </div>
   )
 }

@@ -1,8 +1,10 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { BookOpen, ClipboardList, Bell, TrendingUp, CheckCircle, AlertCircle, ChevronRight, Clock } from 'lucide-react'
+import { BookOpen, ClipboardList, Bell, TrendingUp, AlertCircle, ChevronRight, Clock } from 'lucide-react'
 import Link from 'next/link'
+import Card from '@/components/ui/Card'
+import Badge from '@/components/ui/Badge'
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000'
 
@@ -40,8 +42,8 @@ const GRADE_LABEL: Record<string, string> = {
 const SHIFT_LABEL: Record<string, string> = {
   MORNING:'Mañana', AFTERNOON:'Tarde', NIGHT:'Noche',
 }
-const TYPE_COLOR: Record<string, string> = {
-  EVALUACION:'#c0392b', TRABAJO:'#1A3A7C', SER:'#0F6E56', DECIDIR:'#633806',
+const TYPE_TONE: Record<string, 'danger' | 'brand' | 'success' | 'warning'> = {
+  EVALUACION:'danger', TRABAJO:'brand', SER:'success', DECIDIR:'warning',
 }
 const TYPE_LABEL: Record<string, string> = {
   EVALUACION:'Evaluación', TRABAJO:'Trabajo', SER:'Ser', DECIDIR:'Decidir',
@@ -93,21 +95,19 @@ export default function EstudiantesDashboard() {
     return date.toLocaleDateString('es-BO', { day:'2-digit', month:'short' })
   }
 
-  if (loading) return <div className="center"><div className="spinner"/></div>
-  if (error)   return <div className="center"><p className="err-msg">{error}</p></div>
+  if (loading) return <div className="flex justify-center py-16"><p className="text-sm text-neutral-500">Cargando...</p></div>
+  if (error)   return <div className="flex justify-center py-16"><p className="text-sm text-danger-600">{error}</p></div>
 
   return (
     <div>
       {/* Banner */}
-      <div className="banner">
-        <div className="banner-left">
-          <div className="banner-greeting">🎓 Bienvenido/a de vuelta</div>
-          <div className="banner-name">
-            {student ? `${student.lastName} ${student.firstName}` : '—'}
-          </div>
+      <div className="bg-gradient-to-br from-brand-500 via-brand-600 to-brand-700 rounded-2xl px-7 py-6 mb-5 text-white flex items-center justify-between flex-wrap gap-4 shadow-lg">
+        <div className="flex flex-col gap-2">
+          <div className="text-[13px] opacity-80">🎓 Bienvenido/a de vuelta</div>
+          <div className="text-2xl font-extrabold tracking-tight">{student ? `${student.lastName} ${student.firstName}` : '—'}</div>
           {student?.course && (
-            <div className="banner-meta">
-              <span className="banner-pill">
+            <div className="flex items-center gap-2 text-[13px] opacity-85 flex-wrap">
+              <span className="bg-white/20 rounded-full px-2.5 py-0.5 font-bold">
                 {GRADE_LABEL[student.course.grade] || student.course.grade} &quot;{student.course.parallel}&quot;
               </span>
               <span>{student.course.level}</span>
@@ -117,190 +117,128 @@ export default function EstudiantesDashboard() {
             </div>
           )}
         </div>
-        <div className="banner-avg">
-          <div className="avg-value">{avgGrade}</div>
-          <div className="avg-label">Promedio General</div>
+        <div className="bg-white/15 rounded-xl px-5.5 py-3.5 text-center backdrop-blur-sm">
+          <div className="text-3xl font-extrabold">{avgGrade}</div>
+          <div className="text-[11px] opacity-80 mt-0.5">Promedio General</div>
         </div>
       </div>
 
       {/* Stats */}
-      <div className="summary-grid">
-        <div className="sum-card accent">
-          <TrendingUp size={28} color="#fff"/>
+      <div className="grid gap-3 mb-5" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))' }}>
+        <Card className="flex items-center gap-3 !bg-brand-700 !border-brand-700">
+          <TrendingUp size={28} className="text-white" />
           <div>
-            <div className="sum-label">Materias Aprobadas</div>
-            <div className="sum-value">{aprobadas}</div>
+            <div className="text-[11px] text-white/75 uppercase tracking-wide mb-0.5">Materias Aprobadas</div>
+            <div className="text-xl font-bold text-white">{aprobadas}</div>
           </div>
-        </div>
-        <div className="sum-card">
-          <AlertCircle size={28} color="#c0392b"/>
+        </Card>
+        <Card className="flex items-center gap-3">
+          <AlertCircle size={28} className="text-danger-600" />
           <div>
-            <div className="sum-label">Materias Reprobadas</div>
-            <div className="sum-value" style={{ color:'#c0392b' }}>{reprobadas}</div>
+            <div className="text-[11px] text-neutral-500 uppercase tracking-wide mb-0.5">Materias Reprobadas</div>
+            <div className="text-xl font-bold text-danger-600">{reprobadas}</div>
           </div>
-        </div>
-        <div className="sum-card">
-          <ClipboardList size={28} color="#BA7517"/>
+        </Card>
+        <Card className="flex items-center gap-3">
+          <ClipboardList size={28} className="text-[#BA7517]" />
           <div>
-            <div className="sum-label">Tareas Pendientes</div>
-            <div className="sum-value" style={{ color:'#BA7517' }}>{pendingTasks}</div>
+            <div className="text-[11px] text-neutral-500 uppercase tracking-wide mb-0.5">Tareas Pendientes</div>
+            <div className="text-xl font-bold text-[#BA7517]">{pendingTasks}</div>
           </div>
-        </div>
-        <div className="sum-card">
-          <Bell size={28} color="#1A7DB8"/>
+        </Card>
+        <Card className="flex items-center gap-3">
+          <Bell size={28} className="text-info-500" />
           <div>
-            <div className="sum-label">Sin Leer</div>
-            <div className="sum-value" style={{ color:'#1A7DB8' }}>{unreadNotifs}</div>
+            <div className="text-[11px] text-neutral-500 uppercase tracking-wide mb-0.5">Sin Leer</div>
+            <div className="text-xl font-bold text-info-500">{unreadNotifs}</div>
           </div>
-        </div>
+        </Card>
       </div>
 
       {/* Tareas y Notificaciones */}
-      <div className="two-cols">
-
-        {/* Tareas recientes */}
-        <div className="card">
-          <div className="card-header">
-            <div className="card-title"><ClipboardList size={16} color="#1A7DB8"/> Tareas Recientes</div>
-            <Link href="/dashboard/estudiantes/tareas" className="ver-todas">
-              Ver todas <ChevronRight size={13}/>
+      <div className="grid gap-4" style={{ gridTemplateColumns: '1fr 1fr' }}>
+        <Card padded={false} className="overflow-hidden">
+          <div className="flex items-center justify-between px-4.5 py-3.5 bg-neutral-100 border-b border-neutral-100">
+            <div className="flex items-center gap-2 text-sm font-bold text-brand-700"><ClipboardList size={16} className="text-info-500" /> Tareas Recientes</div>
+            <Link href="/dashboard/estudiantes/tareas" className="flex items-center gap-0.5 text-xs text-info-500 font-medium hover:underline">
+              Ver todas <ChevronRight size={13} />
             </Link>
           </div>
           {tasks.length === 0 ? (
-            <div className="empty-state">
-              <ClipboardList size={32} style={{ opacity:.3 }}/>
+            <div className="flex flex-col items-center gap-2 py-8 text-neutral-500 text-sm">
+              <ClipboardList size={32} className="opacity-30" />
               <p>Sin tareas registradas</p>
             </div>
           ) : (
             tasks.slice(0, 5).map(task => (
-              <div key={task.id} className="list-row">
-                <div style={{ flex:1, minWidth:0 }}>
-                  <div style={{ display:'flex', alignItems:'center', gap:6, marginBottom:3 }}>
-                    <span className="type-badge" style={{ backgroundColor: TYPE_COLOR[task.type] || '#6B8BB0' }}>
-                      {TYPE_LABEL[task.type] || task.type}
-                    </span>
-                    {task.dueDate && (
-                      <span className="due-date"><Clock size={9}/> {formatDate(task.dueDate)}</span>
-                    )}
+              <div key={task.id} className="flex items-center justify-between gap-2 px-4.5 py-2.5 border-t border-neutral-100 hover:bg-neutral-100/60">
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-1.5 mb-0.5">
+                    <Badge tone={TYPE_TONE[task.type] || 'neutral'}>{TYPE_LABEL[task.type] || task.type}</Badge>
+                    {task.dueDate && <span className="text-[10px] text-[#BA7517] flex items-center gap-0.5"><Clock size={9} /> {formatDate(task.dueDate)}</span>}
                   </div>
-                  <div className="row-title">{task.title}</div>
-                  <div className="row-sub">{task.subject?.name}</div>
+                  <div className="text-[13px] font-medium text-brand-700 truncate">{task.title}</div>
+                  <div className="text-[11px] text-neutral-500">{task.subject?.name}</div>
                 </div>
-                <div style={{ flexShrink:0, marginLeft:12, textAlign:'center' }}>
+                <div className="shrink-0 ml-3 text-center">
                   {task.score !== null ? (
-                    <span className="score" style={{ color: task.score >= 51 ? '#0F6E56' : '#c0392b' }}>
-                      {task.score}
-                    </span>
+                    <span className={`text-lg font-extrabold ${task.score >= 51 ? 'text-success-700' : 'text-danger-600'}`}>{task.score}</span>
                   ) : (
-                    <span className="pending-badge">Pendiente</span>
+                    <Badge tone="warning">Pendiente</Badge>
                   )}
                 </div>
               </div>
             ))
           )}
-        </div>
+        </Card>
 
-        {/* Notificaciones recientes */}
-        <div className="card">
-          <div className="card-header">
-            <div className="card-title">
-              <Bell size={16} color="#1A7DB8"/> Notificaciones
-              {unreadNotifs > 0 && <span className="notif-count">{unreadNotifs}</span>}
+        <Card padded={false} className="overflow-hidden">
+          <div className="flex items-center justify-between px-4.5 py-3.5 bg-neutral-100 border-b border-neutral-100">
+            <div className="flex items-center gap-2 text-sm font-bold text-brand-700">
+              <Bell size={16} className="text-info-500" /> Notificaciones
+              {unreadNotifs > 0 && <span className="bg-info-500 text-white text-[10px] font-extrabold px-1.5 py-0.5 rounded-full">{unreadNotifs}</span>}
             </div>
-            <Link href="/dashboard/estudiantes/notificaciones" className="ver-todas">
-              Ver todas <ChevronRight size={13}/>
+            <Link href="/dashboard/estudiantes/notificaciones" className="flex items-center gap-0.5 text-xs text-info-500 font-medium hover:underline">
+              Ver todas <ChevronRight size={13} />
             </Link>
           </div>
           {notifications.length === 0 ? (
-            <div className="empty-state">
-              <Bell size={32} style={{ opacity:.3 }}/>
+            <div className="flex flex-col items-center gap-2 py-8 text-neutral-500 text-sm">
+              <Bell size={32} className="opacity-30" />
               <p>Sin notificaciones</p>
             </div>
           ) : (
             notifications.slice(0, 5).map(n => (
-              <div key={n.id} className="list-row"
-                style={{
-                  backgroundColor: n.isRead ? '#fff' : '#F5FBFF',
-                  borderLeft: n.isRead ? '3px solid transparent' : '3px solid #1A7DB8',
-                }}>
-                <span className="row-title" style={{ fontWeight: n.isRead ? 400 : 600 }}>{n.title}</span>
-                <span className="row-date">{formatDate(n.createdAt)}</span>
+              <div key={n.id} className={`flex items-center justify-between gap-2 px-4.5 py-2.5 border-t border-neutral-100 ${n.isRead ? '' : 'bg-info-500/5 border-l-2 border-l-info-500'}`}>
+                <span className={`text-[13px] text-brand-700 truncate ${n.isRead ? 'font-normal' : 'font-semibold'}`}>{n.title}</span>
+                <span className="text-[11px] text-neutral-500 whitespace-nowrap shrink-0">{formatDate(n.createdAt)}</span>
               </div>
             ))
           )}
-        </div>
+        </Card>
       </div>
 
       {/* Calificaciones por materia */}
       {grades.length > 0 && (
-        <div className="card" style={{ marginTop:20 }}>
-          <div className="card-header">
-            <div className="card-title"><BookOpen size={16} color="#1A7DB8"/> Resumen de Calificaciones</div>
-            <Link href="/dashboard/estudiantes/calificaciones" className="ver-todas">
-              Ver detalle <ChevronRight size={13}/>
+        <Card padded={false} className="overflow-hidden mt-5">
+          <div className="flex items-center justify-between px-4.5 py-3.5 bg-neutral-100 border-b border-neutral-100">
+            <div className="flex items-center gap-2 text-sm font-bold text-brand-700"><BookOpen size={16} className="text-info-500" /> Resumen de Calificaciones</div>
+            <Link href="/dashboard/estudiantes/calificaciones" className="flex items-center gap-0.5 text-xs text-info-500 font-medium hover:underline">
+              Ver detalle <ChevronRight size={13} />
             </Link>
           </div>
-          <div className="grades-grid">
+          <div className="grid gap-px bg-neutral-100" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))' }}>
             {grades.map(g => (
-              <div key={g.subjectName} className="grade-item">
-                <span className="grade-subject">{g.subjectName}</span>
-                <span className="grade-avg" style={{
-                  color: g.avg === null ? '#6B8BB0' : g.avg >= 51 ? '#0F6E56' : '#c0392b'
-                }}>
+              <div key={g.subjectName} className="bg-white px-4 py-3 flex items-center justify-between hover:bg-neutral-100/40">
+                <span className="text-[13px] font-medium text-brand-700 truncate mr-2">{g.subjectName}</span>
+                <span className={`text-base font-extrabold shrink-0 ${g.avg === null ? 'text-neutral-500' : g.avg >= 51 ? 'text-success-700' : 'text-danger-600'}`}>
                   {g.avg?.toFixed(1) ?? '—'}
                 </span>
               </div>
             ))}
           </div>
-        </div>
+        </Card>
       )}
-
-      <style>{`
-        .center{display:flex;justify-content:center;align-items:center;padding:48px;color:#6B8BB0;flex-direction:column;gap:8px}
-        .err-msg{color:#C0392B;font-size:14px}
-        .banner{background:linear-gradient(135deg,#1A7DB8 0%,#1565A0 60%,#1A3A7C 100%);border-radius:14px;padding:24px 28px;margin-bottom:20px;color:#fff;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:16px;box-shadow:0 4px 16px rgba(74,159,212,.3)}
-        .banner-left{display:flex;flex-direction:column;gap:8px}
-        .banner-greeting{font-size:13px;opacity:.8}
-        .banner-name{font-size:24px;font-weight:800;letter-spacing:-.3px}
-        .banner-meta{display:flex;align-items:center;gap:8px;font-size:13px;opacity:.85;flex-wrap:wrap}
-        .banner-pill{background:rgba(255,255,255,.2);border-radius:20px;padding:2px 10px;font-weight:700}
-        .banner-avg{background:rgba(255,255,255,.15);border-radius:12px;padding:14px 22px;text-align:center;backdrop-filter:blur(4px)}
-        .avg-value{font-size:30px;font-weight:800}
-        .avg-label{font-size:11px;opacity:.8;margin-top:2px}
-        .summary-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:20px}
-        .sum-card{background:#fff;border:1px solid #CBE0F0;border-radius:12px;padding:16px;display:flex;align-items:center;gap:12px}
-        .sum-card.accent{background:#1A7DB8;border-color:#1A7DB8}
-        .sum-card.accent .sum-label{color:rgba(255,255,255,.75)}
-        .sum-card.accent .sum-value{color:#fff}
-        .sum-label{font-size:11px;color:#6B8BB0;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px}
-        .sum-value{font-size:22px;font-weight:700;color:#1A3A7C}
-        .two-cols{display:grid;grid-template-columns:1fr 1fr;gap:16px}
-        .card{background:#fff;border:1px solid #CBE0F0;border-radius:12px;overflow:hidden}
-        .card-header{display:flex;align-items:center;justify-content:space-between;padding:13px 18px;background:#F8FBFF;border-bottom:1px solid #CBE0F0}
-        .card-title{display:flex;align-items:center;gap:8px;font-size:14px;font-weight:700;color:#1A3A7C}
-        .ver-todas{display:flex;align-items:center;gap:2px;font-size:12px;color:#1A7DB8;text-decoration:none;font-weight:500}
-        .ver-todas:hover{text-decoration:underline}
-        .notif-count{background:#1A7DB8;color:#fff;font-size:10px;font-weight:800;padding:1px 7px;border-radius:20px}
-        .list-row{display:flex;align-items:center;justify-content:space-between;padding:11px 18px;border-top:1px solid #F0F6FC;gap:8px}
-        .list-row:hover{background:#FAFCFF}
-        .type-badge{font-size:9px;font-weight:700;padding:1px 7px;border-radius:20px;color:#fff}
-        .due-date{font-size:10px;color:#BA7517;display:flex;align-items:center;gap:2px}
-        .row-title{font-size:13px;font-weight:500;color:#1A3A7C;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-        .row-sub{font-size:11px;color:#6B8BB0}
-        .row-date{font-size:11px;color:#6B8BB0;white-space:nowrap;flex-shrink:0}
-        .score{font-size:18px;font-weight:800}
-        .pending-badge{font-size:10px;color:#BA7517;background:#FFFBEA;padding:2px 8px;border-radius:20px;font-weight:600}
-        .empty-state{display:flex;flex-direction:column;align-items:center;gap:8px;padding:32px;color:#6B8BB0;font-size:13px}
-        .grades-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:1px;background:#F0F6FC}
-        .grade-item{background:#fff;padding:13px 16px;display:flex;align-items:center;justify-content:space-between}
-        .grade-item:hover{background:#FAFCFF}
-        .grade-subject{font-size:13px;color:#1A3A7C;font-weight:500;flex:1;margin-right:8px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-        .grade-avg{font-size:16px;font-weight:800;flex-shrink:0}
-        .spinner{width:28px;height:28px;border:3px solid rgba(74,159,212,.2);border-top-color:#1A7DB8;border-radius:50%;animation:spin .7s linear infinite}
-        @keyframes spin{to{transform:rotate(360deg)}}
-        @media(max-width:900px){.summary-grid{grid-template-columns:1fr 1fr}}
-        @media(max-width:768px){.two-cols{grid-template-columns:1fr}}
-      `}</style>
     </div>
   )
 }

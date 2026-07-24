@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from 'react'
 import { BookOpen, Users, CheckCircle, AlertCircle, ChevronDown, ChevronUp } from 'lucide-react'
+import Card from '@/components/ui/Card'
+import Badge from '@/components/ui/Badge'
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000'
 
@@ -20,10 +22,9 @@ interface Summary {
   students:     { student: Student; subjects: Record<number, { t1?: number; t2?: number; t3?: number; promedio: number }>; promedioGeneral: number }[]
 }
 
-const statusBadge = (val?: number) => {
-  if (val === undefined) return <span className="nd">—</span>
-  const apr = val >= 51
-  return <span className={`nbadge ${apr ? 'apr' : 'rep'}`}>{val.toFixed(1)}</span>
+const scoreBadge = (val?: number) => {
+  if (val === undefined) return <span className="text-neutral-300 text-xs">—</span>
+  return <Badge tone={val >= 51 ? 'success' : 'danger'}>{val.toFixed(1)}</Badge>
 }
 
 export default function TeacherTutorNotasPage() {
@@ -35,13 +36,11 @@ export default function TeacherTutorNotasPage() {
   const [expanded,   setExpanded]   = useState<Record<number, boolean>>({})
   const year = new Date().getFullYear()
 
-  const token = typeof window !== 'undefined' ? localStorage.getItem('token') : ''
-
   useEffect(() => {
     const init = async () => {
+      const token = localStorage.getItem('token')
       setLoading(true)
       try {
-        // Obtener curso del maestro tutor
         const cRes  = await fetch(`${API_URL}/api/teachers/my-course`, {
           headers: { Authorization: `Bearer ${token}` }
         })
@@ -50,7 +49,6 @@ export default function TeacherTutorNotasPage() {
         const cid = cData.id
         setCourseId(cid)
 
-        // Obtener resumen de notas
         const sRes  = await fetch(`${API_URL}/api/notas/summary/${cid}?year=${year}`, {
           headers: { Authorization: `Bearer ${token}` }
         })
@@ -62,75 +60,76 @@ export default function TeacherTutorNotasPage() {
       finally  { setLoading(false) }
     }
     init()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  if (loading) return <div className="center"><div className="spinner"/></div>
-  if (error)   return <div className="center"><p className="err-msg">{error}</p></div>
+  if (loading) return <div className="flex justify-center py-16"><p className="text-sm text-neutral-500">Cargando...</p></div>
+  if (error)   return <div className="flex justify-center py-16"><p className="text-sm text-danger-600">{error}</p></div>
   if (!summary) return null
 
   const trimLabel = (t: Trimester) => t.name || `${t.number}° Trimestre`
   const selTrimNum = summary.trimesters.find(t => t.id === selTrim)?.number
 
-  // Stats
   const totalStudents = summary.students.length
   const aprobados = summary.students.filter(s => s.promedioGeneral >= 51).length
   const reprobados = totalStudents - aprobados
 
   return (
     <div>
-      <div className="page-header">
+      <div className="flex items-start justify-between gap-4 mb-6 flex-wrap">
         <div>
-          <h1>Notas del Curso</h1>
-          <p>Vista de calificaciones — Gestión {year} · Solo lectura</p>
+          <h1 className="text-xl font-bold text-brand-700 mb-1">Notas del Curso</h1>
+          <p className="text-[13px] text-neutral-500">Vista de calificaciones — Gestión {year} · Solo lectura</p>
         </div>
-        <span className="readonly-badge">👁 Solo lectura</span>
+        <Badge tone="success">👁 Solo lectura</Badge>
       </div>
 
-      {/* Stats */}
-      <div className="stats-grid">
-        <div className="stat-card">
-          <div className="stat-icon blue"><Users size={18}/></div>
-          <div><div className="stat-num">{totalStudents}</div><div className="stat-lbl">Estudiantes</div></div>
-        </div>
-        <div className="stat-card">
-          <div className="stat-icon green"><CheckCircle size={18}/></div>
-          <div><div className="stat-num" style={{color:'#0F6E56'}}>{aprobados}</div><div className="stat-lbl">Aprobados</div></div>
-        </div>
-        <div className="stat-card">
-          <div className="stat-icon red"><AlertCircle size={18}/></div>
-          <div><div className="stat-num" style={{color:'#C0392B'}}>{reprobados}</div><div className="stat-lbl">Reprobados</div></div>
-        </div>
-        <div className="stat-card">
-          <div className="stat-icon blue"><BookOpen size={18}/></div>
-          <div><div className="stat-num">{summary.subjects.length}</div><div className="stat-lbl">Materias</div></div>
-        </div>
+      <div className="grid gap-3 mb-5" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))' }}>
+        <Card className="flex items-center gap-3">
+          <div className="p-2.5 rounded-[10px] bg-brand-100 text-brand-700"><Users size={18}/></div>
+          <div><div className="text-xl font-bold text-brand-700">{totalStudents}</div><div className="text-[11px] text-neutral-500">Estudiantes</div></div>
+        </Card>
+        <Card className="flex items-center gap-3">
+          <div className="p-2.5 rounded-[10px] bg-success-100 text-success-700"><CheckCircle size={18}/></div>
+          <div><div className="text-xl font-bold text-success-700">{aprobados}</div><div className="text-[11px] text-neutral-500">Aprobados</div></div>
+        </Card>
+        <Card className="flex items-center gap-3">
+          <div className="p-2.5 rounded-[10px] bg-danger-100 text-danger-600"><AlertCircle size={18}/></div>
+          <div><div className="text-xl font-bold text-danger-600">{reprobados}</div><div className="text-[11px] text-neutral-500">Reprobados</div></div>
+        </Card>
+        <Card className="flex items-center gap-3">
+          <div className="p-2.5 rounded-[10px] bg-brand-100 text-brand-700"><BookOpen size={18}/></div>
+          <div><div className="text-xl font-bold text-brand-700">{summary.subjects.length}</div><div className="text-[11px] text-neutral-500">Materias</div></div>
+        </Card>
       </div>
 
-      {/* Selector trimestre */}
-      <div className="trim-bar">
-        <span className="trim-label">Trimestre:</span>
+      <div className="flex items-center gap-2 mb-4 flex-wrap">
+        <span className="text-xs font-semibold text-neutral-500 uppercase tracking-wide">Trimestre:</span>
         {summary.trimesters.map(t => (
-          <button key={t.id} className={`trim-btn ${selTrim === t.id ? 'active' : ''}`}
-            onClick={() => setSelTrim(t.id)}>
+          <button
+            key={t.id} onClick={() => setSelTrim(t.id)}
+            className={`px-3.5 py-1.5 rounded-lg text-xs font-medium border transition-colors ${selTrim === t.id ? 'bg-success-500 text-white border-success-500' : 'bg-white text-brand-700 border-neutral-300 hover:bg-neutral-100'}`}
+          >
             {trimLabel(t)}
           </button>
         ))}
-        <button className={`trim-btn ${selTrim === null ? 'active' : ''}`}
-          onClick={() => setSelTrim(null)}>
+        <button
+          onClick={() => setSelTrim(null)}
+          className={`px-3.5 py-1.5 rounded-lg text-xs font-medium border transition-colors ${selTrim === null ? 'bg-success-500 text-white border-success-500' : 'bg-white text-brand-700 border-neutral-300 hover:bg-neutral-100'}`}
+        >
           Promedio general
         </button>
       </div>
 
-      {/* Tabla de notas por estudiante */}
-      <div className="table-card">
-        <div className="table-header">
+      <Card padded={false} className="overflow-hidden">
+        <div className="flex items-center gap-2 px-4.5 py-3.5 border-b border-neutral-100 text-[13px] font-semibold text-brand-700">
           <BookOpen size={14}/>
           <span>
             {selTrim === null
               ? 'Promedio General de todas las materias'
               : `Notas del ${trimLabel(summary.trimesters.find(t => t.id === selTrim)!)}`}
           </span>
-          <span className="count-badge">{totalStudents} estudiantes · {summary.subjects.length} materias</span>
+          <span className="ml-auto text-[11px] text-neutral-500 font-normal">{totalStudents} estudiantes · {summary.subjects.length} materias</span>
         </div>
 
         {summary.students.map((row, i) => {
@@ -138,7 +137,6 @@ export default function TeacherTutorNotasPage() {
           const prom   = row.promedioGeneral
           const apr    = prom >= 51
 
-          // Contar reprobados en este trimestre
           const repCount = selTrim !== null
             ? summary.subjects.filter(s => {
                 const val = selTrimNum === 1 ? row.subjects[s.id]?.t1
@@ -149,129 +147,77 @@ export default function TeacherTutorNotasPage() {
             : summary.subjects.filter(s => row.subjects[s.id]?.promedio < 51 && row.subjects[s.id]?.promedio !== undefined).length
 
           return (
-            <div key={row.student.id} className="student-block">
-              {/* Fila resumen del estudiante */}
-              <div className={`student-row ${isOpen ? 'open' : ''}`}
-                onClick={() => setExpanded(prev => ({ ...prev, [row.student.id]: !isOpen }))}>
-                <div className="student-num">{i + 1}</div>
-                <div className="student-name">
-                  {row.student.lastName} {row.student.firstName}
-                  {row.student.kardex && <span className="kardex">Kardex: {row.student.kardex}</span>}
+            <div key={row.student.id} className="border-t border-neutral-100">
+              <div
+                className={`flex items-center gap-3 px-4.5 py-3 cursor-pointer transition-colors ${isOpen ? 'bg-neutral-100' : 'hover:bg-neutral-100/40'}`}
+                onClick={() => setExpanded(prev => ({ ...prev, [row.student.id]: !isOpen }))}
+              >
+                <div className="text-[11px] text-neutral-500 min-w-[22px]">{i + 1}</div>
+                <div className="flex-1 flex flex-col gap-0.5">
+                  <span className="text-[13px] font-medium text-brand-700">{row.student.lastName} {row.student.firstName}</span>
+                  {row.student.kardex && <span className="text-[11px] text-neutral-500">Kardex: {row.student.kardex}</span>}
                 </div>
-                <div className="student-stats">
-                  {repCount > 0 && (
-                    <span className="rep-count">{repCount} rep.</span>
-                  )}
-                  <span className={`prom-badge ${apr ? 'apr' : 'rep'}`}>
-                    Prom: {prom.toFixed(1)}
-                  </span>
+                <div className="flex items-center gap-2">
+                  {repCount > 0 && <Badge tone="danger">{repCount} rep.</Badge>}
+                  <Badge tone={apr ? 'success' : 'danger'}>Prom: {prom.toFixed(1)}</Badge>
                 </div>
-                <button className="expand-btn">
+                <button className="text-neutral-500 hover:text-brand-700 hover:bg-brand-100 rounded-md p-1">
                   {isOpen ? <ChevronUp size={14}/> : <ChevronDown size={14}/>}
                 </button>
               </div>
 
-              {/* Detalle de materias */}
               {isOpen && (
-                <div className="subject-detail">
-                  <table>
-                    <thead>
-                      <tr>
-                        <th>Materia</th>
-                        {selTrim === null ? (
-                          <>
-                            <th style={{textAlign:'center'}}>T1</th>
-                            <th style={{textAlign:'center'}}>T2</th>
-                            <th style={{textAlign:'center'}}>T3</th>
-                            <th style={{textAlign:'center'}}>Promedio</th>
-                          </>
-                        ) : (
-                          <th style={{textAlign:'center'}}>Nota</th>
-                        )}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {summary.subjects.map(s => {
-                        const sData = row.subjects[s.id]
-                        return (
-                          <tr key={s.id}>
-                            <td>{s.name}</td>
-                            {selTrim === null ? (
-                              <>
-                                <td style={{textAlign:'center'}}>{statusBadge(sData?.t1)}</td>
-                                <td style={{textAlign:'center'}}>{statusBadge(sData?.t2)}</td>
-                                <td style={{textAlign:'center'}}>{statusBadge(sData?.t3)}</td>
-                                <td style={{textAlign:'center'}}>{statusBadge(sData?.promedio)}</td>
-                              </>
-                            ) : (
-                              <td style={{textAlign:'center'}}>
-                                {statusBadge(
-                                  selTrimNum === 1 ? sData?.t1 :
-                                  selTrimNum === 2 ? sData?.t2 : sData?.t3
-                                )}
-                              </td>
-                            )}
-                          </tr>
-                        )
-                      })}
-                    </tbody>
-                  </table>
+                <div className="px-4.5 pb-3.5 bg-neutral-100/40">
+                  <div className="overflow-x-auto rounded-lg border border-neutral-300">
+                    <table className="w-full border-collapse">
+                      <thead>
+                        <tr className="bg-neutral-100">
+                          <th className="px-3 py-2 text-left text-[11px] font-semibold text-brand-700 uppercase tracking-wide">Materia</th>
+                          {selTrim === null ? (
+                            <>
+                              <th className="px-3 py-2 text-center text-[11px] font-semibold text-brand-700 uppercase tracking-wide">T1</th>
+                              <th className="px-3 py-2 text-center text-[11px] font-semibold text-brand-700 uppercase tracking-wide">T2</th>
+                              <th className="px-3 py-2 text-center text-[11px] font-semibold text-brand-700 uppercase tracking-wide">T3</th>
+                              <th className="px-3 py-2 text-center text-[11px] font-semibold text-brand-700 uppercase tracking-wide">Promedio</th>
+                            </>
+                          ) : (
+                            <th className="px-3 py-2 text-center text-[11px] font-semibold text-brand-700 uppercase tracking-wide">Nota</th>
+                          )}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {summary.subjects.map(s => {
+                          const sData = row.subjects[s.id]
+                          return (
+                            <tr key={s.id} className="border-t border-neutral-100">
+                              <td className="px-3 py-2 text-xs text-brand-700">{s.name}</td>
+                              {selTrim === null ? (
+                                <>
+                                  <td className="px-3 py-2 text-center">{scoreBadge(sData?.t1)}</td>
+                                  <td className="px-3 py-2 text-center">{scoreBadge(sData?.t2)}</td>
+                                  <td className="px-3 py-2 text-center">{scoreBadge(sData?.t3)}</td>
+                                  <td className="px-3 py-2 text-center">{scoreBadge(sData?.promedio)}</td>
+                                </>
+                              ) : (
+                                <td className="px-3 py-2 text-center">
+                                  {scoreBadge(
+                                    selTrimNum === 1 ? sData?.t1 :
+                                    selTrimNum === 2 ? sData?.t2 : sData?.t3
+                                  )}
+                                </td>
+                              )}
+                            </tr>
+                          )
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
               )}
             </div>
           )
         })}
-      </div>
-
-      <style>{`
-        .center{display:flex;justify-content:center;align-items:center;padding:48px;flex-direction:column;gap:12px;color:#6B8BB0}
-        .err-msg{color:#C0392B;font-size:14px}
-        .page-header{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:24px;gap:16px;flex-wrap:wrap}
-        .page-header h1{font-size:20px;font-weight:700;color:#0F6E56;margin-bottom:4px}
-        .page-header p{font-size:13px;color:#6B8BB0}
-        .readonly-badge{background:#E1F5EE;color:#0F6E56;border:1px solid #9FE1CB;padding:6px 14px;border-radius:20px;font-size:12px;font-weight:600;white-space:nowrap}
-        .stats-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-bottom:20px}
-        .stat-card{background:#fff;border:1px solid #CBE0F0;border-radius:12px;padding:16px;display:flex;align-items:center;gap:12px}
-        .stat-icon{width:38px;height:38px;border-radius:10px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
-        .stat-icon.blue{background:#E0ECF8;color:#1A3A7C}
-        .stat-icon.green{background:#E1F5EE;color:#0F6E56}
-        .stat-icon.red{background:#FFF0F0;color:#C0392B}
-        .stat-num{font-size:22px;font-weight:700;color:#1A3A7C}
-        .stat-lbl{font-size:11px;color:#6B8BB0}
-        .trim-bar{display:flex;align-items:center;gap:8px;margin-bottom:16px;flex-wrap:wrap}
-        .trim-label{font-size:12px;font-weight:600;color:#6B8BB0;text-transform:uppercase;letter-spacing:.5px}
-        .trim-btn{padding:6px 14px;border-radius:8px;font-size:12px;font-weight:500;border:1.5px solid #CBE0F0;background:#fff;color:#1A3A7C;cursor:pointer;transition:all .15s}
-        .trim-btn:hover{border-color:#4A9FD4;background:#F0F6FC}
-        .trim-btn.active{background:#0F6E56;color:#fff;border-color:#0F6E56}
-        .table-card{background:#fff;border:1px solid #CBE0F0;border-radius:12px;overflow:hidden}
-        .table-header{display:flex;align-items:center;gap:8px;padding:14px 18px;border-bottom:1px solid #F0F6FC;font-size:13px;font-weight:600;color:#1A3A7C}
-        .count-badge{margin-left:auto;font-size:11px;color:#6B8BB0;font-weight:400}
-        .student-block{border-top:1px solid #F0F6FC}
-        .student-row{display:flex;align-items:center;gap:12px;padding:12px 18px;cursor:pointer;transition:background .15s}
-        .student-row:hover{background:#F8FBFF}
-        .student-row.open{background:#F0F6FC}
-        .student-num{font-size:11px;color:#6B8BB0;min-width:22px}
-        .student-name{flex:1;font-size:13px;font-weight:500;color:#1A3A7C;display:flex;flex-direction:column;gap:2px}
-        .kardex{font-size:11px;color:#6B8BB0;font-weight:400}
-        .student-stats{display:flex;align-items:center;gap:8px}
-        .rep-count{font-size:11px;background:#FFF0F0;color:#C0392B;padding:2px 8px;border-radius:10px;font-weight:500}
-        .prom-badge{font-size:12px;padding:3px 10px;border-radius:20px;font-weight:600}
-        .prom-badge.apr{background:#E1F5EE;color:#0F6E56}
-        .prom-badge.rep{background:#FFF0F0;color:#C0392B}
-        .expand-btn{background:none;border:none;cursor:pointer;color:#6B8BB0;display:flex;padding:4px;border-radius:6px}
-        .expand-btn:hover{background:#E0ECF8;color:#1A3A7C}
-        .subject-detail{padding:0 18px 14px;background:#F8FBFF}
-        .subject-detail table{width:100%;border-collapse:collapse;border:1px solid #CBE0F0;border-radius:8px;overflow:hidden}
-        .subject-detail th{padding:8px 12px;text-align:left;font-size:11px;font-weight:600;color:#1A3A7C;text-transform:uppercase;letter-spacing:.5px;background:#F0F6FC}
-        .subject-detail td{padding:9px 12px;font-size:12px;color:#1A3A7C;border-top:1px solid #F0F6FC}
-        .nbadge{padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600}
-        .nbadge.apr{background:#E1F5EE;color:#0F6E56}
-        .nbadge.rep{background:#FFF0F0;color:#C0392B}
-        .nd{color:#CBD5E0;font-size:12px}
-        .spinner{width:24px;height:24px;border:2px solid rgba(15,110,86,.2);border-top-color:#0F6E56;border-radius:50%;animation:spin .7s linear infinite}
-        @keyframes spin{to{transform:rotate(360deg)}}
-        @media(max-width:600px){.stats-grid{grid-template-columns:1fr 1fr}}
-      `}</style>
+      </Card>
     </div>
   )
 }

@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from 'react'
 import { BookOpen, Clock, CheckCircle, AlertCircle, MessageCircle } from 'lucide-react'
+import Card from '@/components/ui/Card'
+import Badge from '@/components/ui/Badge'
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000'
 
@@ -36,12 +38,12 @@ const GRADES: Record<string,string> = { PRIMERO:'1°', SEGUNDO:'2°', TERCERO:'3
 const SHIFTS: Record<string,string> = { MORNING:'Mañana', AFTERNOON:'Tarde', NIGHT:'Noche' }
 const LEVELS: Record<string,string> = { INICIAL:'Inicial', PRIMARIA:'Primaria', SECUNDARIA:'Secundaria' }
 
-const CAMPO_COLORS: Record<string,{bg:string;text:string;border:string}> = {
-  VIDA_TIERRA_TERRITORIO:        { bg:'#E8F5F0', text:'#0F6E56', border:'#9FE1CB' },
-  COMUNIDAD_SOCIEDAD:            { bg:'#E0ECF8', text:'#1A3A7C', border:'#A8C4E8' },
-  COSMOS_PENSAMIENTO:            { bg:'#F3E8FF', text:'#6B21A8', border:'#C4A8E8' },
-  CIENCIA_TECNOLOGIA_PRODUCCION: { bg:'#FFF3E0', text:'#633806', border:'#F5C518' },
-  SIN_CAMPO:                     { bg:'#F5F5F5', text:'#444',    border:'#CCC'    },
+const CAMPO_TONE: Record<string, 'success' | 'brand' | 'warning' | 'info' | 'neutral'> = {
+  VIDA_TIERRA_TERRITORIO:        'success',
+  COMUNIDAD_SOCIEDAD:            'brand',
+  COSMOS_PENSAMIENTO:            'info',
+  CIENCIA_TECNOLOGIA_PRODUCCION: 'warning',
+  SIN_CAMPO:                     'neutral',
 }
 const CAMPO_LABELS: Record<string,string> = {
   VIDA_TIERRA_TERRITORIO:        '🌿 Vida, Tierra y Territorio',
@@ -108,8 +110,8 @@ export default function ParentMaestrosPage() {
     loadPlan()
   }, [selStudentId, parent])
 
-  if (loading) return <div className="center"><div className="spinner"/></div>
-  if (error)   return <div className="center"><p style={{color:'#C0392B'}}>{error}</p></div>
+  if (loading) return <div className="flex justify-center py-16"><p className="text-sm text-neutral-500">Cargando...</p></div>
+  if (error)   return <div className="flex justify-center py-16"><p className="text-sm text-danger-600">{error}</p></div>
   if (!parent) return null
 
   const myStudents       = parent.students.filter(ps => ps.isTutor).map(ps => ps.student)
@@ -124,19 +126,18 @@ export default function ParentMaestrosPage() {
 
   return (
     <div>
-      <div className="page-header">
-        <div>
-          <h1>Maestros y Horario</h1>
-          <p>Plan de estudios, maestros asignados y contacto</p>
-        </div>
+      <div className="mb-6">
+        <h1 className="text-xl font-bold text-brand-700 mb-1">Maestros y Horario</h1>
+        <p className="text-[13px] text-neutral-500">Plan de estudios, maestros asignados y contacto</p>
       </div>
 
-      {/* Selector de hijo */}
       {myStudents.length > 1 && (
-        <div className="student-selector">
+        <div className="flex gap-2 flex-wrap mb-4">
           {myStudents.map(s => (
-            <button key={s.id} className={`stu-btn ${selStudentId === s.id ? 'active' : ''}`}
-              onClick={() => setSelStudentId(s.id)}>
+            <button
+              key={s.id} onClick={() => setSelStudentId(s.id)}
+              className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-[13px] font-medium border transition-colors ${selStudentId === s.id ? 'bg-brand-700 text-white border-brand-700' : 'bg-white text-brand-700 border-neutral-300 hover:border-brand-500'}`}
+            >
               {s.gender === 'MASCULINO' ? '👦' : '👧'} {s.lastName} {s.firstName}
             </button>
           ))}
@@ -145,176 +146,121 @@ export default function ParentMaestrosPage() {
 
       {selStudent && (
         <>
-          <div className="stu-info-card">
-            <div className="stu-avatar">{selStudent.gender === 'MASCULINO' ? '👦' : '👧'}</div>
+          <Card className="flex items-center gap-3.5 mb-4">
+            <div className="text-4xl shrink-0">{selStudent.gender === 'MASCULINO' ? '👦' : '👧'}</div>
             <div>
-              <div className="stu-name">{selStudent.lastName} {selStudent.firstName}</div>
+              <div className="text-base font-bold text-brand-700 mb-1">{selStudent.lastName} {selStudent.firstName}</div>
               {activeAssignment ? (
-                <div className="stu-course">
+                <div className="text-xs text-neutral-500">
                   📚 {LEVELS[activeAssignment.course.level]} —{' '}
                   {GRADES[activeAssignment.course.grade]} &quot;{activeAssignment.course.parallel}&quot; ·{' '}
                   {SHIFTS[activeAssignment.course.shift]}
                 </div>
-              ) : <div className="no-course">Sin curso inscrito en la gestión activa</div>}
+              ) : <div className="text-xs text-danger-600 italic">Sin curso inscrito en la gestión activa</div>}
             </div>
-          </div>
+          </Card>
 
           {!activeAssignment ? null : loadingPlan ? (
-            <div className="center"><div className="spinner"/></div>
+            <div className="flex justify-center py-16"><p className="text-sm text-neutral-500">Cargando...</p></div>
           ) : !plan ? (
-            <div className="empty-state"><BookOpen size={40} color="#CBE0F0"/><p>No hay plan de estudios configurado</p></div>
+            <Card className="flex flex-col items-center gap-3 py-14 text-neutral-500">
+              <BookOpen size={40} className="text-neutral-300"/>
+              <p className="text-[13px]">No hay plan de estudios configurado</p>
+            </Card>
           ) : (
             <>
-              {/* Stats */}
-              <div className="stats-grid">
-                <div className="stat-card">
-                  <div className="stat-icon blue"><BookOpen size={18}/></div>
-                  <div><div className="stat-num">{allItems.length}</div><div className="stat-lbl">Materias</div></div>
-                </div>
-                <div className="stat-card">
-                  <div className="stat-icon green"><CheckCircle size={18}/></div>
-                  <div><div className="stat-num" style={{color:'#0F6E56'}}>{withTeacher}</div><div className="stat-lbl">Con maestro</div></div>
-                </div>
-                <div className="stat-card">
-                  <div className="stat-icon yellow"><Clock size={18}/></div>
-                  <div><div className="stat-num">{plan.totalHours}</div><div className="stat-lbl">Hrs/Mes</div></div>
-                </div>
-                <div className="stat-card">
-                  <div className={`stat-icon ${withoutTeacher > 0 ? 'red' : 'green'}`}><AlertCircle size={18}/></div>
+              <div className="grid grid-cols-4 gap-3 mb-4">
+                <Card className="flex items-center gap-2.5">
+                  <div className="p-2 rounded-lg bg-brand-100 text-brand-700"><BookOpen size={18}/></div>
+                  <div><div className="text-[22px] font-extrabold text-brand-700">{allItems.length}</div><div className="text-[11px] text-neutral-500">Materias</div></div>
+                </Card>
+                <Card className="flex items-center gap-2.5">
+                  <div className="p-2 rounded-lg bg-success-100 text-success-700"><CheckCircle size={18}/></div>
+                  <div><div className="text-[22px] font-extrabold text-success-700">{withTeacher}</div><div className="text-[11px] text-neutral-500">Con maestro</div></div>
+                </Card>
+                <Card className="flex items-center gap-2.5">
+                  <div className="p-2 rounded-lg bg-warning-100 text-[#BA7517]"><Clock size={18}/></div>
+                  <div><div className="text-[22px] font-extrabold text-brand-700">{plan.totalHours}</div><div className="text-[11px] text-neutral-500">Hrs/Mes</div></div>
+                </Card>
+                <Card className="flex items-center gap-2.5">
+                  <div className={`p-2 rounded-lg ${withoutTeacher > 0 ? 'bg-danger-100 text-danger-600' : 'bg-success-100 text-success-700'}`}><AlertCircle size={18}/></div>
                   <div>
-                    <div className="stat-num" style={{color: withoutTeacher > 0 ? '#C0392B' : '#0F6E56'}}>{withoutTeacher}</div>
-                    <div className="stat-lbl">Sin maestro</div>
+                    <div className={`text-[22px] font-extrabold ${withoutTeacher > 0 ? 'text-danger-600' : 'text-success-700'}`}>{withoutTeacher}</div>
+                    <div className="text-[11px] text-neutral-500">Sin maestro</div>
                   </div>
-                </div>
+                </Card>
               </div>
 
-              {/* Horario próximamente */}
-              <div className="coming-card">
-                <div className="coming-icon">🗓</div>
+              <Card className="!bg-warning-100 !border-warning-500 flex items-center gap-3.5 mb-4">
+                <div className="text-3xl">🗓</div>
                 <div>
-                  <div className="coming-title">Horario de clases</div>
-                  <div className="coming-desc">El módulo de horarios estará disponible próximamente.</div>
+                  <div className="text-sm font-semibold text-[#7A6000] mb-0.5">Horario de clases</div>
+                  <div className="text-xs text-[#BA7517]">El módulo de horarios estará disponible próximamente.</div>
                 </div>
-                <span className="coming-badge">Próximamente</span>
-              </div>
+                <span className="ml-auto bg-accent-500 text-[#3A2F00] px-3 py-1 rounded-full text-[11px] font-semibold whitespace-nowrap">Próximamente</span>
+              </Card>
 
-              {/* Plan por campo */}
               {camposOrden.map(campo => {
                 const items = plan.grouped[campo] || []
-                const col   = CAMPO_COLORS[campo] || CAMPO_COLORS['SIN_CAMPO']
                 const hrs   = items.reduce((s, i) => s + i.hoursPerWeek, 0)
                 return (
-                  <div key={campo} className="campo-section">
-                    <div className="campo-header" style={{background:col.bg, borderColor:col.border}}>
-                      <span style={{fontWeight:700, color:col.text, fontSize:'12px'}}>
-                        {CAMPO_LABELS[campo] || campo}
-                      </span>
-                      <span style={{marginLeft:'auto', fontSize:'12px', color:col.text, fontWeight:500}}>
-                        {hrs} hrs/mes · {items.length} {items.length === 1 ? 'materia' : 'materias'}
-                      </span>
+                  <Card key={campo} padded={false} className="overflow-hidden mb-3">
+                    <div className="flex items-center gap-2.5 px-4 py-2.5 border-b border-neutral-100">
+                      <Badge tone={CAMPO_TONE[campo] || 'neutral'}>{CAMPO_LABELS[campo] || campo}</Badge>
+                      <span className="ml-auto text-xs text-neutral-500 font-medium">{hrs} hrs/mes · {items.length} {items.length === 1 ? 'materia' : 'materias'}</span>
                     </div>
-                    <div className="items-list">
+                    <div className="flex flex-col">
                       {items.map(item => {
                         const waMsg = item.teacher
                           ? `Hola ${item.teacher.firstName}, soy ${parentName}, padre/madre de ${studentName}. Le contacto por la materia de ${item.subject.name}.`
                           : ''
                         return (
-                          <div key={item.subjectId} className="plan-item">
-                            <div className="plan-item-left">
-                              <div className="subject-name">{item.subject.name}</div>
-                              <div className="hrs-info">{item.hoursPerWeek} hrs/mes</div>
+                          <div key={item.subjectId} className="flex items-center justify-between gap-4 px-4 py-3 border-t border-neutral-100 first:border-t-0 hover:bg-neutral-100/40">
+                            <div className="flex-1">
+                              <div className="text-[13px] font-medium text-brand-700 mb-0.5">{item.subject.name}</div>
+                              <div className="text-[11px] text-neutral-500">{item.hoursPerWeek} hrs/mes</div>
                             </div>
-                            <div className="plan-item-right">
+                            <div className="shrink-0">
                               {item.teacher ? (
-                                <div className="teacher-row">
-                                  <div className="teacher-info">
-                                    <div className="teacher-avatar">{item.teacher.lastName.charAt(0)}</div>
+                                <div className="flex items-center gap-2.5">
+                                  <div className="flex items-center gap-2">
+                                    <div className="w-8 h-8 rounded-full bg-brand-700 text-white flex items-center justify-center text-[13px] font-bold shrink-0">
+                                      {item.teacher.lastName.charAt(0)}
+                                    </div>
                                     <div>
-                                      <div className="teacher-name">{item.teacher.lastName} {item.teacher.firstName}</div>
-                                      <div className="teacher-label">
+                                      <div className="text-[13px] font-medium text-brand-700">{item.teacher.lastName} {item.teacher.firstName}</div>
+                                      <div className="text-[11px] mt-0.5">
                                         {item.teacher.phone
-                                          ? <span className="has-phone">📱 {item.teacher.phone}</span>
-                                          : <span className="no-phone">Sin teléfono</span>
-                                        }
+                                          ? <span className="text-[#25D366] font-medium">📱 {item.teacher.phone}</span>
+                                          : <span className="text-neutral-500 italic">Sin teléfono</span>}
                                       </div>
                                     </div>
                                   </div>
                                   {item.teacher.phone && (
-                                    <a href={buildWaUrl(item.teacher.phone, waMsg)}
-                                      target="_blank" rel="noopener noreferrer"
-                                      className="wa-btn" title="Enviar WhatsApp al maestro">
+                                    <a
+                                      href={buildWaUrl(item.teacher.phone, waMsg)} target="_blank" rel="noopener noreferrer"
+                                      className="flex items-center gap-1 px-2.5 py-1 bg-[#25D366] text-white rounded-lg text-[11px] font-semibold whitespace-nowrap shrink-0 hover:bg-[#1DA851] transition-colors"
+                                      title="Enviar WhatsApp al maestro"
+                                    >
                                       <MessageCircle size={13}/> WhatsApp
                                     </a>
                                   )}
                                 </div>
                               ) : (
-                                <span className="no-teacher"><AlertCircle size={12}/> Sin maestro</span>
+                                <span className="flex items-center gap-1 text-xs text-[#BA7517] italic"><AlertCircle size={12}/> Sin maestro</span>
                               )}
                             </div>
                           </div>
                         )
                       })}
                     </div>
-                  </div>
+                  </Card>
                 )
               })}
             </>
           )}
         </>
       )}
-
-      <style>{`
-        .page-header{margin-bottom:24px}
-        .page-header h1{font-size:20px;font-weight:700;color:#00838F;margin-bottom:4px}
-        .page-header p{font-size:13px;color:#6B8BB0}
-        .center{display:flex;justify-content:center;align-items:center;padding:48px;color:#6B8BB0}
-        .student-selector{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px}
-        .stu-btn{display:flex;align-items:center;gap:6px;padding:8px 16px;border:1.5px solid #CBE0F0;border-radius:8px;background:#fff;color:#1A3A7C;font-size:13px;font-weight:500;cursor:pointer}
-        .stu-btn:hover{border-color:#00838F;background:#E0F7FA}
-        .stu-btn.active{background:#00838F;color:#fff;border-color:#00838F}
-        .stu-info-card{background:#fff;border:1px solid #CBE0F0;border-radius:12px;padding:16px;display:flex;align-items:center;gap:14px;margin-bottom:16px}
-        .stu-avatar{font-size:36px;flex-shrink:0}
-        .stu-name{font-size:16px;font-weight:700;color:#1A3A7C;margin-bottom:4px}
-        .stu-course{font-size:12px;color:#6B8BB0}
-        .no-course{font-size:12px;color:#C0392B;font-style:italic}
-        .stats-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px}
-        .stat-card{background:#fff;border:1px solid #CBE0F0;border-radius:12px;padding:14px;display:flex;align-items:center;gap:10px}
-        .stat-icon{padding:8px;border-radius:8px;display:flex}
-        .stat-icon.blue{background:#E0ECF8;color:#1A3A7C}
-        .stat-icon.green{background:#E1F5EE;color:#0F6E56}
-        .stat-icon.yellow{background:#FFFBEA;color:#BA7517}
-        .stat-icon.red{background:#FFF0F0;color:#C0392B}
-        .stat-num{font-size:22px;font-weight:800;color:#1A3A7C}
-        .stat-lbl{font-size:11px;color:#6B8BB0}
-        .coming-card{background:#FFFBEA;border:1px solid #F5C518;border-radius:12px;padding:16px;display:flex;align-items:center;gap:14px;margin-bottom:16px}
-        .coming-icon{font-size:28px}
-        .coming-title{font-size:14px;font-weight:600;color:#7A6000;margin-bottom:2px}
-        .coming-desc{font-size:12px;color:#BA7517}
-        .coming-badge{margin-left:auto;background:#F5C518;color:#3A2F00;padding:4px 12px;border-radius:20px;font-size:11px;font-weight:600;white-space:nowrap}
-        .empty-state{display:flex;flex-direction:column;align-items:center;gap:12px;padding:60px;color:#6B8BB0;font-size:13px;background:#fff;border:1px solid #CBE0F0;border-radius:12px}
-        .campo-section{background:#fff;border:1px solid #CBE0F0;border-radius:12px;overflow:hidden;margin-bottom:12px}
-        .campo-header{display:flex;align-items:center;gap:10px;padding:10px 16px;border-bottom:1px solid #F0F6FC;border-left:4px solid}
-        .items-list{display:flex;flex-direction:column}
-        .plan-item{display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-top:1px solid #F0F6FC;gap:16px}
-        .plan-item:hover{background:#FAFCFF}
-        .plan-item-left{flex:1}
-        .subject-name{font-size:13px;font-weight:500;color:#1A3A7C;margin-bottom:2px}
-        .hrs-info{font-size:11px;color:#6B8BB0}
-        .plan-item-right{flex-shrink:0}
-        .teacher-row{display:flex;align-items:center;gap:10px}
-        .teacher-info{display:flex;align-items:center;gap:8px}
-        .teacher-avatar{width:32px;height:32px;border-radius:50%;background:#1A3A7C;color:#fff;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;flex-shrink:0}
-        .teacher-name{font-size:13px;font-weight:500;color:#1A3A7C}
-        .teacher-label{font-size:11px;margin-top:1px}
-        .has-phone{color:#25D366;font-weight:500}
-        .no-phone{color:#6B8BB0;font-style:italic}
-        .no-teacher{display:flex;align-items:center;gap:4px;font-size:12px;color:#BA7517;font-style:italic}
-        .wa-btn{display:flex;align-items:center;gap:4px;padding:5px 10px;background:#25D366;color:#fff;border-radius:8px;font-size:11px;font-weight:600;text-decoration:none;white-space:nowrap;flex-shrink:0}
-        .wa-btn:hover{background:#1DA851}
-        .spinner{width:24px;height:24px;border:2px solid rgba(0,131,143,.2);border-top-color:#00838F;border-radius:50%;animation:spin .7s linear infinite}
-        @keyframes spin{to{transform:rotate(360deg)}}
-        @media(max-width:600px){.stats-grid{grid-template-columns:1fr 1fr}.teacher-row{flex-direction:column;align-items:flex-start}}
-      `}</style>
     </div>
   )
 }

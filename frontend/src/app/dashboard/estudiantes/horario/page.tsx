@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import Card from '@/components/ui/Card'
 
 const API = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000'
 
@@ -21,18 +22,6 @@ const GRADES: Record<string,string> = { PRIMERO:'1°', SEGUNDO:'2°', TERCERO:'3
 const SHIFTS: Record<string,string> = { MORNING:'Mañana', AFTERNOON:'Tarde' }
 const DAYS = ['', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado']
 
-const CAMPO_COLOR: Record<string,string> = {
-  VIDA_TIERRA_TERRITORIO:        '#0F6E56',
-  COMUNIDAD_SOCIEDAD:            '#1A3A7C',
-  COSMOS_PENSAMIENTO:            '#633806',
-  CIENCIA_TECNOLOGIA_PRODUCCION: '#8B1A7C',
-}
-const CAMPO_BG: Record<string,string> = {
-  VIDA_TIERRA_TERRITORIO:        '#E8F5F0',
-  COMUNIDAD_SOCIEDAD:            '#E8EEF8',
-  COSMOS_PENSAMIENTO:            '#F5EEE8',
-  CIENCIA_TECNOLOGIA_PRODUCCION: '#F5E8F5',
-}
 const SUBJECT_EMOJI: Record<string,string> = {
   'Matemática':                                  '🔢',
   'Lenguas Castellana y Originaria':             '📖',
@@ -58,18 +47,15 @@ export default function EstudianteHorarioPage() {
   const [view,       setView]       = useState<'grilla'|'lista'>('grilla')
   const [todayDay,   setTodayDay]   = useState(0)
 
-  const token = () => localStorage.getItem('token') || ''
-  const auth  = () => ({ Authorization: `Bearer ${token()}` })
+  const auth = () => ({ Authorization: `Bearer ${localStorage.getItem('token') || ''}` })
 
   useEffect(() => {
-    // Día actual (1=Lunes...6=Sábado)
     const d = new Date().getDay()
     setTodayDay(d === 0 ? 7 : d)
 
     const load = async () => {
       setLoading(true)
       try {
-        // Obtener info del estudiante para saber su curso
         const resMe = await fetch(`${API}/api/students/me`, { headers: auth() })
         const me    = await resMe.json()
         setStudent(me)
@@ -99,98 +85,79 @@ export default function EstudianteHorarioPage() {
     byDay[s.dayOfWeek].push(s)
   })
 
-  // Clases de hoy
   const clasesHoy = schedule.filter(s => s.dayOfWeek === todayDay).sort((a,b)=>a.period-b.period)
 
-  if (loading) return (
-    <div style={{display:'flex',justifyContent:'center',padding:48}}>
-      <div className="spinner"/>
-    </div>
-  )
+  if (loading) return <div className="flex justify-center py-16"><p className="text-sm text-neutral-500">Cargando...</p></div>
 
   if (!student?.course) return (
-    <div style={{background:'#fff',border:'1px dashed #CBE0F0',borderRadius:12,padding:48,textAlign:'center',color:'#6B8BB0'}}>
-      <div style={{fontSize:40,marginBottom:12}}>📅</div>
-      <p>No tienes curso asignado aún.</p>
-    </div>
+    <Card className="text-center py-12 border-dashed">
+      <div className="text-4xl mb-3">📅</div>
+      <p className="text-neutral-500">No tienes curso asignado aún.</p>
+    </Card>
   )
 
   return (
     <div>
-      {/* Header */}
-      <div style={{marginBottom:20}}>
-        <h1 style={{fontSize:20,fontWeight:700,color:'#1A7DB8',marginBottom:4}}>Mi Horario</h1>
-        <p style={{fontSize:13,color:'#6B8BB0'}}>
-          {GRADES[student.course.grade]} "{student.course.parallel}" · {SHIFTS[student.course.shift]}
+      <div className="mb-5">
+        <h1 className="text-xl font-bold text-brand-700 mb-1">Mi Horario</h1>
+        <p className="text-[13px] text-neutral-500">
+          {GRADES[student.course.grade]} &quot;{student.course.parallel}&quot; · {SHIFTS[student.course.shift]}
         </p>
       </div>
 
       {schedule.length === 0 ? (
-        <div style={{background:'#fff',border:'1px dashed #CBE0F0',borderRadius:12,padding:48,textAlign:'center',color:'#6B8BB0'}}>
-          <div style={{fontSize:40,marginBottom:12}}>📅</div>
-          <p>El horario de tu curso aún no ha sido publicado.</p>
-        </div>
+        <Card className="text-center py-12 border-dashed">
+          <div className="text-4xl mb-3">📅</div>
+          <p className="text-neutral-500">El horario de tu curso aún no ha sido publicado.</p>
+        </Card>
       ) : (
         <>
           {/* Clases de hoy */}
           {clasesHoy.length > 0 && (
-            <div style={{background:'#E0ECF8',border:'1px solid #CBE0F0',borderRadius:12,padding:'14px 18px',marginBottom:20}}>
-              <div style={{fontWeight:700,fontSize:13,color:'#1A3A7C',marginBottom:10}}>
-                📅 Hoy — {DAYS[todayDay]}
-              </div>
-              <div style={{display:'flex',flexWrap:'wrap',gap:8}}>
-                {clasesHoy.map(item => {
-                  const campo = item.teacherSubjectCourse.subject.campo
-                  return (
-                    <div key={item.id} style={{
-                      background:'#fff',borderRadius:8,padding:'8px 12px',
-                      border:`1px solid ${campo?CAMPO_COLOR[campo]+'33':'#CBE0F0'}`,
-                      display:'flex',alignItems:'center',gap:8,
-                    }}>
-                      <span style={{fontSize:18}}>{SUBJECT_EMOJI[item.teacherSubjectCourse.subject.name]||'📚'}</span>
-                      <div>
-                        <div style={{fontSize:12,fontWeight:700,color:campo?CAMPO_COLOR[campo]:'#1A3A7C'}}>
-                          {item.teacherSubjectCourse.subject.name}
-                        </div>
-                        <div style={{fontSize:10,color:'#6B8BB0'}}>
-                          P{item.period} · {item.startTime}–{item.endTime} · {item.teacherSubjectCourse.teacher.lastName}
-                        </div>
+            <Card className="!bg-brand-100 !border-brand-300 mb-5">
+              <div className="font-bold text-[13px] text-brand-700 mb-2.5">📅 Hoy — {DAYS[todayDay]}</div>
+              <div className="flex flex-wrap gap-2">
+                {clasesHoy.map(item => (
+                  <div key={item.id} className="bg-white rounded-lg px-3 py-2 border border-neutral-300 flex items-center gap-2">
+                    <span className="text-lg">{SUBJECT_EMOJI[item.teacherSubjectCourse.subject.name]||'📚'}</span>
+                    <div>
+                      <div className="text-xs font-bold text-brand-700">{item.teacherSubjectCourse.subject.name}</div>
+                      <div className="text-[10px] text-neutral-500">
+                        P{item.period} · {item.startTime}–{item.endTime} · {item.teacherSubjectCourse.teacher.lastName}
                       </div>
                     </div>
-                  )
-                })}
+                  </div>
+                ))}
               </div>
-            </div>
+            </Card>
           )}
 
           {/* Toggle vista */}
-          <div style={{display:'flex',gap:8,marginBottom:16}}>
-            {(['grilla','lista'] as const).map(v=>(
-              <button key={v} onClick={()=>setView(v)} style={{
-                padding:'6px 16px',borderRadius:20,border:'none',cursor:'pointer',fontSize:12,fontWeight:600,
-                background:view===v?'#1A7DB8':'#F0F6FC',
-                color:view===v?'#fff':'#1A7DB8',
-              }}>
-                {v==='grilla'?'📊 Grilla':'📋 Lista'}
+          <div className="flex gap-2 mb-4">
+            {(['grilla','lista'] as const).map(v => (
+              <button
+                key={v} onClick={() => setView(v)}
+                className={`px-4 py-1.5 rounded-full text-xs font-semibold transition-colors ${view === v ? 'bg-brand-700 text-white' : 'bg-neutral-100 text-brand-700 hover:bg-brand-100'}`}
+              >
+                {v === 'grilla' ? '📊 Grilla' : '📋 Lista'}
               </button>
             ))}
           </div>
 
           {/* Vista Grilla */}
-          {view==='grilla' && (
-            <div style={{overflowX:'auto',borderRadius:10,border:'1px solid #CBE0F0'}}>
-              <table style={{borderCollapse:'collapse',width:'100%',minWidth:600}}>
+          {view === 'grilla' && (
+            <div className="overflow-x-auto rounded-[10px] border border-neutral-300">
+              <table className="border-collapse w-full" style={{ minWidth: 600 }}>
                 <thead>
                   <tr>
-                    <th style={thStyle}>Periodo</th>
-                    {days.map(d=>(
-                      <th key={d} style={{
-                        ...thStyle,
-                        background: d===todayDay ? '#1A7DB8' : '#F0F6FC',
-                        color:      d===todayDay ? '#fff'    : '#1A3A7C',
-                      }}>
+                    <th className="p-2.5 bg-neutral-100 text-xs font-bold text-brand-700 text-center border border-neutral-300">Periodo</th>
+                    {days.map(d => (
+                      <th
+                        key={d}
+                        className={`p-2.5 text-xs font-bold text-center border border-neutral-300 ${d === todayDay ? 'bg-brand-700 text-white' : 'bg-neutral-100 text-brand-700'}`}
+                      >
                         {DAYS[d]}
-                        {d===todayDay && <div style={{fontSize:9,fontWeight:400,opacity:.8}}>Hoy</div>}
+                        {d === todayDay && <div className="text-[9px] font-normal opacity-80">Hoy</div>}
                       </th>
                     ))}
                   </tr>
@@ -200,42 +167,32 @@ export default function EstudianteHorarioPage() {
                     const firstCell = schedule.find(s => s.period === period)
                     return (
                       <tr key={period}>
-                        <td style={{...tdStyle,textAlign:'center',background:'#F8FBFF',fontWeight:700,fontSize:11,whiteSpace:'nowrap'}}>
-                          <div style={{color:'#1A7DB8'}}>P{period}</div>
+                        <td className="p-2 border border-neutral-300 align-top text-center bg-neutral-100/60 font-bold text-[11px] whitespace-nowrap">
+                          <div className="text-brand-700">P{period}</div>
                           {firstCell && (
                             <>
-                              <div style={{fontSize:10,color:'#6B8BB0'}}>{firstCell.startTime}</div>
-                              <div style={{fontSize:10,color:'#6B8BB0'}}>{firstCell.endTime}</div>
+                              <div className="text-[10px] text-neutral-500">{firstCell.startTime}</div>
+                              <div className="text-[10px] text-neutral-500">{firstCell.endTime}</div>
                             </>
                           )}
                         </td>
                         {days.map(day => {
-                          const cell  = getCell(day, period)
-                          const campo = cell?.teacherSubjectCourse?.subject?.campo
+                          const cell    = getCell(day, period)
                           const isToday = day === todayDay
                           return (
-                            <td key={day} style={{
-                              ...tdStyle,
-                              background: cell
-                                ? (campo?CAMPO_BG[campo]||'#F0F6FC':'#F0F6FC')
-                                : (isToday?'#F0F7FF':'#FAFCFF'),
-                              borderColor: isToday ? '#1A7DB833' : (campo?CAMPO_COLOR[campo]+'22':'#E0EAF5'),
-                              minWidth: 110,
-                            }}>
+                            <td
+                              key={day}
+                              className={`p-2 border align-top ${cell ? 'bg-brand-100/40 border-neutral-300' : isToday ? 'bg-brand-100/20 border-neutral-300' : 'bg-neutral-100/30 border-neutral-300'}`}
+                              style={{ minWidth: 110 }}
+                            >
                               {cell ? (
                                 <div>
-                                  <div style={{fontSize:18,marginBottom:3}}>
-                                    {SUBJECT_EMOJI[cell.teacherSubjectCourse.subject.name]||'📚'}
-                                  </div>
-                                  <div style={{fontSize:11,fontWeight:700,color:campo?CAMPO_COLOR[campo]:'#1A3A7C',lineHeight:1.3}}>
-                                    {cell.teacherSubjectCourse.subject.name}
-                                  </div>
-                                  <div style={{fontSize:10,color:'#6B8BB0',marginTop:2}}>
-                                    {cell.teacherSubjectCourse.teacher.lastName}
-                                  </div>
+                                  <div className="text-lg mb-0.5">{SUBJECT_EMOJI[cell.teacherSubjectCourse.subject.name]||'📚'}</div>
+                                  <div className="text-[11px] font-bold text-brand-700 leading-tight">{cell.teacherSubjectCourse.subject.name}</div>
+                                  <div className="text-[10px] text-neutral-500 mt-0.5">{cell.teacherSubjectCourse.teacher.lastName}</div>
                                 </div>
                               ) : (
-                                <div style={{textAlign:'center',color:'#E0EAF5',fontSize:18}}>—</div>
+                                <div className="text-center text-neutral-300 text-lg">—</div>
                               )}
                             </td>
                           )
@@ -249,80 +206,44 @@ export default function EstudianteHorarioPage() {
           )}
 
           {/* Vista Lista */}
-          {view==='lista' && (
-            <div style={{display:'flex',flexDirection:'column',gap:12}}>
-              {Object.entries(byDay).sort(([a],[b])=>parseInt(a)-parseInt(b)).map(([day, items]) => {
+          {view === 'lista' && (
+            <div className="flex flex-col gap-3">
+              {Object.entries(byDay).sort(([a],[b]) => parseInt(a) - parseInt(b)).map(([day, items]) => {
                 const isToday = parseInt(day) === todayDay
                 return (
-                  <div key={day} style={{
-                    background:'#fff',
-                    border:`1px solid ${isToday?'#1A7DB8':'#CBE0F0'}`,
-                    borderRadius:12,overflow:'hidden'
-                  }}>
-                    <div style={{
-                      background:isToday?'#1A7DB8':'#F0F6FC',
-                      padding:'10px 16px',fontWeight:700,fontSize:13,
-                      color:isToday?'#fff':'#1A3A7C',
-                      borderBottom:'1px solid #CBE0F0',
-                      display:'flex',alignItems:'center',gap:8,
-                    }}>
+                  <Card key={day} padded={false} className={`overflow-hidden ${isToday ? '!border-brand-700' : ''}`}>
+                    <div className={`px-4 py-2.5 font-bold text-[13px] flex items-center gap-2 border-b border-neutral-100 ${isToday ? 'bg-brand-700 text-white' : 'bg-neutral-100 text-brand-700'}`}>
                       📅 {DAYS[parseInt(day)]}
-                      {isToday && <span style={{fontSize:10,background:'rgba(255,255,255,.2)',padding:'2px 8px',borderRadius:20}}>Hoy</span>}
+                      {isToday && <span className="text-[10px] bg-white/20 px-2 py-0.5 rounded-full">Hoy</span>}
                     </div>
-                    <div style={{display:'flex',flexDirection:'column'}}>
-                      {items.sort((a,b)=>a.period-b.period).map(item => {
-                        const campo = item.teacherSubjectCourse.subject.campo
-                        return (
-                          <div key={item.id} style={{
-                            display:'flex',alignItems:'center',gap:14,padding:'12px 16px',
-                            borderTop:'1px solid #F0F6FC',
-                          }}>
-                            <div style={{textAlign:'center',minWidth:50}}>
-                              <div style={{fontSize:11,fontWeight:700,color:'#1A7DB8'}}>P{item.period}</div>
-                              <div style={{fontSize:10,color:'#6B8BB0'}}>{item.startTime}</div>
-                              <div style={{fontSize:10,color:'#6B8BB0'}}>{item.endTime}</div>
-                            </div>
-                            <div style={{fontSize:20}}>{SUBJECT_EMOJI[item.teacherSubjectCourse.subject.name]||'📚'}</div>
-                            <div style={{flex:1}}>
-                              <div style={{fontWeight:700,fontSize:13,color:campo?CAMPO_COLOR[campo]:'#1A3A7C'}}>
-                                {item.teacherSubjectCourse.subject.name}
-                              </div>
-                              <div style={{fontSize:12,color:'#6B8BB0',marginTop:2}}>
-                                {item.teacherSubjectCourse.teacher.lastName} {item.teacherSubjectCourse.teacher.firstName}
-                              </div>
-                            </div>
-                            <div style={{
-                              background:campo?CAMPO_BG[campo]:'#F0F6FC',
-                              color:campo?CAMPO_COLOR[campo]:'#1A3A7C',
-                              padding:'3px 10px',borderRadius:20,fontSize:11,fontWeight:600,
-                              whiteSpace:'nowrap',
-                            }}>
-                              {item.startTime} — {item.endTime}
+                    <div className="flex flex-col">
+                      {items.sort((a,b) => a.period - b.period).map(item => (
+                        <div key={item.id} className="flex items-center gap-3.5 px-4 py-3 border-t border-neutral-100 first:border-t-0">
+                          <div className="text-center min-w-[50px]">
+                            <div className="text-[11px] font-bold text-brand-700">P{item.period}</div>
+                            <div className="text-[10px] text-neutral-500">{item.startTime}</div>
+                            <div className="text-[10px] text-neutral-500">{item.endTime}</div>
+                          </div>
+                          <div className="text-xl">{SUBJECT_EMOJI[item.teacherSubjectCourse.subject.name]||'📚'}</div>
+                          <div className="flex-1">
+                            <div className="font-bold text-[13px] text-brand-700">{item.teacherSubjectCourse.subject.name}</div>
+                            <div className="text-xs text-neutral-500 mt-0.5">
+                              {item.teacherSubjectCourse.teacher.lastName} {item.teacherSubjectCourse.teacher.firstName}
                             </div>
                           </div>
-                        )
-                      })}
+                          <div className="bg-brand-100 text-brand-700 px-2.5 py-0.5 rounded-full text-[11px] font-semibold whitespace-nowrap">
+                            {item.startTime} — {item.endTime}
+                          </div>
+                        </div>
+                      ))}
                     </div>
-                  </div>
+                  </Card>
                 )
               })}
             </div>
           )}
         </>
       )}
-
-      <style>{`
-        .spinner{width:24px;height:24px;border:2px solid rgba(26,125,184,.2);border-top-color:#1A7DB8;border-radius:50%;animation:spin .7s linear infinite}
-        @keyframes spin{to{transform:rotate(360deg)}}
-      `}</style>
     </div>
   )
-}
-
-const thStyle: React.CSSProperties = {
-  padding:'10px 12px', background:'#F0F6FC', fontSize:12, fontWeight:700,
-  color:'#1A3A7C', textAlign:'center', border:'1px solid #CBE0F0',
-}
-const tdStyle: React.CSSProperties = {
-  padding:'8px 10px', border:'1px solid #CBE0F0', verticalAlign:'top', fontSize:12,
 }

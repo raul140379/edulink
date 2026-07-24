@@ -1,7 +1,11 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { UserCircle, Lock, Save, Eye, EyeOff, CheckCircle } from 'lucide-react'
+import { UserCircle, Lock, Save, Eye, EyeOff } from 'lucide-react'
+import Card from '@/components/ui/Card'
+import Button from '@/components/ui/Button'
+import { Input } from '@/components/ui/Input'
+import { useToast } from '@/components/ui/ToastProvider'
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000'
 
@@ -43,20 +47,18 @@ const GRADE_LABEL: Record<string, string> = {
 }
 
 export default function PerfilPage() {
-  const [profile,      setProfile]      = useState<StudentProfile | null>(null)
-  const [loading,      setLoading]      = useState(true)
-  const [tab,          setTab]          = useState<'info' | 'password'>('info')
+  const toast = useToast()
+  const [profile, setProfile] = useState<StudentProfile | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [tab,     setTab]     = useState<'info' | 'password'>('info')
 
-  // Password form
-  const [currentPwd,   setCurrentPwd]   = useState('')
-  const [newPwd,       setNewPwd]       = useState('')
-  const [confirmPwd,   setConfirmPwd]   = useState('')
-  const [showCurrent,  setShowCurrent]  = useState(false)
-  const [showNew,      setShowNew]      = useState(false)
-  const [showConfirm,  setShowConfirm]  = useState(false)
-  const [pwdLoading,   setPwdLoading]   = useState(false)
-  const [pwdError,     setPwdError]     = useState('')
-  const [pwdSuccess,   setPwdSuccess]   = useState(false)
+  const [currentPwd,  setCurrentPwd]  = useState('')
+  const [newPwd,      setNewPwd]      = useState('')
+  const [confirmPwd,  setConfirmPwd]  = useState('')
+  const [showCurrent, setShowCurrent] = useState(false)
+  const [showNew,     setShowNew]     = useState(false)
+  const [showConfirm, setShowConfirm] = useState(false)
+  const [pwdLoading,  setPwdLoading]  = useState(false)
 
   useEffect(() => {
     const token = localStorage.getItem('token')
@@ -70,17 +72,14 @@ export default function PerfilPage() {
   }, [])
 
   const handleChangePassword = async () => {
-    setPwdError('')
-    setPwdSuccess(false)
-
     if (!currentPwd || !newPwd || !confirmPwd) {
-      setPwdError('Completa todos los campos'); return
+      toast('Completa todos los campos', 'error'); return
     }
     if (newPwd.length < 6) {
-      setPwdError('La nueva contraseña debe tener al menos 6 caracteres'); return
+      toast('La nueva contraseña debe tener al menos 6 caracteres', 'error'); return
     }
     if (newPwd !== confirmPwd) {
-      setPwdError('Las contraseñas no coinciden'); return
+      toast('Las contraseñas no coinciden', 'error'); return
     }
 
     setPwdLoading(true)
@@ -92,11 +91,11 @@ export default function PerfilPage() {
         body:    JSON.stringify({ currentPassword: currentPwd, newPassword: newPwd }),
       })
       const data = await res.json()
-      if (!res.ok) { setPwdError(data.message || 'Error al cambiar contraseña'); return }
-      setPwdSuccess(true)
+      if (!res.ok) { toast(data.message || 'Error al cambiar contraseña', 'error'); return }
+      toast('Contraseña actualizada correctamente', 'success')
       setCurrentPwd(''); setNewPwd(''); setConfirmPwd('')
     } catch {
-      setPwdError('Error de conexión')
+      toast('Error de conexión', 'error')
     } finally {
       setPwdLoading(false)
     }
@@ -107,39 +106,24 @@ export default function PerfilPage() {
     return new Date(d).toLocaleDateString('es-BO', { day:'2-digit', month:'long', year:'numeric' })
   }
 
-  if (loading) return (
-    <div style={{ display:'flex', alignItems:'center', justifyContent:'center', minHeight:300 }}>
-      <div className="spinner"/>
-    </div>
-  )
+  if (loading) return <div className="flex justify-center py-16"><p className="text-sm text-neutral-500">Cargando...</p></div>
 
-  if (!profile) return (
-    <div style={{ textAlign:'center', padding:48, color:'#6B8BB0' }}>
-      No se pudo cargar el perfil.
-    </div>
-  )
+  if (!profile) return <div className="text-center py-12 text-neutral-500">No se pudo cargar el perfil.</div>
 
   return (
-    <div style={{ maxWidth:700 }}>
+    <div className="max-w-[700px]">
       {/* Header */}
-      <div style={{
-        background:'linear-gradient(135deg,#1A3A7C,#2756B8)',
-        borderRadius:12, padding:'20px 24px', marginBottom:24, color:'#fff',
-        display:'flex', alignItems:'center', gap:16,
-      }}>
-        <div style={{
-          width:60, height:60, borderRadius:'50%',
-          backgroundColor:'rgba(255,255,255,0.2)',
-          display:'flex', alignItems:'center', justifyContent:'center',
-        }}>
-          <UserCircle size={36} color="#fff"/>
+      <div
+        className="rounded-xl px-6 py-5 mb-6 text-white flex items-center gap-4"
+        style={{ background: 'linear-gradient(135deg, var(--color-brand-700), var(--color-brand-500))' }}
+      >
+        <div className="w-[60px] h-[60px] rounded-full bg-white/20 flex items-center justify-center shrink-0">
+          <UserCircle size={36} className="text-white"/>
         </div>
         <div>
-          <div style={{ fontSize:20, fontWeight:800 }}>
-            {profile.firstName} {profile.lastName}
-          </div>
+          <div className="text-xl font-extrabold">{profile.firstName} {profile.lastName}</div>
           {profile.course && (
-            <div style={{ fontSize:13, opacity:.8, marginTop:4 }}>
+            <div className="text-[13px] text-white/80 mt-1">
               {GRADE_LABEL[profile.course.grade] || profile.course.grade} {profile.course.parallel} ·{' '}
               {profile.course.level} · Turno {SHIFT_LABEL[profile.course.shift] || profile.course.shift}
               {profile.academicYear ? ` · Gestión ${profile.academicYear.year}` : ''}
@@ -149,20 +133,15 @@ export default function PerfilPage() {
       </div>
 
       {/* Tabs */}
-      <div style={{ display:'flex', gap:4, marginBottom:20 }}>
+      <div className="flex gap-1 mb-5">
         {[
-          { key:'info',     label:'Mis Datos',          icon:<UserCircle size={15}/> },
-          { key:'password', label:'Cambiar Contraseña', icon:<Lock size={15}/> },
+          { key: 'info',     label: 'Mis Datos',          icon: <UserCircle size={15}/> },
+          { key: 'password', label: 'Cambiar Contraseña', icon: <Lock size={15}/> },
         ].map(t => (
-          <button key={t.key} onClick={() => setTab(t.key as any)}
-            style={{
-              display:'flex', alignItems:'center', gap:6,
-              padding:'9px 18px', borderRadius:8, border:'none', cursor:'pointer', fontSize:13,
-              backgroundColor: tab === t.key ? '#1A3A7C' : '#fff',
-              color:           tab === t.key ? '#fff'    : '#6B8BB0',
-              fontWeight:      tab === t.key ? 600       : 400,
-              boxShadow:'0 1px 4px rgba(26,58,124,.08)',
-            }}>
+          <button
+            key={t.key} onClick={() => setTab(t.key as 'info' | 'password')}
+            className={`flex items-center gap-1.5 px-4.5 py-2.5 rounded-lg text-[13px] shadow-sm transition-colors ${tab === t.key ? 'bg-brand-700 text-white font-semibold' : 'bg-white text-neutral-500 hover:bg-neutral-100'}`}
+          >
             {t.icon} {t.label}
           </button>
         ))}
@@ -170,12 +149,12 @@ export default function PerfilPage() {
 
       {/* Tab: Mis Datos */}
       {tab === 'info' && (
-        <div style={{ backgroundColor:'#fff', borderRadius:10, boxShadow:'0 1px 4px rgba(26,58,124,.08)', overflow:'hidden' }}>
-          <div style={{ padding:'14px 18px', borderBottom:'1px solid #F0F6FC' }}>
-            <span style={{ fontWeight:700, fontSize:14, color:'#1A3A7C' }}>Información Personal</span>
+        <Card padded={false} className="overflow-hidden">
+          <div className="px-4.5 py-3.5 border-b border-neutral-100">
+            <span className="font-bold text-sm text-brand-700">Información Personal</span>
           </div>
-          <div style={{ padding:'20px 24px' }}>
-            <div className="info-grid" style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:20 }}>
+          <div className="px-6 py-5">
+            <div className="grid grid-cols-2 gap-5">
               {[
                 { label:'Nombres',          value: profile.firstName },
                 { label:'Apellidos',        value: profile.lastName },
@@ -189,136 +168,74 @@ export default function PerfilPage() {
                 { label:'Dirección',        value: profile.address   || '—' },
               ].map(f => (
                 <div key={f.label}>
-                  <div style={{ fontSize:11, fontWeight:600, color:'#6B8BB0', textTransform:'uppercase', letterSpacing:'.4px', marginBottom:4 }}>
-                    {f.label}
-                  </div>
-                  <div style={{ fontSize:14, color:'#1A3A7C', fontWeight:500 }}>{f.value}</div>
+                  <div className="text-[11px] font-semibold text-neutral-500 uppercase tracking-wide mb-1">{f.label}</div>
+                  <div className="text-sm text-brand-700 font-medium">{f.value}</div>
                 </div>
               ))}
             </div>
 
-            {/* Tutor legal */}
             {profile.tutor && (
               <>
-                <div style={{ borderTop:'1px solid #F0F6FC', margin:'24px 0 20px' }}/>
-                <div style={{ fontSize:13, fontWeight:700, color:'#1A3A7C', marginBottom:16 }}>
-                  Tutor Legal
-                </div>
-                <div className="info-grid" style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:20 }}>
+                <div className="border-t border-neutral-100 my-6"/>
+                <div className="text-[13px] font-bold text-brand-700 mb-4">Tutor Legal</div>
+                <div className="grid grid-cols-2 gap-5">
                   <div>
-                    <div style={{ fontSize:11, fontWeight:600, color:'#6B8BB0', textTransform:'uppercase', letterSpacing:'.4px', marginBottom:4 }}>
-                      Nombre Completo
-                    </div>
-                    <div style={{ fontSize:14, color:'#1A3A7C', fontWeight:500 }}>
-                      {profile.tutor.firstName} {profile.tutor.lastName}
-                    </div>
+                    <div className="text-[11px] font-semibold text-neutral-500 uppercase tracking-wide mb-1">Nombre Completo</div>
+                    <div className="text-sm text-brand-700 font-medium">{profile.tutor.firstName} {profile.tutor.lastName}</div>
                   </div>
                   <div>
-                    <div style={{ fontSize:11, fontWeight:600, color:'#6B8BB0', textTransform:'uppercase', letterSpacing:'.4px', marginBottom:4 }}>
-                      Teléfono
-                    </div>
-                    <div style={{ fontSize:14, color:'#1A3A7C', fontWeight:500 }}>
-                      {profile.tutor.phone || '—'}
-                    </div>
+                    <div className="text-[11px] font-semibold text-neutral-500 uppercase tracking-wide mb-1">Teléfono</div>
+                    <div className="text-sm text-brand-700 font-medium">{profile.tutor.phone || '—'}</div>
                   </div>
                 </div>
               </>
             )}
           </div>
-        </div>
+        </Card>
       )}
 
       {/* Tab: Cambiar Contraseña */}
       {tab === 'password' && (
-        <div style={{ backgroundColor:'#fff', borderRadius:10, boxShadow:'0 1px 4px rgba(26,58,124,.08)', overflow:'hidden' }}>
-          <div style={{ padding:'14px 18px', borderBottom:'1px solid #F0F6FC' }}>
-            <span style={{ fontWeight:700, fontSize:14, color:'#1A3A7C' }}>Cambiar Contraseña</span>
+        <Card padded={false} className="overflow-hidden">
+          <div className="px-4.5 py-3.5 border-b border-neutral-100">
+            <span className="font-bold text-sm text-brand-700">Cambiar Contraseña</span>
           </div>
-          <div style={{ padding:'24px' }}>
-            {pwdSuccess && (
-              <div style={{
-                display:'flex', alignItems:'center', gap:10,
-                backgroundColor:'#E8F8F2', border:'1px solid #0F6E56',
-                borderRadius:8, padding:'12px 16px', marginBottom:20,
-                color:'#0F6E56', fontSize:13, fontWeight:600,
-              }}>
-                <CheckCircle size={18}/> Contraseña actualizada correctamente
-              </div>
-            )}
-
-            {pwdError && (
-              <div style={{
-                backgroundColor:'#FDE8E8', border:'1px solid #c0392b',
-                borderRadius:8, padding:'12px 16px', marginBottom:20,
-                color:'#c0392b', fontSize:13,
-              }}>
-                {pwdError}
-              </div>
-            )}
-
-            <div style={{ display:'flex', flexDirection:'column', gap:18, maxWidth:400 }}>
+          <div className="p-6">
+            <div className="flex flex-col gap-4.5 max-w-[400px]">
               {[
-                { label:'Contraseña actual',        value:currentPwd, set:setCurrentPwd, show:showCurrent, toggle:()=>setShowCurrent(!showCurrent) },
-                { label:'Nueva contraseña',         value:newPwd,     set:setNewPwd,     show:showNew,     toggle:()=>setShowNew(!showNew) },
-                { label:'Confirmar nueva contraseña', value:confirmPwd, set:setConfirmPwd, show:showConfirm, toggle:()=>setShowConfirm(!showConfirm) },
+                { label:'Contraseña actual',          value: currentPwd, set: setCurrentPwd, show: showCurrent, toggle: () => setShowCurrent(!showCurrent) },
+                { label:'Nueva contraseña',           value: newPwd,     set: setNewPwd,     show: showNew,     toggle: () => setShowNew(!showNew) },
+                { label:'Confirmar nueva contraseña', value: confirmPwd, set: setConfirmPwd, show: showConfirm, toggle: () => setShowConfirm(!showConfirm) },
               ].map(f => (
-                <div key={f.label}>
-                  <label style={{ fontSize:12, fontWeight:600, color:'#1A3A7C', display:'block', marginBottom:6 }}>
-                    {f.label}
-                  </label>
-                  <div style={{ position:'relative' }}>
-                    <input
-                      type={f.show ? 'text' : 'password'}
-                      value={f.value}
-                      onChange={e => f.set(e.target.value)}
-                      style={{
-                        width:'100%', padding:'10px 40px 10px 12px',
-                        borderRadius:8, border:'1px solid #E0EAF5',
-                        fontSize:14, color:'#1A3A7C', outline:'none',
-                        boxSizing:'border-box',
-                      }}
-                    />
-                    <button onClick={f.toggle}
-                      style={{
-                        position:'absolute', right:10, top:'50%', transform:'translateY(-50%)',
-                        background:'none', border:'none', cursor:'pointer', color:'#6B8BB0',
-                        display:'flex', alignItems:'center',
-                      }}>
-                      {f.show ? <EyeOff size={16}/> : <Eye size={16}/>}
-                    </button>
-                  </div>
+                <div key={f.label} className="relative">
+                  <Input
+                    label={f.label}
+                    type={f.show ? 'text' : 'password'}
+                    value={f.value}
+                    onChange={e => f.set(e.target.value)}
+                    className="pr-10"
+                  />
+                  <button
+                    onClick={f.toggle}
+                    className="absolute right-3 top-[34px] text-neutral-500 hover:text-neutral-700"
+                  >
+                    {f.show ? <EyeOff size={16}/> : <Eye size={16}/>}
+                  </button>
                 </div>
               ))}
 
-              <button
-                onClick={handleChangePassword}
-                disabled={pwdLoading}
-                style={{
-                  display:'flex', alignItems:'center', justifyContent:'center', gap:8,
-                  backgroundColor: pwdLoading ? '#6B8BB0' : '#1A3A7C',
-                  color:'#fff', border:'none', borderRadius:8,
-                  padding:'11px 24px', fontSize:14, fontWeight:600,
-                  cursor: pwdLoading ? 'not-allowed' : 'pointer',
-                  marginTop:4,
-                }}>
-                {pwdLoading ? <div className="spinner-sm"/> : <Save size={16}/>}
+              <Button onClick={handleChangePassword} loading={pwdLoading} className="mt-1">
+                {!pwdLoading && <Save size={16}/>}
                 {pwdLoading ? 'Guardando...' : 'Actualizar Contraseña'}
-              </button>
+              </Button>
             </div>
 
-            <div style={{ marginTop:20, padding:'12px 16px', backgroundColor:'#F0F6FC', borderRadius:8, fontSize:12, color:'#6B8BB0' }}>
+            <div className="mt-5 px-4 py-3 bg-neutral-100 rounded-lg text-xs text-neutral-500">
               💡 La contraseña debe tener al menos 6 caracteres.
             </div>
           </div>
-        </div>
+        </Card>
       )}
-
-      <style>{`
-        .spinner{width:24px;height:24px;border:2px solid rgba(26,58,124,.2);border-top-color:#1A3A7C;border-radius:50%;animation:spin .7s linear infinite}
-        .spinner-sm{width:16px;height:16px;border:2px solid rgba(255,255,255,.3);border-top-color:#fff;border-radius:50%;animation:spin .7s linear infinite}
-        @keyframes spin{to{transform:rotate(360deg)}}
-        @media(max-width:600px){.info-grid{grid-template-columns:1fr!important}}
-      `}</style>
     </div>
   )
 }

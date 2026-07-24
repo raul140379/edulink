@@ -3,6 +3,8 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { BookOpen, Users, Clock, GraduationCap, ChevronRight } from 'lucide-react'
+import Card from '@/components/ui/Card'
+import Badge from '@/components/ui/Badge'
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000'
 
@@ -38,17 +40,11 @@ interface Workload {
   assignments:        Assignment[]
 }
 
-const CAMPO_COLORS: Record<string, string> = {
-  VIDA_TIERRA_TERRITORIO:        '#E1F5EE',
-  COMUNIDAD_SOCIEDAD:            '#E0ECF8',
-  COSMOS_PENSAMIENTO:            '#F3E8FF',
-  CIENCIA_TECNOLOGIA_PRODUCCION: '#FFF3E0',
-}
-const CAMPO_TEXT: Record<string, string> = {
-  VIDA_TIERRA_TERRITORIO:        '#0F6E56',
-  COMUNIDAD_SOCIEDAD:            '#1A3A7C',
-  COSMOS_PENSAMIENTO:            '#6B21A8',
-  CIENCIA_TECNOLOGIA_PRODUCCION: '#1565C0',
+const CAMPO_TONE: Record<string, 'success' | 'brand' | 'info' | 'warning'> = {
+  VIDA_TIERRA_TERRITORIO:        'success',
+  COMUNIDAD_SOCIEDAD:            'brand',
+  COSMOS_PENSAMIENTO:            'info',
+  CIENCIA_TECNOLOGIA_PRODUCCION: 'warning',
 }
 const CAMPO_LABELS: Record<string, string> = {
   VIDA_TIERRA_TERRITORIO:        'Vida, Tierra y Territorio',
@@ -70,10 +66,9 @@ export default function TeacherDashboard() {
   const [loading, setLoading] = useState(true)
   const [error,   setError]   = useState('')
 
-  const token = typeof window !== 'undefined' ? localStorage.getItem('token') : ''
-
   useEffect(() => {
     const fetch_ = async () => {
+      const token = localStorage.getItem('token')
       setLoading(true)
       try {
         const res  = await fetch(`${API_URL}/api/teachers/my-workload`, {
@@ -88,11 +83,10 @@ export default function TeacherDashboard() {
     fetch_()
   }, [])
 
-  if (loading) return <div className="center"><div className="spinner"/></div>
-  if (error)   return <div className="center"><p className="err-msg">{error}</p></div>
+  if (loading) return <div className="flex justify-center py-16"><p className="text-sm text-neutral-500">Cargando...</p></div>
+  if (error)   return <div className="flex justify-center py-16"><p className="text-sm text-danger-600">{error}</p></div>
   if (!data)   return null
 
-  // Agrupar asignaciones por curso
   const byCourse = data.assignments.reduce<Record<number, {
     label: string; grade: string; parallel: string
     shift: string; educationType: string; items: Assignment[]
@@ -108,7 +102,6 @@ export default function TeacherDashboard() {
 
   const courses = Object.entries(byCourse)
 
-  // Agrupar por materia para el resumen
   const bySubject = data.assignments.reduce<Record<string, number>>((acc, a) => {
     acc[a.subjectName] = (acc[a.subjectName] || 0) + 1
     return acc
@@ -117,97 +110,75 @@ export default function TeacherDashboard() {
   return (
     <div>
       {/* Resumen superior */}
-      <div className="summary-grid">
-        <div className="sum-card accent">
-          <Clock size={28} color="#fff"/>
+      <div className="grid gap-3 mb-6" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))' }}>
+        <Card className="!bg-brand-700 !border-brand-700 flex items-center gap-3">
+          <div className="p-2.5 rounded-[10px] bg-white/15 text-white"><Clock size={20} /></div>
           <div>
-            <div className="sum-label">Carga contratada</div>
-            <div className="sum-value">{data.horasContratadaMes} hrs/mes</div>
+            <div className="text-[11px] text-white/70 uppercase tracking-wide mb-0.5">Carga contratada</div>
+            <div className="text-lg font-bold text-white">{data.horasContratadaMes} hrs/mes</div>
           </div>
-        </div>
-        <div className="sum-card">
-          <GraduationCap size={28} color="#1A3A7C"/>
-          <div>
-            <div className="sum-label">Cursos asignados</div>
-            <div className="sum-value">{courses.length}</div>
-          </div>
-        </div>
-        <div className="sum-card">
-          <BookOpen size={28} color="#1A3A7C"/>
-          <div>
-            <div className="sum-label">Materias distintas</div>
-            <div className="sum-value">{Object.keys(bySubject).length}</div>
-          </div>
-        </div>
-        <div className="sum-card">
-          <Users size={28} color="#1A3A7C"/>
-          <div>
-            <div className="sum-label">Asignaciones</div>
-            <div className="sum-value">{data.assignments.length}</div>
-          </div>
-        </div>
+        </Card>
+        <Card className="flex items-center gap-3">
+          <div className="p-2.5 rounded-[10px] bg-brand-100 text-brand-700"><GraduationCap size={20} /></div>
+          <div><div className="text-[11px] text-neutral-500 uppercase tracking-wide mb-0.5">Cursos asignados</div><div className="text-lg font-bold text-brand-700">{courses.length}</div></div>
+        </Card>
+        <Card className="flex items-center gap-3">
+          <div className="p-2.5 rounded-[10px] bg-brand-100 text-brand-700"><BookOpen size={20} /></div>
+          <div><div className="text-[11px] text-neutral-500 uppercase tracking-wide mb-0.5">Materias distintas</div><div className="text-lg font-bold text-brand-700">{Object.keys(bySubject).length}</div></div>
+        </Card>
+        <Card className="flex items-center gap-3">
+          <div className="p-2.5 rounded-[10px] bg-brand-100 text-brand-700"><Users size={20} /></div>
+          <div><div className="text-[11px] text-neutral-500 uppercase tracking-wide mb-0.5">Asignaciones</div><div className="text-lg font-bold text-brand-700">{data.assignments.length}</div></div>
+        </Card>
       </div>
 
       {/* Horas asignadas por tipo de horario */}
       {data.totalesPorHorario && data.totalesPorHorario.length > 0 && (
-        <div style={{ marginBottom: 24 }}>
-          <div className="section-title">
+        <div className="mb-6">
+          <div className="flex items-center gap-2 text-sm font-bold text-brand-700 uppercase tracking-wide mb-3">
             <Clock size={16}/> Horas asignadas en horario
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 12 }}>
+          <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))' }}>
             {data.totalesPorHorario.map(h => {
               const porcentaje = data.horasContratadaMes > 0
                 ? Math.min(Math.round((h.horasMes / data.horasContratadaMes) * 100), 100)
                 : 0
-              const color = porcentaje >= 90 ? '#0F6E56' : porcentaje >= 75 ? '#BA7517' : '#C0392B'
-              const bg    = porcentaje >= 90 ? '#E1F5EE' : porcentaje >= 75 ? '#FFFBEA' : '#FFF0F0'
+              const tone = porcentaje >= 90 ? 'success' : porcentaje >= 75 ? 'warning' : 'danger'
+              const barColor = porcentaje >= 90 ? 'var(--color-success-500)' : porcentaje >= 75 ? 'var(--color-warning-500)' : 'var(--color-danger-500)'
               return (
-                <div key={h.horarioId} style={{
-                  background: '#fff', border: '1px solid #CBE0F0',
-                  borderRadius: 12, padding: 16,
-                }}>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+                <Card key={h.horarioId}>
+                  <div className="flex items-center justify-between gap-2 mb-2">
                     <div>
-                      <div style={{ fontSize: 13, fontWeight: 700, color: '#1A3A7C' }}>
+                      <div className="text-[13px] font-bold text-brand-700">
                         {h.isWinter ? '❄️' : '☀️'} {h.nombre}
                       </div>
-                      <div style={{ fontSize: 11, color: '#6B8BB0', marginTop: 2 }}>
+                      <div className="text-[11px] text-neutral-500 mt-0.5">
                         {h.minPeriodo} min/periodo · {h.totalPeriodos} periodos/semana
                       </div>
                     </div>
-                    <div style={{
-                      background: bg, color, borderRadius: 8,
-                      padding: '4px 10px', fontSize: 12, fontWeight: 700,
-                    }}>
-                      {porcentaje}%
+                    <Badge tone={tone}>{porcentaje}%</Badge>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 mb-2.5">
+                    <div className="bg-neutral-100 rounded-lg py-2 px-2.5 text-center">
+                      <div className="text-lg font-extrabold text-brand-700">{h.horasSemana}</div>
+                      <div className="text-[10px] text-neutral-500 font-semibold">hrs/semana</div>
+                    </div>
+                    <div className="bg-neutral-100 rounded-lg py-2 px-2.5 text-center">
+                      <div className="text-lg font-extrabold text-brand-700">{h.horasMes}</div>
+                      <div className="text-[10px] text-neutral-500 font-semibold">hrs/mes</div>
                     </div>
                   </div>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 10 }}>
-                    <div style={{ background: '#F8FBFF', borderRadius: 8, padding: '8px 10px', textAlign: 'center' }}>
-                      <div style={{ fontSize: 18, fontWeight: 800, color: '#1A3A7C' }}>{h.horasSemana}</div>
-                      <div style={{ fontSize: 10, color: '#6B8BB0', fontWeight: 600 }}>hrs/semana</div>
-                    </div>
-                    <div style={{ background: '#F8FBFF', borderRadius: 8, padding: '8px 10px', textAlign: 'center' }}>
-                      <div style={{ fontSize: 18, fontWeight: 800, color: '#1A3A7C' }}>{h.horasMes}</div>
-                      <div style={{ fontSize: 10, color: '#6B8BB0', fontWeight: 600 }}>hrs/mes</div>
-                    </div>
+                  <div className="bg-neutral-100 rounded-full h-1.5 overflow-hidden">
+                    <div
+                      className="h-full rounded-full transition-[width] duration-300"
+                      style={{ width: `${porcentaje}%`, background: barColor }}
+                    />
                   </div>
-                  {/* Barra de progreso */}
-                  <div style={{ background: '#F0F6FC', borderRadius: 20, height: 6, overflow: 'hidden' }}>
-                    <div style={{
-                      height: '100%', borderRadius: 20,
-                      width: `${porcentaje}%`,
-                      background: color,
-                      transition: 'width .3s ease',
-                    }}/>
+                  <div className="flex justify-between mt-1">
+                    <span className="text-[10px] text-neutral-500">0</span>
+                    <span className="text-[10px] text-neutral-500">Meta: {data.horasContratadaMes} hrs/mes</span>
                   </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 4 }}>
-                    <span style={{ fontSize: 10, color: '#6B8BB0' }}>0</span>
-                    <span style={{ fontSize: 10, color: '#6B8BB0' }}>
-                      Meta: {data.horasContratadaMes} hrs/mes
-                    </span>
-                  </div>
-                </div>
+                </Card>
               )
             })}
           </div>
@@ -216,110 +187,57 @@ export default function TeacherDashboard() {
 
       {/* Sin asignaciones */}
       {courses.length === 0 && (
-        <div className="empty-state">
-          <BookOpen size={40} style={{opacity:.3}}/>
-          <p>No tienes cursos asignados aún.</p>
-          <span>El administrador debe asignarte materias y cursos.</span>
-        </div>
+        <Card className="text-center py-12 border-dashed flex flex-col items-center gap-2 mb-5">
+          <BookOpen size={40} className="opacity-30"/>
+          <p className="text-[15px] font-medium text-brand-700">No tienes cursos asignados aún.</p>
+          <span className="text-[13px] text-neutral-500">El administrador debe asignarte materias y cursos.</span>
+        </Card>
       )}
 
       {/* Cursos */}
-      <div className="section-title"><GraduationCap size={16}/> Mis cursos y materias</div>
+      <div className="flex items-center gap-2 text-sm font-bold text-brand-700 uppercase tracking-wide mb-3">
+        <GraduationCap size={16}/> Mis cursos y materias
+      </div>
 
-      <div className="courses-list">
+      <div className="flex flex-col gap-3.5">
         {courses.map(([courseId, course]) => (
-          <div key={courseId} className="course-card">
-            <div className="course-header">
-              <div className="course-avatar">
+          <Card key={courseId} padded={false} className="overflow-hidden">
+            <div className="flex items-center gap-3.5 px-4.5 py-3.5 bg-neutral-100/60 border-b border-neutral-300/60">
+              <div className="rounded-xl bg-brand-700 text-white flex items-center justify-center text-[15px] font-extrabold shrink-0" style={{ width: 52, height: 52 }}>
                 {GRADES[course.grade]}{course.parallel}
               </div>
-              <div className="course-info">
-                <div className="course-name">
+              <div className="flex-1">
+                <div className="text-base font-bold text-brand-700 mb-1.5">
                   {GRADES[course.grade]} &quot;{course.parallel}&quot;
                 </div>
-                <div className="course-meta">
-                  <span className="meta-pill">{SHIFTS[course.shift]}</span>
-                  {course.educationType === 'BTH' && (
-                    <span className="meta-pill bth">BTH</span>
-                  )}
-                  <span className="meta-pill hrs">
-                    {course.items.reduce((s, i) => s + i.hoursPerWeek, 0)} hrs/sem
-                  </span>
-                  <span className="meta-pill per">
-                    {course.items.reduce((s, i) => s + (i.periodosAsignados || 0), 0)} periodos
-                  </span>
+                <div className="flex gap-1.5 flex-wrap">
+                  <Badge tone="brand">{SHIFTS[course.shift]}</Badge>
+                  {course.educationType === 'BTH' && <Badge tone="warning">BTH</Badge>}
+                  <Badge tone="success">{course.items.reduce((s, i) => s + i.hoursPerWeek, 0)} hrs/sem</Badge>
+                  <Badge tone="info">{course.items.reduce((s, i) => s + (i.periodosAsignados || 0), 0)} periodos</Badge>
                 </div>
               </div>
               <button
-                className="btn-ver"
+                className="flex items-center gap-1 px-3 py-1.5 bg-brand-700 text-white rounded-lg text-xs font-medium whitespace-nowrap shrink-0 hover:bg-brand-500 transition-colors"
                 onClick={() => router.push(`/dashboard/plantel-docente/curso/${courseId}`)}
               >
                 Ver estudiantes <ChevronRight size={14}/>
               </button>
             </div>
 
-            <div className="subjects-list">
+            <div className="flex flex-col">
               {course.items.map((a, i) => (
-                <div key={i} className="subject-row">
-                  <span
-                    className="campo-tag"
-                    style={{
-                      background: CAMPO_COLORS[a.campo || ''] || '#F0F0F0',
-                      color:      CAMPO_TEXT[a.campo  || ''] || '#444',
-                    }}
-                  >
-                    {CAMPO_LABELS[a.campo || ''] || 'Sin campo'}
-                  </span>
-                  <span className="subject-name">{a.subjectName}</span>
-                  <span className="hrs-badge">{a.hoursPerWeek} hrs/sem</span>
-                  {a.periodosAsignados > 0 && (
-                    <span className="per-badge">{a.periodosAsignados} per.</span>
-                  )}
+                <div key={i} className="flex items-center gap-2.5 px-4.5 py-2.5 border-t border-neutral-100 first:border-t-0 hover:bg-neutral-100/40">
+                  <Badge tone={CAMPO_TONE[a.campo || ''] || 'neutral'}>{CAMPO_LABELS[a.campo || ''] || 'Sin campo'}</Badge>
+                  <span className="flex-1 text-[13px] text-brand-700 font-medium">{a.subjectName}</span>
+                  <Badge tone="brand">{a.hoursPerWeek} hrs/sem</Badge>
+                  {a.periodosAsignados > 0 && <Badge tone="info">{a.periodosAsignados} per.</Badge>}
                 </div>
               ))}
             </div>
-          </div>
+          </Card>
         ))}
       </div>
-
-      <style>{`
-        .center{display:flex;justify-content:center;align-items:center;padding:48px;color:#6B8BB0;flex-direction:column;gap:8px}
-        .err-msg{color:#C0392B;font-size:14px}
-        .summary-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:24px}
-        .sum-card{background:#fff;border:1px solid #CBE0F0;border-radius:12px;padding:16px;display:flex;align-items:center;gap:12px}
-        .sum-card.accent{background:#1565C0;border-color:#1565C0}
-        .sum-card.accent .sum-label{color:rgba(255,255,255,0.7)}
-        .sum-card.accent .sum-value{color:#fff}
-        .sum-label{font-size:11px;color:#6B8BB0;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px}
-        .sum-value{font-size:20px;font-weight:700;color:#1A3A7C}
-        .section-title{display:flex;align-items:center;gap:8px;font-size:14px;font-weight:700;color:#1A3A7C;margin-bottom:12px;text-transform:uppercase;letter-spacing:.5px}
-        .empty-state{text-align:center;padding:48px;color:#6B8BB0;display:flex;flex-direction:column;align-items:center;gap:8px;background:#fff;border:1px dashed #CBE0F0;border-radius:12px;margin-bottom:20px}
-        .empty-state p{font-size:15px;font-weight:500;color:#1A3A7C}
-        .empty-state span{font-size:13px}
-        .courses-list{display:flex;flex-direction:column;gap:14px}
-        .course-card{background:#fff;border:1px solid #CBE0F0;border-radius:12px;overflow:hidden}
-        .course-header{display:flex;align-items:center;gap:14px;padding:14px 18px;background:#F8FBFF;border-bottom:1px solid #CBE0F0}
-        .course-avatar{width:52px;height:52px;border-radius:12px;background:#1565C0;color:#fff;display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:800;flex-shrink:0}
-        .course-info{flex:1}
-        .course-name{font-size:16px;font-weight:700;color:#1A3A7C;margin-bottom:6px}
-        .course-meta{display:flex;gap:6px;flex-wrap:wrap}
-        .meta-pill{padding:2px 8px;border-radius:20px;font-size:11px;font-weight:500;background:#E0ECF8;color:#1A3A7C}
-        .meta-pill.bth{background:#FFFBEA;color:#BA7517}
-        .meta-pill.hrs{background:#E1F5EE;color:#0F6E56}
-        .meta-pill.per{background:#E3F2FD;color:#1565C0}
-        .btn-ver{display:flex;align-items:center;gap:4px;padding:7px 12px;background:#1565C0;color:#fff;border:none;border-radius:8px;font-size:12px;font-weight:500;cursor:pointer;white-space:nowrap;flex-shrink:0}
-        .btn-ver:hover{background:#7A4A0A}
-        .subjects-list{display:flex;flex-direction:column}
-        .subject-row{display:flex;align-items:center;gap:10px;padding:10px 18px;border-top:1px solid #F0F6FC}
-        .subject-row:hover{background:#FAFCFF}
-        .campo-tag{padding:2px 8px;border-radius:20px;font-size:11px;font-weight:500;white-space:nowrap}
-        .subject-name{flex:1;font-size:13px;color:#1A3A7C;font-weight:500}
-        .hrs-badge{background:#E0ECF8;color:#1A3A7C;border-radius:20px;padding:2px 10px;font-size:11px;font-weight:600;white-space:nowrap}
-        .per-badge{background:#E3F2FD;color:#1565C0;border-radius:20px;padding:2px 10px;font-size:11px;font-weight:600;white-space:nowrap}
-        .spinner{width:24px;height:24px;border:2px solid rgba(99,56,6,.2);border-top-color:#1565C0;border-radius:50%;animation:spin .7s linear infinite}
-        @keyframes spin{to{transform:rotate(360deg)}}
-        @media(max-width:768px){.summary-grid{grid-template-columns:1fr 1fr}.course-header{flex-wrap:wrap}.btn-ver{width:100%}}
-      `}</style>
     </div>
   )
 }

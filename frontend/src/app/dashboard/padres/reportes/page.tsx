@@ -1,7 +1,11 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { FileBarChart, Download, Users, GraduationCap, DollarSign, AlertCircle } from 'lucide-react'
+import { Download, Users, GraduationCap, DollarSign, AlertCircle } from 'lucide-react'
+import Card from '@/components/ui/Card'
+import Badge from '@/components/ui/Badge'
+import Table, { Column } from '@/components/ui/Table'
+import { useToast } from '@/components/ui/ToastProvider'
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000'
 
@@ -17,33 +21,31 @@ const TYPE_LABELS:  Record<string, string> = {
 const fmt = (n: number) => `Bs. ${n.toFixed(2)}`
 
 export default function ReportesPage() {
+  const toast = useToast()
   const [activeTab,   setActiveTab]   = useState<'teachers' | 'delegates' | 'treasury'>('teachers')
   const [teachers,    setTeachers]    = useState<any[]>([])
   const [delegates,   setDelegates]   = useState<any[]>([])
   const [treasury,    setTreasury]    = useState<any>(null)
   const [loading,     setLoading]     = useState(false)
-  const [error,       setError]       = useState('')
-
-  const token = typeof window !== 'undefined' ? localStorage.getItem('token') : ''
 
   const fetchReport = async (type: string) => {
-    setLoading(true); setError('')
+    const token = localStorage.getItem('token')
+    setLoading(true)
     try {
       const res  = await fetch(`${API_URL}/api/reports/${type}`, {
         headers: { Authorization: `Bearer ${token}` }
       })
       const data = await res.json()
-      if (!res.ok) { setError(data.message); return }
+      if (!res.ok) { toast(data.message, 'error'); return }
       if (type === 'teachers')  setTeachers(data)
       if (type === 'delegates') setDelegates(data)
       if (type === 'treasury')  setTreasury(data)
-    } catch { setError('Error de conexión') }
+    } catch { toast('Error de conexión', 'error') }
     finally  { setLoading(false) }
   }
 
   useEffect(() => { fetchReport(activeTab) }, [activeTab])
 
-  // ── Exportar PDF ──────────────────────────────
   const exportPDF = async () => {
     const { default: jsPDF } = await import('jspdf')
     const { default: autoTable } = await import('jspdf-autotable')
@@ -124,7 +126,6 @@ export default function ReportesPage() {
     }
   }
 
-  // ── Exportar Excel ────────────────────────────
   const exportExcel = async () => {
     const XLSX = await import('xlsx')
 
@@ -206,231 +207,162 @@ export default function ReportesPage() {
     XLSX.writeFile(wb, fileName)
   }
 
+  const teacherColumns: Column<any>[] = [
+    { key: 'num', header: '#', render: (t) => <span className="text-xs text-neutral-500">{teachers.indexOf(t) + 1}</span> },
+    {
+      key: 'maestro', header: 'Maestro', render: t => (
+        <div>
+          <div className="font-medium text-brand-700">{t.lastName} {t.firstName}</div>
+          <div className="text-[11px] text-neutral-500 mt-0.5">{t.user?.email}</div>
+        </div>
+      )
+    },
+    { key: 'ci', header: 'CI', render: t => <span className="text-xs text-neutral-500">{t.ci || '—'}</span> },
+    { key: 'esp', header: 'Especialidad', render: t => <span className="text-xs text-neutral-500">{t.specialty || '—'}</span> },
+    {
+      key: 'materias', header: 'Materias asignadas', render: t => t.assignments.length === 0
+        ? <span className="text-xs text-neutral-500">Sin asignaciones</span>
+        : <div className="flex flex-wrap gap-1">{t.assignments.map((a: any, j: number) => <Badge key={j} tone="brand">{a.subject.name}</Badge>)}</div>
+    },
+    {
+      key: 'tutor', header: 'Tutor de curso', render: t => t.tutorCourse
+        ? <Badge tone="success">{LEVEL_LABELS[t.tutorCourse.course.level]} {GRADE_LABELS[t.tutorCourse.course.grade]} {t.tutorCourse.course.parallel}</Badge>
+        : <span className="text-xs text-neutral-500">—</span>
+    },
+  ]
+
+  const delegateColumns: Column<any>[] = [
+    { key: 'num', header: '#', render: (c) => <span className="text-xs text-neutral-500">{delegates.indexOf(c) + 1}</span> },
+    { key: 'curso', header: 'Curso', render: c => <span className="font-medium text-brand-700">{LEVEL_LABELS[c.level]} — {GRADE_LABELS[c.grade]} {c.parallel}</span> },
+    { key: 'turno', header: 'Turno', render: c => <span className="text-xs text-neutral-500">{SHIFT_LABELS[c.shift]}</span> },
+    { key: 'estudiantes', header: 'Estudiantes', render: c => <span className="text-xs text-neutral-500">{c._count.assignments}</span> },
+    {
+      key: 'delegado', header: 'Delegado', render: c => c.delegate ? (
+        <div>
+          <div className="font-medium text-brand-700">{c.delegate.lastName} {c.delegate.firstName}</div>
+          {c.delegate.ci && <div className="text-[11px] text-neutral-500 mt-0.5">CI: {c.delegate.ci}</div>}
+        </div>
+      ) : <span className="text-xs text-danger-600 italic">Sin delegado</span>
+    },
+    { key: 'telefono', header: 'Teléfono', render: c => <span className="text-xs text-neutral-500">{c.delegate?.phone || '—'}</span> },
+    {
+      key: 'tutorm', header: 'Maestro Tutor', render: c => c.tutor
+        ? <Badge tone="success">{c.tutor.teacher.lastName} {c.tutor.teacher.firstName}</Badge>
+        : <span className="text-xs text-neutral-500">—</span>
+    },
+  ]
+
+  const typeColumns: Column<[string, any]>[] = [
+    { key: 'tipo', header: 'Tipo', render: ([type]) => <span className="font-medium text-brand-700">{TYPE_LABELS[type] || type}</span> },
+    { key: 'cargos', header: 'Cargos', render: ([, data]) => <span className="text-xs text-neutral-500">{data.count}</span> },
+    { key: 'cobrado', header: 'Cobrado', render: ([, data]) => fmt(data.charged) },
+    { key: 'recaudado', header: 'Recaudado', render: ([, data]) => <span className="text-success-700 font-medium">{fmt(data.collected)}</span> },
+    { key: 'pendiente', header: 'Pendiente', render: ([, data]) => <span className="text-danger-600 font-medium">{fmt(data.charged - data.collected)}</span> },
+  ]
+
+  const morososColumns: Column<any>[] = [
+    { key: 'num', header: '#', render: (m) => <span className="text-xs text-neutral-500">{treasury.morosos.indexOf(m) + 1}</span> },
+    { key: 'tutor', header: 'Tutor', render: m => <span className="font-medium text-brand-700">{m.lastName} {m.firstName}</span> },
+    { key: 'ci', header: 'CI', render: m => <span className="text-xs text-neutral-500">{m.ci || '—'}</span> },
+    { key: 'telefono', header: 'Teléfono', render: m => <span className="text-xs text-neutral-500">{m.phone || '—'}</span> },
+    { key: 'estudiante', header: 'Estudiante', render: m => <span className="text-xs text-neutral-500">{m.student ? `${m.student.lastName} ${m.student.firstName}` : '—'}</span> },
+    { key: 'pendiente', header: 'Pendiente', render: m => <span className="text-danger-600 font-bold">{fmt(m.pending)}</span> },
+  ]
+
   return (
     <div>
-      <div className="page-header">
+      <div className="flex items-start justify-between gap-4 mb-6 flex-wrap">
         <div>
-          <h1>Reportes</h1>
-          <p>Informes y estadísticas del sistema</p>
+          <h1 className="text-xl font-bold text-brand-700 mb-1">Reportes</h1>
+          <p className="text-[13px] text-neutral-500">Informes y estadísticas del sistema</p>
         </div>
-        <div className="export-btns">
-          <button className="btn-pdf" onClick={exportPDF}>
+        <div className="flex gap-2">
+          <button onClick={exportPDF} className="flex items-center gap-1.5 px-4 py-2.5 bg-danger-500 text-white rounded-lg text-[13px] font-medium hover:bg-danger-600 transition-colors">
             <Download size={14}/> PDF
           </button>
-          <button className="btn-excel" onClick={exportExcel}>
+          <button onClick={exportExcel} className="flex items-center gap-1.5 px-4 py-2.5 bg-success-500 text-white rounded-lg text-[13px] font-medium hover:bg-success-700 transition-colors">
             <Download size={14}/> Excel
           </button>
         </div>
       </div>
 
-      {error && <div className="alert err">{error}</div>}
-
-      {/* Tabs */}
-      <div className="tabs">
-        <button className={`tab ${activeTab === 'teachers' ? 'active' : ''}`}
-          onClick={() => setActiveTab('teachers')}>
+      <div className="flex bg-neutral-100 rounded-[10px] p-1 gap-1 mb-4">
+        <button
+          onClick={() => setActiveTab('teachers')}
+          className={`flex-1 py-2.5 rounded-lg text-[13px] flex items-center justify-center gap-1.5 transition-colors ${activeTab === 'teachers' ? 'bg-white text-brand-700 font-semibold shadow-sm' : 'text-neutral-500'}`}
+        >
           <GraduationCap size={15}/> Maestros
         </button>
-        <button className={`tab ${activeTab === 'delegates' ? 'active' : ''}`}
-          onClick={() => setActiveTab('delegates')}>
+        <button
+          onClick={() => setActiveTab('delegates')}
+          className={`flex-1 py-2.5 rounded-lg text-[13px] flex items-center justify-center gap-1.5 transition-colors ${activeTab === 'delegates' ? 'bg-white text-brand-700 font-semibold shadow-sm' : 'text-neutral-500'}`}
+        >
           <Users size={15}/> Delegados
         </button>
-        <button className={`tab ${activeTab === 'treasury' ? 'active' : ''}`}
-          onClick={() => setActiveTab('treasury')}>
+        <button
+          onClick={() => setActiveTab('treasury')}
+          className={`flex-1 py-2.5 rounded-lg text-[13px] flex items-center justify-center gap-1.5 transition-colors ${activeTab === 'treasury' ? 'bg-white text-brand-700 font-semibold shadow-sm' : 'text-neutral-500'}`}
+        >
           <DollarSign size={15}/> Económico
         </button>
       </div>
 
       {loading ? (
-        <div className="center"><div className="spinner"/></div>
+        <div className="flex justify-center py-16"><p className="text-sm text-neutral-500">Cargando...</p></div>
       ) : (
         <>
-          {/* Reporte Maestros */}
           {activeTab === 'teachers' && (
-            <div className="report-card">
-              <div className="report-title"><GraduationCap size={15}/> Maestros registrados ({teachers.length})</div>
-              <table>
-                <thead>
-                  <tr><th>#</th><th>Maestro</th><th>CI</th><th>Especialidad</th><th>Materias asignadas</th><th>Tutor de curso</th></tr>
-                </thead>
-                <tbody>
-                  {teachers.map((t, i) => (
-                    <tr key={t.id}>
-                      <td className="muted">{i + 1}</td>
-                      <td><div className="name">{t.lastName} {t.firstName}</div>
-                        <div className="sub">{t.user?.email}</div></td>
-                      <td className="muted">{t.ci || '—'}</td>
-                      <td className="muted">{t.specialty || '—'}</td>
-                      <td>
-                        {t.assignments.length === 0 ? <span className="muted">Sin asignaciones</span> :
-                          <div className="chips">
-                            {t.assignments.map((a: any, j: number) => (
-                              <span key={j} className="chip blue">{a.subject.name}</span>
-                            ))}
-                          </div>}
-                      </td>
-                      <td>
-                        {t.tutorCourse ? (
-                          <span className="chip green">
-                            {LEVEL_LABELS[t.tutorCourse.course.level]} {GRADE_LABELS[t.tutorCourse.course.grade]} {t.tutorCourse.course.parallel}
-                          </span>
-                        ) : <span className="muted">—</span>}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            <Card padded={false} className="overflow-hidden">
+              <div className="flex items-center gap-2 px-4.5 py-3.5 border-b border-neutral-100 text-[13px] font-bold text-brand-700">
+                <GraduationCap size={15}/> Maestros registrados ({teachers.length})
+              </div>
+              <div className="p-4">
+                <Table columns={teacherColumns} rows={teachers} rowKey={t => t.id} />
+              </div>
+            </Card>
           )}
 
-          {/* Reporte Delegados */}
           {activeTab === 'delegates' && (
-            <div className="report-card">
-              <div className="report-title"><Users size={15}/> Delegados por curso</div>
-              <table>
-                <thead>
-                  <tr><th>#</th><th>Curso</th><th>Turno</th><th>Estudiantes</th><th>Delegado</th><th>Teléfono</th><th>Maestro Tutor</th></tr>
-                </thead>
-                <tbody>
-                  {delegates.map((c, i) => (
-                    <tr key={c.id}>
-                      <td className="muted">{i + 1}</td>
-                      <td><div className="name">{LEVEL_LABELS[c.level]} — {GRADE_LABELS[c.grade]} {c.parallel}</div></td>
-                      <td className="muted">{SHIFT_LABELS[c.shift]}</td>
-                      <td className="muted">{c._count.assignments}</td>
-                      <td>
-                        {c.delegate ? (
-                          <div>
-                            <div className="name">{c.delegate.lastName} {c.delegate.firstName}</div>
-                            {c.delegate.ci && <div className="sub">CI: {c.delegate.ci}</div>}
-                          </div>
-                        ) : <span className="no-data">Sin delegado</span>}
-                      </td>
-                      <td className="muted">{c.delegate?.phone || '—'}</td>
-                      <td>
-                        {c.tutor ? (
-                          <span className="chip green">{c.tutor.teacher.lastName} {c.tutor.teacher.firstName}</span>
-                        ) : <span className="muted">—</span>}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
+            <Card padded={false} className="overflow-hidden">
+              <div className="flex items-center gap-2 px-4.5 py-3.5 border-b border-neutral-100 text-[13px] font-bold text-brand-700">
+                <Users size={15}/> Delegados por curso
+              </div>
+              <div className="p-4">
+                <Table columns={delegateColumns} rows={delegates} rowKey={c => c.id} />
+              </div>
+            </Card>
           )}
 
-          {/* Reporte Económico */}
           {activeTab === 'treasury' && treasury && (
-            <div style={{display:'flex',flexDirection:'column',gap:'16px'}}>
-              {/* Resumen */}
-              <div className="summary-grid">
-                <div className="sum-card">
-                  <div className="sum-label">Total cobrado</div>
-                  <div className="sum-value">{fmt(treasury.summary.totalCharged)}</div>
-                </div>
-                <div className="sum-card green">
-                  <div className="sum-label">Recaudado</div>
-                  <div className="sum-value">{fmt(treasury.summary.totalCollected)}</div>
-                </div>
-                <div className="sum-card red">
-                  <div className="sum-label">Pendiente</div>
-                  <div className="sum-value">{fmt(treasury.summary.totalPending)}</div>
-                </div>
-                <div className="sum-card">
-                  <div className="sum-label">Gestión</div>
-                  <div className="sum-value">{treasury.academicYear.year}</div>
-                </div>
+            <div className="flex flex-col gap-4">
+              <div className="grid gap-3" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))' }}>
+                <Card><div className="text-[11px] text-neutral-500 uppercase tracking-wide mb-1.5">Total cobrado</div><div className="text-lg font-bold text-brand-700">{fmt(treasury.summary.totalCharged)}</div></Card>
+                <Card className="!border-success-500/40"><div className="text-[11px] text-neutral-500 uppercase tracking-wide mb-1.5">Recaudado</div><div className="text-lg font-bold text-success-700">{fmt(treasury.summary.totalCollected)}</div></Card>
+                <Card className="!border-danger-500/40"><div className="text-[11px] text-neutral-500 uppercase tracking-wide mb-1.5">Pendiente</div><div className="text-lg font-bold text-danger-600">{fmt(treasury.summary.totalPending)}</div></Card>
+                <Card><div className="text-[11px] text-neutral-500 uppercase tracking-wide mb-1.5">Gestión</div><div className="text-lg font-bold text-brand-700">{treasury.academicYear.year}</div></Card>
               </div>
 
-              {/* Por tipo */}
-              <div className="report-card">
-                <div className="report-title"><DollarSign size={15}/> Por tipo de cargo</div>
-                <table>
-                  <thead>
-                    <tr><th>Tipo</th><th>Cargos</th><th>Cobrado</th><th>Recaudado</th><th>Pendiente</th></tr>
-                  </thead>
-                  <tbody>
-                    {Object.entries(treasury.byType).map(([type, data]: any) => (
-                      <tr key={type}>
-                        <td><div className="name">{TYPE_LABELS[type] || type}</div></td>
-                        <td className="muted">{data.count}</td>
-                        <td>{fmt(data.charged)}</td>
-                        <td className="green-text">{fmt(data.collected)}</td>
-                        <td className="red-text">{fmt(data.charged - data.collected)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+              <Card padded={false} className="overflow-hidden">
+                <div className="flex items-center gap-2 px-4.5 py-3.5 border-b border-neutral-100 text-[13px] font-bold text-brand-700">
+                  <DollarSign size={15}/> Por tipo de cargo
+                </div>
+                <div className="p-4">
+                  <Table columns={typeColumns} rows={Object.entries(treasury.byType)} rowKey={([type]) => type} />
+                </div>
+              </Card>
 
-              {/* Morosos */}
-              <div className="report-card">
-                <div className="report-title"><AlertCircle size={15}/> Tutores con deuda ({treasury.morosos.length})</div>
-                <table>
-                  <thead>
-                    <tr><th>#</th><th>Tutor</th><th>CI</th><th>Teléfono</th><th>Estudiante</th><th>Pendiente</th></tr>
-                  </thead>
-                  <tbody>
-                    {treasury.morosos.map((m: any, i: number) => (
-                      <tr key={m.id}>
-                        <td className="muted">{i + 1}</td>
-                        <td><div className="name">{m.lastName} {m.firstName}</div></td>
-                        <td className="muted">{m.ci || '—'}</td>
-                        <td className="muted">{m.phone || '—'}</td>
-                        <td className="muted">{m.student ? `${m.student.lastName} ${m.student.firstName}` : '—'}</td>
-                        <td className="red-text font-bold">{fmt(m.pending)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+              <Card padded={false} className="overflow-hidden">
+                <div className="flex items-center gap-2 px-4.5 py-3.5 border-b border-neutral-100 text-[13px] font-bold text-brand-700">
+                  <AlertCircle size={15}/> Tutores con deuda ({treasury.morosos.length})
+                </div>
+                <div className="p-4">
+                  <Table columns={morososColumns} rows={treasury.morosos} rowKey={(m: any) => m.id} />
+                </div>
+              </Card>
             </div>
           )}
         </>
       )}
-
-      <style>{`
-        .page-header{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:24px;gap:16px;flex-wrap:wrap}
-        .page-header h1{font-size:20px;font-weight:700;color:#0F6E56;margin-bottom:4px}
-        .page-header p{font-size:13px;color:#6B8BB0}
-        .export-btns{display:flex;gap:8px}
-        .btn-pdf{display:flex;align-items:center;gap:6px;padding:9px 16px;background:#C0392B;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:500;cursor:pointer}
-        .btn-pdf:hover{background:#A93226}
-        .btn-excel{display:flex;align-items:center;gap:6px;padding:9px 16px;background:#0F6E56;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:500;cursor:pointer}
-        .btn-excel:hover{background:#0A5040}
-        .alert{padding:10px 14px;border-radius:8px;font-size:13px;margin-bottom:16px;background:#FFF0F0;border:1px solid #FFBBBB;color:#C0392B}
-        .tabs{display:flex;background:#F0F6FC;border-radius:10px;padding:4px;gap:4px;margin-bottom:16px}
-        .tab{flex:1;padding:9px;border:none;border-radius:8px;font-size:13px;cursor:pointer;background:transparent;color:#6B8BB0;display:flex;align-items:center;justify-content:center;gap:6px;transition:all .15s}
-        .tab.active{background:#fff;color:#0F6E56;font-weight:600;box-shadow:0 1px 4px rgba(0,0,0,.1)}
-        .center{display:flex;justify-content:center;padding:48px}
-        .report-card{background:#fff;border:1px solid #CBE0F0;border-radius:12px;overflow:hidden}
-        .report-title{display:flex;align-items:center;gap:8px;padding:14px 18px;border-bottom:1px solid #F0F6FC;font-size:13px;font-weight:700;color:#1A3A7C}
-        table{width:100%;border-collapse:collapse}
-        thead tr{background:#F0F6FC}
-        th{padding:10px 14px;text-align:left;font-size:11px;font-weight:600;color:#1A3A7C;text-transform:uppercase;letter-spacing:.5px;white-space:nowrap}
-        td{padding:11px 14px;font-size:13px;color:#1A3A7C;border-top:1px solid #F0F6FC;vertical-align:top}
-        tr:hover td{background:#FAFCFF}
-        .muted{color:#6B8BB0;font-size:12px}
-        .name{font-weight:500;color:#1A3A7C}
-        .sub{font-size:11px;color:#6B8BB0;margin-top:2px}
-        .chips{display:flex;flex-wrap:wrap;gap:4px}
-        .chip{padding:2px 8px;border-radius:20px;font-size:11px;font-weight:500}
-        .chip.blue{background:#E0ECF8;color:#1A3A7C}
-        .chip.green{background:#E1F5EE;color:#0F6E56}
-        .no-data{font-size:12px;color:#C0392B;font-style:italic}
-        .summary-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px}
-        .sum-card{background:#fff;border:1px solid #CBE0F0;border-radius:12px;padding:16px}
-        .sum-card.green{border-color:#9FE1CB}
-        .sum-card.red{border-color:#FFBBBB}
-        .sum-label{font-size:11px;color:#6B8BB0;text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px}
-        .sum-value{font-size:18px;font-weight:700;color:#1A3A7C}
-        .green-text{color:#0F6E56;font-weight:500}
-        .red-text{color:#C0392B;font-weight:500}
-        .font-bold{font-weight:700}
-        .spinner{width:24px;height:24px;border:2px solid rgba(15,110,86,.2);border-top-color:#0F6E56;border-radius:50%;animation:spin .7s linear infinite}
-        @keyframes spin{to{transform:rotate(360deg)}}
-        @media(max-width:600px){.tabs{flex-direction:column}.summary-grid{grid-template-columns:1fr 1fr}}
-      `}</style>
     </div>
   )
 }

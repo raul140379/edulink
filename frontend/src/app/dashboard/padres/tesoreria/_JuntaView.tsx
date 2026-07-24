@@ -3,9 +3,14 @@
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { DollarSign, Users, AlertCircle, CheckCircle, Search, Plus, TrendingUp, Filter } from 'lucide-react'
+import Card from '@/components/ui/Card'
+import Badge from '@/components/ui/Badge'
+import Button from '@/components/ui/Button'
+import Table, { Column } from '@/components/ui/Table'
+import { Input, Select } from '@/components/ui/Input'
+import { useToast } from '@/components/ui/ToastProvider'
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000'
-
 
 interface ParentBalance {
   id:        number
@@ -36,17 +41,17 @@ interface Summary {
 
 export default function TesoreriaPage() {
   const router = useRouter()
+  const toast  = useToast()
   const [parents,  setParents]  = useState<ParentBalance[]>([])
   const [summary,  setSummary]  = useState<Summary | null>(null)
   const [loading,  setLoading]  = useState(true)
   const [search,   setSearch]   = useState('')
   const [filter,   setFilter]   = useState('')
-  const [error,    setError]    = useState('')
   const userRole = typeof window !== 'undefined' ? JSON.parse(localStorage.getItem('user') || '{}').role : ''
   const canEdit  = userRole === 'SUPER_ADMIN' || userRole === 'JUNTA_ESCOLAR'
-  const token = typeof window !== 'undefined' ? localStorage.getItem('token') : ''
 
   const fetchData = async () => {
+    const token = localStorage.getItem('token')
     setLoading(true)
     try {
       const params = new URLSearchParams()
@@ -60,7 +65,7 @@ export default function TesoreriaPage() {
       const [pData, sData] = await Promise.all([pRes.json(), sRes.json()])
       if (pRes.ok) setParents(pData)
       if (sRes.ok) setSummary(sData)
-    } catch { setError('Error de conexión') }
+    } catch { toast('Error de conexión', 'error') }
     finally  { setLoading(false) }
   }
 
@@ -69,224 +74,130 @@ export default function TesoreriaPage() {
 
   const fmt = (n: number) => `Bs. ${n.toFixed(2)}`
 
-  const deudores    = parents.filter(p => p.summary.hasDebt).length
-  const alDia       = parents.filter(p => !p.summary.hasDebt && p.summary.chargesCount > 0).length
-  const sinCargos   = parents.filter(p => p.summary.chargesCount === 0).length
+  const deudores  = parents.filter(p => p.summary.hasDebt).length
+  const alDia     = parents.filter(p => !p.summary.hasDebt && p.summary.chargesCount > 0).length
+  const sinCargos = parents.filter(p => p.summary.chargesCount === 0).length
+
+  const columns: Column<ParentBalance>[] = [
+    { key: 'num', header: '#', render: (p) => <span className="text-xs text-neutral-500">{parents.indexOf(p) + 1}</span> },
+    {
+      key: 'tutor', header: 'Tutor legal', render: p => (
+        <div>
+          <div className="font-medium text-brand-700">{p.lastName} {p.firstName}</div>
+          {p.ci && <div className="text-[11px] text-neutral-500 mt-0.5">CI: {p.ci}</div>}
+          {p.phone && <div className="text-[11px] text-neutral-500">{p.phone}</div>}
+        </div>
+      )
+    },
+    {
+      key: 'estudiantes', header: 'Estudiantes', render: p => (
+        <div className="flex flex-col gap-1">
+          {p.students.length === 0
+            ? <span className="text-[11px] text-neutral-500 italic">Sin estudiantes</span>
+            : p.students.map(ps => (
+                <span key={ps.student.id} className="text-[11px] bg-brand-100 text-brand-700 px-2 py-0.5 rounded-full w-fit">
+                  {ps.student.lastName} {ps.student.firstName}
+                </span>
+              ))
+          }
+        </div>
+      )
+    },
+    { key: 'cargado', header: 'Total cargado', render: p => <span className="font-semibold text-[13px] text-brand-700 whitespace-nowrap">{fmt(p.summary.totalDebt)}</span> },
+    { key: 'pagado', header: 'Pagado', render: p => <span className="font-semibold text-[13px] text-success-700 whitespace-nowrap">{fmt(p.summary.totalPaid)}</span> },
+    { key: 'pendiente', header: 'Pendiente', render: p => <span className={`font-semibold text-[13px] whitespace-nowrap ${p.summary.totalPending > 0 ? 'text-danger-600' : 'text-success-700'}`}>{fmt(p.summary.totalPending)}</span> },
+    {
+      key: 'estado', header: 'Estado', render: p => p.summary.chargesCount === 0
+        ? <Badge tone="neutral">Sin cargos</Badge>
+        : p.summary.hasDebt ? <Badge tone="danger">Con deuda</Badge> : <Badge tone="success">Al día</Badge>
+    },
+    {
+      key: 'accion', header: 'Acción', render: p => (
+        <Button size="sm" onClick={() => router.push(`/dashboard/padres/tesoreria/${p.id}`)}>Ver cuenta</Button>
+      )
+    },
+  ]
 
   return (
     <div>
-      <div className="page-header">
+      <div className="flex items-start justify-between gap-4 mb-6">
         <div>
-          <h1>Tesorería</h1>
-          <p>Gestión económica de padres y tutores legales</p>
+          <h1 className="text-xl font-bold text-brand-700 mb-1">Tesorería</h1>
+          <p className="text-[13px] text-neutral-500">Gestión económica de padres y tutores legales</p>
         </div>
-       {canEdit && (
-            <button className="btn-primary" onClick={() => router.push('/dashboard/padres/cargos/nuevo')}>
+        {canEdit && (
+          <Button onClick={() => router.push('/dashboard/padres/cargos/nuevo')}>
             <Plus size={16}/> Nuevo cargo
-        </button>
+          </Button>
         )}
       </div>
 
-      {error && <div className="alert err">{error}</div>}
-
-      {/* Tarjetas de resumen */}
       {summary && (
-        <div className="summary-grid">
-          <div className="sum-card blue">
-            <div className="sum-icon"><DollarSign size={20}/></div>
-            <div>
-              <div className="sum-label">Total cobrado</div>
-              <div className="sum-value">{fmt(summary.totalCharged)}</div>
-            </div>
-          </div>
-          <div className="sum-card green">
-            <div className="sum-icon"><CheckCircle size={20}/></div>
-            <div>
-              <div className="sum-label">Total recaudado</div>
-              <div className="sum-value">{fmt(summary.totalCollected)}</div>
-            </div>
-          </div>
-          <div className="sum-card red">
-            <div className="sum-icon"><AlertCircle size={20}/></div>
-            <div>
-              <div className="sum-label">Total pendiente</div>
-              <div className="sum-value">{fmt(summary.totalPending)}</div>
-            </div>
-          </div>
-          <div className="sum-card gray">
-            <div className="sum-icon"><Users size={20}/></div>
-            <div>
-              <div className="sum-label">Tutores con deuda</div>
-              <div className="sum-value">{deudores} de {parents.length}</div>
-            </div>
-          </div>
+        <div className="grid gap-3 mb-4" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))' }}>
+          <Card className="flex items-center gap-3">
+            <div className="p-2.5 rounded-[10px] bg-brand-100 text-brand-700"><DollarSign size={20}/></div>
+            <div><div className="text-[11px] text-neutral-500 uppercase tracking-wide mb-0.5">Total cobrado</div><div className="text-lg font-bold text-brand-700">{fmt(summary.totalCharged)}</div></div>
+          </Card>
+          <Card className="flex items-center gap-3">
+            <div className="p-2.5 rounded-[10px] bg-success-100 text-success-700"><CheckCircle size={20}/></div>
+            <div><div className="text-[11px] text-neutral-500 uppercase tracking-wide mb-0.5">Total recaudado</div><div className="text-lg font-bold text-brand-700">{fmt(summary.totalCollected)}</div></div>
+          </Card>
+          <Card className="flex items-center gap-3">
+            <div className="p-2.5 rounded-[10px] bg-danger-100 text-danger-600"><AlertCircle size={20}/></div>
+            <div><div className="text-[11px] text-neutral-500 uppercase tracking-wide mb-0.5">Total pendiente</div><div className="text-lg font-bold text-brand-700">{fmt(summary.totalPending)}</div></div>
+          </Card>
+          <Card className="flex items-center gap-3">
+            <div className="p-2.5 rounded-[10px] bg-neutral-100 text-neutral-500"><Users size={20}/></div>
+            <div><div className="text-[11px] text-neutral-500 uppercase tracking-wide mb-0.5">Tutores con deuda</div><div className="text-lg font-bold text-brand-700">{deudores} de {parents.length}</div></div>
+          </Card>
         </div>
       )}
 
-      {/* Mini stats por estado */}
       {summary && (
-        <div className="status-row">
-          <div className="status-pill red">
-            <AlertCircle size={13}/> {summary.byStatus.PENDIENTE} pendientes
-          </div>
-          <div className="status-pill yellow">
-            <TrendingUp size={13}/> {summary.byStatus.PARCIAL} parciales
-          </div>
-          <div className="status-pill green">
-            <CheckCircle size={13}/> {summary.byStatus.PAGADO} pagados
-          </div>
-          <div className="status-pill gray">
-            <Users size={13}/> {sinCargos} sin cargos
-          </div>
+        <div className="flex gap-2 flex-wrap mb-4">
+          <Badge tone="danger"><AlertCircle size={13}/> {summary.byStatus.PENDIENTE} pendientes</Badge>
+          <Badge tone="warning"><TrendingUp size={13}/> {summary.byStatus.PARCIAL} parciales</Badge>
+          <Badge tone="success"><CheckCircle size={13}/> {summary.byStatus.PAGADO} pagados</Badge>
+          <Badge tone="neutral"><Users size={13}/> {sinCargos} sin cargos</Badge>
         </div>
       )}
 
-      {/* Filtros */}
-      <div className="filters-bar">
-        <div className="search-wrap">
-          <Search size={14} className="sicon"/>
-          <input placeholder="Buscar tutor por nombre o CI..." value={search}
+      <Card className="flex gap-2.5 flex-wrap items-center mb-4">
+        <div className="relative flex-1 min-w-[200px]">
+          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-info-500 pointer-events-none"/>
+          <Input
+            placeholder="Buscar tutor por nombre o CI..." value={search}
             onChange={e => setSearch(e.target.value)}
-            onKeyDown={e => e.key === 'Enter' && fetchData()}/>
+            onKeyDown={e => e.key === 'Enter' && fetchData()}
+            className="pl-9"
+          />
         </div>
-        <div className="filter-wrap">
-          <Filter size={14} color="#6B8BB0"/>
-          <select value={filter} onChange={e => setFilter(e.target.value)}>
+        <div className="flex items-center gap-1.5">
+          <Filter size={14} className="text-neutral-500"/>
+          <Select value={filter} onChange={e => setFilter(e.target.value)} className="w-auto">
             <option value="">Todos los tutores</option>
             <option value="CON_DEUDA">Con deuda</option>
             <option value="AL_DIA">Al día</option>
-          </select>
+          </Select>
         </div>
-        <button className="btn-outline" onClick={fetchData}>Buscar</button>
-      </div>
+        <Button variant="secondary" onClick={fetchData}>Buscar</Button>
+      </Card>
 
-      {/* Tabla de tutores */}
-      <div className="table-card">
+      <Card padded={false} className="overflow-hidden">
         {loading ? (
-          <div className="center-state"><div className="spinner"/><p>Cargando...</p></div>
+          <div className="flex justify-center py-16"><p className="text-sm text-neutral-500">Cargando...</p></div>
         ) : parents.length === 0 ? (
-          <div className="center-state"><p>No se encontraron tutores</p></div>
+          <div className="flex justify-center py-16"><p className="text-sm text-neutral-500">No se encontraron tutores</p></div>
         ) : (
-          <table>
-            <thead>
-              <tr>
-                <th>#</th>
-                <th>Tutor legal</th>
-                <th>Estudiantes</th>
-                <th>Total cargado</th>
-                <th>Pagado</th>
-                <th>Pendiente</th>
-                <th>Estado</th>
-                <th>Acción</th>
-              </tr>
-            </thead>
-            <tbody>
-              {parents.map((p, i) => (
-                <tr key={p.id}>
-                  <td className="muted">{i + 1}</td>
-                  <td>
-                    <div className="tname">{p.lastName} {p.firstName}</div>
-                    {p.ci && <div className="tsub">CI: {p.ci}</div>}
-                    {p.phone && <div className="tsub">{p.phone}</div>}
-                  </td>
-                  <td>
-                    <div className="students-chips">
-                      {p.students.length === 0
-                        ? <span className="no-students">Sin estudiantes</span>
-                        : p.students.map(ps => (
-                            <span key={ps.student.id} className="student-chip">
-                              {ps.student.lastName} {ps.student.firstName}
-                            </span>
-                          ))
-                      }
-                    </div>
-                  </td>
-                  <td className="amount">{fmt(p.summary.totalDebt)}</td>
-                  <td className="amount green">{fmt(p.summary.totalPaid)}</td>
-                  <td className={`amount ${p.summary.totalPending > 0 ? 'red' : 'green'}`}>
-                    {fmt(p.summary.totalPending)}
-                  </td>
-                  <td>
-                    {p.summary.chargesCount === 0
-                      ? <span className="sbadge gray">Sin cargos</span>
-                      : p.summary.hasDebt
-                      ? <span className="sbadge red">Con deuda</span>
-                      : <span className="sbadge green">Al día</span>
-                    }
-                  </td>
-                  <td>
-                    <button className="btn-ver" onClick={() => router.push(`/dashboard/padres/tesoreria/${p.id}`)}>
-                      Ver cuenta
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <div className="p-4">
+            <Table columns={columns} rows={parents} rowKey={p => p.id} />
+          </div>
         )}
-      </div>
+      </Card>
 
-      <div className="tfooter">
+      <div className="px-3.5 py-2.5 text-xs text-neutral-500">
         Total: <strong>{parents.length}</strong> tutores · <strong>{deudores}</strong> con deuda · <strong>{alDia}</strong> al día
       </div>
-
-      <style>{`
-        .page-header{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:24px;gap:16px}
-        .page-header h1{font-size:20px;font-weight:700;color:#1A3A7C;margin-bottom:4px}
-        .page-header p{font-size:13px;color:#6B8BB0}
-        .alert{padding:10px 14px;border-radius:8px;font-size:13px;margin-bottom:16px;background:#FFF0F0;border:1px solid #FFBBBB;color:#C0392B}
-        .summary-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin-bottom:16px}
-        .sum-card{background:#fff;border:1px solid #CBE0F0;border-radius:12px;padding:16px;display:flex;align-items:center;gap:12px}
-        .sum-card.blue .sum-icon{background:#E0ECF8;color:#1A3A7C;padding:10px;border-radius:10px}
-        .sum-card.green .sum-icon{background:#E1F5EE;color:#0F6E56;padding:10px;border-radius:10px}
-        .sum-card.red .sum-icon{background:#FFF0F0;color:#C0392B;padding:10px;border-radius:10px}
-        .sum-card.gray .sum-icon{background:#F0F6FC;color:#6B8BB0;padding:10px;border-radius:10px}
-        .sum-label{font-size:11px;color:#6B8BB0;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px}
-        .sum-value{font-size:18px;font-weight:700;color:#1A3A7C}
-        .status-row{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px}
-        .status-pill{display:flex;align-items:center;gap:5px;padding:5px 12px;border-radius:20px;font-size:12px;font-weight:500}
-        .status-pill.red{background:#FFF0F0;color:#C0392B}
-        .status-pill.yellow{background:#FFFBEA;color:#7A6000}
-        .status-pill.green{background:#E1F5EE;color:#0F6E56}
-        .status-pill.gray{background:#F0F6FC;color:#6B8BB0}
-        .filters-bar{display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap;align-items:center}
-        .search-wrap{position:relative;flex:1;min-width:200px}
-        .sicon{position:absolute;left:11px;top:50%;transform:translateY(-50%);color:#4A9FD4;pointer-events:none}
-        .search-wrap input{width:100%;padding:9px 12px 9px 34px;border:1.5px solid #CBE0F0;border-radius:8px;font-size:13px;outline:none;color:#1A3A7C}
-        .search-wrap input:focus{border-color:#4A9FD4}
-        .filter-wrap{display:flex;align-items:center;gap:6px}
-        .filter-wrap select{padding:9px 12px;border:1.5px solid #CBE0F0;border-radius:8px;font-size:13px;outline:none;color:#1A3A7C;cursor:pointer}
-        .btn-primary{display:flex;align-items:center;gap:6px;padding:9px 16px;background:#1A3A7C;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:500;cursor:pointer}
-        .btn-primary:hover{background:#4A9FD4}
-        .btn-outline{display:flex;align-items:center;gap:6px;padding:9px 14px;background:#fff;color:#1A3A7C;border:1.5px solid #CBE0F0;border-radius:8px;font-size:13px;cursor:pointer}
-        .btn-outline:hover{background:#F0F6FC}
-        .table-card{background:#fff;border:1px solid #CBE0F0;border-radius:12px;overflow:hidden}
-        table{width:100%;border-collapse:collapse}
-        thead tr{background:#F0F6FC}
-        th{padding:11px 14px;text-align:left;font-size:11px;font-weight:600;color:#1A3A7C;text-transform:uppercase;letter-spacing:.5px;white-space:nowrap}
-        td{padding:11px 14px;font-size:13px;color:#1A3A7C;border-top:1px solid #F0F6FC;vertical-align:top}
-        tr:hover td{background:#FAFCFF}
-        .muted{color:#6B8BB0;font-size:12px}
-        .tname{font-weight:500;color:#1A3A7C}
-        .tsub{font-size:11px;color:#6B8BB0;margin-top:2px}
-        .students-chips{display:flex;flex-direction:column;gap:3px}
-        .student-chip{font-size:11px;background:#E0ECF8;color:#1A3A7C;padding:2px 8px;border-radius:20px;display:inline-block}
-        .no-students{font-size:11px;color:#6B8BB0;font-style:italic}
-        .amount{font-weight:600;font-size:13px;white-space:nowrap}
-        .amount.green{color:#0F6E56}
-        .amount.red{color:#C0392B}
-        .sbadge{padding:3px 9px;border-radius:20px;font-size:11px;font-weight:500}
-        .sbadge.green{background:#E1F5EE;color:#0F6E56}
-        .sbadge.red{background:#FFF0F0;color:#C0392B}
-        .sbadge.gray{background:#F0F6FC;color:#6B8BB0}
-        .btn-ver{padding:6px 12px;background:#1A3A7C;color:#fff;border:none;border-radius:6px;font-size:12px;cursor:pointer;white-space:nowrap}
-        .btn-ver:hover{background:#4A9FD4}
-        .tfooter{padding:10px 14px;font-size:12px;color:#6B8BB0}
-        .center-state{display:flex;flex-direction:column;align-items:center;justify-content:center;padding:48px;gap:12px;color:#6B8BB0;font-size:13px}
-        .spinner{width:24px;height:24px;border:2px solid rgba(26,58,124,.2);border-top-color:#1A3A7C;border-radius:50%;animation:spin .7s linear infinite}
-        @keyframes spin{to{transform:rotate(360deg)}}
-        @media(max-width:768px){.page-header{flex-direction:column}.summary-grid{grid-template-columns:1fr 1fr}}
-      `}</style>
     </div>
   )
 }
