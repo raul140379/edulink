@@ -2,7 +2,14 @@
 
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { ArrowLeft, Plus, Edit2, Trash2, Save, X, DoorOpen } from 'lucide-react'
+import { ArrowLeft, Plus, Edit2, Trash2, Save, DoorOpen } from 'lucide-react'
+import Card from '@/components/ui/Card'
+import Badge from '@/components/ui/Badge'
+import Button from '@/components/ui/Button'
+import Modal from '@/components/ui/Modal'
+import { Input } from '@/components/ui/Input'
+import { useConfirm } from '@/components/ui/ConfirmProvider'
+import { useToast } from '@/components/ui/ToastProvider'
 
 const API = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000'
 
@@ -14,20 +21,18 @@ interface Classroom {
 }
 
 export default function AulasPage() {
-  const router = useRouter()
+  const router  = useRouter()
+  const confirm = useConfirm()
+  const toast   = useToast()
+
   const [classrooms, setClassrooms] = useState<Classroom[]>([])
   const [loading,    setLoading]    = useState(true)
   const [showModal,  setShowModal]  = useState(false)
   const [editing,    setEditing]    = useState<Classroom | null>(null)
-  const [toast,      setToast]      = useState<{type:'ok'|'err'; text:string} | null>(null)
   const [form,       setForm]       = useState({ name: '', capacity: '' })
 
   const token = () => localStorage.getItem('token') || ''
   const auth  = () => ({ Authorization: `Bearer ${token()}` })
-
-  const showToast = (type: 'ok'|'err', text: string) => {
-    setToast({type, text}); setTimeout(() => setToast(null), 3000)
-  }
 
   const load = async () => {
     setLoading(true)
@@ -35,7 +40,7 @@ export default function AulasPage() {
       const res  = await fetch(`${API}/api/classrooms`, { headers: auth() })
       const data = await res.json()
       if (res.ok) setClassrooms(data)
-    } catch { showToast('err', 'Error de conexión') }
+    } catch { toast('Error de conexión', 'error') }
     finally { setLoading(false) }
   }
 
@@ -54,7 +59,7 @@ export default function AulasPage() {
   }
 
   const handleSave = async () => {
-    if (!form.name.trim()) { showToast('err', 'El nombre es requerido'); return }
+    if (!form.name.trim()) { toast('El nombre es requerido', 'error'); return }
     try {
       const url    = editing ? `${API}/api/classrooms/${editing.id}` : `${API}/api/classrooms`
       const method = editing ? 'PUT' : 'POST'
@@ -67,216 +72,110 @@ export default function AulasPage() {
         })
       })
       const data = await res.json()
-      if (!res.ok) { showToast('err', data.message); return }
-      showToast('ok', editing ? 'Aula actualizada' : 'Aula creada correctamente')
+      if (!res.ok) { toast(data.message, 'error'); return }
+      toast(editing ? 'Aula actualizada' : 'Aula creada correctamente', 'success')
       setShowModal(false)
       load()
-    } catch { showToast('err', 'Error de conexión') }
+    } catch { toast('Error de conexión', 'error') }
   }
 
   const handleDelete = async (c: Classroom) => {
-    if (!confirm(`¿Desactivar "${c.name}"?`)) return
+    if (!await confirm(`¿Desactivar "${c.name}"?`, { danger: true })) return
     try {
       const res = await fetch(`${API}/api/classrooms/${c.id}`, { method: 'DELETE', headers: auth() })
-      if (!res.ok) { showToast('err', 'Error al desactivar'); return }
-      showToast('ok', 'Aula desactivada')
+      if (!res.ok) { toast('Error al desactivar', 'error'); return }
+      toast('Aula desactivada', 'success')
       load()
-    } catch { showToast('err', 'Error de conexión') }
+    } catch { toast('Error de conexión', 'error') }
   }
 
   return (
     <div>
-      {/* Toast */}
-      {toast && (
-        <div style={{
-          position:'fixed', top:16, right:16, zIndex:999, padding:'10px 16px',
-          borderRadius:8, fontSize:13,
-          background: toast.type==='ok' ? '#E1F5EE' : '#FFF0F0',
-          border: `1px solid ${toast.type==='ok' ? '#9FE1CB' : '#FFBBBB'}`,
-          color: toast.type==='ok' ? '#0F6E56' : '#C0392B',
-          boxShadow:'0 4px 12px rgba(0,0,0,.1)',
-        }}>
-          {toast.text}
-        </div>
-      )}
-
-      {/* Header */}
-      <div style={{display:'flex', alignItems:'center', gap:12, marginBottom:24, flexWrap:'wrap'}}>
-        <button onClick={() => router.push('/dashboard/admin/horarios')}
-          style={{display:'flex', alignItems:'center', gap:6, background:'none', border:'none', cursor:'pointer', color:'#6B8BB0', fontSize:13}}>
+      <div className="flex items-center gap-3 mb-6 flex-wrap">
+        <button onClick={() => router.push('/dashboard/admin/horarios')} className="flex items-center gap-1.5 text-neutral-500 hover:text-brand-700 text-[13px]">
           <ArrowLeft size={16}/> Volver
         </button>
-        <div style={{flex:1}}>
-          <h1 style={{fontSize:20, fontWeight:700, color:'#1A3A7C', margin:0}}>Gestión de Aulas</h1>
-          <p style={{fontSize:13, color:'#6B8BB0', margin:0}}>Registra los espacios físicos del colegio</p>
+        <div className="flex-1">
+          <h1 className="text-xl font-bold text-brand-700 m-0">Gestión de Aulas</h1>
+          <p className="text-[13px] text-neutral-500 m-0">Registra los espacios físicos del colegio</p>
         </div>
-        <button onClick={openCreate} style={{
-          display:'flex', alignItems:'center', gap:8, padding:'10px 18px',
-          background:'#1A3A7C', color:'#fff', border:'none', borderRadius:8,
-          fontSize:13, fontWeight:600, cursor:'pointer'
-        }}>
-          <Plus size={16}/> Nueva Aula
-        </button>
+        <Button onClick={openCreate}><Plus size={16}/> Nueva Aula</Button>
       </div>
 
-      {/* Lista */}
       {loading ? (
-        <div style={{display:'flex', justifyContent:'center', padding:48}}>
-          <div className="spinner"/>
-        </div>
+        <div className="flex justify-center py-12"><p className="text-sm text-neutral-500">Cargando...</p></div>
       ) : classrooms.length === 0 ? (
-        <div style={{
-          background:'#fff', border:'1px dashed #CBE0F0', borderRadius:12,
-          padding:48, textAlign:'center', color:'#6B8BB0'
-        }}>
-          <DoorOpen size={40} style={{marginBottom:12, opacity:.3}}/>
-          <p style={{margin:0}}>No hay aulas registradas. Crea la primera.</p>
-          <button onClick={openCreate} style={{
-            marginTop:16, padding:'8px 16px', background:'#1A3A7C',
-            color:'#fff', border:'none', borderRadius:8, cursor:'pointer', fontSize:13
-          }}>
-            <Plus size={14}/> Crear aula
-          </button>
+        <div className="bg-white border border-dashed border-neutral-300 rounded-xl p-12 text-center text-neutral-500">
+          <DoorOpen size={40} className="mb-3 opacity-30 mx-auto"/>
+          <p className="m-0">No hay aulas registradas. Crea la primera.</p>
+          <Button onClick={openCreate} className="mt-4"><Plus size={14}/> Crear aula</Button>
         </div>
       ) : (
-        <div style={{background:'#fff', border:'1px solid #CBE0F0', borderRadius:12, overflow:'hidden'}}>
-          <table style={{borderCollapse:'collapse', width:'100%'}}>
-            <thead>
-              <tr style={{background:'#F0F6FC'}}>
-                <th style={th}>Aula</th>
-                <th style={th}>Capacidad</th>
-                <th style={th}>Estado</th>
-                <th style={{...th, textAlign:'right'}}>Acciones</th>
-              </tr>
-            </thead>
-            <tbody>
-              {classrooms.map((c, i) => (
-                <tr key={c.id} style={{background: i%2===0 ? '#fff' : '#FAFCFF'}}>
-                  <td style={td}>
-                    <div style={{display:'flex', alignItems:'center', gap:10}}>
-                      <div style={{
-                        width:34, height:34, borderRadius:8,
-                        background:'#E8EEF8', display:'flex', alignItems:'center',
-                        justifyContent:'center', fontSize:18
-                      }}>🚪</div>
-                      <span style={{fontWeight:600, color:'#1A3A7C', fontSize:14}}>{c.name}</span>
-                    </div>
-                  </td>
-                  <td style={td}>
-                    <span style={{color:'#6B8BB0', fontSize:13}}>
-                      {c.capacity ? `${c.capacity} estudiantes` : '—'}
-                    </span>
-                  </td>
-                  <td style={td}>
-                    <span style={{
-                      padding:'3px 10px', borderRadius:20, fontSize:11, fontWeight:700,
-                      background: c.isActive ? '#E1F5EE' : '#F5F5F5',
-                      color:      c.isActive ? '#0F6E56' : '#999',
-                    }}>
-                      {c.isActive ? 'Activa' : 'Inactiva'}
-                    </span>
-                  </td>
-                  <td style={{...td, textAlign:'right'}}>
-                    <div style={{display:'flex', gap:6, justifyContent:'flex-end'}}>
-                      <button onClick={() => openEdit(c)} style={{
-                        display:'flex', alignItems:'center', gap:4,
-                        padding:'6px 12px', background:'#F0F6FC',
-                        border:'none', borderRadius:7, cursor:'pointer',
-                        color:'#1A3A7C', fontSize:12
-                      }}>
-                        <Edit2 size={12}/> Editar
-                      </button>
-                      {c.isActive && (
-                        <button onClick={() => handleDelete(c)} style={{
-                          display:'flex', alignItems:'center', gap:4,
-                          padding:'6px 12px', background:'#FFF0F0',
-                          border:'none', borderRadius:7, cursor:'pointer',
-                          color:'#C0392B', fontSize:12
-                        }}>
-                          <Trash2 size={12}/> Desactivar
-                        </button>
-                      )}
-                    </div>
-                  </td>
+        <Card padded={false} className="overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full border-collapse">
+              <thead>
+                <tr className="bg-neutral-100">
+                  <th className="px-4 py-2.5 text-left text-[11px] font-bold text-brand-700 uppercase tracking-wide">Aula</th>
+                  <th className="px-4 py-2.5 text-left text-[11px] font-bold text-brand-700 uppercase tracking-wide">Capacidad</th>
+                  <th className="px-4 py-2.5 text-left text-[11px] font-bold text-brand-700 uppercase tracking-wide">Estado</th>
+                  <th className="px-4 py-2.5 text-right text-[11px] font-bold text-brand-700 uppercase tracking-wide">Acciones</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-
-      {/* Modal */}
-      {showModal && (
-        <div style={{position:'fixed', inset:0, background:'rgba(0,0,0,.4)', zIndex:500, display:'flex', alignItems:'center', justifyContent:'center', padding:16}}>
-          <div style={{background:'#fff', borderRadius:14, width:'100%', maxWidth:400, boxShadow:'0 20px 60px rgba(0,0,0,.15)'}}>
-            <div style={{display:'flex', alignItems:'center', justifyContent:'space-between', padding:'18px 20px', borderBottom:'1px solid #CBE0F0'}}>
-              <h2 style={{fontSize:16, fontWeight:700, color:'#1A3A7C', margin:0}}>
-                {editing ? 'Editar Aula' : 'Nueva Aula'}
-              </h2>
-              <button onClick={() => setShowModal(false)} style={{background:'none', border:'none', cursor:'pointer', color:'#6B8BB0'}}>
-                <X size={18}/>
-              </button>
-            </div>
-            <div style={{padding:20, display:'flex', flexDirection:'column', gap:14}}>
-              <div style={{display:'flex', flexDirection:'column', gap:6}}>
-                <label style={labelStyle}>Nombre *</label>
-                <input
-                  value={form.name}
-                  onChange={e => setForm(p => ({...p, name: e.target.value}))}
-                  placeholder="Ej: Aula 101, Laboratorio, Patio"
-                  style={inputStyle}
-                />
-              </div>
-              <div style={{display:'flex', flexDirection:'column', gap:6}}>
-                <label style={labelStyle}>Capacidad (opcional)</label>
-                <input
-                  type="number"
-                  value={form.capacity}
-                  onChange={e => setForm(p => ({...p, capacity: e.target.value}))}
-                  placeholder="Ej: 35"
-                  min={1}
-                  style={inputStyle}
-                />
-              </div>
-            </div>
-            <div style={{display:'flex', justifyContent:'flex-end', gap:10, padding:'14px 20px', borderTop:'1px solid #CBE0F0'}}>
-              <button onClick={() => setShowModal(false)} style={{
-                padding:'9px 16px', background:'#fff', border:'1.5px solid #CBE0F0',
-                borderRadius:8, fontSize:13, cursor:'pointer', color:'#1A3A7C'
-              }}>
-                Cancelar
-              </button>
-              <button onClick={handleSave} style={{
-                display:'flex', alignItems:'center', gap:6, padding:'9px 18px',
-                background:'#1A3A7C', color:'#fff', border:'none', borderRadius:8,
-                fontSize:13, fontWeight:600, cursor:'pointer'
-              }}>
-                <Save size={14}/> {editing ? 'Actualizar' : 'Crear'}
-              </button>
-            </div>
+              </thead>
+              <tbody>
+                {classrooms.map((c, i) => (
+                  <tr key={c.id} className={i%2===0 ? 'bg-white' : 'bg-neutral-100/40'}>
+                    <td className="px-4 py-3 border-t border-neutral-100 align-middle">
+                      <div className="flex items-center gap-2.5">
+                        <div className="w-[34px] h-[34px] rounded-lg bg-brand-100 flex items-center justify-center text-lg">🚪</div>
+                        <span className="font-semibold text-brand-700 text-sm">{c.name}</span>
+                      </div>
+                    </td>
+                    <td className="px-4 py-3 border-t border-neutral-100 align-middle">
+                      <span className="text-neutral-500 text-[13px]">{c.capacity ? `${c.capacity} estudiantes` : '—'}</span>
+                    </td>
+                    <td className="px-4 py-3 border-t border-neutral-100 align-middle">
+                      <Badge tone={c.isActive ? 'success' : 'neutral'}>{c.isActive ? 'Activa' : 'Inactiva'}</Badge>
+                    </td>
+                    <td className="px-4 py-3 border-t border-neutral-100 align-middle text-right">
+                      <div className="flex gap-1.5 justify-end">
+                        <Button variant="secondary" size="sm" onClick={() => openEdit(c)}><Edit2 size={12}/> Editar</Button>
+                        {c.isActive && (
+                          <Button variant="danger" size="sm" onClick={() => handleDelete(c)}><Trash2 size={12}/> Desactivar</Button>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
-        </div>
+        </Card>
       )}
 
-      <style>{`
-        .spinner{width:24px;height:24px;border:2px solid rgba(26,58,124,.2);border-top-color:#1A3A7C;border-radius:50%;animation:spin .7s linear infinite}
-        @keyframes spin{to{transform:rotate(360deg)}}
-      `}</style>
+      <Modal
+        open={showModal} onClose={() => setShowModal(false)} title={editing ? 'Editar Aula' : 'Nueva Aula'}
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setShowModal(false)}>Cancelar</Button>
+            <Button onClick={handleSave}><Save size={14}/> {editing ? 'Actualizar' : 'Crear'}</Button>
+          </>
+        }
+      >
+        <div className="flex flex-col gap-3.5">
+          <Input
+            label="Nombre" required value={form.name}
+            onChange={e => setForm(p => ({...p, name: e.target.value}))}
+            placeholder="Ej: Aula 101, Laboratorio, Patio"
+          />
+          <Input
+            label="Capacidad (opcional)" type="number" min={1}
+            value={form.capacity}
+            onChange={e => setForm(p => ({...p, capacity: e.target.value}))}
+            placeholder="Ej: 35"
+          />
+        </div>
+      </Modal>
     </div>
   )
-}
-
-const th: React.CSSProperties = {
-  padding:'10px 16px', fontSize:11, fontWeight:700,
-  color:'#1A3A7C', textAlign:'left', letterSpacing:'.5px', textTransform:'uppercase'
-}
-const td: React.CSSProperties = {
-  padding:'12px 16px', borderTop:'1px solid #F0F6FC', fontSize:13, verticalAlign:'middle'
-}
-const labelStyle: React.CSSProperties = {
-  fontSize:11, fontWeight:700, color:'#1A3A7C', textTransform:'uppercase', letterSpacing:'.5px'
-}
-const inputStyle: React.CSSProperties = {
-  padding:'10px 12px', border:'1.5px solid #CBE0F0', borderRadius:8,
-  fontSize:13, color:'#1A3A7C', outline:'none', width:'100%', boxSizing:'border-box'
 }

@@ -2,7 +2,12 @@
 
 import React, { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { ArrowLeft, Zap, Trash2, X, Save, Edit2, Users } from 'lucide-react'
+import { ArrowLeft, Zap, Trash2, Save, Edit2, Users } from 'lucide-react'
+import Card from '@/components/ui/Card'
+import Button from '@/components/ui/Button'
+import Modal from '@/components/ui/Modal'
+import { useConfirm } from '@/components/ui/ConfirmProvider'
+import { useToast } from '@/components/ui/ToastProvider'
 
 const API = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000'
 
@@ -62,7 +67,9 @@ const SLOT_COLORS: Record<string, {bg:string; border:string; text:string; badge:
 }
 
 export default function PlanificacionPage() {
-  const router = useRouter()
+  const router  = useRouter()
+  const confirm = useConfirm()
+  const toast   = useToast()
 
   const [courses,    setCourses]    = useState<Course[]>([])
   const [plans,      setPlans]      = useState<Record<number, PlanItem[]>>({})
@@ -75,7 +82,6 @@ export default function PlanificacionPage() {
   const [saving,     setSaving]     = useState(false)
   const [promoting,  setPromoting]  = useState(false)
   const [editMode,   setEditMode]   = useState(false)
-  const [toast,      setToast]      = useState<{type:'ok'|'err'|'warn'; text:string} | null>(null)
 
   const [showParams,           setShowParams]           = useState(false)
   const [periodosConsecutivos, setPeriodosConsecutivos] = useState(2)
@@ -93,10 +99,6 @@ export default function PlanificacionPage() {
 
   const token = () => localStorage.getItem('token') || ''
   const auth  = () => ({ Authorization: `Bearer ${token()}` })
-
-  const showToast = (type:'ok'|'err'|'warn', text:string) => {
-    setToast({type, text}); setTimeout(()=>setToast(null), 5000)
-  }
 
   const loadSlotsStatus = async () => {
     const res  = await fetch(`${API}/api/planificacion/slots-status`, { headers: auth() })
@@ -179,13 +181,13 @@ export default function PlanificacionPage() {
         body: JSON.stringify({ periodosConsecutivos, maxPorDia, maxPeriodo, porcentajeBase })
       })
       const data = await res.json()
-      if (!res.ok) { showToast('err', data.message); return }
-      showToast('ok', `${data.message}${data.errors?.length > 0 ? ` · ${data.errors.length} sin espacio` : ''}`)
+      if (!res.ok) { toast(data.message, 'error'); return }
+      toast(`${data.message}${data.errors?.length > 0 ? ` · ${data.errors.length} sin espacio` : ''}`, 'success')
       setActiveSlot('TEMP')
       await loadPlansForSlot('TEMP', courses)
       await loadSlotsStatus()
       setShowSaveModal(true)
-    } catch { showToast('err', 'Error de conexión') }
+    } catch { toast('Error de conexión', 'error') }
     finally { setGenerating(false) }
   }
 
@@ -198,32 +200,32 @@ export default function PlanificacionPage() {
         body: JSON.stringify({ slot })
       })
       const data = await res.json()
-      if (!res.ok) { showToast('err', data.message); return }
-      showToast('ok', data.message)
+      if (!res.ok) { toast(data.message, 'error'); return }
+      toast(data.message, 'success')
       setShowSaveModal(false)
       await loadSlotsStatus()
-    } catch { showToast('err', 'Error de conexión') }
+    } catch { toast('Error de conexión', 'error') }
     finally { setSaving(false) }
   }
 
   const handleClearSlot = async (slot: string) => {
-    if (!confirm(`¿Eliminar la planificación del Slot ${slot}?`)) return
+    if (!await confirm(`¿Eliminar la planificación del Slot ${slot}?`, { danger: true })) return
     try {
       const res  = await fetch(`${API}/api/planificacion/slot/${slot}`, { method: 'DELETE', headers: auth() })
       const data = await res.json()
-      if (!res.ok) { showToast('err', data.message); return }
-      showToast('ok', data.message)
+      if (!res.ok) { toast(data.message, 'error'); return }
+      toast(data.message, 'success')
       if (activeSlot === slot) {
         setPlans({})
         setActiveSlot('TEMP')
       }
       await loadSlotsStatus()
-    } catch { showToast('err', 'Error de conexión') }
+    } catch { toast('Error de conexión', 'error') }
   }
 
   const handlePromote = async (slot: 'TEMP'|'A'|'B') => {
-    if (!confirm(`¿Promover Slot ${slot} al horario oficial?\n\nEsta acción reemplazará los borradores actuales.`)) return
-    if (!confirm(`⚠️ CONFIRMACIÓN FINAL\n\n¿Estás seguro? Esta acción no se puede deshacer.`)) return
+    if (!await confirm(`¿Promover Slot ${slot} al horario oficial? Esta acción reemplazará los borradores actuales.`, { danger: true })) return
+    if (!await confirm('⚠️ CONFIRMACIÓN FINAL — ¿Estás seguro? Esta acción no se puede deshacer.', { danger: true, confirmLabel: 'Sí, promover' })) return
     setPromoting(true)
     try {
       const res  = await fetch(`${API}/api/planificacion/promote`, {
@@ -232,10 +234,10 @@ export default function PlanificacionPage() {
         body: JSON.stringify({ slot })
       })
       const data = await res.json()
-      if (!res.ok) { showToast('err', data.message); return }
-      showToast('ok', data.message)
+      if (!res.ok) { toast(data.message, 'error'); return }
+      toast(data.message, 'success')
       setShowPromote(false)
-    } catch { showToast('err', 'Error de conexión') }
+    } catch { toast('Error de conexión', 'error') }
     finally { setPromoting(false) }
   }
 
@@ -262,8 +264,8 @@ export default function PlanificacionPage() {
       })
     })
     const data = await res.json()
-    if (!res.ok) { showToast('err', data.message); return }
-    showToast('ok', 'Periodo asignado')
+    if (!res.ok) { toast(data.message, 'error'); return }
+    toast('Periodo asignado', 'success')
     setShowModal(false)
     const pRes  = await fetch(`${API}/api/planificacion/course/${selCourse.id}?slot=${activeSlot}`, { headers: auth() })
     const pData = await pRes.json()
@@ -417,164 +419,113 @@ export default function PlanificacionPage() {
 
   return (
     <div>
-      {/* Toast */}
-      {toast && (
-        <div style={{
-          position:'fixed',top:16,right:16,zIndex:999,padding:'12px 18px',borderRadius:10,fontSize:13,
-          background:toast.type==='ok'?'#E1F5EE':toast.type==='warn'?'#FFFBEA':'#FFF0F0',
-          border:`1px solid ${toast.type==='ok'?'#9FE1CB':toast.type==='warn'?'#F5C518':'#FFBBBB'}`,
-          color:toast.type==='ok'?'#0F6E56':toast.type==='warn'?'#7A6000':'#C0392B',
-          boxShadow:'0 4px 16px rgba(0,0,0,.12)',maxWidth:420,lineHeight:1.5,
-        }}>
-          {toast.text}
-        </div>
-      )}
-
-      {/* Header */}
-      <div style={{display:'flex',alignItems:'center',gap:12,marginBottom:20,flexWrap:'wrap'}}>
-        <button onClick={()=>router.push('/dashboard/admin/horarios')}
-          style={{display:'flex',alignItems:'center',gap:6,background:'none',border:'none',cursor:'pointer',color:'#6B8BB0',fontSize:13}}>
+      <div className="flex items-center gap-3 mb-5 flex-wrap">
+        <button onClick={()=>router.push('/dashboard/admin/horarios')} className="flex items-center gap-1.5 text-neutral-500 hover:text-brand-700 text-[13px]">
           <ArrowLeft size={16}/> Volver
         </button>
-        <div style={{flex:1}}>
-          <h1 style={{fontSize:20,fontWeight:700,color:'#1A3A7C',margin:0}}>Planificación Global de Horarios</h1>
-          <p style={{fontSize:13,color:'#6B8BB0',margin:0}}>Genera y compara prototipos de horario antes de publicar</p>
+        <div className="flex-1">
+          <h1 className="text-xl font-bold text-brand-700 m-0">Planificación Global de Horarios</h1>
+          <p className="text-[13px] text-neutral-500 m-0">Genera y compara prototipos de horario antes de publicar</p>
         </div>
-        <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
-          <button onClick={()=>router.push('/dashboard/admin/horarios/planificacion/maestros')}
-            style={{display:'flex',alignItems:'center',gap:7,padding:'9px 16px',background:'#fff',color:'#1A3A7C',border:'1.5px solid #CBE0F0',borderRadius:8,fontSize:13,fontWeight:600,cursor:'pointer'}}>
+        <div className="flex gap-2 flex-wrap">
+          <Button variant="secondary" onClick={()=>router.push('/dashboard/admin/horarios/planificacion/maestros')}>
             <Users size={14}/> Vista Maestros
-          </button>
+          </Button>
           {hasPlan && (
             <>
-              <button onClick={()=>setEditMode(!editMode)} style={{
-                display:'flex',alignItems:'center',gap:7,padding:'9px 16px',
-                background:editMode?'#1A3A7C':'#F0F6FC',
-                color:editMode?'#fff':'#1A3A7C',
-                border:`1.5px solid ${editMode?'#1A3A7C':'#CBE0F0'}`,
-                borderRadius:8,fontSize:13,fontWeight:600,cursor:'pointer'
-              }}>
+              <Button variant={editMode ? 'primary' : 'secondary'} onClick={()=>setEditMode(!editMode)}>
                 <Edit2 size={14}/> {editMode?'✅ Salir edición':'✏️ Editar'}
-              </button>
-              <button onClick={()=>setShowPromote(true)}
-                style={{display:'flex',alignItems:'center',gap:7,padding:'9px 16px',background:'#0F6E56',color:'#fff',border:'none',borderRadius:8,fontSize:13,fontWeight:600,cursor:'pointer'}}>
-                ✅ Promover a Oficial
-              </button>
+              </Button>
+              <Button className="!bg-success-700 !border-success-700" onClick={()=>setShowPromote(true)}>✅ Promover a Oficial</Button>
             </>
           )}
-          <button onClick={()=>setShowParams(true)} disabled={generating}
-            style={{display:'flex',alignItems:'center',gap:7,padding:'9px 16px',background:'#8B1A7C',color:'#fff',border:'none',borderRadius:8,fontSize:13,fontWeight:600,cursor:'pointer',opacity:generating?0.6:1}}>
-            <Zap size={14}/> {generating?'Generando...':'⚡ Generar'}
-          </button>
+          <Button className="!bg-[#8B1A7C] !border-[#8B1A7C]" onClick={()=>setShowParams(true)} disabled={generating} loading={generating}>
+            {!generating && <Zap size={14}/>} {generating?'Generando...':'⚡ Generar'}
+          </Button>
         </div>
       </div>
 
-      {/* Selector de slots */}
-      <div style={{background:'#fff',border:'1px solid #CBE0F0',borderRadius:12,padding:'14px 18px',marginBottom:16}}>
-        <div style={{fontSize:11,fontWeight:700,color:'#1A3A7C',textTransform:'uppercase',letterSpacing:'.5px',marginBottom:10}}>
-          Planificaciones guardadas
-        </div>
-        <div style={{display:'flex',gap:10,flexWrap:'wrap'}}>
+      <Card className="mb-4">
+        <div className="text-[11px] font-bold text-brand-700 uppercase tracking-wide mb-2.5">Planificaciones guardadas</div>
+        <div className="flex gap-2.5 flex-wrap">
           {(['TEMP','A','B'] as const).map(slot => {
             const col      = SLOT_COLORS[slot]
             const count    = slotsStatus[slot]
             const isActive = activeSlot === slot
             return (
-              <div key={slot} style={{
-                border:`2px solid ${isActive ? col.badge : '#CBE0F0'}`,
-                borderRadius:10, padding:'10px 16px', cursor:'pointer',
-                background: isActive ? col.bg : '#fff',
-                minWidth:160,
-              }}
-                onClick={() => handleSlotChange(slot)}>
-                <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:4}}>
-                  <span style={{fontWeight:700,fontSize:13,color:isActive?col.text:'#6B8BB0'}}>
+              <div
+                key={slot}
+                onClick={() => handleSlotChange(slot)}
+                className="rounded-[10px] px-4 py-2.5 cursor-pointer"
+                style={{ border:`2px solid ${isActive ? col.badge : '#CBE0F0'}`, background: isActive ? col.bg : '#fff', minWidth:160 }}
+              >
+                <div className="flex items-center justify-between mb-1">
+                  <span className="font-bold text-[13px]" style={{ color:isActive?col.text:'#6B8BB0' }}>
                     {slot === 'TEMP' ? '⏳ Temporal' : `📋 Slot ${slot}`}
                   </span>
                   {count > 0 && slot !== 'TEMP' && (
-                    <button onClick={e=>{e.stopPropagation();handleClearSlot(slot)}}
-                      style={{background:'none',border:'none',cursor:'pointer',color:'#C0392B',padding:2}}>
+                    <button onClick={e=>{e.stopPropagation();handleClearSlot(slot)}} className="text-danger-600 p-0.5">
                       <Trash2 size={12}/>
                     </button>
                   )}
                 </div>
-                <div style={{fontSize:12,color:'#6B8BB0'}}>
-                  {count > 0 ? `${count} periodos` : 'Vacío'}
-                </div>
-                {isActive && (
-                  <div style={{fontSize:10,color:col.badge,fontWeight:600,marginTop:4}}>● Viendo ahora</div>
-                )}
+                <div className="text-xs text-neutral-500">{count > 0 ? `${count} periodos` : 'Vacío'}</div>
+                {isActive && <div className="text-[10px] font-semibold mt-1" style={{ color:col.badge }}>● Viendo ahora</div>}
               </div>
             )
           })}
         </div>
-      </div>
+      </Card>
 
       {loading ? (
-        <div style={{display:'flex',justifyContent:'center',padding:48}}><div className="spinner"/></div>
+        <div className="flex justify-center py-12"><p className="text-sm text-neutral-500">Cargando...</p></div>
       ) : (
         <>
           {!hasPlan && (
-            <div style={{background:'#fff',border:'1px dashed #CBE0F0',borderRadius:12,padding:48,textAlign:'center',color:'#6B8BB0'}}>
-              <div style={{fontSize:40,marginBottom:12}}>📅</div>
-              <p style={{fontSize:14,fontWeight:600,color:'#1A3A7C',marginBottom:6}}>
-                {activeSlot === 'TEMP' ? 'Sin planificación generada' : `Slot ${activeSlot} vacío`}
-              </p>
-              <p style={{fontSize:13,marginBottom:20}}>
+            <div className="bg-white border border-dashed border-neutral-300 rounded-xl p-12 text-center text-neutral-500">
+              <div className="text-4xl mb-3">📅</div>
+              <p className="text-sm font-semibold text-brand-700 mb-1.5">{activeSlot === 'TEMP' ? 'Sin planificación generada' : `Slot ${activeSlot} vacío`}</p>
+              <p className="text-[13px] mb-5">
                 {activeSlot === 'TEMP'
                   ? 'Genera una planificación para ver el prototipo de horario'
                   : 'Genera una planificación y guárdala en este slot'}
               </p>
-              <button onClick={()=>setShowParams(true)}
-                style={{padding:'10px 24px',background:'#8B1A7C',color:'#fff',border:'none',borderRadius:8,fontSize:13,fontWeight:600,cursor:'pointer'}}>
-                ⚡ Generar Planificación
-              </button>
+              <Button className="!bg-[#8B1A7C] !border-[#8B1A7C]" onClick={()=>setShowParams(true)}>⚡ Generar Planificación</Button>
             </div>
           )}
 
           {hasPlan && (
             <>
-              <div style={{
-                background:SLOT_COLORS[activeSlot].bg,
-                border:`1px solid ${SLOT_COLORS[activeSlot].border}`,
-                borderRadius:8,padding:'8px 16px',marginBottom:16,fontSize:12,
-                color:SLOT_COLORS[activeSlot].text,
-                display:'flex',gap:20,flexWrap:'wrap',alignItems:'center'
-              }}>
+              <div
+                className="rounded-lg px-4 py-2 mb-4 text-xs flex gap-5 flex-wrap items-center"
+                style={{ background:SLOT_COLORS[activeSlot].bg, border:`1px solid ${SLOT_COLORS[activeSlot].border}`, color:SLOT_COLORS[activeSlot].text }}
+              >
                 <span>📊 <strong>{totalPeriodos}</strong> periodos</span>
                 <span>🏫 <strong>{courses.length}</strong> cursos</span>
                 <span>⚙️ <strong>{periodosConsecutivos}</strong> consec. · máx <strong>{maxPorDia}</strong>/día · P<strong>{maxPeriodo}</strong> · base <strong>{porcentajeBase}%</strong></span>
                 {activeSlot === 'TEMP' && slotsStatus.TEMP > 0 ? (
-                  <button onClick={()=>setShowSaveModal(true)} style={{
-                    marginLeft:'auto',display:'flex',alignItems:'center',gap:6,
-                    padding:'6px 14px',background:'#1A3A7C',color:'#fff',
-                    border:'none',borderRadius:8,fontSize:12,fontWeight:600,cursor:'pointer'
-                  }}>
-                    💾 Guardar en Slot A o B
-                  </button>
+                  <Button size="sm" onClick={()=>setShowSaveModal(true)} className="ml-auto">💾 Guardar en Slot A o B</Button>
                 ) : (
-                  <span style={{marginLeft:'auto',fontWeight:700,color:SLOT_COLORS[activeSlot].text}}>
-                    📋 Slot {activeSlot}
-                  </span>
+                  <span className="ml-auto font-bold" style={{ color:SLOT_COLORS[activeSlot].text }}>📋 Slot {activeSlot}</span>
                 )}
               </div>
 
               {morning.length > 0 && (
-                <div style={{marginBottom:8}}>
-                  <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:12}}>
-                    <span style={{fontSize:14,fontWeight:700,color:'#BA7517'}}>☀️ Turno Mañana</span>
+                <div className="mb-2">
+                  <div className="flex items-center gap-2 mb-3">
+                    <span className="text-sm font-bold text-[#BA7517]">☀️ Turno Mañana</span>
                   </div>
-                  <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(480px,1fr))',gap:16}}>
+                  <div className="grid gap-4" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(480px, 1fr))' }}>
                     {morning.map(c => renderCourseGrid(c))}
                   </div>
                 </div>
               )}
               {afternoon.length > 0 && (
                 <div>
-                  <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:12}}>
-                    <span style={{fontSize:14,fontWeight:700,color:'#1A3A7C'}}>🌙 Turno Tarde / BTH</span>
+                  <div className="flex items-center gap-2 mb-3">
+                    <span className="text-sm font-bold text-brand-700">🌙 Turno Tarde / BTH</span>
                   </div>
-                  <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(480px,1fr))',gap:16}}>
+                  <div className="grid gap-4" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(480px, 1fr))' }}>
                     {afternoon.map(c => renderCourseGrid(c))}
                   </div>
                 </div>
@@ -584,267 +535,168 @@ export default function PlanificacionPage() {
         </>
       )}
 
-      {/* Modal parámetros */}
-      {showParams && (
-        <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,.45)',zIndex:500,display:'flex',alignItems:'center',justifyContent:'center',padding:16}}>
-          <div style={{background:'#fff',borderRadius:14,width:'100%',maxWidth:440,maxHeight:'90vh',overflow:'auto',boxShadow:'0 20px 60px rgba(0,0,0,.2)'}}>
-            <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'16px 20px',borderBottom:'1px solid #CBE0F0'}}>
-              <div>
-                <h3 style={{fontSize:15,fontWeight:700,color:'#1A3A7C',margin:0}}>⚡ Parámetros de Generación</h3>
-                <p style={{fontSize:12,color:'#6B8BB0',margin:'2px 0 0'}}>Cada generación produce una distribución diferente</p>
-              </div>
-              <button onClick={()=>setShowParams(false)} style={{background:'none',border:'none',cursor:'pointer',color:'#6B8BB0'}}>
-                <X size={18}/>
-              </button>
-            </div>
-            <div style={{padding:20,display:'flex',flexDirection:'column',gap:16}}>
+      <Modal
+        open={showParams} onClose={()=>setShowParams(false)} title="⚡ Parámetros de Generación"
+        footer={
+          <>
+            <Button variant="secondary" onClick={()=>setShowParams(false)}>Cancelar</Button>
+            <Button className="!bg-[#8B1A7C] !border-[#8B1A7C]" onClick={handleGenerate} disabled={generating}><Zap size={13}/> Generar</Button>
+          </>
+        }
+      >
+        <div className="flex flex-col gap-4">
+          <p className="text-xs text-neutral-500 -mt-2">Cada generación produce una distribución diferente</p>
 
-              {/* Periodos consecutivos */}
-              <div style={{display:'flex',flexDirection:'column',gap:6}}>
-                <label style={{fontSize:11,fontWeight:700,color:'#1A3A7C',textTransform:'uppercase',letterSpacing:'.5px'}}>
-                  Periodos consecutivos por materia
-                </label>
-                <div style={{display:'flex',gap:8}}>
-                  {[1,2,3].map(v => (
-                    <button key={v} onClick={()=>setPeriodosConsecutivos(v)} style={{
-                      flex:1,padding:'10px',border:`2px solid ${periodosConsecutivos===v?'#1A3A7C':'#CBE0F0'}`,
-                      borderRadius:8,fontSize:13,fontWeight:600,cursor:'pointer',
-                      background:periodosConsecutivos===v?'#1A3A7C':'#fff',
-                      color:periodosConsecutivos===v?'#fff':'#1A3A7C',
-                    }}>
-                      {v} {v===1?'periodo':'seguidos'}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Máximo por día */}
-              <div style={{display:'flex',flexDirection:'column',gap:6}}>
-                <label style={{fontSize:11,fontWeight:700,color:'#1A3A7C',textTransform:'uppercase',letterSpacing:'.5px'}}>
-                  Máximo periodos por día por materia
-                </label>
-                <div style={{display:'flex',gap:8}}>
-                  {[1,2,3,4].map(v => (
-                    <button key={v} onClick={()=>setMaxPorDia(v)} style={{
-                      flex:1,padding:'10px',border:`2px solid ${maxPorDia===v?'#0F6E56':'#CBE0F0'}`,
-                      borderRadius:8,fontSize:13,fontWeight:600,cursor:'pointer',
-                      background:maxPorDia===v?'#0F6E56':'#fff',
-                      color:maxPorDia===v?'#fff':'#1A3A7C',
-                    }}>
-                      {v}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Periodos máximos */}
-              <div style={{display:'flex',flexDirection:'column',gap:6}}>
-                <label style={{fontSize:11,fontWeight:700,color:'#1A3A7C',textTransform:'uppercase',letterSpacing:'.5px'}}>
-                  Periodos a usar por día
-                </label>
-                <div style={{display:'flex',gap:8}}>
-                  {[6,7].map(v => (
-                    <button key={v} onClick={()=>setMaxPeriodo(v)} style={{
-                      flex:1,padding:'10px',border:`2px solid ${maxPeriodo===v?'#633806':'#CBE0F0'}`,
-                      borderRadius:8,fontSize:13,fontWeight:600,cursor:'pointer',
-                      background:maxPeriodo===v?'#633806':'#fff',
-                      color:maxPeriodo===v?'#fff':'#1A3A7C',
-                    }}>
-                      {v} periodos {v===7?'(+extra)':''}
-                    </button>
-                  ))}
-                </div>
-                <span style={{fontSize:11,color:'#6B8BB0'}}>
-                  {maxPeriodo===6 ? 'P7 libre — solo para ajuste manual posterior' : 'P7 disponible para completar materias sin espacio'}
-                </span>
-              </div>
-
-              {/* Porcentaje base */}
-              <div style={{display:'flex',flexDirection:'column',gap:6}}>
-                <label style={{fontSize:11,fontWeight:700,color:'#1A3A7C',textTransform:'uppercase',letterSpacing:'.5px'}}>
-                  % base garantizado por materia — Fase 1
-                </label>
-                <div style={{display:'flex',gap:8}}>
-                  {[60,70,80,90].map(v => (
-                    <button key={v} onClick={()=>setPorcentajeBase(v)} style={{
-                      flex:1,padding:'10px',border:`2px solid ${porcentajeBase===v?'#8B1A7C':'#CBE0F0'}`,
-                      borderRadius:8,fontSize:13,fontWeight:600,cursor:'pointer',
-                      background:porcentajeBase===v?'#8B1A7C':'#fff',
-                      color:porcentajeBase===v?'#fff':'#1A3A7C',
-                    }}>
-                      {v}%
-                    </button>
-                  ))}
-                </div>
-                <span style={{fontSize:11,color:'#6B8BB0'}}>
-                  Fase 1: {porcentajeBase}% equitativo para todas · Fase 2: {100-porcentajeBase}% restante priorizando más pendientes
-                </span>
-              </div>
-
-              <div style={{background:'#F0F6FC',border:'1px solid #CBE0F0',borderRadius:8,padding:'10px 12px',fontSize:12,color:'#6B8BB0'}}>
-                💡 El resultado se guardará en <strong>Temporal</strong>. Puedes guardarlo en Slot A o B después de revisarlo. El horario oficial publicado <strong>no se verá afectado</strong>.
-              </div>
-            </div>
-            <div style={{display:'flex',justifyContent:'flex-end',gap:10,padding:'12px 20px',borderTop:'1px solid #CBE0F0'}}>
-              <button onClick={()=>setShowParams(false)}
-                style={{padding:'8px 16px',background:'#fff',border:'1.5px solid #CBE0F0',borderRadius:8,fontSize:13,cursor:'pointer',color:'#1A3A7C'}}>
-                Cancelar
-              </button>
-              <button onClick={handleGenerate} disabled={generating}
-                style={{display:'flex',alignItems:'center',gap:6,padding:'8px 18px',background:'#8B1A7C',color:'#fff',border:'none',borderRadius:8,fontSize:13,fontWeight:600,cursor:'pointer'}}>
-                <Zap size={13}/> Generar
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* Modal guardar en slot */}
-      {showSaveModal && (
-        <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,.45)',zIndex:500,display:'flex',alignItems:'center',justifyContent:'center',padding:16}}>
-          <div style={{background:'#fff',borderRadius:14,width:'100%',maxWidth:380,boxShadow:'0 20px 60px rgba(0,0,0,.2)'}}>
-            <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'16px 20px',borderBottom:'1px solid #CBE0F0'}}>
-              <div>
-                <h3 style={{fontSize:15,fontWeight:700,color:'#1A3A7C',margin:0}}>💾 Guardar Planificación</h3>
-                <p style={{fontSize:12,color:'#6B8BB0',margin:'2px 0 0'}}>Elige dónde guardar para poder comparar después</p>
-              </div>
-              <button onClick={()=>setShowSaveModal(false)} style={{background:'none',border:'none',cursor:'pointer',color:'#6B8BB0'}}>
-                <X size={18}/>
-              </button>
-            </div>
-            <div style={{padding:20,display:'flex',flexDirection:'column',gap:12}}>
-              <p style={{fontSize:13,color:'#6B8BB0',margin:0}}>
-                Guarda esta planificación en un slot para compararla con otras generaciones. Genera de nuevo y guarda en el otro slot para comparar.
-              </p>
-              <div style={{display:'flex',gap:10}}>
-                <button onClick={()=>handleSaveSlot('A')} disabled={saving} style={{
-                  flex:1,padding:'14px 12px',border:`2px solid ${SLOT_COLORS.A.border}`,
-                  borderRadius:8,fontSize:13,fontWeight:700,cursor:'pointer',
-                  background:SLOT_COLORS.A.bg,color:SLOT_COLORS.A.text,
-                  display:'flex',flexDirection:'column',alignItems:'center',gap:4,
-                }}>
-                  <span>📋 Slot A</span>
-                  <span style={{fontSize:10,fontWeight:400,color:'#6B8BB0'}}>
-                    {slotsStatus.A > 0 ? `${slotsStatus.A} periodos (reemplazar)` : 'Vacío'}
-                  </span>
+          <div className="flex flex-col gap-1.5">
+            <label className="text-[11px] font-bold text-brand-700 uppercase tracking-wide">Periodos consecutivos por materia</label>
+            <div className="flex gap-2">
+              {[1,2,3].map(v => (
+                <button
+                  key={v} onClick={()=>setPeriodosConsecutivos(v)}
+                  className={`flex-1 py-2.5 rounded-lg text-[13px] font-semibold border-2 ${periodosConsecutivos===v ? 'border-brand-700 bg-brand-700 text-white' : 'border-neutral-300 bg-white text-brand-700'}`}
+                >
+                  {v} {v===1?'periodo':'seguidos'}
                 </button>
-                <button onClick={()=>handleSaveSlot('B')} disabled={saving} style={{
-                  flex:1,padding:'14px 12px',border:`2px solid ${SLOT_COLORS.B.border}`,
-                  borderRadius:8,fontSize:13,fontWeight:700,cursor:'pointer',
-                  background:SLOT_COLORS.B.bg,color:SLOT_COLORS.B.text,
-                  display:'flex',flexDirection:'column',alignItems:'center',gap:4,
-                }}>
-                  <span>📋 Slot B</span>
-                  <span style={{fontSize:10,fontWeight:400,color:'#6B8BB0'}}>
-                    {slotsStatus.B > 0 ? `${slotsStatus.B} periodos (reemplazar)` : 'Vacío'}
-                  </span>
+              ))}
+            </div>
+          </div>
+
+          <div className="flex flex-col gap-1.5">
+            <label className="text-[11px] font-bold text-brand-700 uppercase tracking-wide">Máximo periodos por día por materia</label>
+            <div className="flex gap-2">
+              {[1,2,3,4].map(v => (
+                <button
+                  key={v} onClick={()=>setMaxPorDia(v)}
+                  className={`flex-1 py-2.5 rounded-lg text-[13px] font-semibold border-2 ${maxPorDia===v ? 'border-success-700 bg-success-700 text-white' : 'border-neutral-300 bg-white text-brand-700'}`}
+                >
+                  {v}
                 </button>
-              </div>
-            </div>
-            <div style={{display:'flex',justifyContent:'flex-end',padding:'12px 20px',borderTop:'1px solid #CBE0F0'}}>
-              <button onClick={()=>setShowSaveModal(false)}
-                style={{padding:'8px 16px',background:'#fff',border:'1.5px solid #CBE0F0',borderRadius:8,fontSize:13,cursor:'pointer',color:'#1A3A7C'}}>
-                Solo ver por ahora
-              </button>
+              ))}
             </div>
           </div>
-        </div>
-      )}
 
-      {/* Modal promover */}
-      {showPromote && (
-        <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,.45)',zIndex:500,display:'flex',alignItems:'center',justifyContent:'center',padding:16}}>
-          <div style={{background:'#fff',borderRadius:14,width:'100%',maxWidth:380,boxShadow:'0 20px 60px rgba(0,0,0,.2)'}}>
-            <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'16px 20px',borderBottom:'1px solid #CBE0F0'}}>
-              <div>
-                <h3 style={{fontSize:15,fontWeight:700,color:'#1A3A7C',margin:0}}>✅ Promover a Horario Oficial</h3>
-                <p style={{fontSize:12,color:'#6B8BB0',margin:'2px 0 0'}}>¿Qué slot quieres promover?</p>
-              </div>
-              <button onClick={()=>setShowPromote(false)} style={{background:'none',border:'none',cursor:'pointer',color:'#6B8BB0'}}>
-                <X size={18}/>
-              </button>
+          <div className="flex flex-col gap-1.5">
+            <label className="text-[11px] font-bold text-brand-700 uppercase tracking-wide">Periodos a usar por día</label>
+            <div className="flex gap-2">
+              {[6,7].map(v => (
+                <button
+                  key={v} onClick={()=>setMaxPeriodo(v)}
+                  className={`flex-1 py-2.5 rounded-lg text-[13px] font-semibold border-2 ${maxPeriodo===v ? 'border-[#633806] bg-[#633806] text-white' : 'border-neutral-300 bg-white text-brand-700'}`}
+                >
+                  {v} periodos {v===7?'(+extra)':''}
+                </button>
+              ))}
             </div>
-            <div style={{padding:20,display:'flex',flexDirection:'column',gap:10}}>
-              <div style={{background:'#FFF0F0',border:'1px solid #FFBBBB',borderRadius:8,padding:'10px 12px',fontSize:12,color:'#C0392B'}}>
-                ⚠️ Esto reemplazará los borradores actuales del horario oficial. Se pedirá doble confirmación.
-              </div>
-              {(['TEMP','A','B'] as const).map(slot => {
-                const count = slotsStatus[slot]
-                const col   = SLOT_COLORS[slot]
-                if (count === 0) return null
-                return (
-                  <button key={slot} onClick={()=>handlePromote(slot)} disabled={promoting} style={{
-                    padding:'12px 16px',border:`2px solid ${col.border}`,
-                    borderRadius:8,fontSize:13,fontWeight:600,cursor:'pointer',
-                    background:col.bg,color:col.text,textAlign:'left',
-                    display:'flex',justifyContent:'space-between',alignItems:'center',
-                  }}>
-                    <span>{slot==='TEMP'?'⏳ Temporal':`📋 Slot ${slot}`}</span>
-                    <span style={{fontSize:11,fontWeight:400,color:'#6B8BB0'}}>{count} periodos</span>
-                  </button>
-                )
-              })}
-              {slotsStatus.TEMP === 0 && slotsStatus.A === 0 && slotsStatus.B === 0 && (
-                <p style={{fontSize:13,color:'#6B8BB0',textAlign:'center'}}>No hay planificaciones guardadas</p>
-              )}
+            <span className="text-[11px] text-neutral-500">
+              {maxPeriodo===6 ? 'P7 libre — solo para ajuste manual posterior' : 'P7 disponible para completar materias sin espacio'}
+            </span>
+          </div>
+
+          <div className="flex flex-col gap-1.5">
+            <label className="text-[11px] font-bold text-brand-700 uppercase tracking-wide">% base garantizado por materia — Fase 1</label>
+            <div className="flex gap-2">
+              {[60,70,80,90].map(v => (
+                <button
+                  key={v} onClick={()=>setPorcentajeBase(v)}
+                  className={`flex-1 py-2.5 rounded-lg text-[13px] font-semibold border-2 ${porcentajeBase===v ? 'border-[#8B1A7C] bg-[#8B1A7C] text-white' : 'border-neutral-300 bg-white text-brand-700'}`}
+                >
+                  {v}%
+                </button>
+              ))}
             </div>
-            <div style={{display:'flex',justifyContent:'flex-end',padding:'12px 20px',borderTop:'1px solid #CBE0F0'}}>
-              <button onClick={()=>setShowPromote(false)}
-                style={{padding:'8px 16px',background:'#fff',border:'1.5px solid #CBE0F0',borderRadius:8,fontSize:13,cursor:'pointer',color:'#1A3A7C'}}>
-                Cancelar
-              </button>
-            </div>
+            <span className="text-[11px] text-neutral-500">
+              Fase 1: {porcentajeBase}% equitativo para todas · Fase 2: {100-porcentajeBase}% restante priorizando más pendientes
+            </span>
+          </div>
+
+          <div className="bg-neutral-100 border border-neutral-300 rounded-lg px-3 py-2.5 text-xs text-neutral-500">
+            💡 El resultado se guardará en <strong>Temporal</strong>. Puedes guardarlo en Slot A o B después de revisarlo. El horario oficial publicado <strong>no se verá afectado</strong>.
           </div>
         </div>
-      )}
+      </Modal>
 
-      {/* Modal asignar periodo */}
-      {showModal && selCell && selCourse && (
-        <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,.45)',zIndex:500,display:'flex',alignItems:'center',justifyContent:'center',padding:16}}>
-          <div style={{background:'#fff',borderRadius:14,width:'100%',maxWidth:440,boxShadow:'0 20px 60px rgba(0,0,0,.2)'}}>
-            <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'16px 20px',borderBottom:'1px solid #CBE0F0'}}>
-              <div>
-                <h3 style={{fontSize:15,fontWeight:700,color:'#1A3A7C',margin:0}}>Asignar Periodo</h3>
-                <p style={{fontSize:12,color:'#6B8BB0',margin:'2px 0 0'}}>
-                  {GRADES[selCourse.grade]} &quot;{selCourse.parallel}&quot; · {DAYS[selCell.day]} · P{selCell.period}
-                </p>
-              </div>
-              <button onClick={()=>setShowModal(false)} style={{background:'none',border:'none',cursor:'pointer',color:'#6B8BB0'}}>
-                <X size={18}/>
-              </button>
-            </div>
-            <div style={{padding:20}}>
-              <label style={{fontSize:11,fontWeight:700,color:'#1A3A7C',textTransform:'uppercase',letterSpacing:'.5px',display:'block',marginBottom:8}}>
-                Materia / Maestro
-              </label>
-              <select value={selTsc} onChange={e=>setSelTsc(e.target.value)}
-                style={{width:'100%',padding:'10px 12px',border:'1.5px solid #CBE0F0',borderRadius:8,fontSize:13,color:'#1A3A7C',outline:'none'}}>
-                <option value="">-- Selecciona materia --</option>
-                {(tscs[selCourse.id] || []).map(t => (
-                  <option key={t.id} value={t.id}>
-                    {t.subject.name} — {t.teacher.lastName}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <div style={{display:'flex',justifyContent:'flex-end',gap:10,padding:'12px 20px',borderTop:'1px solid #CBE0F0'}}>
-              <button onClick={()=>setShowModal(false)}
-                style={{padding:'8px 16px',background:'#fff',border:'1.5px solid #CBE0F0',borderRadius:8,fontSize:13,cursor:'pointer',color:'#1A3A7C'}}>
-                Cancelar
-              </button>
-              <button onClick={handleAssign} disabled={!selTsc}
-                style={{display:'flex',alignItems:'center',gap:6,padding:'8px 18px',background:'#1A3A7C',color:'#fff',border:'none',borderRadius:8,fontSize:13,fontWeight:600,cursor:'pointer',opacity:!selTsc?0.5:1}}>
-                <Save size={13}/> Asignar
-              </button>
-            </div>
+      <Modal
+        open={showSaveModal} onClose={()=>setShowSaveModal(false)} title="💾 Guardar Planificación"
+        footer={<Button variant="secondary" onClick={()=>setShowSaveModal(false)}>Solo ver por ahora</Button>}
+      >
+        <div className="flex flex-col gap-3">
+          <p className="text-[13px] text-neutral-500 m-0">Guarda esta planificación en un slot para compararla con otras generaciones. Genera de nuevo y guarda en el otro slot para comparar.</p>
+          <div className="flex gap-2.5">
+            <button
+              onClick={()=>handleSaveSlot('A')} disabled={saving}
+              className="flex-1 py-3.5 px-3 rounded-lg text-[13px] font-bold flex flex-col items-center gap-1 border-2"
+              style={{ borderColor:SLOT_COLORS.A.border, background:SLOT_COLORS.A.bg, color:SLOT_COLORS.A.text }}
+            >
+              <span>📋 Slot A</span>
+              <span className="text-[10px] font-normal text-neutral-500">{slotsStatus.A > 0 ? `${slotsStatus.A} periodos (reemplazar)` : 'Vacío'}</span>
+            </button>
+            <button
+              onClick={()=>handleSaveSlot('B')} disabled={saving}
+              className="flex-1 py-3.5 px-3 rounded-lg text-[13px] font-bold flex flex-col items-center gap-1 border-2"
+              style={{ borderColor:SLOT_COLORS.B.border, background:SLOT_COLORS.B.bg, color:SLOT_COLORS.B.text }}
+            >
+              <span>📋 Slot B</span>
+              <span className="text-[10px] font-normal text-neutral-500">{slotsStatus.B > 0 ? `${slotsStatus.B} periodos (reemplazar)` : 'Vacío'}</span>
+            </button>
           </div>
         </div>
-      )}
+      </Modal>
 
-      <style>{`
-        .spinner{width:24px;height:24px;border:2px solid rgba(26,58,124,.2);border-top-color:#1A3A7C;border-radius:50%;animation:spin .7s linear infinite}
-        @keyframes spin{to{transform:rotate(360deg)}}
-      `}</style>
+      <Modal
+        open={showPromote} onClose={()=>setShowPromote(false)} title="✅ Promover a Horario Oficial"
+        footer={<Button variant="secondary" onClick={()=>setShowPromote(false)}>Cancelar</Button>}
+      >
+        <div className="flex flex-col gap-2.5">
+          <p className="text-xs text-neutral-500 -mt-2">¿Qué slot quieres promover?</p>
+          <div className="bg-danger-100 border border-danger-500/40 rounded-lg px-3 py-2.5 text-xs text-danger-600">
+            ⚠️ Esto reemplazará los borradores actuales del horario oficial. Se pedirá doble confirmación.
+          </div>
+          {(['TEMP','A','B'] as const).map(slot => {
+            const count = slotsStatus[slot]
+            const col   = SLOT_COLORS[slot]
+            if (count === 0) return null
+            return (
+              <button
+                key={slot} onClick={()=>handlePromote(slot)} disabled={promoting}
+                className="px-4 py-3 rounded-lg text-[13px] font-semibold text-left flex justify-between items-center border-2"
+                style={{ borderColor:col.border, background:col.bg, color:col.text }}
+              >
+                <span>{slot==='TEMP'?'⏳ Temporal':`📋 Slot ${slot}`}</span>
+                <span className="text-[11px] font-normal text-neutral-500">{count} periodos</span>
+              </button>
+            )
+          })}
+          {slotsStatus.TEMP === 0 && slotsStatus.A === 0 && slotsStatus.B === 0 && (
+            <p className="text-[13px] text-neutral-500 text-center">No hay planificaciones guardadas</p>
+          )}
+        </div>
+      </Modal>
+
+      <Modal
+        open={showModal && !!selCell && !!selCourse} onClose={()=>setShowModal(false)} title="Asignar Periodo"
+        footer={
+          <>
+            <Button variant="secondary" onClick={()=>setShowModal(false)}>Cancelar</Button>
+            <Button onClick={handleAssign} disabled={!selTsc}><Save size={13}/> Asignar</Button>
+          </>
+        }
+      >
+        {selCell && selCourse && (
+          <div className="flex flex-col gap-2">
+            <p className="text-xs text-neutral-500 -mt-2">{GRADES[selCourse.grade]} &quot;{selCourse.parallel}&quot; · {DAYS[selCell.day]} · P{selCell.period}</p>
+            <label className="text-[11px] font-bold text-brand-700 uppercase tracking-wide">Materia / Maestro</label>
+            <select
+              value={selTsc} onChange={e=>setSelTsc(e.target.value)}
+              className="w-full px-3 py-2.5 border border-neutral-300 rounded-lg text-[13px] text-brand-700 outline-none"
+            >
+              <option value="">-- Selecciona materia --</option>
+              {(tscs[selCourse.id] || []).map(t => (
+                <option key={t.id} value={t.id}>{t.subject.name} — {t.teacher.lastName}</option>
+              ))}
+            </select>
+          </div>
+        )}
+      </Modal>
     </div>
   )
 }

@@ -1,11 +1,18 @@
- 'use client'
+'use client'
 
 import { useEffect, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import {
   ArrowLeft, BookOpen, Plus, Trash2, Clock,
-  User, Save, X, GraduationCap, CheckCircle2, Search
+  User, Save, GraduationCap, CheckCircle2, Search
 } from 'lucide-react'
+import Card from '@/components/ui/Card'
+import Badge from '@/components/ui/Badge'
+import Button from '@/components/ui/Button'
+import Modal from '@/components/ui/Modal'
+import { Input } from '@/components/ui/Input'
+import { useConfirm } from '@/components/ui/ConfirmProvider'
+import { useToast } from '@/components/ui/ToastProvider'
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000'
 
@@ -45,19 +52,17 @@ const GRADE_ORDER: Record<string, number> = { PRIMERO:1, SEGUNDO:2, TERCERO:3, C
 const GRADES:  Record<string,string> = { PRIMERO:'1°', SEGUNDO:'2°', TERCERO:'3°', CUARTO:'4°', QUINTO:'5°', SEXTO:'6°' }
 const SHIFTS:  Record<string,string> = { MORNING:'Mañana', AFTERNOON:'Tarde', NIGHT:'Noche' }
 const LEVELS:  Record<string,string> = { INICIAL:'Inicial', PRIMARIA:'Primaria', SECUNDARIA:'Secundaria' }
-const CAMPO_COLORS: Record<string,string> = {
-  VIDA_TIERRA_TERRITORIO:'#E1F5EE', COMUNIDAD_SOCIEDAD:'#E0ECF8',
-  COSMOS_PENSAMIENTO:'#F3E8FF', CIENCIA_TECNOLOGIA_PRODUCCION:'#FFF3E0',
-}
-const CAMPO_TEXT: Record<string,string> = {
-  VIDA_TIERRA_TERRITORIO:'#0F6E56', COMUNIDAD_SOCIEDAD:'#1A3A7C',
-  COSMOS_PENSAMIENTO:'#6B21A8', CIENCIA_TECNOLOGIA_PRODUCCION:'#633806',
-}
 const CAMPO_LABELS: Record<string,string> = {
   VIDA_TIERRA_TERRITORIO:'Vida, Tierra y Territorio',
   COMUNIDAD_SOCIEDAD:'Comunidad y Sociedad',
   COSMOS_PENSAMIENTO:'Cosmos y Pensamiento',
   CIENCIA_TECNOLOGIA_PRODUCCION:'Ciencia, Tecnología y Producción',
+}
+const CAMPO_TONE: Record<string, 'success' | 'brand' | 'info' | 'warning' | 'neutral'> = {
+  VIDA_TIERRA_TERRITORIO:        'success',
+  COMUNIDAD_SOCIEDAD:            'brand',
+  COSMOS_PENSAMIENTO:            'info',
+  CIENCIA_TECNOLOGIA_PRODUCCION: 'warning',
 }
 const CAMPO_ICONS: Record<string,string> = {
   VIDA_TIERRA_TERRITORIO:'🌿', COMUNIDAD_SOCIEDAD:'🌐',
@@ -65,9 +70,11 @@ const CAMPO_ICONS: Record<string,string> = {
 }
 
 export default function TeacherDetailPage() {
-  const params = useParams()
-  const router = useRouter()
-  const id     = params.id as string
+  const params  = useParams()
+  const router  = useRouter()
+  const confirm = useConfirm()
+  const toast   = useToast()
+  const id      = params.id as string
 
   const [teacher,         setTeacher]         = useState<Teacher | null>(null)
   const [specialties,     setSpecialties]     = useState<Specialty[]>([])
@@ -81,8 +88,6 @@ export default function TeacherDetailPage() {
   const [courseSearch,    setCourseSearch]    = useState('')
   const [saving,          setSaving]          = useState(false)
   const [removing,        setRemoving]        = useState<number | null>(null)
-  const [success,         setSuccess]         = useState('')
-  const [error,           setError]           = useState('')
   const [attCode,         setAttCode]         = useState('')
   const [savingCode,      setSavingCode]      = useState(false)
   const [entryTime,       setEntryTime]       = useState('')
@@ -91,11 +96,6 @@ export default function TeacherDetailPage() {
   const [savingSchedule,  setSavingSchedule]  = useState(false)
 
   const token = typeof window !== 'undefined' ? localStorage.getItem('token') : ''
-
-  const notify = (msg: string, type: 'ok' | 'err' = 'ok') => {
-    if (type === 'ok') { setSuccess(msg); setTimeout(() => setSuccess(''), 3000) }
-    else               { setError(msg);   setTimeout(() => setError(''),   5000) }
-  }
 
   const fetchTeacher = async () => {
     setLoading(true)
@@ -109,8 +109,8 @@ export default function TeacherDetailPage() {
         setExitTime(data.exitTime || '')
         setToleranceMin(data.toleranceMin != null ? String(data.toleranceMin) : '10')
       }
-      else notify('Error al cargar maestro', 'err')
-    } catch { notify('Error de conexión', 'err') }
+      else toast('Error al cargar maestro', 'error')
+    } catch { toast('Error de conexión', 'error') }
     finally  { setLoading(false) }
   }
 
@@ -150,7 +150,7 @@ export default function TeacherDetailPage() {
 
   const handleSelectSubject = (subjectId: string) => {
     setSelectedSubject(subjectId)
-    setSelectedCourses([]) // limpiar selección de cursos al cambiar materia
+    setSelectedCourses([])
     fetchOccupied(subjectId)
   }
 
@@ -161,8 +161,23 @@ export default function TeacherDetailPage() {
     )
   }
 
+  const handleGenerateCode = async () => {
+    setSavingCode(true)
+    try {
+      const res  = await fetch(`${API_URL}/api/teachers/${id}/generate-attendance-code`, {
+        method: 'POST', headers: { Authorization: `Bearer ${token}` }
+      })
+      const data = await res.json()
+      if (!res.ok) { toast(data.message, 'error'); return }
+      setAttCode(data.teacher.attendanceCode)
+      setTeacher(prev => prev ? {...prev, attendanceCode: data.teacher.attendanceCode} : prev)
+      toast('Código generado correctamente', 'success')
+    } catch { toast('Error de conexión', 'error') }
+    finally { setSavingCode(false) }
+  }
+
   const handleSaveCode = async () => {
-    if (!attCode.trim()) { notify('Ingresa un código', 'err'); return }
+    if (!attCode.trim()) { toast('Ingresa un código', 'error'); return }
     setSavingCode(true)
     try {
       const res  = await fetch(`${API_URL}/api/teachers/${id}/attendance-code`, {
@@ -171,10 +186,10 @@ export default function TeacherDetailPage() {
         body:    JSON.stringify({ code: attCode.trim() })
       })
       const data = await res.json()
-      if (!res.ok) { notify(data.message, 'err'); return }
-      notify('Código asignado correctamente')
+      if (!res.ok) { toast(data.message, 'error'); return }
+      toast('Código asignado correctamente', 'success')
       setAttCode(data.teacher.attendanceCode)
-    } catch { notify('Error de conexión', 'err') }
+    } catch { toast('Error de conexión', 'error') }
     finally  { setSavingCode(false) }
   }
 
@@ -187,15 +202,15 @@ export default function TeacherDetailPage() {
         body:    JSON.stringify({ entryTime, exitTime, toleranceMin: parseInt(toleranceMin) })
       })
       const data = await res.json()
-      if (!res.ok) { notify(data.message, 'err'); return }
-      notify('Horario guardado correctamente')
-    } catch { notify('Error de conexión', 'err') }
+      if (!res.ok) { toast(data.message, 'error'); return }
+      toast('Horario guardado correctamente', 'success')
+    } catch { toast('Error de conexión', 'error') }
     finally  { setSavingSchedule(false) }
   }
 
   const handleAssign = async () => {
     if (selectedCourses.length === 0 || !selectedSubject) {
-      notify('Selecciona una materia y al menos un curso', 'err'); return
+      toast('Selecciona una materia y al menos un curso', 'error'); return
     }
     setSaving(true)
     try {
@@ -209,27 +224,26 @@ export default function TeacherDetailPage() {
         }),
       })
       const data = await res.json()
-      if (!res.ok) { notify(data.message, 'err'); return }
-      notify(data.message)
+      if (!res.ok) { toast(data.message, 'error'); return }
+      toast(data.message, 'success')
       setShowModal(false)
       fetchTeacher()
-    } catch { notify('Error de conexión', 'err') }
+    } catch { toast('Error de conexión', 'error') }
     finally  { setSaving(false) }
   }
 
   const handleRemove = async (assignmentId: number) => {
-    if (!confirm('¿Quitar esta asignación?')) return
+    if (!await confirm('¿Quitar esta asignación?', { danger: true })) return
     setRemoving(assignmentId)
     try {
       const res  = await fetch(`${API_URL}/api/subjects/assign/${assignmentId}`, { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } })
       const data = await res.json()
-      if (res.ok) { notify(data.message); fetchTeacher() }
-      else notify(data.message, 'err')
-    } catch { notify('Error al quitar asignación', 'err') }
+      if (res.ok) { toast(data.message, 'success'); fetchTeacher() }
+      else toast(data.message, 'error')
+    } catch { toast('Error al quitar asignación', 'error') }
     finally  { setRemoving(null) }
   }
 
-  // Agrupar y ORDENAR por grado → paralelo
   const groupByCourse = (assignments: Assignment[]) => {
     const map: Record<number, { course: Assignment['course']; items: Assignment[] }> = {}
     for (const a of assignments) {
@@ -243,8 +257,8 @@ export default function TeacherDetailPage() {
     })
   }
 
-  if (loading) return <div className="center"><div className="spinner"/></div>
-  if (!teacher) return <div className="center"><p>Maestro no encontrado</p></div>
+  if (loading) return <div className="flex justify-center py-16"><p className="text-sm text-neutral-500">Cargando...</p></div>
+  if (!teacher) return <div className="flex justify-center py-16"><p className="text-sm text-neutral-500">Maestro no encontrado</p></div>
 
   const grouped       = groupByCourse(teacher.assignments)
   const totalMaterias = teacher.assignments.length
@@ -270,372 +284,249 @@ export default function TeacherDetailPage() {
 
   return (
     <div>
-      <div className="page-header">
-        <button className="back-btn" onClick={() => router.back()}><ArrowLeft size={16}/> Volver</button>
-        <div style={{flex:1}}>
-          <h1>{teacher.lastName} {teacher.firstName}</h1>
-          <p className="sub">{teacher.specialty || 'Sin especialidad registrada'}</p>
+      <div className="flex items-start gap-4 mb-5 flex-wrap">
+        <button onClick={() => router.back()} className="flex items-center gap-1.5 text-neutral-500 hover:text-brand-700 text-[13px] py-1.5 shrink-0">
+          <ArrowLeft size={16}/> Volver
+        </button>
+        <div className="flex-1 min-w-[200px]">
+          <h1 className="text-xl font-bold text-brand-700 mb-1">{teacher.lastName} {teacher.firstName}</h1>
+          <p className="text-[13px] text-neutral-500">{teacher.specialty || 'Sin especialidad registrada'}</p>
         </div>
-        <button className="btn-primary" onClick={openModal}><Plus size={15}/> Agregar asignación</button>
+        <Button onClick={openModal}><Plus size={15}/> Agregar asignación</Button>
       </div>
 
-      {success && <div className="alert ok">{success}</div>}
-      {error   && <div className="alert err">{error}</div>}
-
       {/* Info */}
-      <div className="info-card">
-        <div className="info-row"><User size={15} className="info-icon"/><span className="info-label">CI:</span><span className="info-val">{teacher.ci || '—'}</span></div>
-        <div className="info-row"><span className="info-label">Teléfono:</span><span className="info-val">{teacher.phone || '—'}</span></div>
-        <div className="info-row"><span className="info-label">Email:</span><span className="info-val">{teacher.user?.email || teacher.email || '—'}</span></div>
-        <div className="info-row">
-          <Clock size={15} className="info-icon"/>
-          <span className="info-label">Carga hrs/mes:</span>
-          <span className="info-val">{teacher.hoursLoad ? <span className="hrs-badge">{teacher.hoursLoad} hrs</span> : '—'}</span>
+      <Card className="flex flex-wrap gap-x-6 gap-y-2.5 mb-5">
+        <div className="flex items-center gap-1.5 text-[13px]"><User size={15} className="text-info-500"/><span className="text-neutral-500 font-medium">CI:</span><span className="text-brand-700">{teacher.ci || '—'}</span></div>
+        <div className="flex items-center gap-1.5 text-[13px]"><span className="text-neutral-500 font-medium">Teléfono:</span><span className="text-brand-700">{teacher.phone || '—'}</span></div>
+        <div className="flex items-center gap-1.5 text-[13px]"><span className="text-neutral-500 font-medium">Email:</span><span className="text-brand-700">{teacher.user?.email || teacher.email || '—'}</span></div>
+        <div className="flex items-center gap-1.5 text-[13px]">
+          <Clock size={15} className="text-info-500"/>
+          <span className="text-neutral-500 font-medium">Carga hrs/mes:</span>
+          <span className="text-brand-700">{teacher.hoursLoad ? <Badge tone="warning">{teacher.hoursLoad} hrs</Badge> : '—'}</span>
         </div>
-        <div className="info-row">
-          <GraduationCap size={15} className="info-icon"/>
-          <span className="info-label">Asignaciones:</span>
-          <span className="info-val"><strong>{grouped.length}</strong> cursos · <strong>{totalMaterias}</strong> materias</span>
+        <div className="flex items-center gap-1.5 text-[13px]">
+          <GraduationCap size={15} className="text-info-500"/>
+          <span className="text-neutral-500 font-medium">Asignaciones:</span>
+          <span className="text-brand-700"><strong>{grouped.length}</strong> cursos · <strong>{totalMaterias}</strong> materias</span>
         </div>
 
         {/* Código de asistencia */}
-        <div className="info-row" style={{width:'100%',marginTop:8,paddingTop:8,borderTop:'1px solid #F0F6FC'}}>
-          <span className="info-label">Código de Asistencia:</span>
-          <div style={{display:'flex',alignItems:'center',gap:8,flex:1,flexWrap:'wrap'}}>
+        <div className="flex items-center gap-1.5 text-[13px] w-full mt-2 pt-2 border-t border-neutral-100">
+          <span className="text-neutral-500 font-medium">Código de Asistencia:</span>
+          <div className="flex items-center gap-2 flex-1 flex-wrap">
             <input
               type="text"
               value={attCode}
               onChange={e=>setAttCode(e.target.value.toUpperCase())}
               placeholder="Ej: ZF4706"
               maxLength={10}
-              style={{
-                padding:'6px 10px',border:'1.5px solid #CBE0F0',borderRadius:7,
-                fontSize:13,color:'#1A3A7C',outline:'none',width:120,
-                fontWeight:700,letterSpacing:2,textAlign:'center'
-              }}
+              className="px-2.5 py-1.5 border border-neutral-300 rounded-md text-[13px] text-brand-700 outline-none w-[120px] font-bold tracking-[2px] text-center"
             />
-            <button
-              onClick={async () => {
-                setSavingCode(true)
-                try {
-                  const res  = await fetch(`${API_URL}/api/teachers/${id}/generate-attendance-code`, {
-                    method: 'POST', headers: { Authorization: `Bearer ${token}` }
-                  })
-                  const data = await res.json()
-                  if (!res.ok) { notify(data.message, 'err'); return }
-                  setAttCode(data.teacher.attendanceCode)
-                  setTeacher(prev => prev ? {...prev, attendanceCode: data.teacher.attendanceCode} : prev)
-                  notify('Código generado correctamente')
-                } catch { notify('Error de conexión', 'err') }
-                finally { setSavingCode(false) }
-              }}
-              disabled={savingCode}
-              style={{
-                display:'flex',alignItems:'center',gap:5,padding:'6px 12px',
-                background:'#0F6E56',color:'#fff',border:'none',borderRadius:7,
-                fontSize:12,cursor:'pointer',opacity:savingCode?0.6:1,whiteSpace:'nowrap'
-              }}>
-              🔄 Generar
-            </button>
-            <button
-              onClick={handleSaveCode}
-              disabled={savingCode}
-              style={{
-                display:'flex',alignItems:'center',gap:5,padding:'6px 12px',
-                background:'#1A3A7C',color:'#fff',border:'none',borderRadius:7,
-                fontSize:12,cursor:'pointer',opacity:savingCode?0.6:1
-              }}>
-              <Save size={12}/> {savingCode?'Guardando...':'Guardar'}
-            </button>
-            {teacher.attendanceCode && (
-              <span style={{fontSize:11,color:'#0F6E56',background:'#E1F5EE',padding:'2px 8px',borderRadius:20,fontWeight:600}}>
-                ✅ Activo: {teacher.attendanceCode}
-              </span>
-            )}
+            <Button variant="secondary" size="sm" onClick={handleGenerateCode} disabled={savingCode}>🔄 Generar</Button>
+            <Button size="sm" onClick={handleSaveCode} disabled={savingCode} loading={savingCode}>
+              {!savingCode && <Save size={12}/>} {savingCode ? 'Guardando...' : 'Guardar'}
+            </Button>
+            {teacher.attendanceCode && <Badge tone="success">✅ Activo: {teacher.attendanceCode}</Badge>}
           </div>
         </div>
 
         {/* Horario personal */}
-        <div className="info-row" style={{width:'100%',marginTop:8,paddingTop:8,borderTop:'1px solid #F0F6FC'}}>
-          <span className="info-label">Horario personal:</span>
-          <div style={{display:'flex',alignItems:'center',gap:12,flex:1,flexWrap:'wrap'}}>
-            <div style={{display:'flex',alignItems:'center',gap:6}}>
-              <span style={{fontSize:11,color:'#6B8BB0',fontWeight:600}}>Entrada:</span>
-              <input type="time" value={entryTime}
-                onChange={e=>setEntryTime(e.target.value)}
-                style={{padding:'5px 8px',border:'1.5px solid #CBE0F0',borderRadius:7,fontSize:13,color:'#1A3A7C',outline:'none'}}/>
+        <div className="flex items-center gap-1.5 text-[13px] w-full mt-2 pt-2 border-t border-neutral-100">
+          <span className="text-neutral-500 font-medium">Horario personal:</span>
+          <div className="flex items-center gap-3 flex-1 flex-wrap">
+            <div className="flex items-center gap-1.5">
+              <span className="text-[11px] text-neutral-500 font-semibold">Entrada:</span>
+              <input type="time" value={entryTime} onChange={e=>setEntryTime(e.target.value)}
+                className="px-2 py-1 border border-neutral-300 rounded-md text-[13px] text-brand-700 outline-none"/>
             </div>
-            <div style={{display:'flex',alignItems:'center',gap:6}}>
-              <span style={{fontSize:11,color:'#6B8BB0',fontWeight:600}}>Salida:</span>
-              <input type="time" value={exitTime}
-                onChange={e=>setExitTime(e.target.value)}
-                style={{padding:'5px 8px',border:'1.5px solid #CBE0F0',borderRadius:7,fontSize:13,color:'#1A3A7C',outline:'none'}}/>
+            <div className="flex items-center gap-1.5">
+              <span className="text-[11px] text-neutral-500 font-semibold">Salida:</span>
+              <input type="time" value={exitTime} onChange={e=>setExitTime(e.target.value)}
+                className="px-2 py-1 border border-neutral-300 rounded-md text-[13px] text-brand-700 outline-none"/>
             </div>
-            <div style={{display:'flex',alignItems:'center',gap:6}}>
-              <span style={{fontSize:11,color:'#6B8BB0',fontWeight:600}}>Tolerancia:</span>
-              <input type="number" min={0} max={30} value={toleranceMin}
-                onChange={e=>setToleranceMin(e.target.value)}
-                style={{padding:'5px 8px',border:'1.5px solid #CBE0F0',borderRadius:7,fontSize:13,color:'#1A3A7C',outline:'none',width:60}}/>
-              <span style={{fontSize:11,color:'#6B8BB0'}}>min</span>
+            <div className="flex items-center gap-1.5">
+              <span className="text-[11px] text-neutral-500 font-semibold">Tolerancia:</span>
+              <input type="number" min={0} max={30} value={toleranceMin} onChange={e=>setToleranceMin(e.target.value)}
+                className="px-2 py-1 border border-neutral-300 rounded-md text-[13px] text-brand-700 outline-none w-[60px]"/>
+              <span className="text-[11px] text-neutral-500">min</span>
             </div>
-            <button
-              onClick={handleSaveSchedule}
-              disabled={savingSchedule}
-              style={{
-                display:'flex',alignItems:'center',gap:5,padding:'6px 12px',
-                background:'#633806',color:'#fff',border:'none',borderRadius:7,
-                fontSize:12,cursor:'pointer',opacity:savingSchedule?0.6:1,whiteSpace:'nowrap'
-              }}>
-              <Save size={12}/> {savingSchedule?'Guardando...':'Guardar horario'}
-            </button>
+            <Button size="sm" onClick={handleSaveSchedule} disabled={savingSchedule} loading={savingSchedule} className="!bg-warning-500 !border-warning-500">
+              {!savingSchedule && <Save size={12}/>} {savingSchedule ? 'Guardando...' : 'Guardar horario'}
+            </Button>
             {teacher.entryTime && (
-              <span style={{fontSize:11,color:'#633806',background:'#FDF0E6',padding:'2px 8px',borderRadius:20,fontWeight:600}}>
-                🕐 {teacher.entryTime} — {teacher.exitTime||'—'} · {teacher.toleranceMin??10}min tolerancia
-              </span>
+              <Badge tone="warning">🕐 {teacher.entryTime} — {teacher.exitTime||'—'} · {teacher.toleranceMin??10}min tolerancia</Badge>
             )}
           </div>
         </div>
+      </Card>
+
+      <div className="flex items-center gap-2 text-sm font-bold text-brand-700 mb-3 uppercase tracking-wide">
+        <BookOpen size={16}/> Cursos y materias asignadas
       </div>
 
-      {/* Asignaciones — ordenadas por grado → paralelo */}
-      <div className="section-title"><BookOpen size={16}/> Cursos y materias asignadas</div>
-
       {grouped.length === 0 ? (
-        <div className="empty-state">
-          <BookOpen size={32} style={{opacity:.3}}/>
+        <div className="text-center py-12 text-neutral-500 flex flex-col items-center gap-3 bg-white border border-dashed border-neutral-300 rounded-xl">
+          <BookOpen size={32} className="opacity-30"/>
           <p>Este maestro no tiene asignaciones aún.</p>
-          <button className="btn-primary" onClick={openModal}><Plus size={14}/> Agregar primera asignación</button>
+          <Button onClick={openModal}><Plus size={14}/> Agregar primera asignación</Button>
         </div>
       ) : (
         grouped.map(({ course, items }) => (
-          <div key={course.id} className="course-card">
-            <div className="course-header">
-              <div className="course-title-row">
+          <Card key={course.id} padded={false} className="overflow-hidden mb-3">
+            <div className="flex items-center justify-between px-4 py-3 bg-neutral-100 border-b border-neutral-300/60 flex-wrap gap-2">
+              <div className="flex items-center gap-2 font-bold text-brand-700 text-sm flex-wrap">
                 <GraduationCap size={16}/>
                 <span>{GRADES[course.grade]} &quot;{course.parallel}&quot;</span>
-                <span className="course-badge">{SHIFTS[course.shift]}</span>
-                <span className="course-badge level">{LEVELS[course.level]}</span>
-                {course.educationType === 'BTH' && <span className="course-badge bth">BTH</span>}
+                <Badge tone="brand">{SHIFTS[course.shift]}</Badge>
+                <Badge tone="success">{LEVELS[course.level]}</Badge>
+                {course.educationType === 'BTH' && <Badge tone="warning">BTH</Badge>}
               </div>
-              <span className="course-count">{items.length} materia{items.length !== 1 ? 's' : ''}</span>
+              <span className="text-xs text-neutral-500">{items.length} materia{items.length !== 1 ? 's' : ''}</span>
             </div>
-            <div className="subject-list">
+            <div className="flex flex-col">
               {items.map(a => (
-                <div key={a.id} className="subject-row">
-                  <div className="subject-info">
-                    <span className="campo-dot" style={{ background: CAMPO_COLORS[a.subject.campo||'']||'#F0F0F0', color: CAMPO_TEXT[a.subject.campo||'']||'#444' }}>
-                      {CAMPO_LABELS[a.subject.campo||'']||'Sin campo'}
-                    </span>
-                    <span className="subject-name">{a.subject.name}</span>
+                <div key={a.id} className="flex items-center justify-between px-4 py-2.5 border-t border-neutral-100 hover:bg-neutral-100/40">
+                  <div className="flex items-center gap-2.5">
+                    <Badge tone={CAMPO_TONE[a.subject.campo||''] || 'neutral'}>{CAMPO_LABELS[a.subject.campo||'']||'Sin campo'}</Badge>
+                    <span className="text-[13px] font-medium text-brand-700">{a.subject.name}</span>
                   </div>
-                  <button className="btn-remove" onClick={() => handleRemove(a.id)} disabled={removing === a.id} title="Quitar asignación">
-                    {removing === a.id ? <span className="spinsm"/> : <Trash2 size={13}/>}
+                  <button
+                    onClick={() => handleRemove(a.id)} disabled={removing === a.id} title="Quitar asignación"
+                    className="w-7 h-7 rounded-md bg-danger-100 text-danger-600 flex items-center justify-center shrink-0 hover:opacity-75 disabled:opacity-40 transition-opacity"
+                  >
+                    <Trash2 size={13}/>
                   </button>
                 </div>
               ))}
             </div>
-          </div>
+          </Card>
         ))
       )}
 
-      {/* Modal — asignación múltiple */}
-      {showModal && (
-        <div className="overlay" onClick={() => setShowModal(false)}>
-          <div className="modal" onClick={e => e.stopPropagation()}>
-            <div className="mhead">
-              <div>
-                <h2>Agregar asignación</h2>
-                <p className="mhead-sub">{teacher.lastName} {teacher.firstName}</p>
-              </div>
-              <button onClick={() => setShowModal(false)}><X size={18}/></button>
-            </div>
-            <div className="mbody">
-              <div className="fg">
-                <label>Materia *</label>
-                {specialties.length === 0 ? (
-                  <div className="warn-box">⚠️ Este maestro no tiene materias como especialidad. Agrégalas primero.</div>
-                ) : (
-                  <>
-                    <div className="search-wrap">
-                      <Search size={13} className="s-icon"/>
-                      <input type="text" placeholder="Buscar materia..." value={subjectSearch}
-                        onChange={e => setSubjectSearch(e.target.value)}/>
-                    </div>
-                    <div className="option-list">
-                      {filteredSpecialties.length === 0 ? (
-                        <div className="no-options">No se encontraron materias</div>
-                      ) : (
-                        filteredSpecialties.map(sp => {
-                          const campo = sp.subject.campo
-                          const sel   = selectedSubject === String(sp.subject.id)
-                          return (
-                            <label key={sp.subject.id} className={`option-item ${sel ? 'selected' : ''}`}>
-                              <input type="radio" name="subject" value={sp.subject.id}
-                                checked={sel} onChange={() => handleSelectSubject(String(sp.subject.id))}/>
-                              <div className="option-info">
-                                <span className="option-name">{sp.subject.name}</span>
-                                {campo && (
-                                  <span className="option-tag" style={{ background: CAMPO_COLORS[campo]||'#F0F0F0', color: CAMPO_TEXT[campo]||'#444' }}>
-                                    {CAMPO_ICONS[campo]||'📌'} {CAMPO_LABELS[campo]||campo}
-                                  </span>
-                                )}
-                              </div>
-                            </label>
-                          )
-                        })
-                      )}
-                    </div>
-                  </>
-                )}
-              </div>
+      <Modal
+        open={showModal} onClose={() => setShowModal(false)} title="Agregar asignación"
+        maxWidth={480}
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setShowModal(false)}>Cancelar</Button>
+            <Button onClick={handleAssign} disabled={saving || selectedCourses.length === 0 || !selectedSubject} loading={saving}>
+              {!saving && <Save size={14}/>} {saving ? 'Guardando...' : `Asignar (${selectedCourses.length})`}
+            </Button>
+          </>
+        }
+      >
+        <div className="flex flex-col gap-3.5">
+          <p className="text-xs text-neutral-500 -mt-1">{teacher.lastName} {teacher.firstName}</p>
 
-              <div className="fg">
-                <label>
-                  Cursos * {selectedCourses.length > 0 && <span style={{color:'#0F6E56',fontWeight:700}}>({selectedCourses.length} seleccionados)</span>}
-                </label>
-                <div className="search-wrap">
-                  <Search size={13} className="s-icon"/>
-                  <input type="text" placeholder="Buscar curso..." value={courseSearch}
-                    onChange={e => setCourseSearch(e.target.value)} disabled={!selectedSubject}/>
+          <div>
+            <label className="text-[11px] font-semibold text-brand-700 uppercase tracking-wide block mb-1.5">Materia *</label>
+            {specialties.length === 0 ? (
+              <div className="bg-warning-100 border border-warning-500 rounded-lg px-3.5 py-2.5 text-[13px] text-[#7A6000] leading-relaxed">
+                ⚠️ Este maestro no tiene materias como especialidad. Agrégalas primero.
+              </div>
+            ) : (
+              <>
+                <div className="relative mb-1.5">
+                  <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-info-500 pointer-events-none"/>
+                  <input
+                    type="text" placeholder="Buscar materia..." value={subjectSearch}
+                    onChange={e => setSubjectSearch(e.target.value)}
+                    className="w-full pl-8 pr-2.5 py-2 border border-neutral-300 rounded-lg text-[13px] text-brand-700 outline-none"
+                  />
                 </div>
-                <div className={`option-list ${!selectedSubject ? 'disabled' : ''}`}>
-                  {!selectedSubject ? (
-                    <div className="no-options">Selecciona primero una materia</div>
-                  ) : filteredCourses.length === 0 ? (
-                    <div className="no-options">No se encontraron cursos</div>
+                <div className="border border-neutral-300 rounded-lg max-h-[200px] overflow-y-auto">
+                  {filteredSpecialties.length === 0 ? (
+                    <div className="p-3 text-center text-xs text-neutral-500 italic">No se encontraron materias</div>
                   ) : (
-                    filteredCourses.map(c => {
-                      const sel        = selectedCourses.includes(c.id)
-                      const occupiedBy = getOccupiedBy(c.id)
-                      const blocked    = !!occupiedBy
+                    filteredSpecialties.map(sp => {
+                      const campo = sp.subject.campo
+                      const sel   = selectedSubject === String(sp.subject.id)
                       return (
-                        <label key={c.id} className={`option-item ${sel ? 'selected' : ''} ${blocked ? 'blocked' : ''}`}>
-                          <input type="checkbox" value={c.id}
-                            checked={sel}
-                            disabled={blocked}
-                            onChange={() => toggleCourse(c.id, blocked)}/>
-                          <div className="option-info">
-                            <span className="option-name">
-                              {GRADES[c.grade]} &quot;{c.parallel}&quot; · {SHIFTS[c.shift]}
-                            </span>
-                            <span className="option-sub">
-                              {LEVELS[c.level]}{c.educationType === 'BTH' ? ' · BTH' : ''}
-                              {blocked && (
-                                <span style={{color:'#C0392B',fontWeight:600}}>
-                                  {' '}· Ya asignado a {occupiedBy!.teacher.lastName} {occupiedBy!.teacher.firstName}
-                                </span>
-                              )}
-                            </span>
+                        <label
+                          key={sp.subject.id}
+                          className={`flex items-center gap-2 px-2.5 py-1.5 cursor-pointer border-b border-neutral-100 last:border-b-0 transition-colors ${sel ? 'bg-brand-100 border-l-2 border-l-brand-700' : 'hover:bg-neutral-100/60'}`}
+                        >
+                          <input type="radio" name="subject" value={sp.subject.id}
+                            checked={sel} onChange={() => handleSelectSubject(String(sp.subject.id))}
+                            className="shrink-0 w-3.5 h-3.5 accent-[var(--color-brand-700)]"/>
+                          <div className="flex-1 flex flex-col gap-0.5">
+                            <span className="text-xs font-medium text-brand-700">{sp.subject.name}</span>
+                            {campo && <Badge tone={CAMPO_TONE[campo] || 'neutral'}>{CAMPO_ICONS[campo]||'📌'} {CAMPO_LABELS[campo]||campo}</Badge>}
                           </div>
                         </label>
                       )
                     })
                   )}
                 </div>
-              </div>
+              </>
+            )}
+          </div>
 
-              {previewCourses.length > 0 && previewSubject && (
-                <div className="preview-box">
-                  <CheckCircle2 size={14} color="#0F6E56"/>
-                  <span>
-                    <strong>{teacher.firstName}</strong> enseñará <strong>{previewSubject.subject.name}</strong> en{' '}
-                    {previewCourses.map((c, i) => (
-                      <strong key={c.id}>
-                        {GRADES[c.grade]} &quot;{c.parallel}&quot; {SHIFTS[c.shift]}{i < previewCourses.length - 1 ? ', ' : ''}
-                      </strong>
-                    ))}
-                  </span>
-                </div>
+          <div>
+            <label className="text-[11px] font-semibold text-brand-700 uppercase tracking-wide block mb-1.5">
+              Cursos * {selectedCourses.length > 0 && <span className="text-success-700 font-bold">({selectedCourses.length} seleccionados)</span>}
+            </label>
+            <div className="relative mb-1.5">
+              <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-info-500 pointer-events-none"/>
+              <input
+                type="text" placeholder="Buscar curso..." value={courseSearch}
+                onChange={e => setCourseSearch(e.target.value)} disabled={!selectedSubject}
+                className="w-full pl-8 pr-2.5 py-2 border border-neutral-300 rounded-lg text-[13px] text-brand-700 outline-none disabled:opacity-50 disabled:bg-neutral-100"
+              />
+            </div>
+            <div className={`border border-neutral-300 rounded-lg max-h-[200px] overflow-y-auto ${!selectedSubject ? 'opacity-50 pointer-events-none' : ''}`}>
+              {!selectedSubject ? (
+                <div className="p-3 text-center text-xs text-neutral-500 italic">Selecciona primero una materia</div>
+              ) : filteredCourses.length === 0 ? (
+                <div className="p-3 text-center text-xs text-neutral-500 italic">No se encontraron cursos</div>
+              ) : (
+                filteredCourses.map(c => {
+                  const sel        = selectedCourses.includes(c.id)
+                  const occupiedBy = getOccupiedBy(c.id)
+                  const blocked    = !!occupiedBy
+                  return (
+                    <label
+                      key={c.id}
+                      className={`flex items-center gap-2 px-2.5 py-1.5 border-b border-neutral-100 last:border-b-0 transition-colors ${
+                        blocked ? 'cursor-not-allowed opacity-55 bg-danger-100/40' :
+                        sel     ? 'cursor-pointer bg-brand-100 border-l-2 border-l-brand-700' :
+                                  'cursor-pointer hover:bg-neutral-100/60'
+                      }`}
+                    >
+                      <input type="checkbox" value={c.id}
+                        checked={sel} disabled={blocked}
+                        onChange={() => toggleCourse(c.id, blocked)}
+                        className="shrink-0 w-3.5 h-3.5 accent-[var(--color-brand-700)]"/>
+                      <div className="flex-1 flex flex-col gap-0.5">
+                        <span className="text-xs font-medium text-brand-700">{GRADES[c.grade]} &quot;{c.parallel}&quot; · {SHIFTS[c.shift]}</span>
+                        <span className="text-[11px] text-neutral-500">
+                          {LEVELS[c.level]}{c.educationType === 'BTH' ? ' · BTH' : ''}
+                          {blocked && <span className="text-danger-600 font-semibold"> · Ya asignado a {occupiedBy!.teacher.lastName} {occupiedBy!.teacher.firstName}</span>}
+                        </span>
+                      </div>
+                    </label>
+                  )
+                })
               )}
             </div>
-            <div className="mfoot">
-              <button className="btn-outline" onClick={() => setShowModal(false)}>Cancelar</button>
-              <button className="btn-primary" onClick={handleAssign} disabled={saving || selectedCourses.length === 0 || !selectedSubject}>
-                {saving ? <span className="spinsm"/> : <Save size={14}/>}
-                {saving ? 'Guardando...' : `Asignar (${selectedCourses.length})`}
-              </button>
-            </div>
           </div>
-        </div>
-      )}
 
-      <style>{`
-        .center{display:flex;justify-content:center;align-items:center;padding:48px;color:#6B8BB0;flex-direction:column;gap:12px}
-        .page-header{display:flex;align-items:flex-start;gap:16px;margin-bottom:20px;flex-wrap:wrap}
-        .page-header h1{font-size:20px;font-weight:700;color:#1A3A7C;margin:0 0 4px}
-        .sub{font-size:13px;color:#6B8BB0;margin:0}
-        .back-btn{display:flex;align-items:center;gap:6px;background:none;border:none;cursor:pointer;color:#6B8BB0;font-size:13px;padding:6px 0;white-space:nowrap}
-        .back-btn:hover{color:#1A3A7C}
-        .btn-primary{display:flex;align-items:center;gap:6px;padding:9px 16px;background:#1A3A7C;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:500;cursor:pointer;white-space:nowrap}
-        .btn-primary:hover:not(:disabled){background:#4A9FD4}
-        .btn-primary:disabled{opacity:.6;cursor:not-allowed}
-        .btn-outline{display:flex;align-items:center;gap:6px;padding:9px 14px;background:#fff;color:#1A3A7C;border:1.5px solid #CBE0F0;border-radius:8px;font-size:13px;cursor:pointer}
-        .btn-outline:hover{background:#F0F6FC}
-        .alert{padding:10px 14px;border-radius:8px;font-size:13px;margin-bottom:14px}
-        .alert.ok{background:#E1F5EE;border:1px solid #9FE1CB;color:#0F6E56}
-        .alert.err{background:#FFF0F0;border:1px solid #FFBBBB;color:#C0392B}
-        .info-card{background:#fff;border:1px solid #CBE0F0;border-radius:12px;padding:16px 20px;margin-bottom:20px;display:flex;flex-wrap:wrap;gap:10px 24px}
-        .info-row{display:flex;align-items:center;gap:6px;font-size:13px}
-        .info-icon{color:#4A9FD4;flex-shrink:0}
-        .info-label{color:#6B8BB0;font-weight:500}
-        .info-val{color:#1A3A7C}
-        .hrs-badge{background:#FFFBEA;color:#BA7517;border:1px solid #F5C518;padding:2px 8px;border-radius:20px;font-size:11px;font-weight:500}
-        .section-title{display:flex;align-items:center;gap:8px;font-size:14px;font-weight:700;color:#1A3A7C;margin-bottom:12px;text-transform:uppercase;letter-spacing:.5px}
-        .empty-state{text-align:center;padding:48px;color:#6B8BB0;display:flex;flex-direction:column;align-items:center;gap:12px;background:#fff;border:1px dashed #CBE0F0;border-radius:12px}
-        .course-card{background:#fff;border:1px solid #CBE0F0;border-radius:12px;overflow:hidden;margin-bottom:12px}
-        .course-header{display:flex;align-items:center;justify-content:space-between;padding:12px 16px;background:#F0F6FC;border-bottom:1px solid #CBE0F0}
-        .course-title-row{display:flex;align-items:center;gap:8px;font-weight:700;color:#1A3A7C;font-size:14px}
-        .course-badge{padding:2px 8px;border-radius:20px;font-size:11px;font-weight:500;background:#E0ECF8;color:#1A3A7C}
-        .course-badge.level{background:#E1F5EE;color:#0F6E56}
-        .course-badge.bth{background:#FFFBEA;color:#BA7517}
-        .course-count{font-size:12px;color:#6B8BB0}
-        .subject-list{display:flex;flex-direction:column}
-        .subject-row{display:flex;align-items:center;justify-content:space-between;padding:10px 16px;border-top:1px solid #F0F6FC}
-        .subject-row:hover{background:#FAFCFF}
-        .subject-info{display:flex;align-items:center;gap:10px}
-        .campo-dot{padding:2px 8px;border-radius:20px;font-size:11px;font-weight:500;white-space:nowrap}
-        .subject-name{font-size:13px;color:#1A3A7C;font-weight:500}
-        .btn-remove{width:28px;height:28px;border:none;border-radius:6px;background:#FFF0F0;color:#C0392B;cursor:pointer;display:flex;align-items:center;justify-content:center;flex-shrink:0}
-        .btn-remove:hover:not(:disabled){opacity:.75}
-        .btn-remove:disabled{opacity:.5;cursor:not-allowed}
-        .overlay{position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:500;display:flex;align-items:center;justify-content:center;padding:16px}
-        .modal{background:#fff;border-radius:14px;width:100%;max-width:460px;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,0.15);max-height:90vh;display:flex;flex-direction:column}
-        .mhead{display:flex;align-items:flex-start;justify-content:space-between;padding:18px 20px;border-bottom:1px solid #CBE0F0;gap:12px;flex-shrink:0}
-        .mhead h2{font-size:16px;font-weight:600;color:#1A3A7C;margin:0}
-        .mhead-sub{font-size:12px;color:#6B8BB0;margin:2px 0 0}
-        .mhead button{background:none;border:none;cursor:pointer;color:#6B8BB0;display:flex;padding:4px;border-radius:6px;flex-shrink:0}
-        .mhead button:hover{background:#F0F6FC;color:#1A3A7C}
-        .mbody{padding:20px;display:flex;flex-direction:column;gap:14px;overflow-y:auto;flex:1}
-        .mfoot{display:flex;justify-content:flex-end;gap:10px;padding:16px 20px;border-top:1px solid #CBE0F0;flex-shrink:0}
-        .fg{display:flex;flex-direction:column;gap:6px}
-        .fg label{font-size:11px;font-weight:600;color:#1A3A7C;text-transform:uppercase;letter-spacing:.5px}
-        .search-wrap{position:relative}
-        .s-icon{position:absolute;left:10px;top:50%;transform:translateY(-50%);color:#4A9FD4;pointer-events:none}
-        .search-wrap input{padding:8px 10px 8px 30px;border:1.5px solid #CBE0F0;border-radius:8px;font-size:13px;color:#1A3A7C;outline:none;width:100%}
-        .search-wrap input:focus{border-color:#4A9FD4;box-shadow:0 0 0 3px rgba(74,159,212,.12)}
-        .search-wrap input:disabled{opacity:.5;cursor:not-allowed;background:#F8FBFF}
-        .option-list{border:1.5px solid #CBE0F0;border-radius:8px;max-height:200px;overflow-y:auto}
-        .option-list.disabled{opacity:.5;pointer-events:none}
-        .option-item{display:flex;align-items:center;gap:8px;padding:7px 10px;cursor:pointer;border-bottom:1px solid #F0F6FC;transition:background .12s}
-        .option-item:last-child{border-bottom:none}
-        .option-item:hover{background:#F8FBFF}
-        .option-item.selected{background:#E8F0FB;border-left:3px solid #1A3A7C}
-        .option-item.blocked{cursor:not-allowed;opacity:.55;background:#FFF8F8}
-        .option-item.blocked:hover{background:#FFF8F8}
-        .option-item input{accent-color:#1A3A7C;cursor:pointer;flex-shrink:0;width:14px;height:14px}
-        .option-item input:disabled{cursor:not-allowed}
-        .option-info{flex:1;display:flex;flex-direction:column;gap:2px}
-        .option-name{font-size:12px;font-weight:500;color:#1A3A7C}
-        .option-sub{font-size:11px;color:#6B8BB0}
-        .option-tag{font-size:10px;font-weight:500;padding:1px 7px;border-radius:20px;width:fit-content}
-        .no-options{padding:12px;text-align:center;font-size:12px;color:#6B8BB0;font-style:italic}
-        .preview-box{display:flex;align-items:flex-start;gap:8px;background:#E1F5EE;border:1px solid #9FE1CB;border-radius:8px;padding:10px 14px;font-size:13px;color:#0F6E56;line-height:1.5}
-        .warn-box{background:#FFFBEA;border:1px solid #F5C518;border-radius:8px;padding:10px 14px;font-size:13px;color:#BA7517;line-height:1.5}
-        .spinner{width:24px;height:24px;border:2px solid rgba(26,58,124,.2);border-top-color:#1A3A7C;border-radius:50%;animation:spin .7s linear infinite}
-        .spinsm{width:12px;height:12px;border:2px solid rgba(255,255,255,.3);border-top-color:currentColor;border-radius:50%;animation:spin .7s linear infinite;display:inline-block}
-        @keyframes spin{to{transform:rotate(360deg)}}
-        @media(max-width:600px){.page-header{flex-direction:column}.info-card{flex-direction:column}}
-      `}</style>
+          {previewCourses.length > 0 && previewSubject && (
+            <div className="flex items-start gap-2 bg-success-100 border border-success-500/40 rounded-lg px-3.5 py-2.5 text-[13px] text-success-700 leading-relaxed">
+              <CheckCircle2 size={14} className="mt-0.5 shrink-0"/>
+              <span>
+                <strong>{teacher.firstName}</strong> enseñará <strong>{previewSubject.subject.name}</strong> en{' '}
+                {previewCourses.map((c, i) => (
+                  <strong key={c.id}>
+                    {GRADES[c.grade]} &quot;{c.parallel}&quot; {SHIFTS[c.shift]}{i < previewCourses.length - 1 ? ', ' : ''}
+                  </strong>
+                ))}
+              </span>
+            </div>
+          )}
+        </div>
+      </Modal>
     </div>
   )
 }

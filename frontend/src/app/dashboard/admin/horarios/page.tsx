@@ -1,8 +1,15 @@
- 'use client' 
+'use client'
 
 import { useEffect, useState } from 'react'
-import { Clock, Plus, Save, X, Edit2, Sun, Snowflake, Zap } from 'lucide-react'
+import { Clock, Plus, Save, Edit2, Sun, Snowflake, Zap } from 'lucide-react'
 import { useRouter } from 'next/navigation'
+import Card from '@/components/ui/Card'
+import Badge from '@/components/ui/Badge'
+import Button from '@/components/ui/Button'
+import Modal from '@/components/ui/Modal'
+import { Input, Select } from '@/components/ui/Input'
+import { useConfirm } from '@/components/ui/ConfirmProvider'
+import { useToast } from '@/components/ui/ToastProvider'
 
 const API = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000'
 
@@ -36,13 +43,15 @@ const GRADES: Record<string,string> = { PRIMERO:'1°', SEGUNDO:'2°', TERCERO:'3
 const SHIFTS: Record<string,string> = { MORNING:'Mañana', AFTERNOON:'Tarde' }
 
 export default function HorariosPage() {
-  const router = useRouter()
+  const router  = useRouter()
+  const confirm = useConfirm()
+  const toast   = useToast()
+
   const [schedules,    setSchedules]    = useState<SchoolSchedule[]>([])
   const [loading,      setLoading]      = useState(true)
   const [showModal,    setShowModal]    = useState(false)
   const [editing,      setEditing]      = useState<SchoolSchedule | null>(null)
   const [periodos,     setPeriodos]     = useState<Record<number, Periodo[]>>({})
-  const [toast,        setToast]        = useState<{type:'ok'|'err'|'warn'; text:string} | null>(null)
   const [generatingAll,setGeneratingAll]= useState(false)
   const [resultAll,    setResultAll]    = useState<GenerateResult[]>([])
   const [showResults,  setShowResults]  = useState(false)
@@ -53,10 +62,6 @@ export default function HorariosPage() {
 
   const token = () => localStorage.getItem('token') || ''
   const auth  = () => ({ Authorization: `Bearer ${token()}` })
-
-  const showToast = (type: 'ok'|'err'|'warn', text: string) => {
-    setToast({type, text}); setTimeout(()=>setToast(null), 4000)
-  }
 
   const loadSchedules = async () => {
     setLoading(true)
@@ -94,7 +99,7 @@ export default function HorariosPage() {
   }
 
   const handleSave = async () => {
-    if (!form.name || !form.startTime) { showToast('err', 'Completa todos los campos'); return }
+    if (!form.name || !form.startTime) { toast('Completa todos los campos', 'error'); return }
     try {
       const url    = editing ? `${API}/api/schedules/school-schedules/${editing.id}` : `${API}/api/schedules/school-schedules`
       const method = editing ? 'PUT' : 'POST'
@@ -103,11 +108,11 @@ export default function HorariosPage() {
         body: JSON.stringify(form)
       })
       const data = await res.json()
-      if (!res.ok) { showToast('err', data.message); return }
-      showToast('ok', editing ? 'Horario actualizado' : 'Horario creado correctamente')
+      if (!res.ok) { toast(data.message, 'error'); return }
+      toast(editing ? 'Horario actualizado' : 'Horario creado correctamente', 'success')
       setShowModal(false)
       loadSchedules()
-    } catch { showToast('err', 'Error de conexión') }
+    } catch { toast('Error de conexión', 'error') }
   }
 
   const toggleActive = async (s: SchoolSchedule) => {
@@ -117,20 +122,20 @@ export default function HorariosPage() {
         method: 'PUT', headers: { ...auth(), 'Content-Type': 'application/json' },
         body: JSON.stringify({ isActive: true })
       })
-      showToast('ok', `${s.name} activado correctamente`)
+      toast(`${s.name} activado correctamente`, 'success')
       loadSchedules()
-    } catch { showToast('err', 'Error') }
+    } catch { toast('Error', 'error') }
   }
 
   const handleGenerateAll = async () => {
-    if (!confirm('¿Generar y publicar el horario de todos los cursos SIN horario publicado?')) return
+    if (!await confirm('¿Generar y publicar el horario de todos los cursos SIN horario publicado?')) return
     setGeneratingAll(true)
     setResultAll([])
     setShowResults(true)
     try {
       const resC    = await fetch(`${API}/api/courses`, { headers: auth() })
       const courses = await resC.json()
-      if (!Array.isArray(courses)) { showToast('err', 'Error al obtener cursos'); return }
+      if (!Array.isArray(courses)) { toast('Error al obtener cursos', 'error'); return }
 
       const results: GenerateResult[] = []
 
@@ -185,9 +190,9 @@ export default function HorariosPage() {
       const ok   = results.filter(r => r.status === 'ok').length
       const err  = results.filter(r => r.status === 'error').length
       const skip = results.filter(r => r.status === 'skip').length
-      showToast('ok', `Completado: ${ok} publicados, ${skip} omitidos, ${err} errores`)
+      toast(`Completado: ${ok} publicados, ${skip} omitidos, ${err} errores`, 'success')
 
-    } catch { showToast('err', 'Error al obtener cursos') }
+    } catch { toast('Error al obtener cursos', 'error') }
     finally  { setGeneratingAll(false) }
   }
 
@@ -196,134 +201,79 @@ export default function HorariosPage() {
 
   return (
     <div>
-      {/* Toast */}
-      {toast && (
-        <div style={{
-          position:'fixed',top:16,right:16,zIndex:999,padding:'10px 16px',borderRadius:8,fontSize:13,
-          background:toast.type==='ok'?'#E1F5EE':toast.type==='warn'?'#FFFBEA':'#FFF0F0',
-          border:`1px solid ${toast.type==='ok'?'#9FE1CB':toast.type==='warn'?'#F5C518':'#FFBBBB'}`,
-          color:toast.type==='ok'?'#0F6E56':toast.type==='warn'?'#7A6000':'#C0392B',
-          boxShadow:'0 4px 12px rgba(0,0,0,.1)',maxWidth:400,
-        }}>
-          {toast.text}
-        </div>
-      )}
-
-      {/* Header */}
-      <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:24,flexWrap:'wrap',gap:12}}>
+      <div className="flex items-center justify-between mb-6 flex-wrap gap-3">
         <div>
-          <h1 style={{fontSize:20,fontWeight:700,color:'#1A3A7C',marginBottom:4}}>Configuración de Horarios</h1>
-          <p style={{fontSize:13,color:'#6B8BB0'}}>Gestiona los horarios institucionales por turno</p>
+          <h1 className="text-xl font-bold text-brand-700 mb-1">Configuración de Horarios</h1>
+          <p className="text-[13px] text-neutral-500">Gestiona los horarios institucionales por turno</p>
         </div>
-        <div style={{display:'flex',gap:10,flexWrap:'wrap'}}>
-          <button onClick={()=>router.push('/dashboard/admin/horarios/aulas')} style={{
-            display:'flex',alignItems:'center',gap:8,padding:'10px 18px',
-            background:'#fff',color:'#1A3A7C',border:'1.5px solid #CBE0F0',borderRadius:8,
-            fontSize:13,fontWeight:600,cursor:'pointer'
-          }}>
-            🚪 Gestionar Aulas
-          </button>
-          <button onClick={()=>router.push('/dashboard/admin/horarios/planificacion')} style={{
-  display:'flex',alignItems:'center',gap:8,padding:'10px 18px',
-  background:'#8B1A7C',color:'#fff',border:'none',borderRadius:8,
-  fontSize:13,fontWeight:600,cursor:'pointer'
-}}>
-  📅 Planificación Global
-</button>
-          <button onClick={handleGenerateAll} disabled={generatingAll} style={{
-            display:'flex',alignItems:'center',gap:8,padding:'10px 18px',
-            background:'#8B1A7C',color:'#fff',border:'none',borderRadius:8,
-            fontSize:13,fontWeight:600,cursor:'pointer',opacity:generatingAll?0.6:1
-          }}>
-            <Zap size={15}/> {generatingAll?'Generando...':'⚡ Generar Todos'}
-          </button>
-          <button onClick={()=>router.push('/dashboard/admin/horarios/curso')} style={{
-            display:'flex',alignItems:'center',gap:8,padding:'10px 18px',
-            background:'#0F6E56',color:'#fff',border:'none',borderRadius:8,
-            fontSize:13,fontWeight:600,cursor:'pointer'
-          }}>
-            Asignar por Curso →
-          </button>
-          <button onClick={openCreate} style={{
-            display:'flex',alignItems:'center',gap:8,padding:'10px 18px',
-            background:'#1A3A7C',color:'#fff',border:'none',borderRadius:8,
-            fontSize:13,fontWeight:600,cursor:'pointer'
-          }}>
-            <Plus size={16}/> Nuevo Horario
-          </button>
+        <div className="flex gap-2.5 flex-wrap">
+          <Button variant="secondary" onClick={()=>router.push('/dashboard/admin/horarios/aulas')}>🚪 Gestionar Aulas</Button>
+          <Button className="!bg-[#8B1A7C] !border-[#8B1A7C]" onClick={()=>router.push('/dashboard/admin/horarios/planificacion')}>📅 Planificación Global</Button>
+          <Button className="!bg-[#8B1A7C] !border-[#8B1A7C]" onClick={handleGenerateAll} disabled={generatingAll} loading={generatingAll}>
+            {!generatingAll && <Zap size={15}/>} {generatingAll?'Generando...':'⚡ Generar Todos'}
+          </Button>
+          <Button className="!bg-success-700 !border-success-700" onClick={()=>router.push('/dashboard/admin/horarios/curso')}>Asignar por Curso →</Button>
+          <Button onClick={openCreate}><Plus size={16}/> Nuevo Horario</Button>
         </div>
       </div>
 
-      {/* Resultado de generación masiva */}
       {showResults && resultAll.length > 0 && (
-        <div style={{background:'#fff',border:'1px solid #CBE0F0',borderRadius:10,padding:'14px 18px',marginBottom:20}}>
-          <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:10}}>
-            <span style={{fontSize:13,fontWeight:700,color:'#1A3A7C'}}>
-              Resultado de generación masiva {generatingAll && <span style={{color:'#6B8BB0',fontWeight:400}}>(en progreso...)</span>}
+        <Card className="mb-5">
+          <div className="flex items-center justify-between mb-2.5">
+            <span className="text-[13px] font-bold text-brand-700">
+              Resultado de generación masiva {generatingAll && <span className="text-neutral-500 font-normal">(en progreso...)</span>}
             </span>
-            <button onClick={()=>setShowResults(false)} style={{background:'none',border:'none',cursor:'pointer',color:'#6B8BB0',fontSize:12}}>
-              Ocultar
-            </button>
+            <button onClick={()=>setShowResults(false)} className="text-neutral-500 text-xs hover:text-brand-700">Ocultar</button>
           </div>
-          <div style={{display:'flex',flexDirection:'column',gap:4,maxHeight:240,overflowY:'auto'}}>
+          <div className="flex flex-col gap-1 max-h-[240px] overflow-y-auto">
             {resultAll.map((r, i) => (
-              <div key={i} style={{
-                display:'flex',gap:8,alignItems:'center',fontSize:12,
-                padding:'4px 8px',borderRadius:6,
-                background: r.status==='ok'?'#F0FBF5':r.status==='skip'?'#FFFBEA':'#FFF0F0',
-              }}>
+              <div key={i} className={`flex gap-2 items-center text-xs px-2 py-1 rounded-md ${r.status==='ok'?'bg-success-100/60':r.status==='skip'?'bg-warning-100/60':'bg-danger-100/60'}`}>
                 <span>{r.status==='ok'?'✅':r.status==='skip'?'⏭️':'❌'}</span>
-                <span style={{fontWeight:600,minWidth:80}}>
-                  {GRADES[r.course.grade]} &quot;{r.course.parallel}&quot;
-                </span>
-                <span style={{color:'#6B8BB0',fontSize:11}}>{SHIFTS[r.course.shift]}</span>
-                <span style={{color: r.status==='ok'?'#0F6E56':r.status==='skip'?'#7A6000':'#C0392B'}}>
-                  {r.msg}
-                </span>
+                <span className="font-semibold min-w-[80px]">{GRADES[r.course.grade]} &quot;{r.course.parallel}&quot;</span>
+                <span className="text-neutral-500 text-[11px]">{SHIFTS[r.course.shift]}</span>
+                <span className={r.status==='ok'?'text-success-700':r.status==='skip'?'text-[#7A6000]':'text-danger-600'}>{r.msg}</span>
               </div>
             ))}
           </div>
           {!generatingAll && (
-            <div style={{marginTop:10,fontSize:12,color:'#6B8BB0',display:'flex',gap:16}}>
+            <div className="mt-2.5 text-xs text-neutral-500 flex gap-4">
               <span>✅ {resultAll.filter(r=>r.status==='ok').length} publicados</span>
               <span>⏭️ {resultAll.filter(r=>r.status==='skip').length} omitidos</span>
               <span>❌ {resultAll.filter(r=>r.status==='error').length} errores</span>
             </div>
           )}
-        </div>
+        </Card>
       )}
 
       {loading ? (
-        <div style={{display:'flex',justifyContent:'center',padding:48}}><div className="spinner"/></div>
+        <div className="flex justify-center py-12"><p className="text-sm text-neutral-500">Cargando...</p></div>
       ) : schedules.length === 0 ? (
-        <div style={{background:'#fff',border:'1px dashed #CBE0F0',borderRadius:12,padding:48,textAlign:'center',color:'#6B8BB0'}}>
-          <Clock size={40} style={{marginBottom:12,opacity:.3}}/>
+        <div className="bg-white border border-dashed border-neutral-300 rounded-xl p-12 text-center text-neutral-500">
+          <Clock size={40} className="mb-3 opacity-30 mx-auto"/>
           <p>No hay horarios configurados. Crea el primero.</p>
-          <button onClick={openCreate} style={{marginTop:16,padding:'8px 16px',background:'#1A3A7C',color:'#fff',border:'none',borderRadius:8,cursor:'pointer',fontSize:13}}>
-            <Plus size={14}/> Crear horario
-          </button>
+          <Button onClick={openCreate} className="mt-4"><Plus size={14}/> Crear horario</Button>
         </div>
       ) : (
         <>
           {morning.length > 0 && (
-            <div style={{marginBottom:24}}>
-              <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:12}}>
-                <Sun size={18} color="#BA7517"/>
-                <span style={{fontWeight:700,fontSize:15,color:'#BA7517'}}>Turno Mañana</span>
+            <div className="mb-6">
+              <div className="flex items-center gap-2 mb-3">
+                <Sun size={18} className="text-[#BA7517]"/>
+                <span className="font-bold text-[15px] text-[#BA7517]">Turno Mañana</span>
               </div>
-              <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(420px,1fr))',gap:16}}>
+              <div className="grid gap-4" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(420px, 1fr))' }}>
                 {morning.map(s => <ScheduleCard key={s.id} s={s} periodos={periodos[s.id]||[]} onEdit={openEdit} onToggle={toggleActive}/>)}
               </div>
             </div>
           )}
 
           {afternoon.length > 0 && (
-            <div style={{marginBottom:24}}>
-              <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:12}}>
-                <Clock size={18} color="#1A3A7C"/>
-                <span style={{fontWeight:700,fontSize:15,color:'#1A3A7C'}}>Turno Tarde / BTH</span>
+            <div className="mb-6">
+              <div className="flex items-center gap-2 mb-3">
+                <Clock size={18} className="text-brand-700"/>
+                <span className="font-bold text-[15px] text-brand-700">Turno Tarde / BTH</span>
               </div>
-              <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(420px,1fr))',gap:16}}>
+              <div className="grid gap-4" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(420px, 1fr))' }}>
                 {afternoon.map(s => <ScheduleCard key={s.id} s={s} periodos={periodos[s.id]||[]} onEdit={openEdit} onToggle={toggleActive}/>)}
               </div>
             </div>
@@ -331,107 +281,55 @@ export default function HorariosPage() {
         </>
       )}
 
-      {/* Modal */}
-      {showModal && (
-        <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,.4)',zIndex:500,display:'flex',alignItems:'center',justifyContent:'center',padding:16}}>
-          <div style={{background:'#fff',borderRadius:14,width:'100%',maxWidth:480,maxHeight:'90vh',overflow:'auto',boxShadow:'0 20px 60px rgba(0,0,0,.15)'}}>
-            <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'18px 20px',borderBottom:'1px solid #CBE0F0'}}>
-              <h2 style={{fontSize:16,fontWeight:700,color:'#1A3A7C',margin:0}}>
-                {editing ? 'Editar Horario' : 'Nuevo Horario'}
-              </h2>
-              <button onClick={()=>setShowModal(false)} style={{background:'none',border:'none',cursor:'pointer',color:'#6B8BB0'}}>
-                <X size={18}/>
-              </button>
-            </div>
-            <div style={{padding:20,display:'flex',flexDirection:'column',gap:14}}>
+      <Modal
+        open={showModal} onClose={()=>setShowModal(false)} title={editing ? 'Editar Horario' : 'Nuevo Horario'}
+        footer={
+          <>
+            <Button variant="secondary" onClick={()=>setShowModal(false)}>Cancelar</Button>
+            <Button onClick={handleSave}><Save size={14}/> {editing?'Actualizar':'Crear'}</Button>
+          </>
+        }
+      >
+        <div className="flex flex-col gap-3.5">
+          <Input
+            label="Nombre" required value={form.name} onChange={e=>setForm(p=>({...p,name:e.target.value}))}
+            placeholder="Ej: Normal Mañana, Invierno Tarde"
+          />
 
-              <div style={{display:'flex',flexDirection:'column',gap:6}}>
-                <label style={{fontSize:11,fontWeight:700,color:'#1A3A7C',textTransform:'uppercase',letterSpacing:'.5px'}}>Nombre *</label>
-                <input value={form.name} onChange={e=>setForm(p=>({...p,name:e.target.value}))}
-                  placeholder="Ej: Normal Mañana, Invierno Tarde"
-                  style={{padding:'10px 12px',border:'1.5px solid #CBE0F0',borderRadius:8,fontSize:13,color:'#1A3A7C',outline:'none'}}/>
-              </div>
-
-              <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
-                <div style={{display:'flex',flexDirection:'column',gap:6}}>
-                  <label style={{fontSize:11,fontWeight:700,color:'#1A3A7C',textTransform:'uppercase',letterSpacing:'.5px'}}>Turno</label>
-                  <select value={form.shift} onChange={e=>setForm(p=>({...p,shift:e.target.value}))}
-                    style={{padding:'10px 12px',border:'1.5px solid #CBE0F0',borderRadius:8,fontSize:13,color:'#1A3A7C',outline:'none'}}>
-                    <option value="MORNING">Mañana</option>
-                    <option value="AFTERNOON">Tarde / BTH</option>
-                  </select>
-                </div>
-                <div style={{display:'flex',flexDirection:'column',gap:6}}>
-                  <label style={{fontSize:11,fontWeight:700,color:'#1A3A7C',textTransform:'uppercase',letterSpacing:'.5px'}}>Tipo</label>
-                  <select value={form.isWinter?'invierno':'normal'} onChange={e=>setForm(p=>({...p,isWinter:e.target.value==='invierno'}))}
-                    style={{padding:'10px 12px',border:'1.5px solid #CBE0F0',borderRadius:8,fontSize:13,color:'#1A3A7C',outline:'none'}}>
-                    <option value="normal">Normal</option>
-                    <option value="invierno">Invierno</option>
-                  </select>
-                </div>
-              </div>
-
-              <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
-                <div style={{display:'flex',flexDirection:'column',gap:6}}>
-                  <label style={{fontSize:11,fontWeight:700,color:'#1A3A7C',textTransform:'uppercase',letterSpacing:'.5px'}}>Hora de Entrada</label>
-                  <input type="time" value={form.startTime} onChange={e=>setForm(p=>({...p,startTime:e.target.value}))}
-                    style={{padding:'10px 12px',border:'1.5px solid #CBE0F0',borderRadius:8,fontSize:13,color:'#1A3A7C',outline:'none'}}/>
-                </div>
-                <div style={{display:'flex',flexDirection:'column',gap:6}}>
-                  <label style={{fontSize:11,fontWeight:700,color:'#1A3A7C',textTransform:'uppercase',letterSpacing:'.5px'}}>Hora de Salida</label>
-                  <input type="time" value={form.exitTime} onChange={e=>setForm(p=>({...p,exitTime:e.target.value}))}
-                    style={{padding:'10px 12px',border:'1.5px solid #CBE0F0',borderRadius:8,fontSize:13,color:'#1A3A7C',outline:'none'}}/>
-                </div>
-              </div>
-
-              <div style={{display:'grid',gridTemplateColumns:'1fr 1fr 1fr',gap:12}}>
-                <div style={{display:'flex',flexDirection:'column',gap:6}}>
-                  <label style={{fontSize:11,fontWeight:700,color:'#1A3A7C',textTransform:'uppercase',letterSpacing:'.5px'}}>Periodos</label>
-                  <select value={form.periods} onChange={e=>setForm(p=>({...p,periods:parseInt(e.target.value)}))}
-                    style={{padding:'10px 12px',border:'1.5px solid #CBE0F0',borderRadius:8,fontSize:13,color:'#1A3A7C',outline:'none'}}>
-                    <option value={6}>6 periodos</option>
-                    <option value={7}>7 periodos</option>
-                  </select>
-                </div>
-                <div style={{display:'flex',flexDirection:'column',gap:6}}>
-                  <label style={{fontSize:11,fontWeight:700,color:'#1A3A7C',textTransform:'uppercase',letterSpacing:'.5px'}}>Min/periodo</label>
-                  <input type="number" value={form.periodDuration} min={30} max={60}
-                    onChange={e=>setForm(p=>({...p,periodDuration:parseInt(e.target.value)}))}
-                    style={{padding:'10px 12px',border:'1.5px solid #CBE0F0',borderRadius:8,fontSize:13,color:'#1A3A7C',outline:'none'}}/>
-                </div>
-                <div style={{display:'flex',flexDirection:'column',gap:6}}>
-                  <label style={{fontSize:11,fontWeight:700,color:'#1A3A7C',textTransform:'uppercase',letterSpacing:'.5px'}}>Min/recreo</label>
-                  <input type="number" value={form.breakDuration} min={5} max={30}
-                    onChange={e=>setForm(p=>({...p,breakDuration:parseInt(e.target.value)}))}
-                    style={{padding:'10px 12px',border:'1.5px solid #CBE0F0',borderRadius:8,fontSize:13,color:'#1A3A7C',outline:'none'}}/>
-                </div>
-              </div>
-
-              <div style={{display:'flex',flexDirection:'column',gap:6}}>
-                <label style={{fontSize:11,fontWeight:700,color:'#1A3A7C',textTransform:'uppercase',letterSpacing:'.5px'}}>Recreo después del periodo (separado por comas)</label>
-                <input value={form.breakAfter} onChange={e=>setForm(p=>({...p,breakAfter:e.target.value}))}
-                  placeholder="2,4"
-                  style={{padding:'10px 12px',border:'1.5px solid #CBE0F0',borderRadius:8,fontSize:13,color:'#1A3A7C',outline:'none'}}/>
-                <span style={{fontSize:11,color:'#6B8BB0'}}>Ej: "2,4" = recreo después del 2do y 4to periodo</span>
-              </div>
-
-            </div>
-            <div style={{display:'flex',justifyContent:'flex-end',gap:10,padding:'14px 20px',borderTop:'1px solid #CBE0F0'}}>
-              <button onClick={()=>setShowModal(false)} style={{padding:'9px 16px',background:'#fff',border:'1.5px solid #CBE0F0',borderRadius:8,fontSize:13,cursor:'pointer',color:'#1A3A7C'}}>
-                Cancelar
-              </button>
-              <button onClick={handleSave} style={{display:'flex',alignItems:'center',gap:6,padding:'9px 18px',background:'#1A3A7C',color:'#fff',border:'none',borderRadius:8,fontSize:13,fontWeight:600,cursor:'pointer'}}>
-                <Save size={14}/> {editing?'Actualizar':'Crear'}
-              </button>
-            </div>
+          <div className="grid grid-cols-2 gap-3">
+            <Select label="Turno" value={form.shift} onChange={e=>setForm(p=>({...p,shift:e.target.value}))}>
+              <option value="MORNING">Mañana</option>
+              <option value="AFTERNOON">Tarde / BTH</option>
+            </Select>
+            <Select label="Tipo" value={form.isWinter?'invierno':'normal'} onChange={e=>setForm(p=>({...p,isWinter:e.target.value==='invierno'}))}>
+              <option value="normal">Normal</option>
+              <option value="invierno">Invierno</option>
+            </Select>
           </div>
-        </div>
-      )}
 
-      <style>{`
-        .spinner{width:24px;height:24px;border:2px solid rgba(26,58,124,.2);border-top-color:#1A3A7C;border-radius:50%;animation:spin .7s linear infinite}
-        @keyframes spin{to{transform:rotate(360deg)}}
-      `}</style>
+          <div className="grid grid-cols-2 gap-3">
+            <Input label="Hora de Entrada" type="time" value={form.startTime} onChange={e=>setForm(p=>({...p,startTime:e.target.value}))}/>
+            <Input label="Hora de Salida" type="time" value={form.exitTime} onChange={e=>setForm(p=>({...p,exitTime:e.target.value}))}/>
+          </div>
+
+          <div className="grid grid-cols-3 gap-3">
+            <Select label="Periodos" value={form.periods} onChange={e=>setForm(p=>({...p,periods:parseInt(e.target.value)}))}>
+              <option value={6}>6 periodos</option>
+              <option value={7}>7 periodos</option>
+            </Select>
+            <Input label="Min/periodo" type="number" value={form.periodDuration} min={30} max={60}
+              onChange={e=>setForm(p=>({...p,periodDuration:parseInt(e.target.value)}))}/>
+            <Input label="Min/recreo" type="number" value={form.breakDuration} min={5} max={30}
+              onChange={e=>setForm(p=>({...p,breakDuration:parseInt(e.target.value)}))}/>
+          </div>
+
+          <Input
+            label="Recreo después del periodo (separado por comas)" value={form.breakAfter}
+            onChange={e=>setForm(p=>({...p,breakAfter:e.target.value}))}
+            placeholder="2,4" hint='Ej: "2,4" = recreo después del 2do y 4to periodo'
+          />
+        </div>
+      </Modal>
     </div>
   )
 }
@@ -449,95 +347,55 @@ function ScheduleCard({ s, periodos, onEdit, onToggle }: {
   const breakPeriods     = s.breakAfter.split(',').map(Number)
 
   return (
-    <div style={{
-      background:'#fff', border:`1px solid ${s.isActive?'#CBE0F0':'#E0E0E0'}`,
-      borderRadius:12, overflow:'hidden', opacity:s.isActive?1:0.6
-    }}>
-
-      {/* Header */}
-      <div style={{padding:'14px 18px',borderBottom:'1px solid #F0F6FC',display:'flex',alignItems:'center',gap:10}}>
-        {s.isWinter ? <Snowflake size={16} color="#4A9FD4"/> : <Sun size={16} color="#BA7517"/>}
-        <div style={{flex:1}}>
-          <div style={{fontWeight:700,fontSize:14,color:'#1A3A7C'}}>{s.name}</div>
-          <div style={{fontSize:12,color:'#6B8BB0'}}>
-            {s.startTime} — {s.exitTime} · {s.periods} periodos · {s.periodDuration} min/periodo
-          </div>
+    <Card padded={false} className={`overflow-hidden ${!s.isActive ? 'opacity-60' : ''}`}>
+      <div className="px-4.5 py-3.5 border-b border-neutral-100 flex items-center gap-2.5">
+        {s.isWinter ? <Snowflake size={16} className="text-info-500"/> : <Sun size={16} className="text-[#BA7517]"/>}
+        <div className="flex-1">
+          <div className="font-bold text-sm text-brand-700">{s.name}</div>
+          <div className="text-xs text-neutral-500">{s.startTime} — {s.exitTime} · {s.periods} periodos · {s.periodDuration} min/periodo</div>
         </div>
-        <div style={{display:'flex',gap:6}}>
-          <button onClick={()=>onEdit(s)}
-            style={{background:'#F0F6FC',border:'none',borderRadius:7,padding:'6px 10px',cursor:'pointer',color:'#1A3A7C',display:'flex',alignItems:'center',gap:4,fontSize:12}}>
-            <Edit2 size={12}/> Editar
-          </button>
-          <button onClick={()=>!s.isActive && onToggle(s)} style={{
-            background:s.isActive?'#E1F5EE':'#F0F6FC', border:'none', borderRadius:7,
-            padding:'6px 10px', cursor:s.isActive?'default':'pointer',
-            color:s.isActive?'#0F6E56':'#6B8BB0', fontSize:12, fontWeight:600
-          }}>
+        <div className="flex gap-1.5">
+          <Button variant="secondary" size="sm" onClick={()=>onEdit(s)}><Edit2 size={12}/> Editar</Button>
+          <button
+            onClick={()=>!s.isActive && onToggle(s)}
+            className={`rounded-md px-2.5 py-1.5 text-xs font-semibold ${s.isActive ? 'bg-success-100 text-success-700 cursor-default' : 'bg-neutral-100 text-neutral-500 cursor-pointer'}`}
+          >
             {s.isActive ? '✅ Activo' : 'Activar'}
           </button>
         </div>
       </div>
 
-      {/* Recreos */}
-      <div style={{padding:'10px 18px',borderBottom:'1px solid #F0F6FC',background:'#FFFDF0'}}>
-        <div style={{fontSize:11,fontWeight:700,color:'#7A6000',textTransform:'uppercase',letterSpacing:'.5px',marginBottom:6}}>
-          ☕ Recreos
+      <div className="px-4.5 py-2.5 border-b border-neutral-100 bg-warning-100/40">
+        <div className="text-[11px] font-bold text-[#7A6000] uppercase tracking-wide mb-1.5">☕ Recreos</div>
+        <div className="flex flex-wrap gap-2.5 items-center">
+          <div className="text-xs text-[#7A6000]">
+            <span className="font-semibold">{cantidadRecreos}</span> recreo{cantidadRecreos!==1?'s':''}{' '}
+            × <span className="font-semibold">{s.breakDuration} min</span> c/u
+            {' '}= <span className="font-bold">{totalMinReceso} min total</span>
+          </div>
+          <div className="text-xs text-[#7A6000]">Después del periodo: <span className="font-semibold">{s.breakAfter}</span></div>
         </div>
-        <div style={{display:'flex',flexWrap:'wrap',gap:10,alignItems:'center'}}>
-          <div style={{fontSize:12,color:'#7A6000'}}>
-            <span style={{fontWeight:600}}>{cantidadRecreos}</span> recreo{cantidadRecreos!==1?'s':''}{' '}
-            × <span style={{fontWeight:600}}>{s.breakDuration} min</span> c/u
-            {' '}= <span style={{fontWeight:700}}>{totalMinReceso} min total</span>
-          </div>
-          <div style={{fontSize:12,color:'#7A6000'}}>
-            Después del periodo: <span style={{fontWeight:600}}>{s.breakAfter}</span>
-          </div>
-        </div>
-        <div style={{display:'flex',flexWrap:'wrap',gap:8,marginTop:8}}>
-          <div style={{
-            background:'#FFF8DC',border:'1px solid #F5C518',borderRadius:20,
-            padding:'2px 10px',fontSize:11,color:'#7A6000',fontWeight:600
-          }}>
-            +{minExtraPeriodo} min efectivos/periodo
-          </div>
-          <div style={{
-            background:'#1A3A7C',borderRadius:20,
-            padding:'2px 10px',fontSize:11,color:'#fff',fontWeight:600
-          }}>
-            ⏱ Duración efectiva: {duracionEfectiva} min/periodo
-          </div>
+        <div className="flex flex-wrap gap-2 mt-2">
+          <Badge tone="warning">+{minExtraPeriodo} min efectivos/periodo</Badge>
+          <Badge tone="brand">⏱ Duración efectiva: {duracionEfectiva} min/periodo</Badge>
         </div>
       </div>
 
-      {/* Periodos con recreos intercalados */}
       {periodos.length > 0 && (
-        <div style={{padding:'12px 18px'}}>
-          <div style={{fontSize:11,fontWeight:700,color:'#6B8BB0',textTransform:'uppercase',letterSpacing:'.5px',marginBottom:8}}>
-            Distribución de periodos
-          </div>
-          <div style={{display:'flex',flexWrap:'wrap',gap:6,alignItems:'center'}}>
+        <div className="px-4.5 py-3">
+          <div className="text-[11px] font-bold text-neutral-500 uppercase tracking-wide mb-2">Distribución de periodos</div>
+          <div className="flex flex-wrap gap-1.5 items-center">
             {periodos.map(p => (
-              <div key={p.period} style={{display:'flex',alignItems:'center',gap:4}}>
-                <div style={{
-                  background:'#F0F6FC',borderRadius:8,padding:'4px 10px',
-                  fontSize:12,color:'#1A3A7C',fontWeight:600,
-                }}>
-                  P{p.period}: {p.startTime}–{p.endTime}
-                </div>
+              <div key={p.period} className="flex items-center gap-1">
+                <div className="bg-neutral-100 rounded-lg px-2.5 py-1 text-xs text-brand-700 font-semibold">P{p.period}: {p.startTime}–{p.endTime}</div>
                 {breakPeriods.includes(p.period) && (
-                  <div style={{
-                    background:'#FFFBEA',border:'1px solid #F5C518',borderRadius:8,
-                    padding:'4px 8px',fontSize:11,color:'#7A6000',fontWeight:600,
-                    display:'flex',alignItems:'center',gap:3
-                  }}>
-                    ☕ {s.breakDuration}min
-                  </div>
+                  <Badge tone="warning">☕ {s.breakDuration}min</Badge>
                 )}
               </div>
             ))}
           </div>
         </div>
       )}
-    </div>
+    </Card>
   )
 }

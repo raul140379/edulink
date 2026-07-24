@@ -2,7 +2,13 @@
 
 import React, { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { ArrowLeft, Zap, CheckCircle, Trash2, X, Save, Edit2 } from 'lucide-react'
+import { ArrowLeft, Zap, CheckCircle, Trash2, Save, Edit2 } from 'lucide-react'
+import Card from '@/components/ui/Card'
+import Badge from '@/components/ui/Badge'
+import Button from '@/components/ui/Button'
+import Modal from '@/components/ui/Modal'
+import { useConfirm } from '@/components/ui/ConfirmProvider'
+import { useToast } from '@/components/ui/ToastProvider'
 
 const API = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000'
 
@@ -74,7 +80,10 @@ const SUBJECT_EMOJI: Record<string, string> = {
 }
 
 export default function HorarioCursoPage() {
-  const router = useRouter()
+  const router  = useRouter()
+  const confirm = useConfirm()
+  const toast   = useToast()
+
   const [courses,    setCourses]    = useState<Course[]>([])
   const [selCourse,  setSelCourse]  = useState<Course | null>(null)
   const [selGrade,   setSelGrade]   = useState<string>('')
@@ -85,7 +94,6 @@ export default function HorarioCursoPage() {
   const [generating, setGenerating] = useState(false)
   const [publishing, setPublishing] = useState(false)
   const [editMode,   setEditMode]   = useState(false)
-  const [toast,      setToast]      = useState<{type:'ok'|'err'|'warn'; text:string} | null>(null)
 
   const [showModal, setShowModal] = useState(false)
   const [selCell,   setSelCell]   = useState<{day:number; period:number; startTime:string; endTime:string} | null>(null)
@@ -101,10 +109,6 @@ export default function HorarioCursoPage() {
 
   const token = () => localStorage.getItem('token') || ''
   const auth  = () => ({ Authorization: `Bearer ${token()}` })
-
-  const showToast = (type:'ok'|'err'|'warn', text:string) => {
-    setToast({type,text}); setTimeout(()=>setToast(null), 5000)
-  }
 
   useEffect(() => {
     fetch(`${API}/api/courses`, { headers: auth() })
@@ -204,55 +208,55 @@ export default function HorarioCursoPage() {
         method: 'POST', headers: auth()
       })
       const data = await res.json()
-      if (!res.ok) { showToast('err', data.message); return }
-      showToast('ok', data.message)
+      if (!res.ok) { toast(data.message, 'error'); return }
+      toast(data.message, 'success')
       if (data.errors?.length > 0) {
-        setTimeout(() => showToast('warn', `⚠️ Sin espacio para: ${data.errors.map((e:any)=>e.subject).join(', ')}`), 1000)
+        setTimeout(() => toast(`⚠️ Sin espacio para: ${data.errors.map((e:any)=>e.subject).join(', ')}`, 'warning'), 1000)
       }
       loadSchedule(); loadTscs()
-    } catch { showToast('err', 'Error de conexión') }
+    } catch { toast('Error de conexión', 'error') }
     finally { setGenerating(false) }
   }
 
   const handlePublish = async () => {
     if (!selCourse) return
-    if (!confirm('¿Confirmar y publicar este horario?')) return
+    if (!await confirm('¿Confirmar y publicar este horario?')) return
     setPublishing(true)
     try {
       const res  = await fetch(`${API}/api/schedules/publish/${selCourse.id}`, {
         method: 'POST', headers: auth()
       })
       const data = await res.json()
-      if (!res.ok) { showToast('err', data.message); return }
-      showToast('ok', data.message)
+      if (!res.ok) { toast(data.message, 'error'); return }
+      toast(data.message, 'success')
       setEditMode(false)
       loadSchedule()
-    } catch { showToast('err', 'Error de conexión') }
+    } catch { toast('Error de conexión', 'error') }
     finally { setPublishing(false) }
   }
 
   const handleDeleteDraft = async () => {
     if (!selCourse) return
-    if (!confirm('¿Eliminar el borrador?')) return
+    if (!await confirm('¿Eliminar el borrador?', { danger: true })) return
     await fetch(`${API}/api/schedules/draft/${selCourse.id}`, { method: 'DELETE', headers: auth() })
-    showToast('ok', 'Borrador eliminado')
+    toast('Borrador eliminado', 'success')
     setEditMode(false)
     loadSchedule(); loadTscs()
   }
 
   const handleDeleteAll = async () => {
     if (!selCourse) return
-    if (!confirm(`¿Eliminar TODO el horario de este curso (borradores y publicados)? Esta acción no se puede deshacer.`)) return
+    if (!await confirm('¿Eliminar TODO el horario de este curso (borradores y publicados)? Esta acción no se puede deshacer.', { danger: true })) return
     try {
       const res  = await fetch(`${API}/api/schedules/course/${selCourse.id}/all`, {
         method: 'DELETE', headers: auth()
       })
       const data = await res.json()
-      if (!res.ok) { showToast('err', data.message); return }
-      showToast('ok', data.message)
+      if (!res.ok) { toast(data.message, 'error'); return }
+      toast(data.message, 'success')
       setEditMode(false)
       loadSchedule(); loadTscs()
-    } catch { showToast('err', 'Error de conexión') }
+    } catch { toast('Error de conexión', 'error') }
   }
 
   const handleDeletePeriod = async (id: number) => {
@@ -274,8 +278,8 @@ export default function HorarioCursoPage() {
       })
     })
     const data = await res.json()
-    if (!res.ok) { showToast('err', data.message); return }
-    showToast('ok', 'Periodo asignado correctamente')
+    if (!res.ok) { toast(data.message, 'error'); return }
+    toast('Periodo asignado correctamente', 'success')
     setShowModal(false)
     loadSchedule(); loadTscs()
   }
@@ -288,8 +292,8 @@ export default function HorarioCursoPage() {
       body: JSON.stringify({ classroomId: selClassroom ? parseInt(selClassroom) : null })
     })
     const data = await res.json()
-    if (!res.ok) { showToast('err', data.message); return }
-    showToast('ok', selClassroom ? 'Aula asignada correctamente' : 'Aula removida')
+    if (!res.ok) { toast(data.message, 'error'); return }
+    toast(selClassroom ? 'Aula asignada correctamente' : 'Aula removida', 'success')
     setShowClassroomModal(false)
     loadSchedule()
   }
@@ -302,8 +306,8 @@ export default function HorarioCursoPage() {
       body: JSON.stringify({ classroomId: parseInt(bulkClassroom) })
     })
     const data = await res.json()
-    if (!res.ok) { showToast('err', data.message); return }
-    showToast('ok', data.message)
+    if (!res.ok) { toast(data.message, 'error'); return }
+    toast(data.message, 'success')
     setShowBulkClassroomModal(false)
     loadSchedule()
   }
@@ -325,68 +329,40 @@ export default function HorarioCursoPage() {
 
   return (
     <div>
-      {/* Toast */}
-      {toast && (
-        <div style={{
-          position:'fixed',top:16,right:16,zIndex:999,padding:'12px 18px',borderRadius:10,fontSize:13,
-          background:toast.type==='ok'?'#E1F5EE':toast.type==='warn'?'#FFFBEA':'#FFF0F0',
-          border:`1px solid ${toast.type==='ok'?'#9FE1CB':toast.type==='warn'?'#F5C518':'#FFBBBB'}`,
-          color:toast.type==='ok'?'#0F6E56':toast.type==='warn'?'#7A6000':'#C0392B',
-          boxShadow:'0 4px 16px rgba(0,0,0,.12)',maxWidth:420,lineHeight:1.5,
-        }}>
-          {toast.text}
-        </div>
-      )}
-
-      {/* Header */}
-      <div style={{display:'flex',alignItems:'center',marginBottom:24,gap:12}}>
-        <div style={{flex:1,display:'flex'}}>
-          <button onClick={()=>router.push('/dashboard/admin/horarios')}
-            style={{display:'flex',alignItems:'center',gap:6,background:'none',border:'none',cursor:'pointer',color:'#6B8BB0',fontSize:13}}>
+      <div className="flex items-center mb-6 gap-3">
+        <div className="flex-1 flex">
+          <button onClick={()=>router.push('/dashboard/admin/horarios')} className="flex items-center gap-1.5 text-neutral-500 hover:text-brand-700 text-[13px]">
             <ArrowLeft size={16}/> Volver
           </button>
         </div>
 
-        <div style={{display:'flex',flexDirection:'column',alignItems:'center',gap:8,textAlign:'center'}}>
+        <div className="flex flex-col items-center gap-2 text-center">
           <div>
-            <h1 style={{fontSize:20,fontWeight:700,color:'#1A3A7C',margin:0}}>Horario por Curso</h1>
-            <p style={{fontSize:13,color:'#6B8BB0',margin:0}}>Genera y asigna el horario semanal</p>
+            <h1 className="text-xl font-bold text-brand-700 m-0">Horario por Curso</h1>
+            <p className="text-[13px] text-neutral-500 m-0">Genera y asigna el horario semanal</p>
           </div>
           {selCourse && (
-            <div style={{
-              display:'flex',alignItems:'center',gap:8,
-              background:'#1A3A7C',color:'#fff',borderRadius:10,
-              padding:'8px 16px',fontSize:14,fontWeight:700,whiteSpace:'nowrap',
-            }}>
+            <div className="flex items-center gap-2 bg-brand-700 text-white rounded-[10px] px-4 py-2 text-sm font-bold whitespace-nowrap">
               {GRADES[selCourse.grade]} &quot;{selCourse.parallel}&quot;
-              <span style={{fontWeight:500,fontSize:12,color:'#B9CBE8'}}>
-                · {SHIFTS[selCourse.shift]} · {selCourse.level}{selCourse.educationType==='BTH' ? ' · BTH' : ''}
-              </span>
+              <span className="font-medium text-xs text-[#B9CBE8]">· {SHIFTS[selCourse.shift]} · {selCourse.level}{selCourse.educationType==='BTH' ? ' · BTH' : ''}</span>
             </div>
           )}
         </div>
 
-        <div style={{flex:1}}/>
+        <div className="flex-1"/>
       </div>
 
-      {/* Selector de curso: tabs de grado + pastillas de paralelo */}
-      <div style={{background:'#fff',border:'1px solid #CBE0F0',borderRadius:12,padding:'14px 20px',marginBottom:20}}>
-        <label style={{fontSize:11,fontWeight:700,color:'#1A3A7C',textTransform:'uppercase',letterSpacing:'.5px',display:'block',marginBottom:10,textAlign:'center'}}>
-          Seleccionar Curso
-        </label>
+      <Card className="mb-5">
+        <label className="text-[11px] font-bold text-brand-700 uppercase tracking-wide block mb-2.5 text-center">Seleccionar Curso</label>
 
-        <div style={{display:'flex',gap:6,flexWrap:'wrap',justifyContent:'center',borderBottom:'2px solid #EEF3F9',paddingBottom:10,marginBottom:10}}>
+        <div className="flex gap-1.5 flex-wrap justify-center border-b-2 border-neutral-100 pb-2.5 mb-2.5">
           {gradesWithCourses.map(grade => {
             const active = selGrade === grade
             return (
-              <button key={grade} onClick={() => selectGrade(grade)}
-                style={{
-                  padding:'7px 16px',borderRadius:8,border:'none',cursor:'pointer',
-                  fontSize:13,fontWeight:700,
-                  background: active ? '#1A3A7C' : '#F0F6FC',
-                  color:      active ? '#fff'    : '#6B8BB0',
-                  transition:'background .15s,color .15s',
-                }}>
+              <button
+                key={grade} onClick={() => selectGrade(grade)}
+                className={`px-4 py-1.5 rounded-lg text-[13px] font-bold transition-colors ${active ? 'bg-brand-700 text-white' : 'bg-neutral-100 text-neutral-500'}`}
+              >
                 {GRADES[grade]}
               </button>
             )
@@ -394,37 +370,30 @@ export default function HorarioCursoPage() {
         </div>
 
         {selGrade && (
-          <div style={{display:'flex',gap:8,flexWrap:'wrap',alignItems:'center',justifyContent:'center'}}>
+          <div className="flex gap-2 flex-wrap items-center justify-center">
             {paralelosDelGrado.map(c => {
               const active = selCourse?.id === c.id
               return (
-                <button key={c.id} onClick={() => selectParalelo(c)}
-                  style={{
-                    display:'flex',alignItems:'center',gap:6,
-                    padding:'8px 14px',borderRadius:20,cursor:'pointer',
-                    border: active ? '1.5px solid #1A3A7C' : '1.5px solid #CBE0F0',
-                    background: active ? '#E0ECF8' : '#fff',
-                    color:'#1A3A7C',fontSize:13,fontWeight:700,
-                  }}>
+                <button
+                  key={c.id} onClick={() => selectParalelo(c)}
+                  className={`flex items-center gap-1.5 px-3.5 py-2 rounded-full text-[13px] font-bold text-brand-700 border ${active ? 'border-brand-700 bg-brand-100' : 'border-neutral-300 bg-white'}`}
+                >
                   &quot;{c.parallel}&quot;
-                  <span style={{fontWeight:500,fontSize:11.5,color:'#6B8BB0'}}>
-                    {SHIFTS[c.shift]}{c.educationType==='BTH' ? ' · BTH' : ''}
-                  </span>
+                  <span className="font-medium text-[11.5px] text-neutral-500">{SHIFTS[c.shift]}{c.educationType==='BTH' ? ' · BTH' : ''}</span>
                 </button>
               )
             })}
             {paralelosDelGrado.length === 0 && (
-              <span style={{fontSize:12.5,color:'#8B959C'}}>Sin cursos registrados para este grado.</span>
+              <span className="text-[12.5px] text-neutral-500">Sin cursos registrados para este grado.</span>
             )}
           </div>
         )}
-      </div>
+      </Card>
 
       {selCourse && (
         <>
-          {/* Info horario activo */}
           {schoolSch ? (
-            <div style={{background:'#E0ECF8',border:'1px solid #CBE0F0',borderRadius:8,padding:'8px 16px',marginBottom:16,fontSize:12,color:'#1A3A7C',display:'flex',gap:16,flexWrap:'wrap',alignItems:'center'}}>
+            <div className="bg-brand-100 border border-neutral-300 rounded-lg px-4 py-2 mb-4 text-xs text-brand-700 flex gap-4 flex-wrap items-center">
               <span>{schoolSch.isWinter?'❄️':'☀️'} <strong>{schoolSch.name}</strong></span>
               <span>Entrada: <strong>{schoolSch.startTime}</strong></span>
               <span>Salida: <strong>{schoolSch.exitTime}</strong></span>
@@ -432,142 +401,114 @@ export default function HorarioCursoPage() {
               <span>☕ <strong>{breakPeriods.length}</strong> recreo{breakPeriods.length!==1?'s':''} × <strong>{schoolSch.breakDuration}</strong> min</span>
             </div>
           ) : (
-            <div style={{background:'#FFF0F0',border:'1px solid #FFBBBB',borderRadius:8,padding:'8px 16px',marginBottom:16,fontSize:12,color:'#C0392B'}}>
+            <div className="bg-danger-100 border border-danger-500/40 rounded-lg px-4 py-2 mb-4 text-xs text-danger-600">
               ⚠️ No hay horario institucional activo para el turno {SHIFTS[selCourse.shift]}
             </div>
           )}
 
-          {/* Acciones */}
-          <div style={{display:'flex',gap:10,marginBottom:16,flexWrap:'wrap',alignItems:'center'}}>
-            <button onClick={handleGenerate} disabled={generating||!schoolSch}
-              style={{display:'flex',alignItems:'center',gap:7,padding:'9px 16px',background:'#633806',color:'#fff',border:'none',borderRadius:8,fontSize:13,fontWeight:600,cursor:'pointer',opacity:(generating||!schoolSch)?0.6:1}}>
-              <Zap size={15}/> {generating?'Generando...':'⚡ Generar Automático'}
-            </button>
+          <div className="flex gap-2.5 mb-4 flex-wrap items-center">
+            <Button className="!bg-[#633806] !border-[#633806]" onClick={handleGenerate} disabled={generating||!schoolSch} loading={generating}>
+              {!generating && <Zap size={15}/>} {generating?'Generando...':'⚡ Generar Automático'}
+            </Button>
 
             {hasAny && (
               <>
-                <button onClick={()=>{ setBulkClassroom(''); setShowBulkClassroomModal(true) }}
-                  style={{display:'flex',alignItems:'center',gap:7,padding:'9px 16px',background:'#fff',color:'#1A3A7C',border:'1.5px solid #CBE0F0',borderRadius:8,fontSize:13,fontWeight:600,cursor:'pointer'}}>
-                  🚪 Asignar aula al curso
-                </button>
-                <button onClick={()=>setEditMode(!editMode)} style={{
-                  display:'flex',alignItems:'center',gap:7,padding:'9px 16px',
-                  background:editMode?'#1A3A7C':'#F0F6FC',
-                  color:editMode?'#fff':'#1A3A7C',
-                  border:`1.5px solid ${editMode?'#1A3A7C':'#CBE0F0'}`,
-                  borderRadius:8,fontSize:13,fontWeight:600,cursor:'pointer'
-                }}>
+                <Button variant="secondary" onClick={()=>{ setBulkClassroom(''); setShowBulkClassroomModal(true) }}>🚪 Asignar aula al curso</Button>
+                <Button variant={editMode ? 'primary' : 'secondary'} onClick={()=>setEditMode(!editMode)}>
                   <Edit2 size={14}/> {editMode?'✅ Salir de edición':'✏️ Modo edición'}
-                </button>
-                <button onClick={handleDeleteAll}
-                  style={{display:'flex',alignItems:'center',gap:7,padding:'9px 16px',background:'#FFF0F0',color:'#C0392B',border:'1px solid #FFBBBB',borderRadius:8,fontSize:13,cursor:'pointer',fontWeight:600}}>
-                  <Trash2 size={14}/> Eliminar Todo
-                </button>
+                </Button>
+                <Button variant="danger" onClick={handleDeleteAll}><Trash2 size={14}/> Eliminar Todo</Button>
               </>
             )}
 
             {hasDraft && (
               <>
-                <button onClick={handlePublish} disabled={publishing}
-                  style={{display:'flex',alignItems:'center',gap:7,padding:'9px 16px',background:'#0F6E56',color:'#fff',border:'none',borderRadius:8,fontSize:13,fontWeight:600,cursor:'pointer',opacity:publishing?0.6:1}}>
-                  <CheckCircle size={15}/> {publishing?'Publicando...':'✅ Publicar'}
-                </button>
-                <button onClick={handleDeleteDraft}
-                  style={{display:'flex',alignItems:'center',gap:7,padding:'9px 16px',background:'#FFF0F0',color:'#C0392B',border:'1px solid #FFBBBB',borderRadius:8,fontSize:13,cursor:'pointer'}}>
-                  <Trash2 size={15}/> Eliminar Borrador
-                </button>
+                <Button className="!bg-success-700 !border-success-700" onClick={handlePublish} disabled={publishing} loading={publishing}>
+                  {!publishing && <CheckCircle size={15}/>} {publishing?'Publicando...':'✅ Publicar'}
+                </Button>
+                <Button variant="danger" onClick={handleDeleteDraft}><Trash2 size={15}/> Eliminar Borrador</Button>
               </>
             )}
           </div>
 
-          {/* Aviso modo edición */}
           {editMode && (
-            <div style={{background:'#FFF8E1',border:'1px solid #F5C518',borderRadius:8,padding:'8px 14px',marginBottom:12,fontSize:12,color:'#7A6000',display:'flex',alignItems:'center',gap:8}}>
+            <div className="bg-warning-100 border border-warning-500 rounded-lg px-3.5 py-2 mb-3 text-xs text-[#7A6000] flex items-center gap-2">
               ✏️ <strong>Modo edición activo</strong> — haz clic en el <strong>×</strong> de cualquier celda para eliminar ese periodo.
             </div>
           )}
 
-          {/* Progreso general */}
           {totalMaximo > 0 && (
-            <div style={{background:'#fff',border:'1px solid #CBE0F0',borderRadius:10,padding:'12px 16px',marginBottom:16}}>
-              <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:8}}>
-                <span style={{fontSize:12,fontWeight:700,color:'#1A3A7C'}}>Progreso del horario</span>
-                <span style={{fontSize:12,color:'#6B8BB0'}}>{totalAsignados} / {totalMaximo} periodos ({progresoPct}%)</span>
+            <Card className="mb-4">
+              <div className="flex justify-between items-center mb-2">
+                <span className="text-xs font-bold text-brand-700">Progreso del horario</span>
+                <span className="text-xs text-neutral-500">{totalAsignados} / {totalMaximo} periodos ({progresoPct}%)</span>
               </div>
-              <div style={{height:8,background:'#F0F6FC',borderRadius:4,overflow:'hidden'}}>
-                <div style={{
-                  height:'100%',borderRadius:4,transition:'width .3s',
-                  width:`${progresoPct}%`,
-                  background: progresoPct===100?'#0F6E56':progresoPct>=60?'#BA7517':'#1A3A7C'
-                }}/>
+              <div className="h-2 bg-neutral-100 rounded overflow-hidden">
+                <div
+                  className="h-full rounded transition-[width] duration-300"
+                  style={{ width:`${progresoPct}%`, background: progresoPct===100?'#0F6E56':progresoPct>=60?'#BA7517':'#1A3A7C' }}
+                />
               </div>
-            </div>
+            </Card>
           )}
 
-          {/* Resumen de materias */}
           {resumenMaterias.length > 0 && (
-            <div style={{background:'#fff',border:'1px solid #CBE0F0',borderRadius:10,padding:'12px 16px',marginBottom:16}}>
-              <div style={{fontSize:11,fontWeight:700,color:'#1A3A7C',textTransform:'uppercase',letterSpacing:'.5px',marginBottom:10}}>
-                Materias del curso — periodos asignados / máximo
-              </div>
-              <div style={{display:'flex',flexWrap:'wrap',gap:8}}>
+            <Card className="mb-4">
+              <div className="text-[11px] font-bold text-brand-700 uppercase tracking-wide mb-2.5">Materias del curso — periodos asignados / máximo</div>
+              <div className="flex flex-wrap gap-2">
                 {resumenMaterias.map(t => {
                   const campo = t.subject.campo
                   const pct   = t.maxPeriodos > 0 ? (t.asignados / t.maxPeriodos) : 0
                   return (
-                    <div key={t.id} style={{
-                      background: t.completo ? '#E1F5EE' : (campo ? CAMPO_BG[campo]||'#F0F6FC' : '#F0F6FC'),
-                      border:`1px solid ${t.completo ? '#9FE1CB' : (campo ? CAMPO_COLOR[campo]||'#CBE0F0' : '#CBE0F0')}33`,
-                      borderRadius:8,padding:'6px 12px',fontSize:12,
-                      display:'flex',alignItems:'center',gap:6,
-                    }}>
-                      <span style={{fontWeight:700,color:t.completo?'#0F6E56':(campo?CAMPO_COLOR[campo]:'#1A3A7C')}}>
+                    <div
+                      key={t.id}
+                      className="rounded-lg px-3 py-1.5 text-xs flex items-center gap-1.5"
+                      style={{
+                        background: t.completo ? '#E1F5EE' : (campo ? CAMPO_BG[campo]||'#F0F6FC' : '#F0F6FC'),
+                        border:`1px solid ${t.completo ? '#9FE1CB' : (campo ? CAMPO_COLOR[campo]||'#CBE0F0' : '#CBE0F0')}33`,
+                      }}
+                    >
+                      <span className="font-bold" style={{ color: t.completo?'#0F6E56':(campo?CAMPO_COLOR[campo]:'#1A3A7C') }}>
                         {t.completo?'✅ ':''}{t.subject.name}
                       </span>
-                      <span style={{color:'#6B8BB0',fontSize:11}}>{t.teacher.lastName}</span>
-                      <span style={{
-                        background: t.completo?'#0F6E56':pct>=0.5?'#BA7517':'#1A3A7C',
-                        color:'#fff',padding:'1px 7px',borderRadius:10,fontSize:10,fontWeight:700,whiteSpace:'nowrap'
-                      }}>
+                      <span className="text-neutral-500 text-[11px]">{t.teacher.lastName}</span>
+                      <span
+                        className="text-white px-1.5 py-0.5 rounded-[10px] text-[10px] font-bold whitespace-nowrap"
+                        style={{ background: t.completo?'#0F6E56':pct>=0.5?'#BA7517':'#1A3A7C' }}
+                      >
                         {t.asignados}/{t.maxPeriodos}P
                       </span>
                     </div>
                   )
                 })}
               </div>
-            </div>
+            </Card>
           )}
 
-          {/* Leyenda */}
-          <div style={{display:'flex',gap:16,marginBottom:12,flexWrap:'wrap'}}>
-            <div style={{display:'flex',alignItems:'center',gap:6,fontSize:12,color:'#6B8BB0'}}>
-              <div style={{width:12,height:12,borderRadius:3,background:'#FFFEF0',border:'1px solid #F5C518'}}/> Borrador
+          <div className="flex gap-4 mb-3 flex-wrap">
+            <div className="flex items-center gap-1.5 text-xs text-neutral-500">
+              <div className="w-3 h-3 rounded-[3px] bg-[#FFFEF0] border border-warning-500"/> Borrador
             </div>
-            <div style={{display:'flex',alignItems:'center',gap:6,fontSize:12,color:'#6B8BB0'}}>
-              <div style={{width:12,height:12,borderRadius:3,background:'#F0FBF5',border:'1px solid #9FE1CB'}}/> Publicado
+            <div className="flex items-center gap-1.5 text-xs text-neutral-500">
+              <div className="w-3 h-3 rounded-[3px] bg-[#F0FBF5] border border-success-500/40"/> Publicado
             </div>
-            <div style={{display:'flex',alignItems:'center',gap:6,fontSize:12,color:'#6B8BB0'}}>
-              <div style={{width:12,height:12,borderRadius:3,background:'#FAFCFF',border:'1px dashed #CBE0F0'}}/> Libre
+            <div className="flex items-center gap-1.5 text-xs text-neutral-500">
+              <div className="w-3 h-3 rounded-[3px] bg-[#FAFCFF] border border-dashed border-neutral-300"/> Libre
             </div>
-            <div style={{display:'flex',alignItems:'center',gap:6,fontSize:12,color:'#6B8BB0'}}>
-              <span>☕</span> Recreo
-            </div>
+            <div className="flex items-center gap-1.5 text-xs text-neutral-500"><span>☕</span> Recreo</div>
             {!editMode && (
-              <div style={{display:'flex',alignItems:'center',gap:6,fontSize:12,color:'#6B8BB0'}}>
-                📍 Clic en celda ocupada → asignar aula
-              </div>
+              <div className="flex items-center gap-1.5 text-xs text-neutral-500">📍 Clic en celda ocupada → asignar aula</div>
             )}
           </div>
 
-          {/* Grilla */}
           {loading ? (
-            <div style={{display:'flex',justifyContent:'center',padding:48}}><div className="spinner"/></div>
+            <div className="flex justify-center py-12"><p className="text-sm text-neutral-500">Cargando...</p></div>
           ) : (
-            <div style={{overflowX:'auto',borderRadius:10,border:'1px solid #CBE0F0'}}>
-              <table style={{borderCollapse:'collapse',width:'100%',minWidth:700}}>
+            <div className="overflow-x-auto rounded-lg border border-neutral-300">
+              <table className="border-collapse w-full" style={{ minWidth: 700 }}>
                 <thead>
                   <tr>
-                    <th style={{...thStyle,width:90}}>Periodo</th>
+                    <th style={{...thStyle, width:90}}>Periodo</th>
                     {days.map(d=>(
                       <th key={d} style={thStyle}>{DAYS[d]}</th>
                     ))}
@@ -652,24 +593,23 @@ export default function HorarioCursoPage() {
                           })}
                         </tr>
 
-                        {/* Separador de recreo */}
-   {tieneRecreo && (
-  <tr>
-    <td colSpan={days.length + 1} style={{
-      padding:'6px 12px',
-      background:'#D0EFFF',
-      borderTop:'2px solid #4A9FD4',
-      borderBottom:'2px solid #4A9FD4',
-      textAlign:'center',
-      fontSize:11,
-      color:'#1A5F8A',
-      fontWeight:700,
-      letterSpacing:'.3px',
-    }}>
-      ☕ Recreo — {schoolSch?.breakDuration} min
-    </td>
-  </tr>
-)}
+                        {tieneRecreo && (
+                          <tr>
+                            <td colSpan={days.length + 1} style={{
+                              padding:'6px 12px',
+                              background:'#D0EFFF',
+                              borderTop:'2px solid #4A9FD4',
+                              borderBottom:'2px solid #4A9FD4',
+                              textAlign:'center',
+                              fontSize:11,
+                              color:'#1A5F8A',
+                              fontWeight:700,
+                              letterSpacing:'.3px',
+                            }}>
+                              ☕ Recreo — {schoolSch?.breakDuration} min
+                            </td>
+                          </tr>
+                        )}
                       </React.Fragment>
                     )
                   })}
@@ -680,162 +620,98 @@ export default function HorarioCursoPage() {
         </>
       )}
 
-      {/* Modal asignar materia */}
-      {showModal && selCell && (
-        <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,.45)',zIndex:500,display:'flex',alignItems:'center',justifyContent:'center',padding:16}}>
-          <div style={{background:'#fff',borderRadius:14,width:'100%',maxWidth:440,boxShadow:'0 20px 60px rgba(0,0,0,.2)'}}>
-            <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'16px 20px',borderBottom:'1px solid #CBE0F0'}}>
-              <div>
-                <h3 style={{fontSize:15,fontWeight:700,color:'#1A3A7C',margin:0}}>Asignar Periodo</h3>
-                <p style={{fontSize:12,color:'#6B8BB0',margin:'2px 0 0'}}>
-                  {DAYS[selCell.day]} · Periodo {selCell.period} · {selCell.startTime} — {selCell.endTime}
-                </p>
-              </div>
-              <button onClick={()=>setShowModal(false)} style={{background:'none',border:'none',cursor:'pointer',color:'#6B8BB0',padding:4}}>
-                <X size={18}/>
-              </button>
-            </div>
-            <div style={{padding:20}}>
-              <label style={{fontSize:11,fontWeight:700,color:'#1A3A7C',textTransform:'uppercase',letterSpacing:'.5px',display:'block',marginBottom:8}}>
-                Materia / Maestro
-              </label>
-              <select value={selTsc} onChange={e=>setSelTsc(e.target.value)}
-                style={{width:'100%',padding:'10px 12px',border:'1.5px solid #CBE0F0',borderRadius:8,fontSize:13,color:'#1A3A7C',outline:'none',marginBottom:10}}>
-                <option value="">-- Selecciona materia --</option>
-                {resumenMaterias.map(t=>(
-                  <option key={t.id} value={t.id} disabled={t.completo}>
-                    {t.completo?'🚫 ':''}{t.subject.name} — {t.teacher.lastName} ({t.asignados}/{t.maxPeriodos} periodos)
-                  </option>
-                ))}
-              </select>
-              <p style={{fontSize:11,color:'#6B8BB0',margin:0}}>
-                Las materias con 🚫 ya alcanzaron su máximo de periodos semanales.
-              </p>
-            </div>
-            <div style={{display:'flex',justifyContent:'flex-end',gap:10,padding:'12px 20px',borderTop:'1px solid #CBE0F0'}}>
-              <button onClick={()=>setShowModal(false)}
-                style={{padding:'8px 16px',background:'#fff',border:'1.5px solid #CBE0F0',borderRadius:8,fontSize:13,cursor:'pointer',color:'#1A3A7C'}}>
-                Cancelar
-              </button>
-              <button onClick={handleAssign} disabled={!selTsc}
-                style={{display:'flex',alignItems:'center',gap:6,padding:'8px 18px',background:'#1A3A7C',color:'#fff',border:'none',borderRadius:8,fontSize:13,fontWeight:600,cursor:'pointer',opacity:!selTsc?0.5:1}}>
-                <Save size={13}/> Asignar
-              </button>
-            </div>
+      <Modal
+        open={showModal && !!selCell} onClose={()=>setShowModal(false)} title="Asignar Periodo"
+        footer={
+          <>
+            <Button variant="secondary" onClick={()=>setShowModal(false)}>Cancelar</Button>
+            <Button onClick={handleAssign} disabled={!selTsc}><Save size={13}/> Asignar</Button>
+          </>
+        }
+      >
+        {selCell && (
+          <div className="flex flex-col gap-2">
+            <p className="text-xs text-neutral-500 -mt-2">{DAYS[selCell.day]} · Periodo {selCell.period} · {selCell.startTime} — {selCell.endTime}</p>
+            <label className="text-[11px] font-bold text-brand-700 uppercase tracking-wide block">Materia / Maestro</label>
+            <select
+              value={selTsc} onChange={e=>setSelTsc(e.target.value)}
+              className="w-full px-3 py-2.5 border border-neutral-300 rounded-lg text-[13px] text-brand-700 outline-none"
+            >
+              <option value="">-- Selecciona materia --</option>
+              {resumenMaterias.map(t=>(
+                <option key={t.id} value={t.id} disabled={t.completo}>
+                  {t.completo?'🚫 ':''}{t.subject.name} — {t.teacher.lastName} ({t.asignados}/{t.maxPeriodos} periodos)
+                </option>
+              ))}
+            </select>
+            <p className="text-[11px] text-neutral-500">Las materias con 🚫 ya alcanzaron su máximo de periodos semanales.</p>
           </div>
-        </div>
-      )}
+        )}
+      </Modal>
 
-      {/* Modal asignar aula a periodo individual */}
-      {showClassroomModal && (
-        <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,.45)',zIndex:500,display:'flex',alignItems:'center',justifyContent:'center',padding:16}}>
-          <div style={{background:'#fff',borderRadius:14,width:'100%',maxWidth:380,boxShadow:'0 20px 60px rgba(0,0,0,.2)'}}>
-            <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'16px 20px',borderBottom:'1px solid #CBE0F0'}}>
-              <div>
-                <h3 style={{fontSize:15,fontWeight:700,color:'#1A3A7C',margin:0}}>Asignar Aula</h3>
-                <p style={{fontSize:12,color:'#6B8BB0',margin:'2px 0 0'}}>Espacio físico para este periodo</p>
-              </div>
-              <button onClick={()=>setShowClassroomModal(false)} style={{background:'none',border:'none',cursor:'pointer',color:'#6B8BB0'}}>
-                <X size={18}/>
-              </button>
+      <Modal
+        open={showClassroomModal} onClose={()=>setShowClassroomModal(false)} title="Asignar Aula"
+        footer={
+          <>
+            <Button variant="secondary" onClick={()=>setShowClassroomModal(false)}>Cancelar</Button>
+            <Button className="!bg-success-700 !border-success-700" onClick={handleAssignClassroom} disabled={classrooms.length===0}><Save size={13}/> Guardar</Button>
+          </>
+        }
+      >
+        <div className="flex flex-col gap-2">
+          <p className="text-xs text-neutral-500 -mt-2">Espacio físico para este periodo</p>
+          <label className="text-[11px] font-bold text-brand-700 uppercase tracking-wide block">Aula física</label>
+          {classrooms.length === 0 ? (
+            <div className="p-3 bg-danger-100 rounded-lg text-xs text-danger-600">
+              No hay aulas registradas.{' '}
+              <span onClick={()=>router.push('/dashboard/admin/horarios/aulas')} className="underline cursor-pointer">Crear aulas aquí</span>
             </div>
-            <div style={{padding:20}}>
-              <label style={{fontSize:11,fontWeight:700,color:'#1A3A7C',textTransform:'uppercase',letterSpacing:'.5px',display:'block',marginBottom:8}}>
-                Aula física
-              </label>
-              {classrooms.length === 0 ? (
-                <div style={{padding:'12px',background:'#FFF0F0',borderRadius:8,fontSize:12,color:'#C0392B'}}>
-                  No hay aulas registradas.{' '}
-                  <span onClick={()=>router.push('/dashboard/admin/horarios/aulas')} style={{textDecoration:'underline',cursor:'pointer'}}>
-                    Crear aulas aquí
-                  </span>
-                </div>
-              ) : (
-                <select value={selClassroom} onChange={e=>setSelClassroom(e.target.value)}
-                  style={{width:'100%',padding:'10px 12px',border:'1.5px solid #CBE0F0',borderRadius:8,fontSize:13,color:'#1A3A7C',outline:'none'}}>
-                  <option value="">-- Sin aula asignada --</option>
-                  {classrooms.map(c=>(
-                    <option key={c.id} value={c.id}>
-                      {c.name}{c.capacity ? ` (cap. ${c.capacity})` : ''}
-                    </option>
-                  ))}
-                </select>
-              )}
-              <p style={{fontSize:11,color:'#6B8BB0',margin:'8px 0 0'}}>
-                Selecciona &quot;Sin aula asignada&quot; para quitar el aula de este periodo.
-              </p>
-            </div>
-            <div style={{display:'flex',justifyContent:'flex-end',gap:10,padding:'12px 20px',borderTop:'1px solid #CBE0F0'}}>
-              <button onClick={()=>setShowClassroomModal(false)}
-                style={{padding:'8px 16px',background:'#fff',border:'1.5px solid #CBE0F0',borderRadius:8,fontSize:13,cursor:'pointer',color:'#1A3A7C'}}>
-                Cancelar
-              </button>
-              <button onClick={handleAssignClassroom} disabled={classrooms.length===0}
-                style={{display:'flex',alignItems:'center',gap:6,padding:'8px 18px',background:'#0F6E56',color:'#fff',border:'none',borderRadius:8,fontSize:13,fontWeight:600,cursor:'pointer',opacity:classrooms.length===0?0.5:1}}>
-                <Save size={13}/> Guardar
-              </button>
-            </div>
-          </div>
+          ) : (
+            <select
+              value={selClassroom} onChange={e=>setSelClassroom(e.target.value)}
+              className="w-full px-3 py-2.5 border border-neutral-300 rounded-lg text-[13px] text-brand-700 outline-none"
+            >
+              <option value="">-- Sin aula asignada --</option>
+              {classrooms.map(c=>(
+                <option key={c.id} value={c.id}>{c.name}{c.capacity ? ` (cap. ${c.capacity})` : ''}</option>
+              ))}
+            </select>
+          )}
+          <p className="text-[11px] text-neutral-500">Selecciona &quot;Sin aula asignada&quot; para quitar el aula de este periodo.</p>
         </div>
-      )}
+      </Modal>
 
-      {/* Modal asignar aula a todo el curso */}
-      {showBulkClassroomModal && (
-        <div style={{position:'fixed',inset:0,background:'rgba(0,0,0,.45)',zIndex:500,display:'flex',alignItems:'center',justifyContent:'center',padding:16}}>
-          <div style={{background:'#fff',borderRadius:14,width:'100%',maxWidth:400,boxShadow:'0 20px 60px rgba(0,0,0,.2)'}}>
-            <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'16px 20px',borderBottom:'1px solid #CBE0F0'}}>
-              <div>
-                <h3 style={{fontSize:15,fontWeight:700,color:'#1A3A7C',margin:0}}>Asignar aula a todo el curso</h3>
-                <p style={{fontSize:12,color:'#6B8BB0',margin:'2px 0 0'}}>Se aplicará a todos los periodos del curso</p>
-              </div>
-              <button onClick={()=>setShowBulkClassroomModal(false)} style={{background:'none',border:'none',cursor:'pointer',color:'#6B8BB0'}}>
-                <X size={18}/>
-              </button>
+      <Modal
+        open={showBulkClassroomModal} onClose={()=>setShowBulkClassroomModal(false)} title="Asignar aula a todo el curso"
+        footer={
+          <>
+            <Button variant="secondary" onClick={()=>setShowBulkClassroomModal(false)}>Cancelar</Button>
+            <Button onClick={handleAssignClassroomToAll} disabled={!bulkClassroom||classrooms.length===0}><Save size={13}/> Asignar a todos</Button>
+          </>
+        }
+      >
+        <div className="flex flex-col gap-2">
+          <p className="text-xs text-neutral-500 -mt-2">Se aplicará a todos los periodos del curso</p>
+          <label className="text-[11px] font-bold text-brand-700 uppercase tracking-wide block">Aula física</label>
+          {classrooms.length === 0 ? (
+            <div className="p-3 bg-danger-100 rounded-lg text-xs text-danger-600">
+              No hay aulas registradas.{' '}
+              <span onClick={()=>router.push('/dashboard/admin/horarios/aulas')} className="underline cursor-pointer">Crear aulas aquí</span>
             </div>
-            <div style={{padding:20}}>
-              <label style={{fontSize:11,fontWeight:700,color:'#1A3A7C',textTransform:'uppercase',letterSpacing:'.5px',display:'block',marginBottom:8}}>
-                Aula física
-              </label>
-              {classrooms.length === 0 ? (
-                <div style={{padding:'12px',background:'#FFF0F0',borderRadius:8,fontSize:12,color:'#C0392B'}}>
-                  No hay aulas registradas.{' '}
-                  <span onClick={()=>router.push('/dashboard/admin/horarios/aulas')} style={{textDecoration:'underline',cursor:'pointer'}}>
-                    Crear aulas aquí
-                  </span>
-                </div>
-              ) : (
-                <select value={bulkClassroom} onChange={e=>setBulkClassroom(e.target.value)}
-                  style={{width:'100%',padding:'10px 12px',border:'1.5px solid #CBE0F0',borderRadius:8,fontSize:13,color:'#1A3A7C',outline:'none'}}>
-                  <option value="">-- Selecciona un aula --</option>
-                  {classrooms.map(c=>(
-                    <option key={c.id} value={c.id}>
-                      {c.name}{c.capacity ? ` (cap. ${c.capacity})` : ''}
-                    </option>
-                  ))}
-                </select>
-              )}
-              <p style={{fontSize:11,color:'#6B8BB0',margin:'8px 0 0'}}>
-                Esto sobreescribirá el aula de todos los periodos del curso.
-              </p>
-            </div>
-            <div style={{display:'flex',justifyContent:'flex-end',gap:10,padding:'12px 20px',borderTop:'1px solid #CBE0F0'}}>
-              <button onClick={()=>setShowBulkClassroomModal(false)}
-                style={{padding:'8px 16px',background:'#fff',border:'1.5px solid #CBE0F0',borderRadius:8,fontSize:13,cursor:'pointer',color:'#1A3A7C'}}>
-                Cancelar
-              </button>
-              <button onClick={handleAssignClassroomToAll} disabled={!bulkClassroom||classrooms.length===0}
-                style={{display:'flex',alignItems:'center',gap:6,padding:'8px 18px',background:'#1A3A7C',color:'#fff',border:'none',borderRadius:8,fontSize:13,fontWeight:600,cursor:'pointer',opacity:(!bulkClassroom||classrooms.length===0)?0.5:1}}>
-                <Save size={13}/> Asignar a todos
-              </button>
-            </div>
-          </div>
+          ) : (
+            <select
+              value={bulkClassroom} onChange={e=>setBulkClassroom(e.target.value)}
+              className="w-full px-3 py-2.5 border border-neutral-300 rounded-lg text-[13px] text-brand-700 outline-none"
+            >
+              <option value="">-- Selecciona un aula --</option>
+              {classrooms.map(c=>(
+                <option key={c.id} value={c.id}>{c.name}{c.capacity ? ` (cap. ${c.capacity})` : ''}</option>
+              ))}
+            </select>
+          )}
+          <p className="text-[11px] text-neutral-500">Esto sobreescribirá el aula de todos los periodos del curso.</p>
         </div>
-      )}
-
-      <style>{`
-        .spinner{width:24px;height:24px;border:2px solid rgba(26,58,124,.2);border-top-color:#1A3A7C;border-radius:50%;animation:spin .7s linear infinite}
-        @keyframes spin{to{transform:rotate(360deg)}}
-      `}</style>
+      </Modal>
     </div>
   )
 }

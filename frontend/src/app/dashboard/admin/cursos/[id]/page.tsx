@@ -3,6 +3,13 @@
 import { useEffect, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import { ArrowLeft, Users, BookOpen, Clock, GraduationCap, CheckCircle2, AlertCircle, Trash2, Plus, RefreshCw, Copy, Check, X, Search } from 'lucide-react'
+import Card from '@/components/ui/Card'
+import Badge from '@/components/ui/Badge'
+import Button from '@/components/ui/Button'
+import Modal from '@/components/ui/Modal'
+import { Input } from '@/components/ui/Input'
+import { useConfirm } from '@/components/ui/ConfirmProvider'
+import { useToast } from '@/components/ui/ToastProvider'
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000'
 
@@ -64,12 +71,12 @@ const CAMPO_LABELS: Record<string,string> = {
   CIENCIA_TECNOLOGIA_PRODUCCION: 'Ciencia, Tecnología y Producción',
   SIN_CAMPO:                     'Sin campo asignado',
 }
-const CAMPO_COLORS: Record<string,{bg:string;text:string;border:string}> = {
-  VIDA_TIERRA_TERRITORIO:        { bg:'#E8F5F0', text:'#0F6E56', border:'#9FE1CB' },
-  COMUNIDAD_SOCIEDAD:            { bg:'#E0ECF8', text:'#1A3A7C', border:'#A8C4E8' },
-  COSMOS_PENSAMIENTO:            { bg:'#F3E8FF', text:'#6B21A8', border:'#C4A8E8' },
-  CIENCIA_TECNOLOGIA_PRODUCCION: { bg:'#FFF3E0', text:'#633806', border:'#F5C518' },
-  SIN_CAMPO:                     { bg:'#F5F5F5', text:'#444441', border:'#CCCCCC' },
+const CAMPO_TONE: Record<string, 'success' | 'brand' | 'info' | 'warning' | 'neutral'> = {
+  VIDA_TIERRA_TERRITORIO:        'success',
+  COMUNIDAD_SOCIEDAD:            'brand',
+  COSMOS_PENSAMIENTO:            'info',
+  CIENCIA_TECNOLOGIA_PRODUCCION: 'warning',
+  SIN_CAMPO:                     'neutral',
 }
 const CAMPO_ICONS: Record<string,string> = {
   VIDA_TIERRA_TERRITORIO:        '🌿',
@@ -78,13 +85,15 @@ const CAMPO_ICONS: Record<string,string> = {
   CIENCIA_TECNOLOGIA_PRODUCCION: '⚙️',
   SIN_CAMPO:                     '📌',
 }
-const shiftColor: Record<string,string> = { MORNING:'#1A3A7C', AFTERNOON:'#633806', NIGHT:'#3C3489' }
-const levelColor: Record<string,string> = { INICIAL:'#0F6E56', PRIMARIA:'#1A3A7C', SECUNDARIA:'#712B13' }
+const LEVEL_TONE: Record<string, 'success' | 'brand' | 'warning'> = { INICIAL:'success', PRIMARIA:'brand', SECUNDARIA:'warning' }
+const SHIFT_TONE: Record<string, 'brand' | 'warning' | 'info'> = { MORNING:'brand', AFTERNOON:'warning', NIGHT:'info' }
 
 export default function CourseDetailPage() {
-  const params = useParams()
-  const router = useRouter()
-  const id     = params.id as string
+  const params  = useParams()
+  const router  = useRouter()
+  const confirm = useConfirm()
+  const toast   = useToast()
+  const id      = params.id as string
 
   const [course,         setCourse]         = useState<Course | null>(null)
   const [plan,           setPlan]           = useState<CoursePlan | null>(null)
@@ -97,8 +106,6 @@ export default function CourseDetailPage() {
   const [working,        setWorking]        = useState(false)
   const [creds,          setCreds]          = useState<Credentials | null>(null)
   const [copied,         setCopied]         = useState(false)
-  const [success,        setSuccess]        = useState('')
-  const [error,          setError]          = useState('')
 
   const [showAddSubject,  setShowAddSubject]  = useState(false)
   const [allSubjects,     setAllSubjects]     = useState<Subject[]>([])
@@ -107,24 +114,20 @@ export default function CourseDetailPage() {
   const [hoursPerWeek,    setHoursPerWeek]    = useState('4')
   const [addingSubject,   setAddingSubject]   = useState(false)
 
-  const token    = typeof window !== 'undefined' ? localStorage.getItem('token') : ''
   const userRole = typeof window !== 'undefined'
     ? JSON.parse(localStorage.getItem('user') || '{}').role
     : ''
   const isDirector = userRole === 'DIRECTOR' || userRole === 'SUPER_ADMIN'
 
-  const notify = (msg: string, type: 'ok' | 'err' = 'ok') => {
-    if (type === 'ok') { setSuccess(msg); setTimeout(() => setSuccess(''), 3000) }
-    else               { setError(msg);   setTimeout(() => setError(''),   4000) }
-  }
+  const auth = () => ({ Authorization: `Bearer ${localStorage.getItem('token') || ''}` })
 
   const fetchData = async () => {
     setLoading(true)
     try {
       const [cRes, aRes, pRes] = await Promise.all([
-        fetch(`${API_URL}/api/courses/${id}`,          { headers: { Authorization: `Bearer ${token}` } }),
-        fetch(`${API_URL}/api/courses/${id}/students`, { headers: { Authorization: `Bearer ${token}` } }),
-        fetch(`${API_URL}/api/subjects/plan/${id}`,    { headers: { Authorization: `Bearer ${token}` } }),
+        fetch(`${API_URL}/api/courses/${id}`,          { headers: auth() }),
+        fetch(`${API_URL}/api/courses/${id}/students`, { headers: auth() }),
+        fetch(`${API_URL}/api/subjects/plan/${id}`,    { headers: auth() }),
       ])
       const [cData, aData, pData] = await Promise.all([cRes.json(), aRes.json(), pRes.json()])
       if (cRes.ok) {
@@ -140,9 +143,7 @@ export default function CourseDetailPage() {
 
   const fetchPeriodsSummary = async () => {
     try {
-      const res  = await fetch(`${API_URL}/api/schedules/course/${id}/periods-summary`, {
-        headers: { Authorization: `Bearer ${token}` }
-      })
+      const res  = await fetch(`${API_URL}/api/schedules/course/${id}/periods-summary`, { headers: auth() })
       const data = await res.json()
       if (res.ok) setPeriodsSummary(data.summary || {})
     } catch { console.error('Error al obtener resumen de periodos') }
@@ -150,9 +151,7 @@ export default function CourseDetailPage() {
 
   const fetchSchoolSchedule = async (shift: string) => {
     try {
-      const res  = await fetch(`${API_URL}/api/schedules/school-schedules`, {
-        headers: { Authorization: `Bearer ${token}` }
-      })
+      const res  = await fetch(`${API_URL}/api/schedules/school-schedules`, { headers: auth() })
       const data = await res.json()
       if (res.ok) {
         const active = data.find((s: any) => s.isActive && s.shift === shift)
@@ -163,7 +162,7 @@ export default function CourseDetailPage() {
 
   const fetchAllSubjects = async () => {
     try {
-      const res  = await fetch(`${API_URL}/api/subjects`, { headers: { Authorization: `Bearer ${token}` } })
+      const res  = await fetch(`${API_URL}/api/subjects`, { headers: auth() })
       const data = await res.json()
       if (res.ok) setAllSubjects(data)
     } catch { console.error('Error al cargar materias') }
@@ -172,28 +171,24 @@ export default function CourseDetailPage() {
   useEffect(() => { fetchData() }, [id])
 
   const handleRemoveAssignment = async (assignmentId: number) => {
-    if (!confirm('¿Quitar este maestro de la materia?')) return
+    if (!await confirm('¿Quitar este maestro de la materia?', { danger: true })) return
     setRemoving(assignmentId)
     try {
-      const res = await fetch(`${API_URL}/api/subjects/assign/${assignmentId}`, {
-        method: 'DELETE', headers: { Authorization: `Bearer ${token}` }
-      })
-      if (res.ok) { notify('Maestro quitado correctamente'); fetchData() }
+      const res = await fetch(`${API_URL}/api/subjects/assign/${assignmentId}`, { method: 'DELETE', headers: auth() })
+      if (res.ok) { toast('Maestro quitado correctamente', 'success'); fetchData() }
     } catch { console.error('Error al quitar asignación') }
     finally  { setRemoving(null) }
   }
 
   const handleRemoveFromPlan = async (gradeConfigId: number, subjectName: string) => {
-    if (!confirm(`¿Eliminar "${subjectName}" del plan de estudios? Esto también quitará al maestro asignado.`)) return
+    if (!await confirm(`¿Eliminar "${subjectName}" del plan de estudios? Esto también quitará al maestro asignado.`, { danger: true })) return
     setRemovingPlan(gradeConfigId)
     try {
-      const res  = await fetch(`${API_URL}/api/subjects/grade-config/${gradeConfigId}`, {
-        method: 'DELETE', headers: { Authorization: `Bearer ${token}` }
-      })
+      const res  = await fetch(`${API_URL}/api/subjects/grade-config/${gradeConfigId}`, { method: 'DELETE', headers: auth() })
       const data = await res.json()
-      if (res.ok) { notify(data.message); fetchData() }
-      else notify(data.message, 'err')
-    } catch { notify('Error de conexión', 'err') }
+      if (res.ok) { toast(data.message, 'success'); fetchData() }
+      else toast(data.message, 'error')
+    } catch { toast('Error de conexión', 'error') }
     finally  { setRemovingPlan(null) }
   }
 
@@ -203,7 +198,7 @@ export default function CourseDetailPage() {
     try {
       const res  = await fetch(`${API_URL}/api/subjects/grade-config`, {
         method:  'POST',
-        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        headers: { 'Content-Type': 'application/json', ...auth() },
         body:    JSON.stringify({
           subjectId:     selectedSubject,
           grade:         plan.course.grade,
@@ -212,45 +207,41 @@ export default function CourseDetailPage() {
         }),
       })
       const data = await res.json()
-      if (!res.ok) { notify(data.message, 'err'); return }
-      notify(data.message)
+      if (!res.ok) { toast(data.message, 'error'); return }
+      toast(data.message, 'success')
       setShowAddSubject(false)
       setSelectedSubject(null)
       setHoursPerWeek('4')
       fetchData()
-    } catch { notify('Error de conexión', 'err') }
+    } catch { toast('Error de conexión', 'error') }
     finally  { setAddingSubject(false) }
   }
 
   const handleCreateTutorUser = async () => {
     setWorking(true)
     try {
-      const res  = await fetch(`${API_URL}/api/courses/${id}/tutor-user`, {
-        method: 'POST', headers: { Authorization: `Bearer ${token}` }
-      })
+      const res  = await fetch(`${API_URL}/api/courses/${id}/tutor-user`, { method: 'POST', headers: auth() })
       const data = await res.json()
-      if (!res.ok) { notify(data.message, 'err'); return }
+      if (!res.ok) { toast(data.message, 'error'); return }
       setCreds({ accessEmail: data.accessEmail, defaultPassword: data.defaultPassword, name: data.tutorName })
       fetchData()
-    } catch { notify('Error de conexión', 'err') }
+    } catch { toast('Error de conexión', 'error') }
     finally  { setWorking(false) }
   }
 
   const handleResetTutorPassword = async () => {
-    if (!confirm('¿Resetear la contraseña del maestro tutor?')) return
+    if (!await confirm('¿Resetear la contraseña del maestro tutor?')) return
     setWorking(true)
     try {
-      const res  = await fetch(`${API_URL}/api/courses/${id}/tutor-user/reset`, {
-        method: 'POST', headers: { Authorization: `Bearer ${token}` }
-      })
+      const res  = await fetch(`${API_URL}/api/courses/${id}/tutor-user/reset`, { method: 'POST', headers: auth() })
       const data = await res.json()
-      if (!res.ok) { notify(data.message, 'err'); return }
+      if (!res.ok) { toast(data.message, 'error'); return }
       setCreds({
         accessEmail:     course?.tutor?.teacher.tutorUser?.email || '',
         defaultPassword: data.defaultPassword,
         name:            data.tutorName,
       })
-    } catch { notify('Error de conexión', 'err') }
+    } catch { toast('Error de conexión', 'error') }
     finally  { setWorking(false) }
   }
 
@@ -261,9 +252,6 @@ export default function CourseDetailPage() {
     setTimeout(() => setCopied(false), 2000)
   }
 
-  // ── Cálculos de periodos ──
-  // hoursPerMonth almacena horas académicas del MES (se divide entre 4 semanas).
-  // 1 hora académica = 1 periodo (40 min), por eso ya no se convierte a minutos.
   const calcPeriodosPlan = (hoursPerMonth: number) => {
     if (!schoolSch || !hoursPerMonth) return null
     return Math.round(hoursPerMonth / 4)
@@ -272,8 +260,8 @@ export default function CourseDetailPage() {
   const totalPeriodosAsignados = Object.values(periodsSummary).reduce((a, b) => a + b, 0)
   const totalPeriodosPlan      = plan && schoolSch ? Math.round(plan.totalHours / 4) : 0
 
-  if (loading) return <div className="center"><div className="spinner"/></div>
-  if (!course)  return <div className="center"><p>Curso no encontrado</p></div>
+  if (loading) return <div className="flex justify-center py-16"><p className="text-sm text-neutral-500">Cargando...</p></div>
+  if (!course)  return <div className="flex justify-center py-16"><p className="text-sm text-neutral-500">Curso no encontrado</p></div>
 
   const camposOrden = plan
     ? [...plan.campoOrder, 'SIN_CAMPO'].filter(c => plan.grouped[c]?.length > 0)
@@ -294,436 +282,345 @@ export default function CourseDetailPage() {
 
   return (
     <div>
-      {/* Cabecera */}
-      <div className="page-header">
-        <button className="back-btn" onClick={() => router.back()}>
+      <div className="flex flex-col gap-3 mb-6">
+        <button onClick={() => router.back()} className="flex items-center gap-1.5 text-neutral-500 hover:text-brand-700 text-[13px] w-fit">
           <ArrowLeft size={16}/> Volver
         </button>
-        <div className="course-title">
-          <span className="level-pill" style={{ background: levelColor[course.level]+'18', color: levelColor[course.level] }}>
-            {LEVELS[course.level]}
-          </span>
-          <h1>{GRADES[course.grade]} {course.parallel}</h1>
-          <div className="course-meta">
-            <span className="meta-badge" style={{ background: shiftColor[course.shift]+'18', color: shiftColor[course.shift] }}>
-              <Clock size={12}/> {SHIFTS[course.shift]}
-            </span>
-            {course.educationType === 'BTH' && (
-              <span className="meta-badge bth"><GraduationCap size={12}/> BTH</span>
-            )}
+        <div className="flex items-center gap-3 flex-wrap">
+          <Badge tone={LEVEL_TONE[course.level]}>{LEVELS[course.level]}</Badge>
+          <h1 className="text-[28px] font-extrabold text-brand-700">{GRADES[course.grade]} {course.parallel}</h1>
+          <div className="flex gap-2">
+            <Badge tone={SHIFT_TONE[course.shift]}><Clock size={12}/> {SHIFTS[course.shift]}</Badge>
+            {course.educationType === 'BTH' && <Badge tone="warning"><GraduationCap size={12}/> BTH</Badge>}
           </div>
         </div>
       </div>
 
-      {success && <div className="alert ok">{success}</div>}
-      {error   && <div className="alert err">{error}</div>}
-
-      {/* Stats */}
-      <div className="stats-row">
-        <div className="stat-card">
-          <Users size={20} color="#1A3A7C"/>
-          <div><div className="stat-num">{course._count.assignments}</div><div className="stat-lbl">Estudiantes inscritos</div></div>
-        </div>
+      <div className="grid gap-3 mb-5" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))' }}>
+        <Card className="flex items-center gap-3">
+          <Users size={20} className="text-brand-700"/>
+          <div><div className="text-xl font-bold text-brand-700">{course._count.assignments}</div><div className="text-xs text-neutral-500">Estudiantes inscritos</div></div>
+        </Card>
         {plan && (
           <>
-            <div className="stat-card">
-              <BookOpen size={20} color="#4A9FD4"/>
-              <div><div className="stat-num">{plan.totalSubjects}</div><div className="stat-lbl">Materias del grado</div></div>
-            </div>
-            <div className="stat-card">
-              <Clock size={20} color="#0F6E56"/>
-              <div><div className="stat-num">{plan.totalHours}</div><div className="stat-lbl">Horas / Mes (plan)</div></div>
-            </div>
-            <div className="stat-card">
-              <CheckCircle2 size={20} color={plan.pendingCount === 0 ? '#0F6E56' : '#BA7517'}/>
+            <Card className="flex items-center gap-3">
+              <BookOpen size={20} className="text-info-500"/>
+              <div><div className="text-xl font-bold text-brand-700">{plan.totalSubjects}</div><div className="text-xs text-neutral-500">Materias del grado</div></div>
+            </Card>
+            <Card className="flex items-center gap-3">
+              <Clock size={20} className="text-success-700"/>
+              <div><div className="text-xl font-bold text-brand-700">{plan.totalHours}</div><div className="text-xs text-neutral-500">Horas / Mes (plan)</div></div>
+            </Card>
+            <Card className="flex items-center gap-3">
+              <CheckCircle2 size={20} className={plan.pendingCount === 0 ? 'text-success-700' : 'text-[#BA7517]'}/>
               <div>
-                <div className="stat-num" style={{color: plan.pendingCount === 0 ? '#0F6E56' : '#BA7517'}}>
-                  {plan.assignedCount}/{plan.totalSubjects}
-                </div>
-                <div className="stat-lbl">Con maestro asignado</div>
+                <div className={`text-xl font-bold ${plan.pendingCount === 0 ? 'text-success-700' : 'text-[#BA7517]'}`}>{plan.assignedCount}/{plan.totalSubjects}</div>
+                <div className="text-xs text-neutral-500">Con maestro asignado</div>
               </div>
-            </div>
+            </Card>
             {hayHorario && schoolSch && (
-              <div className="stat-card">
-                <Clock size={20} color={totalPeriodosAsignados >= totalPeriodosPlan ? '#0F6E56' : '#BA7517'}/>
+              <Card className="flex items-center gap-3">
+                <Clock size={20} className={totalPeriodosAsignados >= totalPeriodosPlan ? 'text-success-700' : 'text-[#BA7517]'}/>
                 <div>
-                  <div className="stat-num" style={{color: totalPeriodosAsignados >= totalPeriodosPlan ? '#0F6E56' : '#BA7517'}}>
-                    {totalPeriodosAsignados} / {totalPeriodosPlan}
-                  </div>
-                  <div className="stat-lbl">Periodos ejecutados / plan</div>
+                  <div className={`text-xl font-bold ${totalPeriodosAsignados >= totalPeriodosPlan ? 'text-success-700' : 'text-[#BA7517]'}`}>{totalPeriodosAsignados} / {totalPeriodosPlan}</div>
+                  <div className="text-xs text-neutral-500">Periodos ejecutados / plan</div>
                 </div>
-              </div>
+              </Card>
             )}
           </>
         )}
       </div>
 
       {/* Maestro Tutor */}
-      <div className="section-card">
-        <div className="section-title"><GraduationCap size={15}/> Maestro Tutor</div>
-        <div style={{padding:'16px 18px'}}>
+      <Card padded={false} className="overflow-hidden mb-4">
+        <div className="flex items-center gap-2 px-4.5 py-3.5 border-b border-neutral-100 text-[13px] font-semibold text-brand-700">
+          <GraduationCap size={15}/> Maestro Tutor
+        </div>
+        <div className="p-4.5">
           {hasTutor ? (
-            <div style={{display:'flex',alignItems:'flex-start',justifyContent:'space-between',gap:'16px',flexWrap:'wrap'}}>
+            <div className="flex items-start justify-between gap-4 flex-wrap">
               <div>
-                <div style={{fontWeight:600,color:'#1A3A7C',fontSize:'14px'}}>
-                  {course.tutor!.teacher.lastName} {course.tutor!.teacher.firstName}
-                </div>
+                <div className="font-semibold text-brand-700 text-sm">{course.tutor!.teacher.lastName} {course.tutor!.teacher.firstName}</div>
                 {hasTutorUser ? (
-                  <div style={{marginTop:'4px'}}>
-                    <span style={{fontSize:'11px',color:'#0F6E56'}}>✅ Usuario tutor activo</span>
-                    <div style={{fontSize:'11px',color:'#6B8BB0',fontFamily:'monospace'}}>{course.tutor!.teacher.tutorUser?.email}</div>
+                  <div className="mt-1">
+                    <span className="text-[11px] text-success-700">✅ Usuario tutor activo</span>
+                    <div className="text-[11px] text-neutral-500 font-mono">{course.tutor!.teacher.tutorUser?.email}</div>
                   </div>
                 ) : (
-                  <span style={{fontSize:'11px',color:'#C0392B'}}>❌ Sin usuario tutor</span>
+                  <span className="text-[11px] text-danger-600">❌ Sin usuario tutor</span>
                 )}
               </div>
-              <div style={{display:'flex',gap:'8px',flexWrap:'wrap'}}>
-                <button className="btn-outline-sm" onClick={() => router.push(`/dashboard/admin/cursos/${id}/asignar-tutor`)}>Cambiar tutor</button>
+              <div className="flex gap-2 flex-wrap">
+                <Button variant="secondary" size="sm" onClick={() => router.push(`/dashboard/admin/cursos/${id}/asignar-tutor`)}>Cambiar tutor</Button>
                 {isDirector && !hasTutorUser && (
-                  <button className="btn-primary-sm" onClick={handleCreateTutorUser} disabled={working}>
-                    {working ? <span className="spinsm"/> : <Plus size={12}/>} Crear usuario
-                  </button>
+                  <Button size="sm" onClick={handleCreateTutorUser} loading={working}>
+                    {!working && <Plus size={12}/>} Crear usuario
+                  </Button>
                 )}
                 {isDirector && hasTutorUser && (
-                  <button className="btn-outline-sm" onClick={handleResetTutorPassword} disabled={working}>
-                    {working ? <span className="spinsm"/> : <RefreshCw size={12}/>} Resetear password
-                  </button>
+                  <Button variant="secondary" size="sm" onClick={handleResetTutorPassword} loading={working}>
+                    {!working && <RefreshCw size={12}/>} Resetear password
+                  </Button>
                 )}
               </div>
             </div>
           ) : (
-            <div style={{display:'flex',alignItems:'center',justifyContent:'space-between'}}>
-              <span style={{fontSize:'13px',color:'#6B8BB0',fontStyle:'italic'}}>Sin maestro tutor asignado</span>
-              <button className="btn-primary-sm" onClick={() => router.push(`/dashboard/admin/cursos/${id}/asignar-tutor`)}>+ Asignar tutor</button>
+            <div className="flex items-center justify-between">
+              <span className="text-[13px] text-neutral-500 italic">Sin maestro tutor asignado</span>
+              <Button size="sm" onClick={() => router.push(`/dashboard/admin/cursos/${id}/asignar-tutor`)}>+ Asignar tutor</Button>
             </div>
           )}
         </div>
-      </div>
+      </Card>
 
       {/* Plan de Estudios */}
-      <div className="section-card">
-        <div className="section-title" style={{justifyContent:'space-between'}}>
-          <span style={{display:'flex',alignItems:'center',gap:'8px'}}>
+      <Card padded={false} className="overflow-hidden mb-4">
+        <div className="flex items-center justify-between px-4.5 py-3.5 border-b border-neutral-100 flex-wrap gap-2">
+          <span className="flex items-center gap-2 text-[13px] font-semibold text-brand-700">
             <BookOpen size={15}/> Plan de Estudios · {GRADES[course.grade]} {course.parallel}
-            {plan && <span style={{fontSize:'12px',fontWeight:400,color:'#6B8BB0'}}>{plan.totalHours} hrs/mes</span>}
+            {plan && <span className="text-xs font-normal text-neutral-500">{plan.totalHours} hrs/mes</span>}
           </span>
-          <div style={{display:'flex',gap:'8px'}}>
-            <button className="btn-outline-sm" onClick={() => { setShowAddSubject(true); fetchAllSubjects(); setSubjectSearch(''); setSelectedSubject(null); setHoursPerWeek('4') }}>
+          <div className="flex gap-2">
+            <Button variant="secondary" size="sm" onClick={() => { setShowAddSubject(true); fetchAllSubjects(); setSubjectSearch(''); setSelectedSubject(null); setHoursPerWeek('4') }}>
               <Plus size={12}/> Agregar materia
-            </button>
-            <button className="btn-primary-sm" onClick={() => router.push(`/dashboard/admin/cursos/${id}/asignar-materia`)}>
+            </Button>
+            <Button size="sm" onClick={() => router.push(`/dashboard/admin/cursos/${id}/asignar-materia`)}>
               + Asignar maestro
-            </button>
+            </Button>
           </div>
         </div>
 
         {!plan ? (
-          <div className="empty-state"><p>No hay plan de estudios configurado para este grado</p></div>
+          <p className="p-8 text-center text-[13px] text-neutral-500">No hay plan de estudios configurado para este grado</p>
         ) : (
-          <div style={{padding:'12px 16px',display:'flex',flexDirection:'column',gap:'16px'}}>
+          <div className="p-4 flex flex-col gap-4">
             {plan.pendingCount > 0 ? (
-              <div className="alert-warn"><AlertCircle size={14}/>{plan.pendingCount} {plan.pendingCount === 1 ? 'materia sin' : 'materias sin'} maestro asignado</div>
+              <div className="flex items-center gap-2 px-3.5 py-2.5 bg-warning-100 border border-warning-500 rounded-lg text-[13px] text-[#7A6000]"><AlertCircle size={14}/>{plan.pendingCount} {plan.pendingCount === 1 ? 'materia sin' : 'materias sin'} maestro asignado</div>
             ) : (
-              <div className="alert-ok"><CheckCircle2 size={14}/>Todas las materias tienen maestro asignado ✓</div>
+              <div className="flex items-center gap-2 px-3.5 py-2.5 bg-success-100 border border-success-500/40 rounded-lg text-[13px] text-success-700"><CheckCircle2 size={14}/>Todas las materias tienen maestro asignado ✓</div>
             )}
 
             {!hayHorario && (
-              <div style={{display:'flex',alignItems:'center',gap:8,padding:'8px 12px',background:'#FFFBEA',border:'1px solid #F5C518',borderRadius:8,fontSize:12,color:'#7A6000'}}>
+              <div className="flex items-center gap-2 px-3 py-2 bg-warning-100 border border-warning-500 rounded-lg text-xs text-[#7A6000]">
                 ⚠️ Este curso aún no tiene horario publicado — los periodos asignados aparecerán una vez publicado.
               </div>
             )}
 
             {camposOrden.map(campo => {
               const items      = plan.grouped[campo] || []
-              const col        = CAMPO_COLORS[campo] || CAMPO_COLORS['SIN_CAMPO']
               const icon       = CAMPO_ICONS[campo]  || '📌'
               const label      = CAMPO_LABELS[campo] || campo
               const horasCampo = items.reduce((s, i) => s + i.hoursPerWeek, 0)
 
               return (
                 <div key={campo}>
-                  <div className="campo-header" style={{background:col.bg,borderColor:col.border}}>
-                    <span style={{fontSize:'14px'}}>{icon}</span>
-                    <span style={{fontWeight:700,color:col.text,fontSize:'12px',textTransform:'uppercase',letterSpacing:'.5px'}}>{label}</span>
-                    <span style={{marginLeft:'auto',fontSize:'12px',color:col.text,fontWeight:500}}>
-                      {horasCampo} hrs/mes · {items.length} {items.length === 1 ? 'materia' : 'materias'}
-                    </span>
+                  <div className="flex items-center gap-2 mb-1">
+                    <Badge tone={CAMPO_TONE[campo] || 'neutral'}>{icon} {label}</Badge>
+                    <span className="ml-auto text-xs text-neutral-500 font-medium">{horasCampo} hrs/mes · {items.length} {items.length === 1 ? 'materia' : 'materias'}</span>
                   </div>
-                  <table style={{width:'100%',borderCollapse:'collapse'}}>
-                    <thead>
-                      <tr style={{background:'#F8FBFF'}}>
-                        <th className="th">Materia</th>
-                        <th className="th">Código</th>
-                        <th className="th" style={{textAlign:'center'}}>Hrs/Mes</th>
-                        <th className="th" style={{textAlign:'center'}}>Per. Plan</th>
-                        <th className="th" style={{textAlign:'center'}}>Per. Asignados</th>
-                        <th className="th">Maestro</th>
-                        <th className="th" style={{width:'80px',textAlign:'center'}}>Acciones</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {items.map(item => {
-                        const periodosPlan      = calcPeriodosPlan(item.hoursPerWeek)
-                        const periodosAsignados = periodsSummary[item.subjectId] || 0
-                        const cumplido          = periodosPlan !== null && periodosAsignados >= periodosPlan
-                        const parcial           = periodosPlan !== null && periodosAsignados > 0 && periodosAsignados < periodosPlan
+                  <div className="overflow-x-auto rounded-lg border border-neutral-300/60">
+                    <table className="w-full border-collapse">
+                      <thead>
+                        <tr className="bg-neutral-100">
+                          <th className="px-3.5 py-2 text-left text-[11px] font-semibold text-brand-700 uppercase tracking-wide">Materia</th>
+                          <th className="px-3.5 py-2 text-left text-[11px] font-semibold text-brand-700 uppercase tracking-wide">Código</th>
+                          <th className="px-3.5 py-2 text-center text-[11px] font-semibold text-brand-700 uppercase tracking-wide">Hrs/Mes</th>
+                          <th className="px-3.5 py-2 text-center text-[11px] font-semibold text-brand-700 uppercase tracking-wide">Per. Plan</th>
+                          <th className="px-3.5 py-2 text-center text-[11px] font-semibold text-brand-700 uppercase tracking-wide">Per. Asignados</th>
+                          <th className="px-3.5 py-2 text-left text-[11px] font-semibold text-brand-700 uppercase tracking-wide">Maestro</th>
+                          <th className="px-3.5 py-2 text-center text-[11px] font-semibold text-brand-700 uppercase tracking-wide w-20">Acciones</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {items.map(item => {
+                          const periodosPlan      = calcPeriodosPlan(item.hoursPerWeek)
+                          const periodosAsignados = periodsSummary[item.subjectId] || 0
+                          const cumplido          = periodosPlan !== null && periodosAsignados >= periodosPlan
+                          const parcial           = periodosPlan !== null && periodosAsignados > 0 && periodosAsignados < periodosPlan
 
-                        return (
-                          <tr key={item.subjectId} style={{borderTop:'1px solid #F0F6FC'}}>
-                            <td className="td" style={{fontWeight:500}}>{item.subject.name}</td>
-                            <td className="td muted">{item.subject.code || '—'}</td>
-                            <td className="td" style={{textAlign:'center'}}>
-                              <span className="hrs-badge">{item.hoursPerWeek}</span>
-                            </td>
-                            <td className="td" style={{textAlign:'center'}}>
-                              {periodosPlan !== null ? (
-                                <span style={{background:'#E0ECF8',color:'#1A3A7C',borderRadius:20,padding:'2px 10px',fontSize:12,fontWeight:600}}>
-                                  {periodosPlan}P
-                                </span>
-                              ) : <span className="muted">—</span>}
-                            </td>
-                            <td className="td" style={{textAlign:'center'}}>
-                              {hayHorario ? (
-                                <span style={{
-                                  background: cumplido?'#E1F5EE':parcial?'#FFFBEA':'#FFF0F0',
-                                  color:      cumplido?'#0F6E56':parcial?'#7A6000':'#C0392B',
-                                  borderRadius:20, padding:'2px 10px', fontSize:12, fontWeight:600,
-                                }}>
-                                  {periodosAsignados}P {cumplido?'✅':parcial?'⚠️':'❌'}
-                                </span>
-                              ) : <span className="muted">—</span>}
-                            </td>
-                            <td className="td">
-                              {item.teacher ? (
-                                <span style={{display:'flex',alignItems:'center',gap:'6px'}}>
-                                  <CheckCircle2 size={13} color="#0F6E56"/>
-                                  <span style={{color:'#1A3A7C'}}>{item.teacher.lastName} {item.teacher.firstName}</span>
-                                </span>
-                              ) : (
-                                <span style={{display:'flex',alignItems:'center',gap:'6px',color:'#BA7517'}}>
-                                  <AlertCircle size={13}/>
-                                  <span style={{fontSize:'12px',fontStyle:'italic'}}>Sin maestro</span>
-                                </span>
-                              )}
-                            </td>
-                            <td className="td" style={{textAlign:'center'}}>
-                              <div style={{display:'flex',gap:'6px',justifyContent:'center'}}>
-                                {item.assignmentId && (
-                                  <button className="icon-btn-sm" title="Quitar maestro"
-                                    style={{background:'#FFFBEA',color:'#BA7517',border:'1px solid #F5C518'}}
-                                    disabled={removing === item.assignmentId}
-                                    onClick={() => handleRemoveAssignment(item.assignmentId!)}>
-                                    <Trash2 size={11}/>
-                                  </button>
+                          return (
+                            <tr key={item.subjectId} className="border-t border-neutral-100">
+                              <td className="px-3.5 py-2.5 text-[13px] font-medium text-brand-700">{item.subject.name}</td>
+                              <td className="px-3.5 py-2.5 text-xs text-neutral-500">{item.subject.code || '—'}</td>
+                              <td className="px-3.5 py-2.5 text-center"><Badge tone="brand">{item.hoursPerWeek}</Badge></td>
+                              <td className="px-3.5 py-2.5 text-center">
+                                {periodosPlan !== null ? <Badge tone="brand">{periodosPlan}P</Badge> : <span className="text-neutral-500">—</span>}
+                              </td>
+                              <td className="px-3.5 py-2.5 text-center">
+                                {hayHorario ? (
+                                  <Badge tone={cumplido ? 'success' : parcial ? 'warning' : 'danger'}>{periodosAsignados}P {cumplido?'✅':parcial?'⚠️':'❌'}</Badge>
+                                ) : <span className="text-neutral-500">—</span>}
+                              </td>
+                              <td className="px-3.5 py-2.5">
+                                {item.teacher ? (
+                                  <span className="flex items-center gap-1.5">
+                                    <CheckCircle2 size={13} className="text-success-700"/>
+                                    <span className="text-brand-700 text-[13px]">{item.teacher.lastName} {item.teacher.firstName}</span>
+                                  </span>
+                                ) : (
+                                  <span className="flex items-center gap-1.5 text-[#BA7517]">
+                                    <AlertCircle size={13}/>
+                                    <span className="text-xs italic">Sin maestro</span>
+                                  </span>
                                 )}
-                                <button className="icon-btn-sm" title="Eliminar materia del plan"
-                                  style={{background:'#FFF0F0',color:'#C0392B',border:'1px solid #FFBBBB'}}
-                                  disabled={removingPlan === item.gradeConfigId}
-                                  onClick={() => handleRemoveFromPlan(item.gradeConfigId, item.subject.name)}>
-                                  <X size={11}/>
-                                </button>
-                              </div>
-                            </td>
-                          </tr>
-                        )
-                      })}
-                    </tbody>
-                  </table>
+                              </td>
+                              <td className="px-3.5 py-2.5 text-center">
+                                <div className="flex gap-1.5 justify-center">
+                                  {item.assignmentId && (
+                                    <button
+                                      title="Quitar maestro" disabled={removing === item.assignmentId}
+                                      onClick={() => handleRemoveAssignment(item.assignmentId!)}
+                                      className="w-6 h-6 rounded-md bg-warning-100 text-[#BA7517] border border-warning-500 flex items-center justify-center hover:opacity-75 disabled:opacity-40 transition-opacity"
+                                    >
+                                      <Trash2 size={11}/>
+                                    </button>
+                                  )}
+                                  <button
+                                    title="Eliminar materia del plan" disabled={removingPlan === item.gradeConfigId}
+                                    onClick={() => handleRemoveFromPlan(item.gradeConfigId, item.subject.name)}
+                                    className="w-6 h-6 rounded-md bg-danger-100 text-danger-600 border border-danger-500/40 flex items-center justify-center hover:opacity-75 disabled:opacity-40 transition-opacity"
+                                  >
+                                    <X size={11}/>
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          )
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
               )
             })}
           </div>
         )}
-      </div>
+      </Card>
 
       {/* Estudiantes inscritos */}
-      <div className="section-card">
-        <div className="section-title"><Users size={15}/> Estudiantes inscritos ({assignments.length})</div>
+      <Card padded={false} className="overflow-hidden">
+        <div className="flex items-center gap-2 px-4.5 py-3.5 border-b border-neutral-100 text-[13px] font-semibold text-brand-700">
+          <Users size={15}/> Estudiantes inscritos ({assignments.length})
+        </div>
         {assignments.length === 0 ? (
-          <div className="empty-state"><Users size={32} color="#CBE0F0"/><p>No hay estudiantes inscritos en este curso</p></div>
+          <div className="flex flex-col items-center gap-2.5 p-10 text-neutral-500 text-[13px]">
+            <Users size={32} className="text-neutral-300"/>
+            <p>No hay estudiantes inscritos en este curso</p>
+          </div>
         ) : (
-          <table>
-            <thead>
-              <tr>
-                <th className="th">#</th><th className="th">Nombre completo</th>
-                <th className="th">CI</th><th className="th">RUDE</th>
-              </tr>
-            </thead>
-            <tbody>
-              {assignments.map((a, i) => (
-                <tr key={a.id} style={{borderTop:'1px solid #F0F6FC'}}>
-                  <td className="td muted">{i + 1}</td>
-                  <td className="td"><strong>{a.student.lastName} {a.student.firstName}</strong></td>
-                  <td className="td muted">{a.student.ci   || '—'}</td>
-                  <td className="td muted">{a.student.rude || '—'}</td>
+          <div className="overflow-x-auto">
+            <table className="w-full border-collapse">
+              <thead>
+                <tr className="bg-neutral-100">
+                  <th className="px-3.5 py-2 text-left text-[11px] font-semibold text-brand-700 uppercase tracking-wide">#</th>
+                  <th className="px-3.5 py-2 text-left text-[11px] font-semibold text-brand-700 uppercase tracking-wide">Nombre completo</th>
+                  <th className="px-3.5 py-2 text-left text-[11px] font-semibold text-brand-700 uppercase tracking-wide">CI</th>
+                  <th className="px-3.5 py-2 text-left text-[11px] font-semibold text-brand-700 uppercase tracking-wide">RUDE</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {assignments.map((a, i) => (
+                  <tr key={a.id} className="border-t border-neutral-100">
+                    <td className="px-3.5 py-2.5 text-xs text-neutral-500">{i + 1}</td>
+                    <td className="px-3.5 py-2.5 text-[13px] font-semibold text-brand-700">{a.student.lastName} {a.student.firstName}</td>
+                    <td className="px-3.5 py-2.5 text-xs text-neutral-500">{a.student.ci || '—'}</td>
+                    <td className="px-3.5 py-2.5 text-xs text-neutral-500">{a.student.rude || '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
-      </div>
+      </Card>
 
       {/* Modal agregar materia al plan */}
-      {showAddSubject && (
-        <div className="overlay" onClick={() => setShowAddSubject(false)}>
-          <div className="modal" onClick={e => e.stopPropagation()}>
-            <div className="mhead">
-              <div>
-                <h2>Agregar materia al plan</h2>
-                <p style={{fontSize:'12px',color:'#6B8BB0',margin:'2px 0 0'}}>
-                  {GRADES[course.grade]} {course.parallel} · {LEVELS[course.level]}
-                </p>
-              </div>
-              <button onClick={() => setShowAddSubject(false)}><X size={18}/></button>
-            </div>
-            <div className="mbody">
-              <div className="info-box">
-                📋 La materia se agregará al plan del grado <strong>{GRADES[course.grade]}</strong> y estará disponible en todos los cursos de ese grado.
-              </div>
-              <div className="fg">
-                <label>Buscar materia</label>
-                <div className="search-wrap">
-                  <Search size={13} className="s-icon"/>
-                  <input type="text" placeholder="Buscar por nombre..." value={subjectSearch}
-                    onChange={e => setSubjectSearch(e.target.value)}/>
+      <Modal
+        open={showAddSubject} onClose={() => setShowAddSubject(false)} title="Agregar materia al plan"
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setShowAddSubject(false)}>Cancelar</Button>
+            <Button onClick={handleAddSubjectToPlan} disabled={!selectedSubject} loading={addingSubject}>
+              {!addingSubject && <Plus size={13}/>}
+              {addingSubject ? 'Agregando...' : 'Agregar al plan'}
+            </Button>
+          </>
+        }
+      >
+        <div className="flex flex-col gap-3.5">
+          <p className="text-xs text-neutral-500 -mt-1">{GRADES[course.grade]} {course.parallel} · {LEVELS[course.level]}</p>
+          <div className="bg-neutral-100 border border-neutral-300 rounded-lg p-3 text-xs text-neutral-500 leading-relaxed">
+            📋 La materia se agregará al plan del grado <strong className="text-brand-700">{GRADES[course.grade]}</strong> y estará disponible en todos los cursos de ese grado.
+          </div>
+          <div className="relative">
+            <Search size={13} className="absolute left-3 top-[38px] text-info-500 pointer-events-none"/>
+            <Input
+              label="Buscar materia" placeholder="Buscar por nombre..."
+              value={subjectSearch} onChange={e => setSubjectSearch(e.target.value)} className="pl-9"
+            />
+          </div>
+          <div>
+            <label className="text-[13px] font-semibold text-neutral-700 block mb-1.5">Seleccionar materia *</label>
+            <div className="border border-neutral-300 rounded-lg max-h-[180px] overflow-y-auto">
+              {availableSubjects.length === 0 ? (
+                <div className="p-4 text-center text-[13px] text-neutral-500 italic">
+                  {subjectSearch ? 'No se encontraron materias' : 'Todas las materias ya están en el plan'}
                 </div>
-              </div>
-              <div className="fg">
-                <label>Seleccionar materia *</label>
-                <div className="subject-list">
-                  {availableSubjects.length === 0 ? (
-                    <div style={{padding:'16px',textAlign:'center',fontSize:'13px',color:'#6B8BB0',fontStyle:'italic'}}>
-                      {subjectSearch ? 'No se encontraron materias' : 'Todas las materias ya están en el plan'}
+              ) : (
+                availableSubjects.map(s => (
+                  <label
+                    key={s.id}
+                    className={`flex items-center gap-2 px-2.5 py-1.5 cursor-pointer border-b border-neutral-100 last:border-b-0 transition-colors ${selectedSubject === s.id ? 'bg-brand-100 border-l-2 border-l-brand-700' : 'hover:bg-neutral-100/60'}`}
+                  >
+                    <input
+                      type="radio" name="subject" value={s.id}
+                      checked={selectedSubject === s.id} onChange={() => setSelectedSubject(s.id)}
+                      className="shrink-0 w-3.5 h-3.5 accent-[var(--color-brand-700)]"
+                    />
+                    <div className="flex-1">
+                      <div className="text-[13px] font-medium text-brand-700">{s.name}</div>
+                      {s.campo && <div className="text-[11px] text-neutral-500 mt-0.5">{CAMPO_LABELS[s.campo] || s.campo}</div>}
                     </div>
-                  ) : (
-                    availableSubjects.map(s => (
-                      <label key={s.id} className={`subject-option ${selectedSubject === s.id ? 'selected' : ''}`}>
-                        <input type="radio" name="subject" value={s.id}
-                          checked={selectedSubject === s.id}
-                          onChange={() => setSelectedSubject(s.id)}/>
-                        <div style={{flex:1}}>
-                          <div style={{fontSize:'13px',fontWeight:'500',color:'#1A3A7C'}}>{s.name}</div>
-                          {s.campo && (
-                            <div style={{fontSize:'11px',color:'#6B8BB0',marginTop:'2px'}}>
-                              {CAMPO_LABELS[s.campo] || s.campo}
-                            </div>
-                          )}
-                        </div>
-                      </label>
-                    ))
-                  )}
-                </div>
-              </div>
-              <div className="fg">
-                <label>Horas por mes *</label>
-                <input type="number" min={1} max={200} value={hoursPerWeek}
-                  onChange={e => setHoursPerWeek(e.target.value)}
-                  placeholder="Ej: 16"/>
-              </div>
-            </div>
-            <div className="mfoot">
-              <button className="btn-outline-sm" onClick={() => setShowAddSubject(false)}>Cancelar</button>
-              <button className="btn-primary-sm" onClick={handleAddSubjectToPlan}
-                disabled={addingSubject || !selectedSubject}>
-                {addingSubject ? <span className="spinsm"/> : <Plus size={13}/>}
-                {addingSubject ? 'Agregando...' : 'Agregar al plan'}
-              </button>
+                  </label>
+                ))
+              )}
             </div>
           </div>
+          <Input
+            label="Horas por mes" required type="number" min={1} max={200} placeholder="Ej: 16"
+            value={hoursPerWeek} onChange={e => setHoursPerWeek(e.target.value)}
+          />
         </div>
-      )}
+      </Modal>
 
       {/* Modal credenciales tutor */}
-      {creds && (
-        <div className="overlay" onClick={() => setCreds(null)}>
-          <div className="modal" onClick={e => e.stopPropagation()}>
-            <div className="mhead">
-              <h2>✅ Credenciales de acceso</h2>
-              <button onClick={() => setCreds(null)}><X size={18}/></button>
+      <Modal
+        open={!!creds} onClose={() => setCreds(null)} title="✅ Credenciales de acceso"
+        footer={
+          <>
+            <Button variant="secondary" onClick={copyCreds}>
+              {copied ? <Check size={14}/> : <Copy size={14}/>} {copied ? 'Copiado' : 'Copiar'}
+            </Button>
+            <Button onClick={() => setCreds(null)}>Entendido</Button>
+          </>
+        }
+      >
+        {creds && (
+          <div className="flex flex-col gap-3">
+            <div className="bg-neutral-100 border border-neutral-300 rounded-lg p-3 text-sm text-brand-700"><strong>{creds.name}</strong></div>
+            <div className="flex items-center gap-2.5 bg-neutral-100 border border-neutral-300 rounded-lg px-3.5 py-2.5">
+              <span className="text-xs font-semibold text-neutral-500 uppercase tracking-wide min-w-[80px]">Email:</span>
+              <span className="text-[13px] font-semibold text-brand-700 font-mono break-all">{creds.accessEmail}</span>
             </div>
-            <div className="mbody">
-              <div className="info-box"><strong>{creds.name}</strong></div>
-              <div className="cred-row"><span className="cred-label">Email:</span><span className="cred-value">{creds.accessEmail}</span></div>
-              <div className="cred-row"><span className="cred-label">Contraseña:</span><span className="cred-value">{creds.defaultPassword}</span></div>
-              <div className="cred-note">⚠️ Anota estas credenciales. El maestro puede cambiar su contraseña desde su perfil.</div>
+            <div className="flex items-center gap-2.5 bg-neutral-100 border border-neutral-300 rounded-lg px-3.5 py-2.5">
+              <span className="text-xs font-semibold text-neutral-500 uppercase tracking-wide min-w-[80px]">Contraseña:</span>
+              <span className="text-[13px] font-semibold text-brand-700 font-mono break-all">{creds.defaultPassword}</span>
             </div>
-            <div className="mfoot">
-              <button className="btn-outline-sm" onClick={copyCreds}>
-                {copied ? <Check size={14}/> : <Copy size={14}/>} {copied ? 'Copiado' : 'Copiar'}
-              </button>
-              <button className="btn-primary-sm" onClick={() => setCreds(null)}>Entendido</button>
+            <div className="text-xs text-[#BA7517] bg-warning-100 border border-warning-500 rounded-lg p-2.5 leading-relaxed">
+              ⚠️ Anota estas credenciales. El maestro puede cambiar su contraseña desde su perfil.
             </div>
           </div>
-        </div>
-      )}
-
-      <style>{`
-        .center{display:flex;justify-content:center;align-items:center;padding:48px;flex-direction:column;gap:12px;color:#6B8BB0}
-        .page-header{display:flex;flex-direction:column;gap:12px;margin-bottom:24px}
-        .back-btn{display:flex;align-items:center;gap:6px;background:none;border:none;cursor:pointer;color:#6B8BB0;font-size:13px;padding:0;width:fit-content}
-        .back-btn:hover{color:#1A3A7C}
-        .course-title{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
-        .course-title h1{font-size:28px;font-weight:800;color:#1A3A7C;margin:0}
-        .level-pill{padding:4px 12px;border-radius:20px;font-size:12px;font-weight:600}
-        .course-meta{display:flex;gap:8px}
-        .meta-badge{display:flex;align-items:center;gap:4px;padding:4px 10px;border-radius:20px;font-size:12px;font-weight:500}
-        .meta-badge.bth{background:#FFF3CC;color:#7A6000}
-        .alert{padding:10px 14px;border-radius:8px;font-size:13px;margin-bottom:14px}
-        .alert.ok{background:#E1F5EE;border:1px solid #9FE1CB;color:#0F6E56}
-        .alert.err{background:#FFF0F0;border:1px solid #FFBBBB;color:#C0392B}
-        .stats-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin-bottom:20px}
-        .stat-card{background:#fff;border:1px solid #CBE0F0;border-radius:10px;padding:16px;display:flex;align-items:center;gap:12px}
-        .stat-num{font-size:22px;font-weight:700;color:#1A3A7C}
-        .stat-lbl{font-size:12px;color:#6B8BB0}
-        .section-card{background:#fff;border:1px solid #CBE0F0;border-radius:12px;overflow:hidden;margin-bottom:16px}
-        .section-title{display:flex;align-items:center;gap:8px;padding:14px 18px;border-bottom:1px solid #F0F6FC;font-size:13px;font-weight:600;color:#1A3A7C}
-        .campo-header{display:flex;align-items:center;gap:8px;padding:8px 12px;border-radius:8px;border:1px solid;margin-bottom:4px}
-        .th{padding:9px 14px;text-align:left;font-size:11px;font-weight:600;color:#1A3A7C;text-transform:uppercase;letter-spacing:.5px;white-space:nowrap}
-        .td{padding:11px 14px;font-size:13px;color:#1A3A7C}
-        .muted{color:#6B8BB0}
-        .hrs-badge{background:#E0ECF8;color:#1A3A7C;border-radius:20px;padding:2px 10px;font-size:12px;font-weight:600}
-        .alert-warn{display:flex;align-items:center;gap:8px;padding:10px 14px;background:#FFFBEA;border:1px solid #F5C518;border-radius:8px;font-size:13px;color:#7A6000}
-        .alert-ok{display:flex;align-items:center;gap:8px;padding:10px 14px;background:#E1F5EE;border:1px solid #9FE1CB;border-radius:8px;font-size:13px;color:#0F6E56}
-        .empty-state{display:flex;flex-direction:column;align-items:center;padding:40px;gap:10px;color:#6B8BB0;font-size:13px}
-        .spinner{width:24px;height:24px;border:2px solid rgba(26,58,124,.2);border-top-color:#1A3A7C;border-radius:50%;animation:spin .7s linear infinite}
-        .spinsm{width:12px;height:12px;border:2px solid rgba(255,255,255,.3);border-top-color:currentColor;border-radius:50%;animation:spin .7s linear infinite;display:inline-block}
-        @keyframes spin{to{transform:rotate(360deg)}}
-        .btn-primary-sm{display:flex;align-items:center;gap:5px;padding:6px 14px;background:#1A3A7C;color:#fff;border:none;border-radius:6px;font-size:12px;cursor:pointer;white-space:nowrap}
-        .btn-primary-sm:hover:not(:disabled){background:#4A9FD4}
-        .btn-primary-sm:disabled{opacity:.6;cursor:not-allowed}
-        .btn-outline-sm{display:flex;align-items:center;gap:5px;padding:6px 14px;background:#fff;color:#1A3A7C;border:1.5px solid #CBE0F0;border-radius:6px;font-size:12px;cursor:pointer;white-space:nowrap}
-        .btn-outline-sm:hover:not(:disabled){background:#F0F6FC}
-        .btn-outline-sm:disabled{opacity:.6;cursor:not-allowed}
-        .icon-btn-sm{width:24px;height:24px;border:none;border-radius:5px;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:opacity .2s}
-        .icon-btn-sm:hover:not(:disabled){opacity:.75}
-        .icon-btn-sm:disabled{opacity:.4;cursor:not-allowed}
-        .overlay{position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:500;display:flex;align-items:center;justify-content:center;padding:16px}
-        .modal{background:#fff;border-radius:14px;width:100%;max-width:460px;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,0.15);max-height:90vh;display:flex;flex-direction:column}
-        .mhead{display:flex;align-items:flex-start;justify-content:space-between;padding:18px 20px;border-bottom:1px solid #CBE0F0;flex-shrink:0;gap:12px}
-        .mhead h2{font-size:16px;font-weight:600;color:#1A3A7C;margin:0}
-        .mhead button{background:none;border:none;cursor:pointer;color:#6B8BB0;display:flex;padding:4px;border-radius:6px;flex-shrink:0}
-        .mhead button:hover{background:#F0F6FC}
-        .mbody{padding:20px;display:flex;flex-direction:column;gap:14px;overflow-y:auto;flex:1}
-        .mfoot{display:flex;justify-content:flex-end;gap:10px;padding:16px 20px;border-top:1px solid #CBE0F0;flex-shrink:0}
-        .fg{display:flex;flex-direction:column;gap:5px}
-        .fg label{font-size:11px;font-weight:600;color:#1A3A7C;text-transform:uppercase;letter-spacing:.5px}
-        .fg input{padding:9px 12px;border:1.5px solid #CBE0F0;border-radius:8px;font-size:13px;color:#1A3A7C;outline:none;width:100%}
-        .fg input:focus{border-color:#4A9FD4;box-shadow:0 0 0 3px rgba(74,159,212,.12)}
-        .info-box{background:#F0F6FC;border:1px solid #CBE0F0;border-radius:8px;padding:12px;font-size:12px;color:#6B8BB0;line-height:1.6}
-        .search-wrap{position:relative}
-        .s-icon{position:absolute;left:10px;top:50%;transform:translateY(-50%);color:#4A9FD4;pointer-events:none}
-        .search-wrap input{padding-left:32px!important}
-        .subject-list{border:1.5px solid #CBE0F0;border-radius:8px;max-height:180px;overflow-y:auto}
-        .subject-option{display:flex;align-items:center;gap:8px;padding:5px 10px;cursor:pointer;border-bottom:1px solid #F0F6FC}
-        .subject-option:last-child{border-bottom:none}
-        .subject-option:hover{background:#F8FBFF}
-        .subject-option.selected{background:#E8F0FB;border-left:3px solid #1A3A7C}
-        .subject-option input{accent-color:#1A3A7C;cursor:pointer;flex-shrink:0;width:14px;height:14px}
-        .cred-row{display:flex;align-items:center;gap:10px;background:#F0F6FC;border:1px solid #CBE0F0;border-radius:8px;padding:10px 14px}
-        .cred-label{font-size:12px;font-weight:600;color:#6B8BB0;min-width:80px;text-transform:uppercase;letter-spacing:.5px}
-        .cred-value{font-size:13px;font-weight:600;color:#1A3A7C;font-family:monospace;word-break:break-all}
-        .cred-note{font-size:12px;color:#BA7517;background:#FFFBEA;border:1px solid #F5C518;border-radius:8px;padding:10px;line-height:1.5}
-      `}</style>
+        )}
+      </Modal>
     </div>
   )
 }

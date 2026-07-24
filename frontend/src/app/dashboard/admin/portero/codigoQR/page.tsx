@@ -3,6 +3,11 @@
 import { useEffect, useState, useRef } from 'react'
 import { RefreshCw, Download, Search } from 'lucide-react'
 import QRCode from 'qrcode'
+import Card from '@/components/ui/Card'
+import Badge from '@/components/ui/Badge'
+import Button from '@/components/ui/Button'
+import { useConfirm } from '@/components/ui/ConfirmProvider'
+import { useToast } from '@/components/ui/ToastProvider'
 
 const API = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000'
 
@@ -18,6 +23,9 @@ interface PersonCode {
 }
 
 export default function CodigosPage() {
+  const confirm = useConfirm()
+  const toast   = useToast()
+
   const [teachers,    setTeachers]    = useState<PersonCode[]>([])
   const [staff,       setStaff]       = useState<PersonCode[]>([])
   const [loading,     setLoading]     = useState(true)
@@ -26,33 +34,25 @@ export default function CodigosPage() {
   const [filter,      setFilter]      = useState<'ALL'|'MAESTRO'|'STAFF'>('ALL')
   const [selected,    setSelected]    = useState<PersonCode|null>(null)
   const [qrDataUrl,   setQrDataUrl]   = useState<string>('')
-  const [success,     setSuccess]     = useState('')
-  const [error,       setError]       = useState('')
   const printRef = useRef<HTMLDivElement>(null)
 
   const token = () => localStorage.getItem('token') || ''
   const auth  = () => ({ Authorization: `Bearer ${token()}` })
-
-  const notify = (msg: string, type: 'ok'|'err' = 'ok') => {
-    if (type === 'ok') { setSuccess(msg); setTimeout(() => setSuccess(''), 4000) }
-    else               { setError(msg);   setTimeout(() => setError(''),   4000) }
-  }
 
   const loadCodes = async () => {
     setLoading(true)
     try {
       const res  = await fetch(`${API}/api/gate/attendance-codes`, { headers: auth() })
       const data = await res.json()
-      if (!res.ok) { notify('Error al cargar códigos', 'err'); return }
+      if (!res.ok) { toast('Error al cargar códigos', 'error'); return }
       setTeachers(data.teachers.map((t: any) => ({ ...t, type: 'MAESTRO' })))
       setStaff(data.staff.map((s: any) => ({ ...s, type: 'STAFF' })))
-    } catch { notify('Error de conexión', 'err') }
+    } catch { toast('Error de conexión', 'error') }
     finally { setLoading(false) }
   }
 
   useEffect(() => { loadCodes() }, [])
 
-  // Generar QR al seleccionar persona
   useEffect(() => {
     if (selected?.attendanceCode) {
       QRCode.toDataURL(selected.attendanceCode, {
@@ -64,41 +64,38 @@ export default function CodigosPage() {
     }
   }, [selected])
 
-  // Generar códigos masivo
   const handleGenerateAll = async () => {
-    if (!confirm('¿Generar códigos para todos los que no tienen? Los existentes no se modifican.')) return
+    if (!await confirm('¿Generar códigos para todos los que no tienen? Los existentes no se modifican.')) return
     setGenerating(true)
     try {
       const res  = await fetch(`${API}/api/gate/generate-codes`, {
         method: 'POST', headers: auth()
       })
       const data = await res.json()
-      if (!res.ok) { notify(data.message, 'err'); return }
-      notify(`✅ ${data.message}`)
+      if (!res.ok) { toast(data.message, 'error'); return }
+      toast(`✅ ${data.message}`, 'success')
       loadCodes()
-    } catch { notify('Error de conexión', 'err') }
+    } catch { toast('Error de conexión', 'error') }
     finally { setGenerating(false) }
   }
 
-  // Regenerar código individual
   const handleRegenerate = async (person: PersonCode) => {
-    if (!confirm(`¿Regenerar código de ${person.firstName} ${person.lastName}? El código anterior dejará de funcionar.`)) return
+    if (!await confirm(`¿Regenerar código de ${person.firstName} ${person.lastName}? El código anterior dejará de funcionar.`, { danger: true })) return
     try {
       const endpoint = person.type === 'STAFF'
         ? `${API}/api/gate/regenerate-code/staff/${person.id}`
         : `${API}/api/gate/regenerate-code/teacher/${person.id}`
       const res  = await fetch(endpoint, { method: 'POST', headers: auth() })
       const data = await res.json()
-      if (!res.ok) { notify(data.message, 'err'); return }
-      notify(`✅ Código regenerado: ${data.attendanceCode}`)
+      if (!res.ok) { toast(data.message, 'error'); return }
+      toast(`✅ Código regenerado: ${data.attendanceCode}`, 'success')
       loadCodes()
       if (selected?.id === person.id && selected?.type === person.type) {
         setSelected({ ...person, attendanceCode: data.attendanceCode })
       }
-    } catch { notify('Error de conexión', 'err') }
+    } catch { toast('Error de conexión', 'error') }
   }
 
-  // Imprimir QR individual
   const handlePrint = () => {
     if (!selected || !qrDataUrl) return
     const win = window.open('', '_blank')
@@ -127,10 +124,9 @@ export default function CodigosPage() {
     win.document.close()
   }
 
-  // Imprimir todos
   const handlePrintAll = async () => {
     const all = [...teachers, ...staff].filter(p => p.attendanceCode)
-    if (all.length === 0) { notify('No hay códigos generados', 'err'); return }
+    if (all.length === 0) { toast('No hay códigos generados', 'error'); return }
 
     const cards = await Promise.all(all.map(async p => {
       const url = await QRCode.toDataURL(p.attendanceCode!, {
@@ -151,7 +147,7 @@ export default function CodigosPage() {
     const win = window.open('', '_blank')
     if (!win) return
     win.document.write(`
-      <html><head><title>Códigos QR — SGJE</title>
+      <html><head><title>Códigos QR — EduLink</title>
       <style>
         body { font-family: Arial, sans-serif; padding: 20px; }
         h1 { font-size: 16px; color: #1A3A7C; text-align: center; margin-bottom: 20px; }
@@ -172,7 +168,6 @@ export default function CodigosPage() {
     win.document.close()
   }
 
-  // Filtrar lista
   const allPersons = [
     ...teachers.map(t => ({ ...t, type: 'MAESTRO' as const })),
     ...staff.map(s => ({ ...s, type: 'STAFF' as const }))
@@ -190,194 +185,143 @@ export default function CodigosPage() {
 
   return (
     <div>
-      {/* Header */}
-      <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: 24, gap: 16, flexWrap: 'wrap' }}>
+      <div className="flex items-start justify-between mb-6 gap-4 flex-wrap">
         <div>
-          <h1 style={{ fontSize: 20, fontWeight: 700, color: '#1A3A7C', marginBottom: 4 }}>Códigos QR de Asistencia</h1>
-          <p style={{ fontSize: 13, color: '#6B8BB0' }}>Genera y distribuye los códigos de registro para maestros y personal</p>
+          <h1 className="text-xl font-bold text-brand-700 mb-1">Códigos QR de Asistencia</h1>
+          <p className="text-[13px] text-neutral-500">Genera y distribuye los códigos de registro para maestros y personal</p>
         </div>
-        <div style={{ display: 'flex', gap: 10 }}>
-          <button onClick={handlePrintAll} style={{
-            display: 'flex', alignItems: 'center', gap: 6, padding: '9px 14px',
-            background: '#0F6E56', color: '#fff', border: 'none', borderRadius: 8,
-            fontSize: 13, fontWeight: 600, cursor: 'pointer'
-          }}>
-            <Download size={14} /> Imprimir todos
-          </button>
-          <button onClick={handleGenerateAll} disabled={generating} style={{
-            display: 'flex', alignItems: 'center', gap: 6, padding: '9px 14px',
-            background: '#1A3A7C', color: '#fff', border: 'none', borderRadius: 8,
-            fontSize: 13, fontWeight: 600, cursor: 'pointer', opacity: generating ? 0.6 : 1
-          }}>
-            <RefreshCw size={14} /> {generating ? 'Generando...' : 'Generar faltantes'}
-          </button>
+        <div className="flex gap-2.5">
+          <Button variant="secondary" onClick={handlePrintAll} className="!bg-success-700 !text-white !border-success-700">
+            <Download size={14}/> Imprimir todos
+          </Button>
+          <Button onClick={handleGenerateAll} disabled={generating} loading={generating}>
+            {!generating && <RefreshCw size={14}/>} {generating ? 'Generando...' : 'Generar faltantes'}
+          </Button>
         </div>
       </div>
 
-      {success && <div style={{ padding: '10px 14px', borderRadius: 8, fontSize: 13, marginBottom: 14, background: '#E1F5EE', border: '1px solid #9FE1CB', color: '#0F6E56' }}>{success}</div>}
-      {error   && <div style={{ padding: '10px 14px', borderRadius: 8, fontSize: 13, marginBottom: 14, background: '#FFF0F0', border: '1px solid #FFBBBB', color: '#C0392B' }}>{error}</div>}
-
-      {/* Stats */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12, marginBottom: 20 }}>
-        {[
-          { label: 'Total personas', val: allPersons.length, color: '#1A3A7C', bg: '#E6F1FB' },
-          { label: 'Con código QR',  val: withCode,          color: '#0F6E56', bg: '#E1F5EE' },
-          { label: 'Sin código QR',  val: withoutCode,       color: '#C0392B', bg: '#FCEBEB' },
-        ].map(s => (
-          <div key={s.label} style={{ background: s.bg, border: `1px solid ${s.color}33`, borderRadius: 10, padding: '14px', textAlign: 'center' }}>
-            <div style={{ fontSize: 28, fontWeight: 800, color: s.color }}>{s.val}</div>
-            <div style={{ fontSize: 11, color: s.color, opacity: 0.8 }}>{s.label}</div>
-          </div>
-        ))}
+      <div className="grid grid-cols-3 gap-3 mb-5">
+        <Card className="text-center">
+          <div className="text-[28px] font-extrabold text-brand-700">{allPersons.length}</div>
+          <div className="text-[11px] text-neutral-500">Total personas</div>
+        </Card>
+        <Card className="text-center !bg-success-100 !border-success-500/40">
+          <div className="text-[28px] font-extrabold text-success-700">{withCode}</div>
+          <div className="text-[11px] text-success-700/80">Con código QR</div>
+        </Card>
+        <Card className="text-center !bg-danger-100 !border-danger-500/40">
+          <div className="text-[28px] font-extrabold text-danger-600">{withoutCode}</div>
+          <div className="text-[11px] text-danger-600/80">Sin código QR</div>
+        </Card>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 340px', gap: 16 }}>
-        {/* Lista */}
+      <div className="grid gap-4" style={{ gridTemplateColumns: '1fr 340px' }}>
         <div>
-          {/* Filtros */}
-          <div style={{ display: 'flex', gap: 10, marginBottom: 14, flexWrap: 'wrap' }}>
-            <div style={{ position: 'relative', flex: 1, minWidth: 200 }}>
-              <Search size={14} style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', color: '#6B8BB0' }} />
-              <input value={search} onChange={e => setSearch(e.target.value)}
+          <div className="flex gap-2.5 mb-3.5 flex-wrap">
+            <div className="relative flex-1 min-w-[200px]">
+              <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-neutral-500"/>
+              <input
+                value={search} onChange={e => setSearch(e.target.value)}
                 placeholder="Buscar por nombre o código..."
-                style={{ width: '100%', padding: '9px 12px 9px 32px', border: '1.5px solid #CBE0F0', borderRadius: 8, fontSize: 13, color: '#1A3A7C', outline: 'none', boxSizing: 'border-box' }} />
+                className="w-full pl-8 pr-3 py-2.5 border border-neutral-300 rounded-lg text-[13px] text-brand-700 outline-none box-border"
+              />
             </div>
             {(['ALL', 'MAESTRO', 'STAFF'] as const).map(f => (
-              <button key={f} onClick={() => setFilter(f)} style={{
-                padding: '9px 14px', borderRadius: 8, border: 'none', cursor: 'pointer', fontSize: 12, fontWeight: 600,
-                background: filter === f ? '#1A3A7C' : '#F0F6FC',
-                color: filter === f ? '#fff' : '#1A3A7C',
-              }}>
+              <button
+                key={f} onClick={() => setFilter(f)}
+                className={`px-3.5 py-2.5 rounded-lg text-xs font-semibold transition-colors ${filter === f ? 'bg-brand-700 text-white' : 'bg-neutral-100 text-brand-700'}`}
+              >
                 {f === 'ALL' ? 'Todos' : f === 'MAESTRO' ? 'Maestros' : 'Personal'}
               </button>
             ))}
           </div>
 
-          {/* Tabla */}
-          <div style={{ background: '#fff', border: '1px solid #CBE0F0', borderRadius: 12, overflow: 'hidden' }}>
+          <Card padded={false} className="overflow-hidden">
             {loading ? (
-              <div style={{ padding: 48, textAlign: 'center', color: '#6B8BB0' }}>Cargando...</div>
+              <div className="p-12 text-center text-neutral-500">Cargando...</div>
             ) : (
-              <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                <thead>
-                  <tr style={{ background: '#F0F6FC' }}>
-                    <th style={th}>Persona</th>
-                    <th style={th}>Tipo</th>
-                    <th style={th}>Código QR</th>
-                    <th style={th}>Acciones</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filtered.map(p => (
-                    <tr key={`${p.type}-${p.id}`}
-                      onClick={() => setSelected(p)}
-                      style={{
-                        borderTop: '1px solid #F0F6FC', cursor: 'pointer',
-                        background: selected?.id === p.id && selected?.type === p.type ? '#E6F1FB' : 'transparent',
-                      }}>
-                      <td style={td}>
-                        <div style={{ fontSize: 13, fontWeight: 600, color: '#1A3A7C' }}>
-                          {p.lastName} {p.firstName}
-                        </div>
-                        {p.ci && <div style={{ fontSize: 11, color: '#6B8BB0' }}>CI: {p.ci}</div>}
-                      </td>
-                      <td style={td}>
-                        <span style={{
-                          padding: '3px 10px', borderRadius: 20, fontSize: 11, fontWeight: 600,
-                          background: p.type === 'MAESTRO' ? '#EEEDFE' : '#E1F5EE',
-                          color: p.type === 'MAESTRO' ? '#534AB7' : '#0F6E56',
-                        }}>
-                          {p.type === 'STAFF' ? p.staffRole : 'MAESTRO'}
-                        </span>
-                      </td>
-                      <td style={td}>
-                        {p.attendanceCode ? (
-                          <span style={{ fontFamily: 'monospace', fontSize: 14, fontWeight: 700, color: '#1A3A7C', letterSpacing: 2 }}>
-                            {p.attendanceCode}
-                          </span>
-                        ) : (
-                          <span style={{ fontSize: 11, color: '#C0392B' }}>Sin código</span>
-                        )}
-                      </td>
-                      <td style={td} onClick={e => e.stopPropagation()}>
-                        <button onClick={() => handleRegenerate(p)} style={{
-                          display: 'flex', alignItems: 'center', gap: 4,
-                          padding: '5px 10px', borderRadius: 6, border: '1px solid #CBE0F0',
-                          cursor: 'pointer', fontSize: 11, background: '#fff', color: '#1A3A7C',
-                        }}>
-                          <RefreshCw size={11} /> Regenerar
-                        </button>
-                      </td>
+              <div className="overflow-x-auto">
+                <table className="w-full border-collapse">
+                  <thead>
+                    <tr className="bg-neutral-100">
+                      <th className="px-3.5 py-2.5 text-left text-[11px] font-semibold text-brand-700 uppercase tracking-wide">Persona</th>
+                      <th className="px-3.5 py-2.5 text-left text-[11px] font-semibold text-brand-700 uppercase tracking-wide">Tipo</th>
+                      <th className="px-3.5 py-2.5 text-left text-[11px] font-semibold text-brand-700 uppercase tracking-wide">Código QR</th>
+                      <th className="px-3.5 py-2.5 text-left text-[11px] font-semibold text-brand-700 uppercase tracking-wide">Acciones</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {filtered.map(p => (
+                      <tr
+                        key={`${p.type}-${p.id}`}
+                        onClick={() => setSelected(p)}
+                        className={`border-t border-neutral-100 cursor-pointer ${selected?.id === p.id && selected?.type === p.type ? 'bg-brand-100' : 'hover:bg-neutral-100/50'}`}
+                      >
+                        <td className="px-3.5 py-2.5 align-middle">
+                          <div className="text-[13px] font-semibold text-brand-700">{p.lastName} {p.firstName}</div>
+                          {p.ci && <div className="text-[11px] text-neutral-500">CI: {p.ci}</div>}
+                        </td>
+                        <td className="px-3.5 py-2.5 align-middle">
+                          <Badge tone={p.type === 'MAESTRO' ? 'info' : 'success'}>{p.type === 'STAFF' ? p.staffRole : 'MAESTRO'}</Badge>
+                        </td>
+                        <td className="px-3.5 py-2.5 align-middle">
+                          {p.attendanceCode ? (
+                            <span className="font-mono text-sm font-bold text-brand-700 tracking-[2px]">{p.attendanceCode}</span>
+                          ) : (
+                            <span className="text-[11px] text-danger-600">Sin código</span>
+                          )}
+                        </td>
+                        <td className="px-3.5 py-2.5 align-middle" onClick={e => e.stopPropagation()}>
+                          <Button variant="secondary" size="sm" onClick={() => handleRegenerate(p)}>
+                            <RefreshCw size={11}/> Regenerar
+                          </Button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             )}
-          </div>
+          </Card>
         </div>
 
-        {/* Panel QR */}
         <div>
-          <div style={{ background: '#fff', border: '1px solid #CBE0F0', borderRadius: 12, padding: 20, position: 'sticky', top: 20 }}>
+          <Card className="sticky top-5">
             {!selected ? (
-              <div style={{ textAlign: 'center', padding: '40px 20px', color: '#6B8BB0' }}>
-                <div style={{ fontSize: 40, marginBottom: 12 }}>👆</div>
-                <div style={{ fontSize: 13 }}>Selecciona una persona para ver su QR</div>
+              <div className="text-center py-10 px-5 text-neutral-500">
+                <div className="text-4xl mb-3">👆</div>
+                <div className="text-[13px]">Selecciona una persona para ver su QR</div>
               </div>
             ) : (
-              <div style={{ textAlign: 'center' }}>
-                <div style={{ fontSize: 11, color: '#6B8BB0', marginBottom: 4, textTransform: 'uppercase', letterSpacing: '.5px' }}>
-                  U.E. Naciones Unidas — El Torno
-                </div>
+              <div className="text-center" ref={printRef}>
+                <div className="text-[11px] text-neutral-500 mb-1 uppercase tracking-wide">U.E. Naciones Unidas — El Torno</div>
                 {qrDataUrl ? (
-                  <img src={qrDataUrl} alt="QR" style={{ width: 220, height: 220, borderRadius: 8 }} />
+                  <img src={qrDataUrl} alt="QR" className="w-[220px] h-[220px] rounded-lg mx-auto"/>
                 ) : (
-                  <div style={{ width: 220, height: 220, background: '#F0F6FC', borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', margin: '0 auto', color: '#6B8BB0', fontSize: 13 }}>
+                  <div className="w-[220px] h-[220px] bg-neutral-100 rounded-lg flex items-center justify-center mx-auto text-neutral-500 text-[13px]">
                     Sin código generado
                   </div>
                 )}
-                <div style={{ fontSize: 16, fontWeight: 700, color: '#1A3A7C', marginTop: 12 }}>
-                  {selected.lastName} {selected.firstName}
-                </div>
-                <div style={{ fontSize: 12, color: '#6B8BB0', marginBottom: 8 }}>
-                  {selected.type === 'STAFF' ? selected.staffRole : 'MAESTRO'}
-                </div>
+                <div className="text-base font-bold text-brand-700 mt-3">{selected.lastName} {selected.firstName}</div>
+                <div className="text-xs text-neutral-500 mb-2">{selected.type === 'STAFF' ? selected.staffRole : 'MAESTRO'}</div>
                 {selected.attendanceCode && (
-                  <div style={{ fontSize: 22, fontWeight: 800, letterSpacing: 4, color: '#0F172A', fontFamily: 'monospace', marginBottom: 16 }}>
-                    {selected.attendanceCode}
-                  </div>
+                  <div className="text-[22px] font-extrabold tracking-[4px] text-[#0F172A] font-mono mb-4">{selected.attendanceCode}</div>
                 )}
-                <div style={{ display: 'flex', gap: 8 }}>
-                  <button onClick={() => handleRegenerate(selected)} style={{
-                    flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
-                    padding: '10px', border: '1.5px solid #CBE0F0', borderRadius: 8,
-                    fontSize: 12, fontWeight: 600, cursor: 'pointer', background: '#fff', color: '#1A3A7C',
-                  }}>
-                    <RefreshCw size={13} /> Regenerar
-                  </button>
+                <div className="flex gap-2">
+                  <Button variant="secondary" onClick={() => handleRegenerate(selected)} className="flex-1 justify-center">
+                    <RefreshCw size={13}/> Regenerar
+                  </Button>
                   {selected.attendanceCode && (
-                    <button onClick={handlePrint} style={{
-                      flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6,
-                      padding: '10px', border: 'none', borderRadius: 8,
-                      fontSize: 12, fontWeight: 600, cursor: 'pointer', background: '#1A3A7C', color: '#fff',
-                    }}>
-                      <Download size={13} /> Imprimir
-                    </button>
+                    <Button onClick={handlePrint} className="flex-1 justify-center">
+                      <Download size={13}/> Imprimir
+                    </Button>
                   )}
                 </div>
               </div>
             )}
-          </div>
+          </Card>
         </div>
       </div>
     </div>
   )
-}
-
-const th: React.CSSProperties = {
-  padding: '10px 14px', textAlign: 'left', fontSize: 11, fontWeight: 600,
-  color: '#1A3A7C', textTransform: 'uppercase', letterSpacing: '.5px'
-}
-const td: React.CSSProperties = {
-  padding: '10px 14px', fontSize: 13, color: '#1A3A7C', verticalAlign: 'middle'
 }
