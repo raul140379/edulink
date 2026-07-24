@@ -51,7 +51,7 @@ export default function LoginPage() {
       localStorage.setItem('token', data.token)
       localStorage.setItem('user', JSON.stringify(data.user))
       switch (data.user.role) {
-        case 'SUPER_ADMIN': case 'DIRECTOR': case 'REGENTE': case 'SECRETARY':
+        case 'SUPER_ADMIN': case 'DIRECTOR_DISTRITAL': case 'DIRECTOR': case 'REGENTE': case 'SECRETARY':
           router.push('/dashboard/admin'); break
         case 'TEACHER': case 'TEACHER_TUTOR':
           router.push('/dashboard/plantel-docente'); break
@@ -98,7 +98,7 @@ export default function LoginPage() {
             </div>
           </div>
           <div className="hero-content">
-            <div className="hero-badge">SGJE · 2026</div>
+            <div className="hero-badge">EduLink · 2026</div>
             <h1>Educando el<br/><span className="highlight">futuro</span><br/>de Bolivia</h1>
             <p>Plataforma integral para la gestión de estudiantes, padres de familia, maestros y administración de la Unidad Educativa.</p>
           </div>
@@ -137,7 +137,7 @@ export default function LoginPage() {
                   <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/>
                   <polyline points="22,6 12,13 2,6"/>
                 </svg>
-                <input type="email" placeholder="usuario@sgje.com" value={email}
+                <input type="email" placeholder="usuario@edulink.com" value={email}
                   onChange={e=>setEmail(e.target.value)} required autoComplete="email"/>
               </div>
             </div>

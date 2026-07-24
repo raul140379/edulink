@@ -1,6 +1,6 @@
 {
-  "name": "SGJE — U.E. Naciones Unidas",
-  "short_name": "SGJE NNUU",
+  "name": "EduLink — U.E. Naciones Unidas",
+  "short_name": "EduLink NNUU",
   "description": "Sistema de Gestión para Junta Escolar — U.E. Naciones Unidas El Torno",
   "start_url": "/login",
   "scope": "/",
