@@ -16,7 +16,7 @@ import {
   cerrarNota,
   upsertNotasBulk,
 } from '../controllers/nota.controller'
-import { verifyToken, requirePermission } from '../middlewares/auth.middleware'
+import { verifyToken, requirePermission, requireAnyPermission } from '../middlewares/auth.middleware'
 import { validateBody } from '../middlewares/validate.middleware'
 import { Permission } from '../config/permissions'
 import {
@@ -27,11 +27,11 @@ const router = Router()
 router.use(verifyToken)
 
 // Consultas
-router.get('/trimestres',                    requirePermission(Permission.GRADE_VIEW_ALL), getTrimestres)
+router.get('/trimestres',                    requireAnyPermission(Permission.GRADE_VIEW_ALL, Permission.GRADE_VIEW_OWN), getTrimestres)
 router.get('/teacher-subjects/:teacherId',   requirePermission(Permission.GRADE_VIEW_ALL), getTeacherSubjects)
 router.get('/course-students/:courseId',     requirePermission(Permission.GRADE_VIEW_ALL), getCourseStudents)
 router.get('/course/:courseId',              requirePermission(Permission.GRADE_VIEW_ALL), getNotasByCourse)
-router.get('/student/:studentId',            requirePermission(Permission.GRADE_VIEW_ALL), getNotasByStudent)
+router.get('/student/:studentId',            requireAnyPermission(Permission.GRADE_VIEW_ALL, Permission.GRADE_VIEW_OWN), getNotasByStudent)
 router.get('/summary/:courseId',             requirePermission(Permission.GRADE_VIEW_ALL), getCourseSummary)
 router.get('/detalle/:notaId',               requirePermission(Permission.GRADE_VIEW_ALL), getNotaDetalle)
 

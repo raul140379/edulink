@@ -1,5 +1,5 @@
 import { Router } from 'express'
-import { verifyToken, requirePermission } from '../middlewares/auth.middleware'
+import { verifyToken, requirePermission, requireAnyPermission } from '../middlewares/auth.middleware'
 import { validateBody } from '../middlewares/validate.middleware'
 import { Permission } from '../config/permissions'
 import {
@@ -27,7 +27,7 @@ const router = Router()
 router.use(verifyToken)
 
 // ⚠️ Rutas específicas PRIMERO (antes de /:id para evitar conflicto)
-router.get('/plan/:courseId', requirePermission(Permission.COURSE_VIEW_ALL), getCoursePlan)
+router.get('/plan/:courseId', requireAnyPermission(Permission.COURSE_VIEW_ALL, Permission.COURSE_VIEW_OWN), getCoursePlan)
 router.post('/assign',        requirePermission(Permission.COURSE_CREATE), validateBody(assignSubjectSchema), assignSubjectToCourse)
 router.post('/assign-bulk',   requirePermission(Permission.COURSE_CREATE), validateBody(assignSubjectBulkSchema), assignSubjectToMultipleCourses)
 router.delete('/assign/:id',  requirePermission(Permission.COURSE_CREATE), removeSubjectFromCourse)

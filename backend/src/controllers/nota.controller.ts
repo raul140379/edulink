@@ -1,6 +1,8 @@
 import { Response } from 'express'
 import { AuthRequest } from '../middlewares/auth.middleware'
 import { HttpError } from '../utils/http-error'
+import { hasPermission, Permission } from '../config/permissions'
+import { assertOwnStudent } from '../utils/ownership-guards'
 import { notaService } from '../services/nota.service'
 
 // El frontend de notas (dashboard/teacher/notas) lee específicamente `data.error`,
@@ -67,8 +69,12 @@ export const getNotasByCourse = async (req: AuthRequest, res: Response): Promise
 // ─────────────────────────────────────────────
 export const getNotasByStudent = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
+    const studentId = parseInt(req.params.studentId)
+    if (!hasPermission(req.userRole!, Permission.GRADE_VIEW_ALL)) {
+      await assertOwnStudent(req, studentId)
+    }
     const year = req.query.year ? parseInt(req.query.year as string) : new Date().getFullYear()
-    res.json(await notaService.getNotasByStudent(parseInt(req.params.studentId), year))
+    res.json(await notaService.getNotasByStudent(studentId, year))
   } catch (error) {
     handleControllerError(res, error)
   }

@@ -1,5 +1,5 @@
 import { Router } from 'express'
-import { verifyToken, requirePermission } from '../middlewares/auth.middleware'
+import { verifyToken, requirePermission, requireAnyPermission } from '../middlewares/auth.middleware'
 import { validateBody } from '../middlewares/validate.middleware'
 import { Permission } from '../config/permissions'
 import {
@@ -28,7 +28,7 @@ router.get('/summary',          requirePermission(Permission.CHARGE_VIEW_ALL), g
 
 // ── Tutores con estado de cuenta ─────────────
 router.get('/parents',          requirePermission(Permission.CHARGE_VIEW_ALL), getParentsWithBalance)
-router.get('/parents/:parentId/account', requirePermission(Permission.CHARGE_VIEW_ALL), getParentAccount)
+router.get('/parents/:parentId/account', requireAnyPermission(Permission.CHARGE_VIEW_ALL, Permission.CHARGE_VIEW_OWN), getParentAccount)
 
 // ── Cargos ───────────────────────────────────
 router.get('/',                 requirePermission(Permission.CHARGE_VIEW_ALL), getCharges)

@@ -2,12 +2,15 @@ import { Request, Response, NextFunction } from 'express'
 import jwt from 'jsonwebtoken'
 import { Role, Permission, hasPermission } from '../config/permissions'
 import { env } from '../config/env'
+import { runWithTenantContext } from '../lib/tenant-context'
 
 // Extender el tipo Request para incluir datos del usuario
 export interface AuthRequest extends Request {
-  userId?:   number
-  userRole?: Role
-  userEmail?: string
+  userId?:       number
+  userRole?:     Role
+  userEmail?:    string
+  userSchoolId?:   number | null
+  userDistrictId?: number | null
 }
 
 // ─────────────────────────────────────────────
@@ -28,10 +31,19 @@ export const verifyToken = (
 
   try {
     const decoded = jwt.verify(token, env.jwtSecret) as any
-    req.userId    = decoded.id
-    req.userRole  = decoded.role as Role
-    req.userEmail = decoded.email
-    next()
+    const schoolId:   number | null = decoded.schoolId ?? null
+    const districtId: number | null = decoded.districtId ?? null
+
+    req.userId         = decoded.id
+    req.userRole        = decoded.role as Role
+    req.userEmail       = decoded.email
+    req.userSchoolId    = schoolId
+    req.userDistrictId  = districtId
+
+    runWithTenantContext(
+      { userId: decoded.id, role: decoded.role, schoolId, districtId },
+      next,
+    )
   } catch {
     res.status(403).json({ message: 'Token inválido o expirado' })
   }
@@ -51,6 +63,32 @@ export const requirePermission = (permission: Permission) => {
       res.status(403).json({
         message: 'No tienes permiso para realizar esta acción',
         required: permission,
+        role: req.userRole,
+      })
+      return
+    }
+
+    next()
+  }
+}
+
+// ─────────────────────────────────────────────
+// MIDDLEWARE: Verificar que tenga al menos uno de varios permisos
+// (para rutas alcanzables tanto con el permiso ":all" de staff como
+// con el ":own" de un padre/estudiante — el controller es responsable
+// de verificar la propiedad real del recurso en ese segundo caso)
+// ─────────────────────────────────────────────
+export const requireAnyPermission = (...permissions: Permission[]) => {
+  return (req: AuthRequest, res: Response, next: NextFunction): void => {
+    if (!req.userRole) {
+      res.status(401).json({ message: 'No autenticado' })
+      return
+    }
+
+    if (!permissions.some((p) => hasPermission(req.userRole!, p))) {
+      res.status(403).json({
+        message: 'No tienes permiso para realizar esta acción',
+        required: permissions,
         role: req.userRole,
       })
       return

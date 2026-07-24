@@ -1,6 +1,8 @@
 import { Response } from 'express'
 import { AuthRequest } from '../middlewares/auth.middleware'
 import { handleControllerError } from '../utils/http-error'
+import { hasPermission, Permission } from '../config/permissions'
+import { assertOwnParentAccount } from '../utils/ownership-guards'
 import { treasuryService } from '../services/treasury.service'
 
 // ─────────────────────────────────────────────
@@ -36,7 +38,11 @@ export const getChargeById = async (req: AuthRequest, res: Response): Promise<vo
 // ─────────────────────────────────────────────
 export const getParentAccount = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    const result = await treasuryService.getParentAccount(parseInt(req.params.parentId))
+    const parentId = parseInt(req.params.parentId)
+    if (!hasPermission(req.userRole!, Permission.CHARGE_VIEW_ALL)) {
+      await assertOwnParentAccount(req, parentId)
+    }
+    const result = await treasuryService.getParentAccount(parentId)
     res.json(result)
   } catch (error) {
     handleControllerError(res, error)

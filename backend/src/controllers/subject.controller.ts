@@ -1,6 +1,8 @@
 import { Response } from 'express'
 import { AuthRequest } from '../middlewares/auth.middleware'
 import { handleControllerError } from '../utils/http-error'
+import { hasPermission, Permission } from '../config/permissions'
+import { assertOwnCourse } from '../utils/ownership-guards'
 import { subjectService } from '../services/subject.service'
 
 // ─────────────────────────────────────────────
@@ -21,7 +23,11 @@ export const getSubjects = async (req: AuthRequest, res: Response): Promise<void
 // ─────────────────────────────────────────────
 export const getCoursePlan = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    const plan = await subjectService.getCoursePlan(parseInt(req.params.courseId))
+    const courseId = parseInt(req.params.courseId)
+    if (!hasPermission(req.userRole!, Permission.COURSE_VIEW_ALL)) {
+      await assertOwnCourse(req, courseId)
+    }
+    const plan = await subjectService.getCoursePlan(courseId)
     res.json(plan)
   } catch (error) {
     handleControllerError(res, error)

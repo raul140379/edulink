@@ -1,13 +1,14 @@
 // Definición de roles del sistema
 export enum Role {
-  SUPER_ADMIN  = 'SUPER_ADMIN',
+  SUPER_ADMIN        = 'SUPER_ADMIN',
+  DIRECTOR_DISTRITAL = 'DIRECTOR_DISTRITAL',
   DIRECTOR     = 'DIRECTOR',
   REGENTE      = 'REGENTE',
   SECRETARY    = 'SECRETARY',
   TEACHER      = 'TEACHER',
   TEACHER_TUTOR = 'TEACHER_TUTOR',
   DELEGATE     = 'DELEGATE',
-   JUNTA_ESCOLAR = 'JUNTA_ESCOLAR',  // ← AGREGA
+  JUNTA_ESCOLAR = 'JUNTA_ESCOLAR',
   PARENT       = 'PARENT',
   STUDENT      = 'STUDENT',
   STUDENT_GOV  = 'STUDENT_GOV',
@@ -91,12 +92,44 @@ export enum Permission {
   // Reportes
   REPORT_VIEW        = 'report:view',
   REPORT_GENERATE    = 'report:generate',
+
+  // Distrito / unidades educativas
+  SCHOOL_CREATE      = 'school:create',
+  SCHOOL_VIEW_ALL    = 'school:view:all',
+
+  // Comunicados del distrito (portal público)
+  COMUNICADO_CREATE  = 'comunicado:create',
+  COMUNICADO_VIEW    = 'comunicado:view',
 }
 
 // Mapa de permisos por rol
 export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
 
   [Role.SUPER_ADMIN]: Object.values(Permission), // Acceso total
+
+  [Role.DIRECTOR_DISTRITAL]: [
+    // Administra todas las unidades educativas del distrito
+    Permission.SCHOOL_CREATE,
+    Permission.SCHOOL_VIEW_ALL,
+    Permission.USER_CREATE,
+    Permission.USER_VIEW_ALL,
+    Permission.USER_EDIT_OWN,
+    Permission.STUDENT_VIEW_ALL,
+    Permission.TEACHER_VIEW_ALL,
+    Permission.PARENT_VIEW_ALL,
+    Permission.COURSE_VIEW_ALL,
+    Permission.GRADE_VIEW_ALL,
+    Permission.ATTENDANCE_VIEW,
+    Permission.SCHEDULE_VIEW_ALL,
+    Permission.CHARGE_VIEW_ALL,
+    Permission.NOTIFICATION_SEND,
+    Permission.NOTIFICATION_VIEW,
+    Permission.REPORT_VIEW,
+    Permission.REPORT_GENERATE,
+    Permission.ACADEMIC_VIEW,
+    Permission.COMUNICADO_CREATE,
+    Permission.COMUNICADO_VIEW,
+  ],
 
   [Role.DIRECTOR]: [
     Permission.USER_CREATE,
@@ -219,6 +252,7 @@ export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
   Permission.REPORT_VIEW,
   Permission.MEETING_CREATE,
   Permission.MEETING_VIEW,
+  Permission.CHARGE_VIEW_OWN,     // Solo lectura del estado de cuenta de los tutores de su curso
 ],
   [Role.DELEGATE]: [
     Permission.USER_EDIT_OWN,
@@ -265,6 +299,7 @@ export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
     Permission.USER_EDIT_OWN,
     Permission.STUDENT_VIEW_OWN,    // Solo sus hijos
     Permission.GRADE_VIEW_OWN,      // Solo notas de sus hijos
+    Permission.COURSE_VIEW_OWN,     // Solo el/los curso(s) de sus hijos (plan de materias/maestros)
     Permission.SCHEDULE_VIEW_OWN,   // Solo horario de sus hijos
     Permission.CHARGE_VIEW_OWN,     // Solo sus propios cobros
     Permission.NOTIFICATION_VIEW,
