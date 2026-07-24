@@ -1,5 +1,6 @@
 export const ROLE_LABELS: Record<string, string> = {
-  SUPER_ADMIN:   'Super Administrador',
+  SUPER_ADMIN:        'Super Administrador',
+  DIRECTOR_DISTRITAL: 'Director Distrital',
   DIRECTOR:      'Director',
   REGENTE:       'Regente',
   SECRETARY:     'Secretaria',
@@ -15,7 +16,8 @@ export const ROLE_LABELS: Record<string, string> = {
 }
 
 export const ROLE_BADGE_COLORS: Record<string, { bg: string; color: string }> = {
-  SUPER_ADMIN:   { bg: '#1A3A7C', color: '#fff' },
+  SUPER_ADMIN:        { bg: '#1A3A7C', color: '#fff' },
+  DIRECTOR_DISTRITAL: { bg: '#712B99', color: '#fff' },
   DIRECTOR:      { bg: '#0F6E56', color: '#fff' },
   REGENTE:       { bg: '#3C3489', color: '#fff' },
   SECRETARY:     { bg: '#712B13', color: '#fff' },

@@ -133,6 +133,16 @@ export default function DashboardShell({
         '--dsh-navbar': theme.navbar,
         '--dsh-accent': theme.accent,
         '--dsh-hover': theme.hover || theme.accent,
+        // Re-declarar los tokens de marca de Tailwind (components/ui/*) en el
+        // MISMO nodo donde cambian los --dsh-*: un var() anidado solo se
+        // resuelve una vez, en el elemento donde el custom property final se
+        // DECLARA (aquí :root en globals.css) — no se re-evalúa por cada
+        // descendiente. Sin esto, Button/Card/Badge quedarían siempre con el
+        // navy del admin sin importar el panel.
+        '--color-brand-700': theme.primary,
+        '--color-brand-600': theme.accent,
+        '--color-brand-500': theme.hover || theme.accent,
+        '--color-brand-100': `color-mix(in srgb, ${theme.primary} 10%, white)`,
       } as React.CSSProperties}
     >
       <header className="topbar">

@@ -1,8 +1,65 @@
 @import "tailwindcss";
 
+/* Registrar --dsh-* como custom properties "reales" (con tipo e initial-value)
+   evita que el optimizador de CSS las simplifique/aplane a su valor de
+   respaldo en tiempo de build — sin esto, var(--dsh-primary, #1a3a7c) se
+   "aplana" a #1a3a7c porque el compilador no ve --dsh-primary definida en
+   ningún CSS estático (solo se fija por inline style en DashboardShell). */
+@property --dsh-primary {
+  syntax: '<color>';
+  inherits: true;
+  initial-value: #1a3a7c;
+}
+@property --dsh-accent {
+  syntax: '<color>';
+  inherits: true;
+  initial-value: #2a57a8;
+}
+@property --dsh-hover {
+  syntax: '<color>';
+  inherits: true;
+  initial-value: #3768c4;
+}
+
 :root {
   --background: #ffffff;
   --foreground: #171717;
+
+  /* ── Marca EduLink (misma paleta usada en login/portal) ──
+     brand-700/600/500/100 se re-tiñen automáticamente por panel: cada
+     DashboardShell (admin/estudiantes/padres/plantel-docente) fija
+     --dsh-primary/--dsh-accent/--dsh-hover con el color de ESE actor;
+     como estos custom properties heredan en cascada, los mismos
+     componentes (Button, Card, Badge...) quedan coloreados correctamente
+     sin tocar una sola página. Fuera de un DashboardShell (login, portal
+     público) cae al navy admin por defecto. */
+  --color-brand-900: #0d2352;
+  --color-brand-700: var(--dsh-primary);
+  --color-brand-600: var(--dsh-accent);
+  --color-brand-500: var(--dsh-hover);
+  --color-brand-100: color-mix(in srgb, var(--dsh-primary) 10%, white);
+
+  --color-accent-500: #f5c518;
+  --color-accent-600: #d9ac0a;
+
+  --color-info-500: #4a9fd4;
+
+  --color-success-700: #0a5a45;
+  --color-success-500: #0f6e56;
+  --color-success-100: #e6f4f0;
+
+  --color-danger-600: #c0392b;
+  --color-danger-500: #e74c3c;
+  --color-danger-100: #fdecea;
+
+  --color-warning-500: #e0a800;
+  --color-warning-100: #fff8e6;
+
+  --color-neutral-900: #1f2937;
+  --color-neutral-700: #4b5563;
+  --color-neutral-500: #6b8bb0;
+  --color-neutral-300: #cbe0f0;
+  --color-neutral-100: #f0f6fc;
 }
 
 @theme inline {
@@ -10,17 +67,38 @@
   --color-foreground: var(--foreground);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
-}
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  --color-brand-900: var(--color-brand-900);
+  --color-brand-700: var(--color-brand-700);
+  --color-brand-600: var(--color-brand-600);
+  --color-brand-500: var(--color-brand-500);
+  --color-brand-100: var(--color-brand-100);
+
+  --color-accent-500: var(--color-accent-500);
+  --color-accent-600: var(--color-accent-600);
+
+  --color-info-500: var(--color-info-500);
+
+  --color-success-700: var(--color-success-700);
+  --color-success-500: var(--color-success-500);
+  --color-success-100: var(--color-success-100);
+
+  --color-danger-600: var(--color-danger-600);
+  --color-danger-500: var(--color-danger-500);
+  --color-danger-100: var(--color-danger-100);
+
+  --color-warning-500: var(--color-warning-500);
+  --color-warning-100: var(--color-warning-100);
+
+  --color-neutral-900: var(--color-neutral-900);
+  --color-neutral-700: var(--color-neutral-700);
+  --color-neutral-500: var(--color-neutral-500);
+  --color-neutral-300: var(--color-neutral-300);
+  --color-neutral-100: var(--color-neutral-100);
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, Helvetica, sans-serif;
 }
