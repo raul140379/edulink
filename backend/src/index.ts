@@ -23,6 +23,10 @@ import classroomRoutes from './routes/classroom.routes'
 import gateRoutes from './routes/gate.routes'
 import studentAttendanceRoutes from './routes/studentAttendance.routes'
 import planificacionRoutes from './routes/planificacion.routes'
+import schoolRoutes from './routes/school.routes'
+import nucleoRoutes from './routes/nucleo.routes'
+import comunicadoRoutes from './routes/comunicado.routes'
+import publicRoutes from './routes/public.routes'
 
 dotenv.config()
 
@@ -63,9 +67,13 @@ app.use('/api/classrooms', classroomRoutes)
 app.use('/api/gate', gateRoutes)
 app.use('/api/student-attendance', studentAttendanceRoutes)
 app.use('/api/planificacion', planificacionRoutes)
+app.use('/api/schools', schoolRoutes)
+app.use('/api/nucleos', nucleoRoutes)
+app.use('/api/comunicados', comunicadoRoutes)
+app.use('/api/public', publicRoutes)
 
 app.get('/', (req, res) => {
-  res.json({ message: '🚀 SGJE Backend funcionando correctamente', version: '1.0.0' })
+  res.json({ message: '🚀 EduLink Backend funcionando correctamente', version: '1.0.0' })
 })
 
 // Escuchar en 0.0.0.0 para que Railway pueda acceder

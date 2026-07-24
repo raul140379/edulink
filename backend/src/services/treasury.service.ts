@@ -1,6 +1,7 @@
 import { Prisma } from '@prisma/client'
 import { treasuryRepository } from '../repositories/treasury.repository'
 import { HttpError } from '../utils/http-error'
+import { getTenantContext } from '../lib/tenant-context'
 import {
   CreateChargeInput, CreateBulkChargesInput, UpdateChargeInput, RegisterPaymentInput,
 } from '../schemas/treasury.schema'
@@ -56,6 +57,7 @@ export const treasuryService = {
       parent: { connect: { id: input.parentId } },
       ...(input.target === 'ESTUDIANTE' && input.studentId ? { student: { connect: { id: input.studentId } } } : {}),
       academicYear: { connect: { id: input.academicYearId } },
+      school: { connect: { id: getTenantContext()?.schoolId ?? 0 } },
     })
   },
 
@@ -63,6 +65,7 @@ export const treasuryService = {
     const created: any[] = []
     const errors: number[] = []
 
+    const schoolId = getTenantContext()?.schoolId ?? 0
     for (const parentId of input.parentIds) {
       try {
         const charge = await treasuryRepository.createChargeRaw({
@@ -74,6 +77,7 @@ export const treasuryService = {
           dueDate: input.dueDate ? new Date(input.dueDate) : null,
           parentId,
           academicYearId: input.academicYearId,
+          schoolId,
         })
         created.push(charge)
       } catch {

@@ -1,6 +1,7 @@
 import { taskRepository } from '../repositories/task.repository'
 import { HttpError } from '../utils/http-error'
 import { CreateTaskInput, UpdateTaskInput, GradeSubmissionsInput } from '../schemas/task.schema'
+import { getTenantContext } from '../lib/tenant-context'
 
 function getDimension(type: string): 'SABER' | 'HACER' | null {
   if (type === 'EVALUACION') return 'SABER'
@@ -71,6 +72,7 @@ export const taskService = {
       subject: { connect: { id: input.subjectId } },
       teacher: { connect: { id: teacher.id } },
       ...(input.trimesterId ? { trimester: { connect: { id: input.trimesterId } } } : {}),
+      school: { connect: { id: getTenantContext()?.schoolId ?? 0 } },
     })
 
     let targetStudentIds: number[]

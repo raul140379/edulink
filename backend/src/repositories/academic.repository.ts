@@ -1,4 +1,5 @@
 import prisma from '../lib/prisma'
+import { getTenantContext } from '../lib/tenant-context'
 
 export const academicRepository = {
   findAllYears() {
@@ -19,7 +20,7 @@ export const academicRepository = {
   },
 
   findYearByYear(year: number) {
-    return prisma.academicYear.findUnique({ where: { year } })
+    return prisma.academicYear.findFirst({ where: { year } })
   },
 
   findYearById(id: number) {
@@ -27,7 +28,8 @@ export const academicRepository = {
   },
 
   createYear(data: { year: number; startDate: Date; endDate: Date }) {
-    return prisma.academicYear.create({ data: { ...data, isActive: false } })
+    // schoolId below is overwritten by the tenant-scoping extension in lib/prisma.ts for the acting user's school.
+    return prisma.academicYear.create({ data: { ...data, isActive: false, schoolId: getTenantContext()?.schoolId ?? 0 } })
   },
 
   updateYear(id: number, data: { startDate?: Date; endDate?: Date }) {

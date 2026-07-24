@@ -1,4 +1,5 @@
 import prisma from '../lib/prisma'
+import { getTenantContext } from '../lib/tenant-context'
 
 export const notificationRepository = {
   findParentByUserId(userId: number | undefined) {
@@ -22,8 +23,9 @@ export const notificationRepository = {
   },
 
   createNotification(data: { title: string; message: string; type: string; parentId: number; sentById: number }) {
+    // schoolId below is overwritten by the tenant-scoping extension in lib/prisma.ts for the acting user's school.
     return prisma.notification.create({
-      data: { title: data.title, message: data.message, type: data.type as any, parentId: data.parentId, sentById: data.sentById },
+      data: { title: data.title, message: data.message, type: data.type as any, parentId: data.parentId, sentById: data.sentById, schoolId: getTenantContext()?.schoolId ?? 0 },
       include: {
         parent: { select: { firstName: true, lastName: true, phone: true } },
         sentBy: { select: { email: true, role: true } },
@@ -32,8 +34,9 @@ export const notificationRepository = {
   },
 
   createManyNotifications(items: { title: string; message: string; type: string; parentId: number; sentById: number }[]) {
+    const schoolId = getTenantContext()?.schoolId ?? 0
     return prisma.notification.createMany({
-      data: items.map((n) => ({ title: n.title, message: n.message, type: n.type as any, parentId: n.parentId, sentById: n.sentById })),
+      data: items.map((n) => ({ title: n.title, message: n.message, type: n.type as any, parentId: n.parentId, sentById: n.sentById, schoolId })),
     })
   },
 

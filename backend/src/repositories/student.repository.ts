@@ -1,5 +1,6 @@
 import { Prisma, Gender, EducationType } from '@prisma/client'
 import prisma from '../lib/prisma'
+import { getTenantContext } from '../lib/tenant-context'
 
 const listInclude = {
   user: { select: { id: true, email: true, role: true, isActive: true } },
@@ -62,11 +63,11 @@ export const studentRepository = {
   },
 
   findByCI(ci: string) {
-    return prisma.student.findUnique({ where: { ci } })
+    return prisma.student.findFirst({ where: { ci } })
   },
 
   findByRude(rude: string) {
-    return prisma.student.findUnique({ where: { rude } })
+    return prisma.student.findFirst({ where: { rude } })
   },
 
   findByKardexAndName(kardex: string, firstName: string, lastName: string) {
@@ -94,8 +95,9 @@ export const studentRepository = {
     phone?: string | null; email?: string | null; address?: string | null
     kardex?: string | null; userId: number
   }) {
+    // schoolId below is overwritten by the tenant-scoping extension in lib/prisma.ts for the acting user's school.
     return prisma.student.create({
-      data: { ...data, isActive: true },
+      data: { ...data, isActive: true, schoolId: getTenantContext()?.schoolId ?? 0 },
       include: { user: { select: { id: true, email: true, role: true } } },
     })
   },

@@ -4,6 +4,7 @@ import { teacherRepository } from '../repositories/teacher.repository'
 import { userRepository } from '../repositories/user.repository'
 import { HttpError } from '../utils/http-error'
 import { normalizeLetters, generateUniqueEmail } from '../utils/account-generator'
+import { getTenantContext } from '../lib/tenant-context'
 import { CreateTeacherInput, UpdateTeacherInput, AttendanceCodeInput, TeacherScheduleInput } from '../schemas/teacher.schema'
 
 function generateTeacherPassword(lastName: string, ci?: string): string {
@@ -169,6 +170,7 @@ export const teacherService = {
       gender:    gender    || null,
       isActive:  true,
       user:      { connect: { id: user.id } },
+      school:    { connect: { id: getTenantContext()?.schoolId ?? 0 } },
     })
 
     return { teacher, accessEmail, defaultPassword, passwordHint: passwordHint(ci) }

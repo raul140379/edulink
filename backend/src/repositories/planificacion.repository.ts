@@ -1,4 +1,5 @@
 import prisma from '../lib/prisma'
+import { getTenantContext } from '../lib/tenant-context'
 
 export const planificacionRepository = {
   findActiveAcademicYear() {
@@ -88,7 +89,7 @@ export const planificacionRepository = {
     return prisma.schedulePlan.upsert({
       where: { courseId_academicYearId_dayOfWeek_period_slot: { courseId, academicYearId, dayOfWeek, period, slot } },
       update: data,
-      create: { courseId, academicYearId, dayOfWeek, period, slot, ...data },
+      create: { courseId, academicYearId, dayOfWeek, period, slot, ...data, schoolId: getTenantContext()?.schoolId ?? 0 },
       include: {
         teacherSubjectCourse: {
           include: {

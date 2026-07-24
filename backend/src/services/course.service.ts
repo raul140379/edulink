@@ -4,6 +4,7 @@ import { courseRepository } from '../repositories/course.repository'
 import { userRepository } from '../repositories/user.repository'
 import { HttpError } from '../utils/http-error'
 import { CreateCourseInput, UpdateCourseInput, AssignTutorInput } from '../schemas/course.schema'
+import { getTenantContext } from '../lib/tenant-context'
 
 const BTH_GRADES = ['TERCERO', 'CUARTO', 'QUINTO', 'SEXTO']
 
@@ -70,7 +71,10 @@ export const courseService = {
       if (bthSameTurn) throw new HttpError(409, 'El curso Regular no puede estar en el mismo turno que el BTH del mismo grado y paralelo')
     }
 
-    return courseRepository.create({ level, grade, parallel, educationType: eduType, shift })
+    return courseRepository.create({
+      level, grade, parallel, educationType: eduType, shift,
+      school: { connect: { id: getTenantContext()?.schoolId ?? 0 } },
+    })
   },
 
   async updateCourse(id: number, input: UpdateCourseInput) {

@@ -1,4 +1,5 @@
 import prisma from '../lib/prisma'
+import { getTenantContext } from '../lib/tenant-context'
 
 const tutorParentSelect = { select: { id: true, firstName: true, lastName: true, ci: true, phone: true } }
 const attendancesWithParent = { include: { attendances: { include: { parent: tutorParentSelect } } } }
@@ -39,12 +40,14 @@ export const meetingRepository = {
   },
 
   createMeeting(data: { title: string; date: Date; courseId: number; createdById: number; parentIds: number[] }) {
+    // schoolId below is overwritten by the tenant-scoping extension in lib/prisma.ts for the acting user's school.
     return prisma.meeting.create({
       data: {
         title: data.title,
         date: data.date,
         courseId: data.courseId,
         createdById: data.createdById,
+        schoolId: getTenantContext()?.schoolId ?? 0,
         attendances: { create: data.parentIds.map((parentId) => ({ parentId, present: false })) },
       },
       ...attendancesWithParent,
@@ -63,11 +66,13 @@ export const meetingRepository = {
   },
 
   createCharges(charges: { title: string; description: string; amount: number; parentId: number; academicYearId: number }[]) {
+    // schoolId below is overwritten by the tenant-scoping extension in lib/prisma.ts for the acting user's school.
+    const schoolId = getTenantContext()?.schoolId ?? 0
     return prisma.charge.createMany({
       data: charges.map((c) => ({
         title: c.title, description: c.description, amount: c.amount, paidAmount: 0,
         type: 'MULTA_REUNION', target: 'TUTOR', status: 'PENDIENTE',
-        parentId: c.parentId, academicYearId: c.academicYearId,
+        parentId: c.parentId, academicYearId: c.academicYearId, schoolId,
       })),
     })
   },

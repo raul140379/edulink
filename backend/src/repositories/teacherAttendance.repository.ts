@@ -1,4 +1,5 @@
 import prisma from '../lib/prisma'
+import { getTenantContext } from '../lib/tenant-context'
 
 export const teacherAttendanceRepository = {
   findTeacherByUserId(userId: number | undefined) {
@@ -10,7 +11,7 @@ export const teacherAttendanceRepository = {
   },
 
   findTeacherByAttendanceCode(code: string) {
-    return prisma.teacher.findUnique({
+    return prisma.teacher.findFirst({
       where: { attendanceCode: code },
       select: { id: true, firstName: true, lastName: true, entryTime: true, toleranceMin: true },
     })
@@ -21,7 +22,7 @@ export const teacherAttendanceRepository = {
   },
 
   create(teacherId: number, date: Date, checkIn: Date, status: string) {
-    return prisma.teacherAttendance.create({ data: { teacherId, date, checkIn, status: status as any } })
+    return prisma.teacherAttendance.create({ data: { teacherId, date, checkIn, status: status as any, schoolId: getTenantContext()?.schoolId ?? 0 } })
   },
 
   updateCheckIn(id: number, checkIn: Date, status: string) {
@@ -65,8 +66,9 @@ export const teacherAttendanceRepository = {
   },
 
   createManyAbsent(teacherIds: number[], date: Date) {
+    const schoolId = getTenantContext()?.schoolId ?? 0
     return prisma.teacherAttendance.createMany({
-      data: teacherIds.map((teacherId) => ({ teacherId, date, status: 'AUSENTE' as any })),
+      data: teacherIds.map((teacherId) => ({ teacherId, date, status: 'AUSENTE' as any, schoolId })),
       skipDuplicates: true,
     })
   },

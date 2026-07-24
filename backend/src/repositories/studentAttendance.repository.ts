@@ -1,4 +1,5 @@
 import prisma from '../lib/prisma'
+import { getTenantContext } from '../lib/tenant-context'
 
 export const studentAttendanceRepository = {
   findActiveAcademicYear() {
@@ -32,6 +33,7 @@ export const studentAttendanceRepository = {
       create: {
         studentId: data.studentId, courseId: data.courseId, teacherId: data.teacherId,
         academicYearId: data.academicYearId, date: data.date, status: data.status as any, note: data.note,
+        schoolId: getTenantContext()?.schoolId ?? 0,
       },
     })
   },
@@ -41,7 +43,7 @@ export const studentAttendanceRepository = {
   },
 
   createNotification(data: { title: string; message: string; sentById: number; parentId: number }) {
-    return prisma.notification.create({ data: { title: data.title, message: data.message, type: 'ACADEMICA', sentById: data.sentById, parentId: data.parentId } })
+    return prisma.notification.create({ data: { title: data.title, message: data.message, type: 'ACADEMICA', sentById: data.sentById, parentId: data.parentId, schoolId: getTenantContext()?.schoolId ?? 0 } })
   },
 
   findMyCourses(teacherId: number) {

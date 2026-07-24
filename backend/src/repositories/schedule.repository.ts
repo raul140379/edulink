@@ -1,5 +1,6 @@
 import { Prisma } from '@prisma/client'
 import prisma from '../lib/prisma'
+import { getTenantContext } from '../lib/tenant-context'
 
 export const scheduleRepository = {
   findAllSchoolSchedules() {
@@ -76,7 +77,7 @@ export const scheduleRepository = {
     return prisma.schedule.upsert({
       where: { courseId_academicYearId_dayOfWeek_period: { courseId, academicYearId, dayOfWeek, period } },
       update: data,
-      create: { courseId, academicYearId, dayOfWeek, period, ...data, status: 'BORRADOR' },
+      create: { courseId, academicYearId, dayOfWeek, period, ...data, status: 'BORRADOR', schoolId: getTenantContext()?.schoolId ?? 0 },
       include: {
         teacherSubjectCourse: {
           include: {

@@ -7,6 +7,72 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+model District {
+  id           Int           @id @default(autoincrement())
+  name         String
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  schools      School[]
+  users        User[]
+  juntaMembers JuntaMember[]
+  nucleos      Nucleo[]
+  comunicados  Comunicado[]
+}
+
+model Nucleo {
+  id         Int      @id @default(autoincrement())
+  name       String
+  location   String?
+  districtId Int
+  district   District @relation(fields: [districtId], references: [id])
+  schools    School[]
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@unique([name, districtId])
+}
+
+model School {
+  id         Int        @id @default(autoincrement())
+  name       String
+  sieCode    String     @unique
+  tipo       SchoolType
+  area       SchoolArea
+  address    String?
+  isActive   Boolean    @default(true)
+  districtId Int
+  nucleoId   Int?
+  createdAt  DateTime   @default(now())
+  updatedAt  DateTime   @updatedAt
+  district   District   @relation(fields: [districtId], references: [id])
+  nucleo     Nucleo?    @relation(fields: [nucleoId], references: [id])
+
+  schoolSchedules    SchoolSchedule[]
+  users              User[]
+  juntaMembers       JuntaMember[]
+  shiftDirectors     ShiftDirector[]
+  academicYears      AcademicYear[]
+  parents            Parent[]
+  students           Student[]
+  teachers           Teacher[]
+  staff              Staff[]
+  courses            Course[]
+  classrooms         Classroom[]
+  subjects           Subject[]
+  charges            Charge[]
+  payments           Payment[]
+  notifications      Notification[]
+  meetings           Meeting[]
+  tasks              Task[]
+  notas              Nota[]
+  schedules          Schedule[]
+  schedulePlans      SchedulePlan[]
+  gateRecords        GateRecord[]
+  teacherAttendances TeacherAttendance[]
+  studentAttendances StudentAttendance[]
+  biometricTemplates BiometricTemplate[]
+}
+
 model SchoolSchedule {
   id             Int      @id @default(autoincrement())
   shift          String
@@ -21,6 +87,8 @@ model SchoolSchedule {
   periodDuration Int      @default(40)
   periods        Int      @default(7)
   startTime      String
+  schoolId       Int
+  school         School   @relation(fields: [schoolId], references: [id])
 }
 
 model User {
@@ -31,9 +99,17 @@ model User {
   isActive          Boolean        @default(true)
   createdAt         DateTime       @default(now())
   updatedAt         DateTime       @updatedAt
+  schoolId          Int?
+  districtId        Int?
+  createdByUserId   Int?
+  school            School?        @relation(fields: [schoolId], references: [id])
+  district          District?      @relation(fields: [districtId], references: [id])
+  createdBy         User?          @relation("UserCreatedBy", fields: [createdByUserId], references: [id])
+  createdUsers      User[]         @relation("UserCreatedBy")
   juntaMember       JuntaMember?
   meetingsCreated   Meeting[]      @relation("MeetingCreator")
   notificationsSent Notification[] @relation("NotificationSender")
+  comunicados       Comunicado[]   @relation("ComunicadoAuthor")
   parentDelegate    Parent?        @relation("ParentDelegate")
   parent            Parent?        @relation("ParentUser")
   director          ShiftDirector?
@@ -54,24 +130,34 @@ model JuntaMember {
   isActive     Boolean   @default(true)
   createdAt    DateTime  @default(now())
   userId       Int       @unique
+  schoolId     Int?
+  districtId   Int?
   user         User      @relation(fields: [userId], references: [id])
+  school       School?   @relation(fields: [schoolId], references: [id])
+  district     District? @relation(fields: [districtId], references: [id])
 }
 
 model ShiftDirector {
-  id      Int      @id @default(autoincrement())
-  shift   Shift    @unique
-  userId  Int      @unique
-  courses Course[]
-  user    User     @relation(fields: [userId], references: [id])
+  id       Int      @id @default(autoincrement())
+  shift    Shift
+  userId   Int      @unique
+  schoolId Int
+  courses  Course[]
+  user     User     @relation(fields: [userId], references: [id])
+  school   School   @relation(fields: [schoolId], references: [id])
+
+  @@unique([shift, schoolId])
 }
 
 model AcademicYear {
   id                 Int                         @id @default(autoincrement())
-  year               Int                         @unique
+  year               Int
   startDate          DateTime
   endDate            DateTime
   isActive           Boolean                     @default(false)
   createdAt          DateTime                    @default(now())
+  schoolId           Int
+  school             School                      @relation(fields: [schoolId], references: [id])
   charges            Charge[]
   holidays           Holiday[]
   schedules          Schedule[]
@@ -79,6 +165,8 @@ model AcademicYear {
   assignments        StudentAcademicAssignment[]
   studentAttendances StudentAttendance[]
   trimesters         Trimester[]
+
+  @@unique([year, schoolId])
 }
 
 model Trimester {
@@ -108,14 +196,16 @@ model Parent {
   id             Int             @id @default(autoincrement())
   firstName      String
   lastName       String
-  ci             String?         @unique
+  ci             String?
   phone          String?
   address        String?
-  email          String?         @unique
+  email          String?
   createdAt      DateTime        @default(now())
   updatedAt      DateTime        @updatedAt
   userId         Int?            @unique
   delegateUserId Int?            @unique
+  schoolId       Int
+  school         School          @relation(fields: [schoolId], references: [id])
   attendances    Attendance[]
   charges        Charge[]
   delegateCourse Course?         @relation("CourseDelegate")
@@ -124,17 +214,20 @@ model Parent {
   user           User?           @relation("ParentUser", fields: [userId], references: [id])
   students       ParentStudent[]
   payments       Payment[]
+
+  @@unique([ci, schoolId])
+  @@unique([email, schoolId])
 }
 
 model Student {
   id                 Int                         @id @default(autoincrement())
   firstName          String
   lastName           String
-  ci                 String?                     @unique
-  rude               String?                     @unique
+  ci                 String?
+  rude               String?
   birthDate          DateTime?
   phone              String?
-  email              String?                     @unique
+  email              String?
   isActive           Boolean                     @default(true)
   createdAt          DateTime                    @default(now())
   updatedAt          DateTime                    @updatedAt
@@ -142,6 +235,8 @@ model Student {
   address            String?
   gender             Gender                      @default(MASCULINO)
   kardex             String?
+  schoolId           Int
+  school             School                      @relation(fields: [schoolId], references: [id])
   charges            Charge[]
   notas              Nota[]
   parents            ParentStudent[]
@@ -150,6 +245,10 @@ model Student {
   studentAttendances StudentAttendance[]
   taskSubmissions    TaskSubmission[]
   gateRecords        GateRecord[]
+
+  @@unique([ci, schoolId])
+  @@unique([rude, schoolId])
+  @@unique([email, schoolId])
 }
 
 model ParentStudent {
@@ -168,9 +267,9 @@ model Teacher {
   id                 Int                    @id @default(autoincrement())
   firstName          String
   lastName           String
-  ci                 String?                @unique
+  ci                 String?
   phone              String?
-  email              String?                @unique
+  email              String?
   specialty          String?
   isActive           Boolean                @default(true)
   createdAt          DateTime               @default(now())
@@ -179,10 +278,12 @@ model Teacher {
   hoursLoad          Int?
   gender             String?
   tutorUserId        Int?                   @unique
-  attendanceCode     String?                @unique
+  attendanceCode     String?
   entryTime          String?
   exitTime           String?
   toleranceMin       Int                    @default(10)
+  schoolId           Int
+  school             School                 @relation(fields: [schoolId], references: [id])
   biometricTemplate  BiometricTemplate[]
   tutorCourse        CourseTutor?
   gateRecords        GateRecord[]
@@ -194,6 +295,10 @@ model Teacher {
   attendances        TeacherAttendance[]
   specialties        TeacherSpecialty[]
   assignments        TeacherSubjectCourse[]
+
+  @@unique([ci, schoolId])
+  @@unique([email, schoolId])
+  @@unique([attendanceCode, schoolId])
 }
 
 model TeacherSpecialty {
@@ -216,6 +321,8 @@ model TeacherAttendance {
   note      String?
   createdAt DateTime         @default(now())
   updatedAt DateTime         @updatedAt
+  schoolId  Int
+  school    School           @relation(fields: [schoolId], references: [id])
   teacher   Teacher          @relation(fields: [teacherId], references: [id])
 
   @@unique([teacherId, date])
@@ -225,17 +332,22 @@ model Staff {
   id                Int                 @id @default(autoincrement())
   firstName         String
   lastName          String
-  ci                String?             @unique
+  ci                String?
   phone             String?
   staffRole         StaffRole
   shift             Shift?
   isActive          Boolean             @default(true)
   createdAt         DateTime            @default(now())
   userId            Int                 @unique
-  attendanceCode    String?             @unique
+  attendanceCode    String?
+  schoolId          Int
+  school            School              @relation(fields: [schoolId], references: [id])
   biometricTemplate BiometricTemplate[]
   gateRecord        GateRecord[]
   user              User                @relation(fields: [userId], references: [id])
+
+  @@unique([ci, schoolId])
+  @@unique([attendanceCode, schoolId])
 }
 
 model Course {
@@ -247,6 +359,8 @@ model Course {
   shift              Shift
   shiftDirectorId    Int?
   delegateId         Int?                        @unique
+  schoolId           Int
+  school             School                      @relation(fields: [schoolId], references: [id])
   delegate           Parent?                     @relation("CourseDelegate", fields: [delegateId], references: [id])
   shiftDirector      ShiftDirector?              @relation(fields: [shiftDirectorId], references: [id])
   tutor              CourseTutor?
@@ -259,7 +373,7 @@ model Course {
   tasks              Task[]
   teacherSubjects    TeacherSubjectCourse[]
 
-  @@unique([level, grade, parallel, educationType, shift])
+  @@unique([level, grade, parallel, educationType, shift, schoolId])
 }
 
 model CourseTutor {
@@ -280,13 +394,15 @@ model Subject {
   hoursPerWeek       Int                    @default(4)
   campo              CampoSaber?
   isActive           Boolean                @default(true)
+  schoolId           Int
+  school             School                 @relation(fields: [schoolId], references: [id])
   notas              Nota[]
   gradeConfigs       SubjectGradeConfig[]
   tasks              Task[]
   teacherSpecialties TeacherSpecialty[]
   teacherSubjects    TeacherSubjectCourse[]
 
-  @@unique([name, level])
+  @@unique([name, level, schoolId])
 }
 
 model SubjectGradeConfig {
@@ -328,6 +444,8 @@ model Task {
   createdAt     DateTime         @default(now())
   updatedAt     DateTime         @updatedAt
   attachmentUrl String?
+  schoolId      Int
+  school        School           @relation(fields: [schoolId], references: [id])
   notaItems     NotaItem[]
   course        Course           @relation(fields: [courseId], references: [id])
   subject       Subject          @relation(fields: [subjectId], references: [id])
@@ -377,6 +495,8 @@ model Schedule {
   period                 Int
   status                 String               @default("BORRADOR")
   classroomId            Int?
+  schoolId               Int
+  school                 School               @relation(fields: [schoolId], references: [id])
   academicYear           AcademicYear         @relation(fields: [academicYearId], references: [id])
   classroom              Classroom?           @relation(fields: [classroomId], references: [id])
   course                 Course               @relation(fields: [courseId], references: [id])
@@ -398,6 +518,8 @@ model SchedulePlan {
   createdAt              DateTime             @default(now())
   updatedAt              DateTime             @updatedAt
   slot                   String               @default("TEMP")
+  schoolId               Int
+  school                 School               @relation(fields: [schoolId], references: [id])
   academicYear           AcademicYear         @relation(fields: [academicYearId], references: [id])
   classroom              Classroom?           @relation(fields: [classroomId], references: [id])
   course                 Course               @relation(fields: [courseId], references: [id])
@@ -408,12 +530,16 @@ model SchedulePlan {
 
 model Classroom {
   id            Int            @id @default(autoincrement())
-  name          String         @unique
+  name          String
   capacity      Int?
   isActive      Boolean        @default(true)
   createdAt     DateTime       @default(now())
+  schoolId      Int
+  school        School         @relation(fields: [schoolId], references: [id])
   schedules     Schedule[]
   schedulePlans SchedulePlan[]
+
+  @@unique([name, schoolId])
 }
 
 model Charge {
@@ -433,6 +559,8 @@ model Charge {
   tolerance      Boolean      @default(false)
   toleranceNote  String?
   updatedAt      DateTime     @updatedAt
+  schoolId       Int
+  school         School       @relation(fields: [schoolId], references: [id])
   academicYear   AcademicYear @relation(fields: [academicYearId], references: [id])
   parent         Parent       @relation(fields: [parentId], references: [id])
   student        Student?     @relation(fields: [studentId], references: [id])
@@ -450,6 +578,8 @@ model Payment {
   note         String?
   receivedById Int?
   method       PaymentMethod @default(EFECTIVO)
+  schoolId     Int
+  school       School        @relation(fields: [schoolId], references: [id])
   charge       Charge        @relation(fields: [chargeId], references: [id])
   parent       Parent        @relation(fields: [parentId], references: [id])
 }
@@ -463,6 +593,8 @@ model Notification {
   createdAt DateTime         @default(now())
   parentId  Int
   sentById  Int
+  schoolId  Int
+  school    School           @relation(fields: [schoolId], references: [id])
   parent    Parent           @relation(fields: [parentId], references: [id])
   sentBy    User             @relation("NotificationSender", fields: [sentById], references: [id])
 }
@@ -474,6 +606,8 @@ model Meeting {
   courseId    Int
   createdById Int
   createdAt   DateTime     @default(now())
+  schoolId    Int
+  school      School       @relation(fields: [schoolId], references: [id])
   attendances Attendance[]
   course      Course       @relation(fields: [courseId], references: [id])
   createdBy   User         @relation("MeetingCreator", fields: [createdById], references: [id])
@@ -507,6 +641,8 @@ model Nota {
   saber          Float?
   ser            Float?
   total          Float?
+  schoolId       Int
+  school         School     @relation(fields: [schoolId], references: [id])
   course         Course     @relation(fields: [courseId], references: [id])
   student        Student    @relation(fields: [studentId], references: [id], onDelete: Cascade)
   subject        Subject    @relation(fields: [subjectId], references: [id])
@@ -546,6 +682,8 @@ model GateRecord {
   staffId        Int?
   method         String         @default("MANUAL")
   studentId      Int?
+  schoolId       Int
+  school         School         @relation(fields: [schoolId], references: [id])
   staff          Staff?         @relation(fields: [staffId], references: [id], onDelete: NoAction, onUpdate: NoAction)
   teacher        Teacher?       @relation(fields: [teacherId], references: [id])
   student        Student?       @relation(fields: [studentId], references: [id], onDelete: NoAction, onUpdate: NoAction)
@@ -562,6 +700,8 @@ model StudentAttendance {
   courseId       Int
   teacherId      Int
   academicYearId Int
+  schoolId       Int
+  school         School                  @relation(fields: [schoolId], references: [id])
   academicYear   AcademicYear            @relation(fields: [academicYearId], references: [id])
   course         Course                  @relation(fields: [courseId], references: [id])
   student        Student                 @relation(fields: [studentId], references: [id])
@@ -578,12 +718,37 @@ model BiometricTemplate {
   createdAt DateTime @default(now()) @db.Timestamp(6)
   teacherId Int?
   staffId   Int?
+  schoolId  Int
+  school    School   @relation(fields: [schoolId], references: [id])
   staff     Staff?   @relation(fields: [staffId], references: [id], onDelete: NoAction, onUpdate: NoAction)
   teacher   Teacher? @relation(fields: [teacherId], references: [id], onDelete: NoAction, onUpdate: NoAction)
 }
 
+model Comunicado {
+  id          Int            @id @default(autoincrement())
+  title       String
+  body        String
+  type        ComunicadoType @default(COMUNICADO)
+  imageUrl    String?
+  isPublished Boolean        @default(true)
+  publishedAt DateTime       @default(now())
+  authorId    Int
+  districtId  Int
+  author      User           @relation("ComunicadoAuthor", fields: [authorId], references: [id])
+  district    District       @relation(fields: [districtId], references: [id])
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+}
+
+enum ComunicadoType {
+  COMUNICADO
+  CONVOCATORIA
+  AVISO
+}
+
 enum Role {
   SUPER_ADMIN
+  DIRECTOR_DISTRITAL
   DIRECTOR
   REGENTE
   TEACHER
@@ -596,6 +761,16 @@ enum Role {
   JUNTA_ESCOLAR
   TEACHER_TUTOR
   PORTERO
+}
+
+enum SchoolType {
+  FISCAL
+  PRIVADA
+}
+
+enum SchoolArea {
+  URBANA
+  RURAL
 }
 
 enum AcademicLevel {

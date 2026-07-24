@@ -1,5 +1,6 @@
 import { Prisma, ChargeStatus, PaymentMethod } from '@prisma/client'
 import prisma from '../lib/prisma'
+import { getTenantContext } from '../lib/tenant-context'
 
 export const treasuryRepository = {
   findCharges(where: Prisma.ChargeWhereInput) {
@@ -100,7 +101,7 @@ export const treasuryRepository = {
   },
 
   createPayment(data: { amount: number; method: PaymentMethod; reference: string | null; note: string | null; date: Date; chargeId: number; parentId: number }) {
-    return prisma.payment.create({ data })
+    return prisma.payment.create({ data: { ...data, schoolId: getTenantContext()?.schoolId ?? 0 } })
   },
 
   findChargesForSummary(where: Prisma.ChargeWhereInput) {

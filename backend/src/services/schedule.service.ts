@@ -1,6 +1,7 @@
 import { scheduleRepository } from '../repositories/schedule.repository'
 import { HttpError } from '../utils/http-error'
 import { CreateSchoolScheduleInput, UpdateSchoolScheduleInput, AssignPeriodInput } from '../schemas/schedule.schema'
+import { getTenantContext } from '../lib/tenant-context'
 
 const DAY_NAMES = ['', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado']
 
@@ -45,6 +46,7 @@ export const scheduleService = {
       breakAfter: input.breakAfter || '2,4',
       isWinter: input.isWinter || false,
       isActive: !hayActivo,
+      school: { connect: { id: getTenantContext()?.schoolId ?? 0 } },
     })
   },
 

@@ -2,21 +2,21 @@ import prisma from '../lib/prisma'
 
 export const gateRepository = {
   findTeacherByAttendanceCode(code: string) {
-    return prisma.teacher.findUnique({
+    return prisma.teacher.findFirst({
       where: { attendanceCode: code },
       select: { id: true, firstName: true, lastName: true, specialty: true, attendanceCode: true, isActive: true, entryTime: true, exitTime: true },
     })
   },
 
   findStudentByRude(rude: string) {
-    return prisma.student.findUnique({
+    return prisma.student.findFirst({
       where: { rude },
       select: { id: true, firstName: true, lastName: true, rude: true, ci: true, isActive: true },
     })
   },
 
   findStaffByAttendanceCode(code: string) {
-    return prisma.staff.findUnique({
+    return prisma.staff.findFirst({
       where: { attendanceCode: code },
       select: { id: true, firstName: true, lastName: true, staffRole: true, attendanceCode: true, isActive: true },
     })
@@ -117,11 +117,11 @@ export const gateRepository = {
   },
 
   findTeacherByCode(code: string) {
-    return prisma.teacher.findUnique({ where: { attendanceCode: code } })
+    return prisma.teacher.findFirst({ where: { attendanceCode: code } })
   },
 
   findStaffByCode(code: string) {
-    return prisma.staff.findUnique({ where: { attendanceCode: code } })
+    return prisma.staff.findFirst({ where: { attendanceCode: code } })
   },
 
   updateTeacherCode(id: number, attendanceCode: string) {

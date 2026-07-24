@@ -41,7 +41,7 @@ export const teacherRepository = {
   },
 
   findByCI(ci: string) {
-    return prisma.teacher.findUnique({ where: { ci } })
+    return prisma.teacher.findFirst({ where: { ci } })
   },
 
   findWithWorkloadById(id: number) {

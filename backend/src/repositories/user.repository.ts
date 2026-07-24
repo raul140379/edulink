@@ -1,33 +1,57 @@
 import { Prisma, Role } from '@prisma/client'
 import prisma from '../lib/prisma'
 
+// Roles de gestión/administración visibles para un DIRECTOR_DISTRITAL, además de
+// los usuarios que él mismo haya creado (ver `managementOrCreatedBy` abajo).
+const MANAGEMENT_ROLES: Role[] = [Role.DIRECTOR, Role.REGENTE, Role.SECRETARY, Role.DIRECTOR_DISTRITAL]
+
 export interface UserListFilters {
   role?:     Role
   isActive?: boolean
   search?:   string
+  // Cuando se pasa (id del Director Distrital), la lista se restringe a roles de
+  // gestión + usuarios creados por él — no ve el detalle de cada estudiante/padre
+  // de todos los colegios del distrito.
+  managementOrCreatedBy?: number
 }
 
-const buildListWhere = ({ role, isActive, search }: UserListFilters): Prisma.UserWhereInput => ({
-  ...(role                    ? { role }                          : {}),
-  ...(isActive !== undefined  ? { isActive }                      : {}),
-  ...(search ? {
-    OR: [
-      { email:   { contains: search, mode: 'insensitive' } },
-      { parent:  { OR: [
-        { firstName: { contains: search, mode: 'insensitive' } },
-        { lastName:  { contains: search, mode: 'insensitive' } },
-      ]}},
-      { teacher: { OR: [
-        { firstName: { contains: search, mode: 'insensitive' } },
-        { lastName:  { contains: search, mode: 'insensitive' } },
-      ]}},
-      { student: { OR: [
-        { firstName: { contains: search, mode: 'insensitive' } },
-        { lastName:  { contains: search, mode: 'insensitive' } },
-      ]}},
-    ],
-  } : {}),
-})
+const buildListWhere = ({ role, isActive, search, managementOrCreatedBy }: UserListFilters): Prisma.UserWhereInput => {
+  const clauses: Prisma.UserWhereInput[] = []
+
+  if (role)                   clauses.push({ role })
+  if (isActive !== undefined) clauses.push({ isActive })
+
+  if (search) {
+    clauses.push({
+      OR: [
+        { email:   { contains: search, mode: 'insensitive' } },
+        { parent:  { OR: [
+          { firstName: { contains: search, mode: 'insensitive' } },
+          { lastName:  { contains: search, mode: 'insensitive' } },
+        ]}},
+        { teacher: { OR: [
+          { firstName: { contains: search, mode: 'insensitive' } },
+          { lastName:  { contains: search, mode: 'insensitive' } },
+        ]}},
+        { student: { OR: [
+          { firstName: { contains: search, mode: 'insensitive' } },
+          { lastName:  { contains: search, mode: 'insensitive' } },
+        ]}},
+      ],
+    })
+  }
+
+  if (managementOrCreatedBy != null) {
+    clauses.push({
+      OR: [
+        { createdByUserId: managementOrCreatedBy },
+        { role: { in: MANAGEMENT_ROLES } },
+      ],
+    })
+  }
+
+  return clauses.length > 0 ? { AND: clauses } : {}
+}
 
 export const userRepository = {
   findByEmail(email: string) {
@@ -73,7 +97,7 @@ export const userRepository = {
     })
   },
 
-  create(data: { email: string; password: string; role: Role }) {
+  create(data: { email: string; password: string; role: Role; schoolId?: number; districtId?: number; createdByUserId?: number }) {
     return prisma.user.create({
       data:   { ...data, isActive: true },
       select: { id: true, email: true, role: true, isActive: true, createdAt: true },

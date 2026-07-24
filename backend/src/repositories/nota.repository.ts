@@ -1,5 +1,6 @@
 import { NotaDimension } from '@prisma/client'
 import prisma from '../lib/prisma'
+import { getTenantContext } from '../lib/tenant-context'
 
 export const notaRepository = {
   findAcademicYearByYear(year: number) {
@@ -81,10 +82,11 @@ export const notaRepository = {
   },
 
   upsertNota(studentId: number, subjectId: number, courseId: number, teacherId: number, trimesterId: number) {
+    // schoolId below is overwritten by the tenant-scoping extension in lib/prisma.ts for the acting user's school.
     return prisma.nota.upsert({
       where: { studentId_subjectId_courseId_trimesterId: { studentId, subjectId, courseId, trimesterId } },
       update: {},
-      create: { studentId, subjectId, courseId, teacherId, trimesterId },
+      create: { studentId, subjectId, courseId, teacherId, trimesterId, schoolId: getTenantContext()?.schoolId ?? 0 },
     })
   },
 

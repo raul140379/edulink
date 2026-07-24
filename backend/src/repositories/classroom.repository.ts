@@ -1,4 +1,5 @@
 import prisma from '../lib/prisma'
+import { getTenantContext } from '../lib/tenant-context'
 
 export const classroomRepository = {
   findAllActive() {
@@ -6,7 +7,8 @@ export const classroomRepository = {
   },
 
   create(name: string, capacity: number | null) {
-    return prisma.classroom.create({ data: { name, capacity } })
+    // schoolId below is overwritten by the tenant-scoping extension in lib/prisma.ts for the acting user's school.
+    return prisma.classroom.create({ data: { name, capacity, schoolId: getTenantContext()?.schoolId ?? 0 } })
   },
 
   update(id: number, data: { name?: string; capacity?: number; isActive?: boolean }) {

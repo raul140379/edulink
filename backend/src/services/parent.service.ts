@@ -6,6 +6,7 @@ import { studentRepository } from '../repositories/student.repository'
 import { userRepository } from '../repositories/user.repository'
 import { HttpError } from '../utils/http-error'
 import { generateUniqueEmail, generateParentPassword } from '../utils/account-generator'
+import { getTenantContext } from '../lib/tenant-context'
 import {
   CreateParentInput, UpdateParentInput, UpdateMeInput,
   LinkStudentsInput, ChangeTutorInput, ChangeRelationInput,
@@ -99,6 +100,7 @@ export const parentService = {
       firstName, lastName,
       ci: ci || null, phone: phone || null, email: email || null, address: address || null,
       ...(userId ? { user: { connect: { id: userId } } } : {}),
+      school: { connect: { id: getTenantContext()?.schoolId ?? 0 } },
     })
 
     if (studentIds && studentIds.length > 0) {

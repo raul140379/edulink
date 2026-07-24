@@ -45,8 +45,8 @@ export const courseRepository = {
   },
 
   findExact(level: string, grade: string, parallel: string, educationType: string, shift: string) {
-    return prisma.course.findUnique({
-      where: { level_grade_parallel_educationType_shift: { level: level as any, grade: grade as any, parallel: parallel as any, educationType: educationType as any, shift: shift as any } },
+    return prisma.course.findFirst({
+      where: { level: level as any, grade: grade as any, parallel: parallel as any, educationType: educationType as any, shift: shift as any },
     })
   },
 

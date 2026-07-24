@@ -1,5 +1,6 @@
 import { Prisma, RelationType } from '@prisma/client'
 import prisma from '../lib/prisma'
+import { getTenantContext } from '../lib/tenant-context'
 
 export const parentRepository = {
   findMany(where: Prisma.ParentWhereInput) {
@@ -48,7 +49,7 @@ export const parentRepository = {
   },
 
   findByCI(ci: string) {
-    return prisma.parent.findUnique({ where: { ci } })
+    return prisma.parent.findFirst({ where: { ci } })
   },
 
   findByNameFragment(firstName: string, lastName: string) {
@@ -215,6 +216,7 @@ export const parentRepository = {
   },
 
   create_simple(data: { firstName: string; lastName: string; ci: string | null; phone: string | null; userId?: number }) {
-    return prisma.parent.create({ data })
+    // schoolId below is overwritten by the tenant-scoping extension in lib/prisma.ts for the acting user's school.
+    return prisma.parent.create({ data: { ...data, schoolId: getTenantContext()?.schoolId ?? 0 } })
   },
 }
