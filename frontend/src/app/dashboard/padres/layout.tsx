@@ -1,12 +1,15 @@
 'use client'
 
+import { useEffect, useState } from 'react'
 import {
   LayoutDashboard, UserCircle, Calendar, BookOpen, Users,
-  DollarSign, ClipboardCheck, ClipboardList, FileBarChart, Bell
+  DollarSign, ClipboardCheck, ClipboardList, FileBarChart, Bell, Megaphone
 } from 'lucide-react'
 import DashboardShell, { MenuGroup } from '@/components/layout/DashboardShell'
+import { useDistrictConfig } from '@/hooks/useDistrictConfig'
 
-const PADRES_ROLES = ['PARENT', 'JUNTA_ESCOLAR', 'DELEGATE']
+const PADRES_ROLES = ['PARENT', 'JUNTA_ESCOLAR', 'DELEGATE', 'JUNTA_NUCLEO', 'JUNTA_DISTRITO']
+const JUNTA_ROLES  = ['JUNTA_ESCOLAR', 'JUNTA_NUCLEO', 'JUNTA_DISTRITO']
 
 const menuGroups: MenuGroup[] = [
   {
@@ -54,21 +57,44 @@ const menuGroups: MenuGroup[] = [
     items: [{ label: 'Reportes', href: '/dashboard/padres/reportes', icon: <FileBarChart size={15}/>, roles: ['JUNTA_ESCOLAR'] }],
   },
   {
-    label: 'Notificaciones', icon: <Bell size={15}/>, roles: ['PARENT', 'JUNTA_ESCOLAR'],
-    items: [{ label: 'Notificaciones', href: '/dashboard/padres/notificaciones', icon: <Bell size={15}/>, roles: ['PARENT', 'JUNTA_ESCOLAR'] }],
+    label: 'Notificaciones', icon: <Bell size={15}/>, roles: ['PARENT', 'JUNTA_ESCOLAR', 'JUNTA_NUCLEO', 'JUNTA_DISTRITO'],
+    items: [{ label: 'Notificaciones', href: '/dashboard/padres/notificaciones', icon: <Bell size={15}/>, roles: ['PARENT', 'JUNTA_ESCOLAR', 'JUNTA_NUCLEO', 'JUNTA_DISTRITO'] }],
+  },
+  {
+    label: 'Comunicados', icon: <Megaphone size={15}/>, roles: JUNTA_ROLES,
+    items: [{ label: 'Comunicados', href: '/dashboard/padres/comunicados', icon: <Megaphone size={15}/>, roles: JUNTA_ROLES }],
+  },
+  {
+    label: 'Designar Junta', icon: <Users size={15}/>, roles: ['JUNTA_DISTRITO'],
+    items: [{ label: 'Designar Junta', href: '/dashboard/padres/junta/nueva', icon: <Users size={15}/>, roles: ['JUNTA_DISTRITO'] }],
   },
 ]
 
+const LEVEL_LABEL: Record<string, string> = {
+  JUNTA_DISTRITO: 'Junta de Distrito',
+  JUNTA_NUCLEO:   'Junta de Núcleo',
+}
+
 export default function PadresLayout({ children }: { children: React.ReactNode }) {
+  const district = useDistrictConfig()
+  const [role, setRole] = useState<string | null>(null)
+
+  useEffect(() => {
+    const raw = localStorage.getItem('user')
+    if (raw) setRole(JSON.parse(raw).role)
+  }, [])
+
+  const isDistrictLevel = role === 'JUNTA_DISTRITO' || role === 'JUNTA_NUCLEO'
+
   return (
     <DashboardShell
       allowedRoles={PADRES_ROLES}
-      brandName="U.E. Naciones Unidas"
-      brandLoc="El Torno · Santa Cruz"
-      logoSrc="/logo-nnuu.jpeg"
+      brandName={isDistrictLevel ? `${district.name} · ${LEVEL_LABEL[role as string]}` : 'U.E. Naciones Unidas'}
+      brandLoc={district.location || 'Bolivia'}
+      logoSrc={isDistrictLevel ? (district.logoUrl || '/escudo-el-torno.png') : '/logo-nnuu.jpeg'}
       homeHref="/dashboard/padres"
-      profileHref="/dashboard/padres/perfil"
-      notificationsHref="/dashboard/padres/notificaciones"
+      profileHref={isDistrictLevel ? '/dashboard/padres' : '/dashboard/padres/perfil'}
+      notificationsHref={isDistrictLevel ? undefined : '/dashboard/padres/notificaciones'}
       menuGroups={menuGroups}
       theme={{ primary: '#00838F', navbar: '#006D75', accent: '#0097A7', hover: '#00ACC1' }}
     >

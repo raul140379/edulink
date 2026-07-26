@@ -6,6 +6,7 @@ import Card from '@/components/ui/Card'
 import Badge from '@/components/ui/Badge'
 import Table, { Column } from '@/components/ui/Table'
 import { useToast } from '@/components/ui/ToastProvider'
+import { useDistrictConfig } from '@/hooks/useDistrictConfig'
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000'
 
@@ -21,7 +22,8 @@ const TYPE_LABELS:  Record<string, string> = {
 const fmt = (n: number) => `Bs. ${n.toFixed(2)}`
 
 export default function ReportesPage() {
-  const toast = useToast()
+  const toast    = useToast()
+  const district = useDistrictConfig()
   const [activeTab,   setActiveTab]   = useState<'teachers' | 'delegates' | 'treasury'>('teachers')
   const [teachers,    setTeachers]    = useState<any[]>([])
   const [delegates,   setDelegates]   = useState<any[]>([])
@@ -52,7 +54,7 @@ export default function ReportesPage() {
 
     const doc = new jsPDF()
     doc.setFontSize(16)
-    doc.text('U.E. Naciones Unidas — El Torno', 14, 15)
+    doc.text(`U.E. Naciones Unidas${district.location ? ` — ${district.location}` : ''}`, 14, 15)
     doc.setFontSize(12)
 
     if (activeTab === 'teachers') {

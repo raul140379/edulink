@@ -8,26 +8,34 @@ datasource db {
 }
 
 model District {
-  id           Int           @id @default(autoincrement())
-  name         String
-  createdAt    DateTime      @default(now())
-  updatedAt    DateTime      @updatedAt
-  schools      School[]
-  users        User[]
-  juntaMembers JuntaMember[]
-  nucleos      Nucleo[]
-  comunicados  Comunicado[]
+  id              Int              @id @default(autoincrement())
+  name            String
+  location        String?
+  logoUrl         String?
+  emailDomain     String?
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+  schools         School[]
+  users           User[]
+  juntaMembers    JuntaMember[]
+  gobiernoMembers GobiernoMember[]
+  nucleos         Nucleo[]
+  comunicados     Comunicado[]
 }
 
 model Nucleo {
-  id         Int      @id @default(autoincrement())
-  name       String
-  location   String?
-  districtId Int
-  district   District @relation(fields: [districtId], references: [id])
-  schools    School[]
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  id              Int              @id @default(autoincrement())
+  name            String
+  location        String?
+  districtId      Int
+  district        District         @relation(fields: [districtId], references: [id])
+  schools         School[]
+  users           User[]
+  juntaMembers    JuntaMember[]
+  gobiernoMembers GobiernoMember[]
+  comunicados     Comunicado[]
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
 
   @@unique([name, districtId])
 }
@@ -38,6 +46,7 @@ model School {
   sieCode    String     @unique
   tipo       SchoolType
   area       SchoolArea
+  subsistema Subsistema @default(REGULAR)
   address    String?
   isActive   Boolean    @default(true)
   districtId Int
@@ -50,6 +59,8 @@ model School {
   schoolSchedules    SchoolSchedule[]
   users              User[]
   juntaMembers       JuntaMember[]
+  gobiernoMembers    GobiernoMember[]
+  comunicados        Comunicado[]
   shiftDirectors     ShiftDirector[]
   academicYears      AcademicYear[]
   parents            Parent[]
@@ -71,6 +82,7 @@ model School {
   teacherAttendances TeacherAttendance[]
   studentAttendances StudentAttendance[]
   biometricTemplates BiometricTemplate[]
+  poaActas           PoaActa[]
 }
 
 model SchoolSchedule {
@@ -101,12 +113,15 @@ model User {
   updatedAt         DateTime       @updatedAt
   schoolId          Int?
   districtId        Int?
+  nucleoId          Int?
   createdByUserId   Int?
   school            School?        @relation(fields: [schoolId], references: [id])
   district          District?      @relation(fields: [districtId], references: [id])
+  nucleo            Nucleo?        @relation(fields: [nucleoId], references: [id])
   createdBy         User?          @relation("UserCreatedBy", fields: [createdByUserId], references: [id])
   createdUsers      User[]         @relation("UserCreatedBy")
   juntaMember       JuntaMember?
+  gobiernoMember    GobiernoMember?
   meetingsCreated   Meeting[]      @relation("MeetingCreator")
   notificationsSent Notification[] @relation("NotificationSender")
   comunicados       Comunicado[]   @relation("ComunicadoAuthor")
@@ -117,6 +132,7 @@ model User {
   student           Student?
   teacherTutor      Teacher?       @relation("TeacherTutor")
   teacher           Teacher?       @relation("TeacherUser")
+  poaActasCreated   PoaActa[]
 }
 
 model JuntaMember {
@@ -131,9 +147,34 @@ model JuntaMember {
   createdAt    DateTime  @default(now())
   userId       Int       @unique
   schoolId     Int?
+  nucleoId     Int?
   districtId   Int?
   user         User      @relation(fields: [userId], references: [id])
   school       School?   @relation(fields: [schoolId], references: [id])
+  nucleo       Nucleo?   @relation(fields: [nucleoId], references: [id])
+  district     District? @relation(fields: [districtId], references: [id])
+}
+
+// Junta directiva del Gobierno Estudiantil (Presidente/Vicepresidente/...), en sus 3
+// niveles (colegio/núcleo/distrito) — análogo a JuntaMember pero para STUDENT_GOV/
+// GOBIERNO_NUCLEO/GOBIERNO_DISTRITO, que hasta ahora no tenían ningún concepto de cargo.
+model GobiernoMember {
+  id           Int       @id @default(autoincrement())
+  firstName    String
+  lastName     String
+  ci           String?   @unique
+  phone        String?
+  cargo        JuntaRole @default(VOCAL)
+  academicYear Int
+  isActive     Boolean   @default(true)
+  createdAt    DateTime  @default(now())
+  userId       Int       @unique
+  schoolId     Int?
+  nucleoId     Int?
+  districtId   Int?
+  user         User      @relation(fields: [userId], references: [id])
+  school       School?   @relation(fields: [schoolId], references: [id])
+  nucleo       Nucleo?   @relation(fields: [nucleoId], references: [id])
   district     District? @relation(fields: [districtId], references: [id])
 }
 
@@ -724,6 +765,27 @@ model BiometricTemplate {
   teacher   Teacher? @relation(fields: [teacherId], references: [id], onDelete: NoAction, onUpdate: NoAction)
 }
 
+// Acta de aprobación del Plan Operativo Anual (POA) de la Junta Escolar — sustento
+// legal exigido por el Director Distrital para que la Junta pueda cobrar a los
+// padres de familia (tesorería). Puramente informativo: se guarda como respaldo,
+// no bloquea la creación de cobros aunque no exista un acta cargada.
+model PoaActa {
+  id              Int      @id @default(autoincrement())
+  schoolId        Int
+  academicYear    Int
+  actaFileUrl     String
+  assemblyDate    DateTime
+  montoGlobal     Float
+  montoIndividual Float?
+  items           String
+  createdAt       DateTime @default(now())
+  createdByUserId Int
+  school          School   @relation(fields: [schoolId], references: [id])
+  createdBy       User     @relation(fields: [createdByUserId], references: [id])
+
+  @@unique([schoolId, academicYear])
+}
+
 model Comunicado {
   id          Int            @id @default(autoincrement())
   title       String
@@ -734,8 +796,12 @@ model Comunicado {
   publishedAt DateTime       @default(now())
   authorId    Int
   districtId  Int
+  schoolId    Int?
+  nucleoId    Int?
   author      User           @relation("ComunicadoAuthor", fields: [authorId], references: [id])
   district    District       @relation(fields: [districtId], references: [id])
+  school      School?        @relation(fields: [schoolId], references: [id])
+  nucleo      Nucleo?        @relation(fields: [nucleoId], references: [id])
   createdAt   DateTime       @default(now())
   updatedAt   DateTime       @updatedAt
 }
@@ -759,18 +825,33 @@ enum Role {
   STAFF
   SECRETARY
   JUNTA_ESCOLAR
+  JUNTA_NUCLEO
+  JUNTA_DISTRITO
+  GOBIERNO_NUCLEO
+  GOBIERNO_DISTRITO
   TEACHER_TUTOR
   PORTERO
 }
 
 enum SchoolType {
   FISCAL
+  CONVENIO
   PRIVADA
 }
 
 enum SchoolArea {
   URBANA
   RURAL
+}
+
+// Subsistema del Sistema Educativo Plurinacional de Bolivia al que pertenece
+// la unidad educativa. EduLink modela en detalle solo Educación Regular
+// (inicial/primaria/secundaria) — los otros dos quedan registrados como dato
+// informativo, sin flujo académico propio todavía.
+enum Subsistema {
+  REGULAR                     // Inicial, Primaria y Secundaria Comunitaria
+  ALTERNATIVA_ESPECIAL        // EPA/ESA (adultos) y Educación Especial
+  SUPERIOR_FORMACION_PROFESIONAL // ESFM, institutos técnicos, universidades
 }
 
 enum AcademicLevel {

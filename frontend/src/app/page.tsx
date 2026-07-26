@@ -2,16 +2,19 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { LogIn, Search, School, GraduationCap, Users2, Layers, Megaphone } from 'lucide-react'
+import { LogIn, Search, School, GraduationCap, Users2, Layers, Megaphone, Users } from 'lucide-react'
+import { useDistrictConfig } from '@/hooks/useDistrictConfig'
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000'
 
 type ComunicadoType = 'COMUNICADO' | 'CONVOCATORIA' | 'AVISO'
 
+const TIPO_LABELS: Record<string, string> = { FISCAL: 'Fiscal', CONVENIO: 'Convenio', PRIVADA: 'Privada' }
+
 interface PublicSchool {
   id:     number
   name:   string
-  tipo:   'FISCAL' | 'PRIVADA'
+  tipo:   'FISCAL' | 'CONVENIO' | 'PRIVADA'
   area:   'URBANA' | 'RURAL'
   nucleo: { id: number; name: string } | null
 }
@@ -38,12 +41,25 @@ const TYPE_LABELS: Record<ComunicadoType, string> = {
   AVISO:        'Aviso',
 }
 
+interface PublicDirectorio {
+  juntaDistrito:    string | null
+  gobiernoDistrito: string | null
+  nucleos: {
+    id: number
+    name: string
+    juntaPresidente:    string | null
+    gobiernoPresidente: string | null
+  }[]
+}
+
 export default function Home() {
-  const router = useRouter()
+  const router   = useRouter()
+  const district = useDistrictConfig()
 
   const [schools,     setSchools]     = useState<PublicSchool[]>([])
   const [stats,       setStats]       = useState<PublicStats | null>(null)
   const [comunicados, setComunicados] = useState<PublicComunicado[]>([])
+  const [directorio,  setDirectorio]  = useState<PublicDirectorio | null>(null)
   const [loading,     setLoading]     = useState(true)
   const [logoOk,      setLogoOk]      = useState(true)
 
@@ -56,10 +72,12 @@ export default function Home() {
       fetch(`${API_URL}/api/public/schools`).then(r => r.json()),
       fetch(`${API_URL}/api/public/stats`).then(r => r.json()),
       fetch(`${API_URL}/api/public/comunicados`).then(r => r.json()),
-    ]).then(([s, st, c]) => {
+      fetch(`${API_URL}/api/public/directorio`).then(r => r.json()),
+    ]).then(([s, st, c, d]) => {
       setSchools(Array.isArray(s) ? s : [])
       setStats(st)
       setComunicados(Array.isArray(c) ? c : [])
+      setDirectorio(d)
     }).catch(() => {}).finally(() => setLoading(false))
   }, [])
 
@@ -81,14 +99,14 @@ export default function Home() {
       <header className="header">
         <div className="header-inner">
           <div className="brand">
-            {logoOk ? (
+            {logoOk && district.logoUrl ? (
               // eslint-disable-next-line @next/next/no-img-element
-              <img src="/escudo-el-torno.png" alt="Escudo del Distrito Educativo El Torno" onError={() => setLogoOk(false)} />
+              <img src={district.logoUrl} alt={`Escudo de ${district.name}`} onError={() => setLogoOk(false)} />
             ) : (
               <div className="brand-fallback"><School size={22}/></div>
             )}
             <div className="brand-text">
-              <span className="brand-name">Distrito Educativo El Torno</span>
+              <span className="brand-name">{district.name}</span>
               <span className="brand-sub">Portal de Unidades Educativas</span>
             </div>
           </div>
@@ -96,6 +114,7 @@ export default function Home() {
             <button onClick={() => scrollTo('inicio')}>Inicio</button>
             <button onClick={() => scrollTo('comunicacion')}>Comunicación</button>
             <button onClick={() => scrollTo('unidades')}>Unidades Educativas</button>
+            <button onClick={() => scrollTo('directorio')}>Junta y Gobierno Estudiantil</button>
             <button onClick={() => scrollTo('info')}>Información</button>
           </nav>
           <button className="btn-login" onClick={goLogin}><LogIn size={15}/> Acceder</button>
@@ -171,6 +190,7 @@ export default function Home() {
             <select value={level} onChange={e => setLevel(e.target.value)}>
               <option value="TODOS">Todos los niveles</option>
               <option value="FISCAL">Fiscal</option>
+              <option value="CONVENIO">Convenio</option>
               <option value="PRIVADA">Privada</option>
             </select>
             <select value={zone} onChange={e => setZone(e.target.value)}>
@@ -191,7 +211,7 @@ export default function Home() {
                   <div className="school-icon"><School size={18}/></div>
                   <div className="school-name">{s.name}</div>
                   <div className="school-meta">
-                    <span className="mpill">{s.tipo === 'FISCAL' ? 'Fiscal' : 'Privada'}</span>
+                    <span className="mpill">{TIPO_LABELS[s.tipo] || s.tipo}</span>
                     <span className="mpill">{s.area === 'URBANA' ? 'Urbana' : 'Rural'}</span>
                   </div>
                   {s.nucleo && <div className="school-nucleo">Núcleo {s.nucleo.name}</div>}
@@ -203,6 +223,48 @@ export default function Home() {
         </div>
       </section>
 
+      {/* ── Junta de Distrito y Gobierno Estudiantil ── */}
+      <section id="directorio" className="section alt">
+        <div className="section-inner">
+          <div className="section-head">
+            <Users size={20}/>
+            <div>
+              <h2>Junta de Padres y Gobierno Estudiantil</h2>
+              <p>Directorio de representantes electos a nivel Distrito y Núcleo</p>
+            </div>
+          </div>
+
+          {!directorio ? (
+            <div className="empty-state">Cargando directorio...</div>
+          ) : (
+            <>
+              <div className="directorio-grid">
+                <div className="dir-card dir-card-distrito">
+                  <span className="dir-label">Junta de Distrito</span>
+                  <span className="dir-name">{directorio.juntaDistrito || 'Sin designar'}</span>
+                </div>
+                <div className="dir-card dir-card-distrito">
+                  <span className="dir-label">Gobierno Estudiantil de Distrito</span>
+                  <span className="dir-name">{directorio.gobiernoDistrito || 'Sin designar'}</span>
+                </div>
+              </div>
+
+              {directorio.nucleos.length > 0 && (
+                <div className="nucleos-dir-grid">
+                  {directorio.nucleos.map(n => (
+                    <div key={n.id} className="dir-card">
+                      <span className="dir-label">Núcleo {n.name}</span>
+                      <div className="dir-row"><span>Junta:</span><strong>{n.juntaPresidente || 'Sin designar'}</strong></div>
+                      <div className="dir-row"><span>Gobierno Estudiantil:</span><strong>{n.gobiernoPresidente || 'Sin designar'}</strong></div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      </section>
+
       {/* ── Información ── */}
       <section id="info" className="section">
         <div className="section-inner">
@@ -210,20 +272,20 @@ export default function Home() {
             <Layers size={20}/>
             <div>
               <h2>Información</h2>
-              <p>Distrito Educativo El Torno · 4ta. Sección Municipal, Provincia Andrés Ibáñez</p>
+              <p>{district.name}{district.location ? ` · ${district.location}` : ''}</p>
             </div>
           </div>
           <p className="info-text">
-            El Torno organiza sus unidades educativas en 8 núcleos escolares, urbanos y rurales, bajo la administración
-            de un Director Distrital. Cada unidad educativa mantiene su propia dirección, secretaría y Junta Escolar,
-            con acceso independiente a este sistema de gestión.
+            {district.name} organiza sus unidades educativas en {stats?.nucleos ?? 0} núcleos escolares, urbanos y rurales,
+            bajo la administración de un Director Distrital. Cada unidad educativa mantiene su propia dirección, secretaría
+            y Junta Escolar, con acceso independiente a este sistema de gestión.
           </p>
         </div>
       </section>
 
       <footer className="footer">
         <div className="footer-inner">
-          <span>Distrito Educativo El Torno</span>
+          <span>{district.name}</span>
           <button onClick={goLogin}><LogIn size={14}/> Acceder al sistema</button>
         </div>
       </footer>
@@ -297,6 +359,15 @@ export default function Home() {
         .school-nucleo { font-size:11px; color:#6B8F7F; }
         .btn-access { margin-top:6px; padding:9px; background:#0F6E56; color:#fff; border:none; border-radius:8px; font-size:12px; font-weight:700; cursor:pointer; }
         .btn-access:hover { background:#0A5A45; }
+
+        .directorio-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(260px,1fr)); gap:16px; margin-bottom:16px; }
+        .nucleos-dir-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(240px,1fr)); gap:14px; }
+        .dir-card { background:#fff; border:1px solid #DCEEE6; border-radius:14px; padding:16px 18px; display:flex; flex-direction:column; gap:6px; }
+        .dir-card-distrito { border-color:#0F6E56; background:#F5FAF7; }
+        .dir-label { font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:.5px; color:#0A5A45; }
+        .dir-name { font-size:15px; font-weight:700; color:#173B2E; }
+        .dir-row { display:flex; justify-content:space-between; gap:8px; font-size:12px; color:#3A5A4C; }
+        .dir-row strong { color:#173B2E; text-align:right; }
 
         .info-text { font-size:13px; color:#3A5A4C; line-height:1.8; max-width:760px; }
 

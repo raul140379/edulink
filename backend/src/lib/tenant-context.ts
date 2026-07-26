@@ -6,6 +6,7 @@ export interface TenantContext {
   role:       Role
   schoolId:   number | null
   districtId: number | null
+  nucleoId:   number | null
 }
 
 const storage = new AsyncLocalStorage<TenantContext>()

@@ -11,6 +11,8 @@ export const createUserSchema = z.object({
   schoolId:   z.coerce.number().int().optional(),
   // Solo lo usa SUPER_ADMIN al crear un DIRECTOR_DISTRITAL/rol de distrito.
   districtId: z.coerce.number().int().optional(),
+  // Solo para JUNTA_NUCLEO/GOBIERNO_NUCLEO — a qué núcleo pertenece el nuevo usuario.
+  nucleoId:   z.coerce.number().int().optional(),
 })
 
 export const updateUserSchema = z.object({

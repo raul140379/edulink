@@ -1,4 +1,5 @@
 import type { Metadata } from 'next'
+import PorteroHeaderLoc from './PorteroHeaderLoc'
 
 export const metadata: Metadata = {
   title: 'Control de Acceso — NNUU',
@@ -43,9 +44,7 @@ export default function PorteroLayout({ children }: { children: React.ReactNode 
           <div style={{ fontSize: 14, fontWeight: 700, color: '#F1F5F9' }}>
             Control de Acceso
           </div>
-          <div style={{ fontSize: 11, color: '#94A3B8' }}>
-            U.E. Naciones Unidas — El Torno
-          </div>
+          <PorteroHeaderLoc/>
         </div>
         <div style={{ marginLeft: 'auto', fontSize: 12, color: '#94A3B8' }}>
           {new Date().toLocaleDateString('es-BO', { weekday: 'long', day: 'numeric', month: 'long' })}

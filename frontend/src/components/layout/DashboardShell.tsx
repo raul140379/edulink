@@ -149,7 +149,7 @@ export default function DashboardShell({
         <div className="topbar-brand">
           {logoSrc && (
             <div className="brand-logo">
-              <Image src={logoSrc} alt="Logo" width={32} height={32} style={{ objectFit: 'contain', borderRadius: '50%' }}/>
+              <Image src={logoSrc} alt="Logo" width={32} height={32} style={{ objectFit: 'contain', borderRadius: '50%' }} unoptimized/>
             </div>
           )}
           <div className="brand-info">

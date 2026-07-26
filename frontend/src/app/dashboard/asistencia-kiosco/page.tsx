@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { LogIn, LogOut, CheckCircle, AlertCircle, Clock } from 'lucide-react'
 import Link from 'next/link'
+import { useDistrictConfig } from '@/hooks/useDistrictConfig'
 
 const API = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000'
 
@@ -14,6 +15,7 @@ interface Result {
 }
 
 export default function AsistenciaKioscoPage() {
+  const district = useDistrictConfig()
   const [code,    setCode]    = useState('')
   const [loading, setLoading] = useState(false)
   const [result,  setResult]  = useState<Result | null>(null)
@@ -76,7 +78,7 @@ export default function AsistenciaKioscoPage() {
           <div className="logo-circle">🏫</div>
           <div>
             <div className="school-name">U.E. Naciones Unidas</div>
-            <div className="school-sub">El Torno, Santa Cruz — Bolivia</div>
+            <div className="school-sub">{district.location || 'Bolivia'}</div>
           </div>
         </div>
         <Link href="/login" className="back-link">← Ir al sistema</Link>

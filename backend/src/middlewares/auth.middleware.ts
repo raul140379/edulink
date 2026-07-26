@@ -11,6 +11,7 @@ export interface AuthRequest extends Request {
   userEmail?:    string
   userSchoolId?:   number | null
   userDistrictId?: number | null
+  userNucleoId?:   number | null
 }
 
 // ─────────────────────────────────────────────
@@ -33,15 +34,17 @@ export const verifyToken = (
     const decoded = jwt.verify(token, env.jwtSecret) as any
     const schoolId:   number | null = decoded.schoolId ?? null
     const districtId: number | null = decoded.districtId ?? null
+    const nucleoId:   number | null = decoded.nucleoId ?? null
 
     req.userId         = decoded.id
     req.userRole        = decoded.role as Role
     req.userEmail       = decoded.email
     req.userSchoolId    = schoolId
     req.userDistrictId  = districtId
+    req.userNucleoId    = nucleoId
 
     runWithTenantContext(
-      { userId: decoded.id, role: decoded.role, schoolId, districtId },
+      { userId: decoded.id, role: decoded.role, schoolId, districtId, nucleoId },
       next,
     )
   } catch {

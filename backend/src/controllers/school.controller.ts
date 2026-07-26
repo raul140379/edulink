@@ -36,3 +36,16 @@ export const updateSchool = async (req: AuthRequest, res: Response): Promise<voi
     handleControllerError(res, error)
   }
 }
+
+export const importSchools = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    if (!req.file) { res.status(400).json({ message: 'No se subió ningún archivo' }); return }
+    const result = await schoolService.importSchools(req.file.buffer, req.userDistrictId)
+    res.status(201).json({
+      message: `Importación completada: ${result.created.length} creados, ${result.skipped.length} omitidos, ${result.errors.length} errores`,
+      ...result,
+    })
+  } catch (error) {
+    handleControllerError(res, error)
+  }
+}

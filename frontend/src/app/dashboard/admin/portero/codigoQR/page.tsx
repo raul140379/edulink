@@ -8,6 +8,7 @@ import Badge from '@/components/ui/Badge'
 import Button from '@/components/ui/Button'
 import { useConfirm } from '@/components/ui/ConfirmProvider'
 import { useToast } from '@/components/ui/ToastProvider'
+import { useDistrictConfig } from '@/hooks/useDistrictConfig'
 
 const API = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000'
 
@@ -23,8 +24,9 @@ interface PersonCode {
 }
 
 export default function CodigosPage() {
-  const confirm = useConfirm()
-  const toast   = useToast()
+  const confirm  = useConfirm()
+  const toast    = useToast()
+  const district = useDistrictConfig()
 
   const [teachers,    setTeachers]    = useState<PersonCode[]>([])
   const [staff,       setStaff]       = useState<PersonCode[]>([])
@@ -112,7 +114,7 @@ export default function CodigosPage() {
         img { width: 220px; height: 220px; }
       </style></head><body>
       <div class="card">
-        <div class="school">U.E. Naciones Unidas — El Torno</div>
+        <div class="school">U.E. Naciones Unidas${district.location ? ` — ${district.location}` : ''}</div>
         <img src="${qrDataUrl}" alt="QR"/>
         <div class="name">${selected.lastName} ${selected.firstName}</div>
         <div class="role">${selected.type === 'STAFF' ? selected.staffRole : 'MAESTRO'}</div>
@@ -135,7 +137,7 @@ export default function CodigosPage() {
       })
       return `
         <div class="card">
-          <div class="school">U.E. Naciones Unidas</div>
+          <div class="school">U.E. Naciones Unidas${district.location ? ` — ${district.location}` : ''}</div>
           <img src="${url}" alt="QR"/>
           <div class="name">${p.lastName} ${p.firstName}</div>
           <div class="role">${p.type === 'STAFF' ? p.staffRole : 'MAESTRO'}</div>
@@ -294,7 +296,7 @@ export default function CodigosPage() {
               </div>
             ) : (
               <div className="text-center" ref={printRef}>
-                <div className="text-[11px] text-neutral-500 mb-1 uppercase tracking-wide">U.E. Naciones Unidas — El Torno</div>
+                <div className="text-[11px] text-neutral-500 mb-1 uppercase tracking-wide">U.E. Naciones Unidas{district.location ? ` — ${district.location}` : ''}</div>
                 {qrDataUrl ? (
                   <img src={qrDataUrl} alt="QR" className="w-[220px] h-[220px] rounded-lg mx-auto"/>
                 ) : (

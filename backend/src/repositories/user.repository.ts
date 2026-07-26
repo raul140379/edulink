@@ -97,10 +97,13 @@ export const userRepository = {
     })
   },
 
-  create(data: { email: string; password: string; role: Role; schoolId?: number; districtId?: number; createdByUserId?: number }) {
+  create(data: { email: string; password: string; role: Role; schoolId?: number; districtId?: number; nucleoId?: number; createdByUserId?: number }) {
     return prisma.user.create({
       data:   { ...data, isActive: true },
-      select: { id: true, email: true, role: true, isActive: true, createdAt: true },
+      select: {
+        id: true, email: true, role: true, isActive: true, createdAt: true,
+        schoolId: true, districtId: true, nucleoId: true,
+      },
     })
   },
 

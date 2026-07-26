@@ -5,6 +5,7 @@ import {
   BookOpen, FileText, Users, Bell, DollarSign
 } from 'lucide-react'
 import DashboardShell, { MenuGroup } from '@/components/layout/DashboardShell'
+import { useDistrictConfig } from '@/hooks/useDistrictConfig'
 
 const DOCENTE_ROLES = ['TEACHER', 'TEACHER_TUTOR']
 
@@ -52,11 +53,12 @@ const menuGroups: MenuGroup[] = [
 ]
 
 export default function PlantelDocenteLayout({ children }: { children: React.ReactNode }) {
+  const district = useDistrictConfig()
   return (
     <DashboardShell
       allowedRoles={DOCENTE_ROLES}
       brandName="U.E. Naciones Unidas"
-      brandLoc="El Torno · Santa Cruz"
+      brandLoc={district.location || 'Bolivia'}
       logoSrc="/logo-nnuu.jpeg"
       homeHref="/dashboard/plantel-docente"
       profileHref="/dashboard/plantel-docente/perfil"

@@ -19,7 +19,10 @@ export const authService = {
     const permissions = ROLE_PERMISSIONS[user.role as Role] || []
 
     const token = jwt.sign(
-      { id: user.id, email: user.email, role: user.role, schoolId: user.schoolId, districtId: user.districtId },
+      {
+        id: user.id, email: user.email, role: user.role,
+        schoolId: user.schoolId, districtId: user.districtId, nucleoId: user.nucleoId,
+      },
       env.jwtSecret,
       { expiresIn: '8h' }
     )

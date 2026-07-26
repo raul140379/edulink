@@ -1,6 +1,6 @@
 import { PrismaClient } from '@prisma/client'
 import { getTenantContext } from './tenant-context'
-import { DIRECT_SCHOOL_SCOPED_MODELS, DUAL_SCOPED_MODELS } from './scoped-models'
+import { DIRECT_SCHOOL_SCOPED_MODELS, TENANT_SCOPED_MODELS, DISTRICT_WIDE_ROLES, NUCLEO_WIDE_ROLES } from './scoped-models'
 import { Role } from '../config/permissions'
 import { HttpError } from '../utils/http-error'
 
@@ -34,16 +34,21 @@ function mergeWhere(where: any, filter: Record<string, unknown>, operation: stri
 }
 
 /** Builds the read-side scoping filter for the acting context, or `null` if nothing to add. */
-function buildReadFilter(ctx: NonNullable<ReturnType<typeof getTenantContext>>, isDirect: boolean, isDual: boolean) {
-  if (ctx.role === Role.DIRECTOR_DISTRITAL) {
-    if (ctx.districtId == null) return null
+function buildReadFilter(ctx: NonNullable<ReturnType<typeof getTenantContext>>, isDirect: boolean, isTenant: boolean) {
+  if (ctx.districtId != null && DISTRICT_WIDE_ROLES.has(ctx.role)) {
     return isDirect
       ? { school: { districtId: ctx.districtId } }
       : { OR: [{ districtId: ctx.districtId }, { school: { districtId: ctx.districtId } }] }
   }
+  if (ctx.nucleoId != null && NUCLEO_WIDE_ROLES.has(ctx.role)) {
+    return isDirect
+      ? { school: { nucleoId: ctx.nucleoId } }
+      : { OR: [{ nucleoId: ctx.nucleoId }, { school: { nucleoId: ctx.nucleoId } }] }
+  }
   if (isDirect && ctx.schoolId != null) return { schoolId: ctx.schoolId }
-  if (isDual) {
+  if (isTenant) {
     if (ctx.schoolId != null) return { schoolId: ctx.schoolId }
+    if (ctx.nucleoId != null) return { nucleoId: ctx.nucleoId }
     if (ctx.districtId != null) return { districtId: ctx.districtId }
   }
   return null
@@ -58,8 +63,8 @@ const prisma = rawPrisma.$extends({
         if (!ctx) return query(args) // no request context (login, scripts, etc.) -> unscoped
 
         const isDirect = DIRECT_SCHOOL_SCOPED_MODELS.has(model)
-        const isDual   = DUAL_SCOPED_MODELS.has(model)
-        if (!isDirect && !isDual) return query(args)
+        const isTenant = TENANT_SCOPED_MODELS.has(model)
+        if (!isDirect && !isTenant) return query(args)
 
         // ---- SUPER_ADMIN: full bypass, no injection at all ----
         if (ctx.role === Role.SUPER_ADMIN) return query(args)
@@ -72,7 +77,7 @@ const prisma = rawPrisma.$extends({
 
         // ---- Reads / in-place mutations: inject a where filter ----
         if (READ_OPS.has(operation)) {
-          const filter = buildReadFilter(ctx, isDirect, isDual)
+          const filter = buildReadFilter(ctx, isDirect, isTenant)
           if (filter) a.where = mergeWhere(a.where, filter, operation)
           return query(args)
         }
@@ -81,7 +86,7 @@ const prisma = rawPrisma.$extends({
         if (operation === 'create' || operation === 'upsert') {
           if (operation === 'upsert') {
             // upsert's `where` is a WhereUniqueInput just like update/findUnique.
-            const filter = buildReadFilter(ctx, isDirect, isDual)
+            const filter = buildReadFilter(ctx, isDirect, isTenant)
             if (filter) a.where = mergeWhere(a.where, filter, 'update')
           }
           const data = operation === 'upsert' ? a.create : a.data
@@ -108,27 +113,48 @@ async function applyWriteScope(
   data: Record<string, unknown>,
   isUpdate = false,
 ) {
-  if (ctx.role === Role.DIRECTOR_DISTRITAL) {
-    // District-level actor must explicitly say which school a row belongs to;
-    // we only validate it's actually inside their district.
-    const targetSchoolId = data.schoolId as number | undefined
-    if (targetSchoolId != null) {
-      const school = await rawPrisma.school.findUnique({ where: { id: targetSchoolId }, select: { districtId: true } })
-      if (!school || school.districtId !== ctx.districtId) {
-        throw new HttpError(403, 'No autorizado: el colegio indicado no pertenece a tu distrito')
-      }
-    } else if (isDirect && !isUpdate) {
-      throw new HttpError(400, 'Falta indicar el colegio (schoolId) para crear este registro')
-    }
+  if (ctx.districtId != null && DISTRICT_WIDE_ROLES.has(ctx.role)) {
+    // Actor de alcance distrital creando un modelo DIRECTO (Charge, Meeting, ...):
+    // debe indicar explícitamente a qué colegio pertenece la fila, y solo se valida
+    // que ese colegio esté en su distrito. Para modelos de alcance de tenant (User/
+    // JuntaMember/GobiernoMember) el alcance de la fila creada depende del ROL que se
+    // le está asignando (colegio/núcleo/distrito), no del alcance del que la crea —
+    // eso lo decide el servicio que llama (junta/gobierno/user), no este motor genérico.
+    if (isDirect) await validateSchoolWithin(data, isUpdate, s => s.districtId === ctx.districtId, 'tu distrito')
     return
   }
 
-  // Ordinary school-scoped actor: always force their own school, ignore/override whatever was passed.
+  if (ctx.nucleoId != null && NUCLEO_WIDE_ROLES.has(ctx.role)) {
+    if (isDirect) await validateSchoolWithin(data, isUpdate, s => s.nucleoId === ctx.nucleoId, 'tu núcleo')
+    return
+  }
+
+  // Ordinary school/núcleo/distrito-scoped actor: always force their own scope,
+  // ignore/override whatever was passed.
   if (ctx.schoolId != null) {
     data.schoolId = ctx.schoolId
+  } else if (ctx.nucleoId != null && !isDirect) {
+    data.nucleoId = ctx.nucleoId
   } else if (ctx.districtId != null && !isDirect) {
-    // District-scoped Secretary/JuntaMember creating another district-level record.
+    // District-scoped Secretary/JuntaMember creando otro registro de alcance distrital.
     data.districtId = ctx.districtId
+  }
+}
+
+async function validateSchoolWithin(
+  data: Record<string, unknown>,
+  isUpdate: boolean,
+  belongs: (school: { districtId: number; nucleoId: number | null }) => boolean,
+  scopeLabel: string,
+) {
+  const targetSchoolId = data.schoolId as number | undefined
+  if (targetSchoolId != null) {
+    const school = await rawPrisma.school.findUnique({ where: { id: targetSchoolId }, select: { districtId: true, nucleoId: true } })
+    if (!school || !belongs(school)) {
+      throw new HttpError(403, `No autorizado: el colegio indicado no pertenece a ${scopeLabel}`)
+    }
+  } else if (!isUpdate) {
+    throw new HttpError(400, 'Falta indicar el colegio (schoolId) para crear este registro')
   }
 }
 

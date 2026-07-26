@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { Search, CheckCircle, XCircle, User, Phone, BookOpen, Bell, Clock, ShieldCheck, ShieldX } from 'lucide-react'
+import { useDistrictConfig } from '@/hooks/useDistrictConfig'
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000'
 
@@ -42,6 +43,7 @@ const getShiftOfDay = () => {
 }
 
 export default function VerificacionPage() {
+  const district = useDistrictConfig()
   const [query,    setQuery]    = useState('')
   const [results,  setResults]  = useState<Student[]>([])
   const [selected, setSelected] = useState<Student | null>(null)
@@ -89,7 +91,7 @@ export default function VerificacionPage() {
           <ShieldCheck size={28} color="#1A3A7C"/>
           <div>
             <h1>Control de Ingreso</h1>
-            <p>U.E. Naciones Unidas — El Torno</p>
+            <p>U.E. Naciones Unidas{district.location ? ` — ${district.location}` : ''}</p>
           </div>
         </div>
         <div className="time-info">

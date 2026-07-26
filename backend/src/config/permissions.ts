@@ -9,6 +9,10 @@ export enum Role {
   TEACHER_TUTOR = 'TEACHER_TUTOR',
   DELEGATE     = 'DELEGATE',
   JUNTA_ESCOLAR = 'JUNTA_ESCOLAR',
+  JUNTA_NUCLEO  = 'JUNTA_NUCLEO',
+  JUNTA_DISTRITO = 'JUNTA_DISTRITO',
+  GOBIERNO_NUCLEO   = 'GOBIERNO_NUCLEO',
+  GOBIERNO_DISTRITO = 'GOBIERNO_DISTRITO',
   PARENT       = 'PARENT',
   STUDENT      = 'STUDENT',
   STUDENT_GOV  = 'STUDENT_GOV',
@@ -26,6 +30,7 @@ export enum Permission {
   // Estudiantes
   STUDENT_CREATE     = 'student:create',
   STUDENT_VIEW_ALL   = 'student:view:all',
+  STUDENT_VIEW_BASIC = 'student:view:basic',   // Vista reducida (nombre, colegio, padre, dirección) — Junta de Núcleo/Distrito
   STUDENT_VIEW_OWN   = 'student:view:own',
   STUDENT_VERIFY     = 'student:verify',       // Solo portero
 
@@ -96,10 +101,16 @@ export enum Permission {
   // Distrito / unidades educativas
   SCHOOL_CREATE      = 'school:create',
   SCHOOL_VIEW_ALL    = 'school:view:all',
+  DISTRICT_MANAGE    = 'district:manage',      // Editar datos/marca del distrito (asistente de configuración)
 
   // Comunicados del distrito (portal público)
   COMUNICADO_CREATE  = 'comunicado:create',
   COMUNICADO_VIEW    = 'comunicado:view',
+
+  // Junta de Padres / Gobierno Estudiantil (Núcleo y Distrito) — alta/edición de
+  // los miembros de la junta directiva en esos niveles
+  JUNTA_MANAGE       = 'junta:manage',
+  GOBIERNO_MANAGE    = 'gobierno:manage',
 }
 
 // Mapa de permisos por rol
@@ -129,6 +140,9 @@ export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
     Permission.ACADEMIC_VIEW,
     Permission.COMUNICADO_CREATE,
     Permission.COMUNICADO_VIEW,
+    Permission.DISTRICT_MANAGE,
+    Permission.JUNTA_MANAGE,
+    Permission.GOBIERNO_MANAGE,
   ],
 
   [Role.DIRECTOR]: [
@@ -285,6 +299,8 @@ export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
   Permission.CHARGE_VIEW_ALL,
   Permission.NOTIFICATION_SEND,
   Permission.NOTIFICATION_VIEW,
+  Permission.COMUNICADO_CREATE,
+  Permission.COMUNICADO_VIEW,
   Permission.REPORT_VIEW,
   Permission.REPORT_GENERATE,
   // Todas las acciones de un padre de familia (los miembros de junta son padres también)
@@ -295,6 +311,81 @@ export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
   Permission.DELEGATE_MANAGE,
   Permission.ACADEMIC_VIEW,
 ],
+
+  // Junta de Núcleo y de Distrito: mismo espíritu que JUNTA_ESCOLAR (ven a todos los
+  // padres, pueden recaudar/convocar/comunicar), pero de estudiantes solo ven datos
+  // básicos (nombre, colegio, padre, dirección) — STUDENT_VIEW_BASIC en vez de ALL,
+  // dado el volumen de estudiantes que abarca un núcleo o un distrito entero.
+  [Role.JUNTA_NUCLEO]: [
+    Permission.USER_EDIT_OWN,
+    Permission.USER_CREATE,      // Designa a la Junta Escolar de cada colegio de su núcleo
+    Permission.SCHOOL_VIEW_ALL,
+    Permission.PARENT_VIEW_ALL,
+    Permission.STUDENT_VIEW_BASIC,
+    Permission.CHARGE_CREATE,
+    Permission.CHARGE_VIEW_ALL,
+    Permission.MEETING_CREATE,
+    Permission.MEETING_VIEW,
+    Permission.NOTIFICATION_SEND,
+    Permission.NOTIFICATION_VIEW,
+    Permission.COMUNICADO_CREATE,
+    Permission.COMUNICADO_VIEW,
+    Permission.REPORT_VIEW,
+    Permission.JUNTA_MANAGE,
+  ],
+  [Role.JUNTA_DISTRITO]: [
+    Permission.USER_EDIT_OWN,
+    Permission.USER_CREATE,      // Designa Junta de Núcleo y Junta Escolar
+    Permission.SCHOOL_VIEW_ALL,
+    Permission.PARENT_VIEW_ALL,
+    Permission.STUDENT_VIEW_BASIC,
+    Permission.CHARGE_CREATE,
+    Permission.CHARGE_VIEW_ALL,
+    Permission.MEETING_CREATE,
+    Permission.MEETING_VIEW,
+    Permission.NOTIFICATION_SEND,
+    Permission.NOTIFICATION_VIEW,
+    Permission.COMUNICADO_CREATE,
+    Permission.COMUNICADO_VIEW,
+    Permission.REPORT_VIEW,
+    Permission.JUNTA_MANAGE,
+  ],
+
+  // Gobierno Estudiantil de Núcleo y de Distrito: contraparte estudiantil, ven a los
+  // estudiantes completos (son su propia representación) pero no datos de padres.
+  [Role.GOBIERNO_NUCLEO]: [
+    Permission.USER_EDIT_OWN,
+    Permission.USER_CREATE,      // Designa el Gobierno Estudiantil de cada colegio de su núcleo
+    Permission.SCHOOL_VIEW_ALL,
+    Permission.STUDENT_VIEW_ALL,
+    Permission.CHARGE_CREATE,
+    Permission.CHARGE_VIEW_ALL,
+    Permission.MEETING_CREATE,
+    Permission.MEETING_VIEW,
+    Permission.NOTIFICATION_SEND,
+    Permission.NOTIFICATION_VIEW,
+    Permission.COMUNICADO_CREATE,
+    Permission.COMUNICADO_VIEW,
+    Permission.REPORT_VIEW,
+    Permission.GOBIERNO_MANAGE,
+  ],
+  [Role.GOBIERNO_DISTRITO]: [
+    Permission.USER_EDIT_OWN,
+    Permission.USER_CREATE,      // Designa Gobierno de Núcleo y Gobierno Estudiantil de colegio
+    Permission.SCHOOL_VIEW_ALL,
+    Permission.STUDENT_VIEW_ALL,
+    Permission.CHARGE_CREATE,
+    Permission.CHARGE_VIEW_ALL,
+    Permission.MEETING_CREATE,
+    Permission.MEETING_VIEW,
+    Permission.NOTIFICATION_SEND,
+    Permission.NOTIFICATION_VIEW,
+    Permission.COMUNICADO_CREATE,
+    Permission.COMUNICADO_VIEW,
+    Permission.REPORT_VIEW,
+    Permission.GOBIERNO_MANAGE,
+  ],
+
   [Role.PARENT]: [
     Permission.USER_EDIT_OWN,
     Permission.STUDENT_VIEW_OWN,    // Solo sus hijos
@@ -321,6 +412,12 @@ export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
     Permission.SCHEDULE_VIEW_OWN,
     Permission.NOTIFICATION_VIEW,
     Permission.NOTIFICATION_SEND,
+    Permission.COMUNICADO_CREATE,
+    Permission.COMUNICADO_VIEW,
+    Permission.CHARGE_CREATE,
+    Permission.CHARGE_VIEW_ALL,
+    Permission.MEETING_CREATE,
+    Permission.MEETING_VIEW,
   ],
 
   [Role.STAFF]: [
@@ -349,4 +446,25 @@ export const hasPermission = (role: Role, permission: Permission): boolean => {
   const permissions = ROLE_PERMISSIONS[role]
   if (!permissions) return false
   return permissions.includes(permission)
+}
+
+// Jerarquía de designación: qué roles puede asignar cada rol al crear un usuario.
+// Antes de esto, cualquiera con USER_CREATE podía asignar cualquier rol (incluido
+// SUPER_ADMIN) — ver user.service.ts:createUser, que valida contra este mapa.
+// SUPER_ADMIN queda fuera del mapa a propósito: sigue sin restricción (bypass total).
+// Tipado como Partial<Record<string, string[]>> (no Role/Role[]) porque se consulta
+// también con el Role generado por Prisma (@prisma/client), un tipo nominal distinto
+// con los mismos valores de string.
+export const CREATABLE_ROLES: Partial<Record<string, string[]>> = {
+  [Role.DIRECTOR_DISTRITAL]: [
+    Role.DIRECTOR, Role.REGENTE, Role.SECRETARY,
+    Role.JUNTA_DISTRITO, Role.GOBIERNO_DISTRITO,
+  ],
+  [Role.DIRECTOR]: [
+    Role.REGENTE, Role.SECRETARY, Role.TEACHER, Role.TEACHER_TUTOR,
+    Role.STAFF, Role.PORTERO, Role.PARENT, Role.STUDENT,
+    Role.DELEGATE, Role.JUNTA_ESCOLAR, Role.STUDENT_GOV,
+  ],
+  [Role.JUNTA_DISTRITO]:    [Role.JUNTA_NUCLEO, Role.JUNTA_ESCOLAR],
+  [Role.GOBIERNO_DISTRITO]: [Role.GOBIERNO_NUCLEO, Role.STUDENT_GOV],
 }

@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { Plus, Building2, Users, GraduationCap } from 'lucide-react'
+import { Plus, Building2, Users, GraduationCap, Upload } from 'lucide-react'
 import Button from '@/components/ui/Button'
 import { Input, Select } from '@/components/ui/Input'
 import Card from '@/components/ui/Card'
@@ -11,6 +11,13 @@ import { useToast } from '@/components/ui/ToastProvider'
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000'
 
+const TIPO_LABELS: Record<string, string> = { FISCAL: 'Fiscal', CONVENIO: 'Convenio', PRIVADA: 'Privada' }
+const SUBSISTEMA_LABELS: Record<string, string> = {
+  REGULAR: 'Regular',
+  ALTERNATIVA_ESPECIAL: 'Alternativa y Especial',
+  SUPERIOR_FORMACION_PROFESIONAL: 'Superior de Formación Profesional',
+}
+
 interface Nucleo {
   id:       number
   name:     string
@@ -18,19 +25,20 @@ interface Nucleo {
 }
 
 interface School {
-  id:        number
-  name:      string
-  sieCode:   string
-  tipo:      'FISCAL' | 'PRIVADA'
-  area:      'URBANA' | 'RURAL'
-  address:   string | null
-  isActive:  boolean
-  district:  { id: number; name: string }
-  nucleo:    Nucleo | null
-  _count:    { students: number; teachers: number; parents: number }
+  id:         number
+  name:       string
+  sieCode:    string
+  tipo:       'FISCAL' | 'CONVENIO' | 'PRIVADA'
+  area:       'URBANA' | 'RURAL'
+  subsistema: string
+  address:    string | null
+  isActive:   boolean
+  district:   { id: number; name: string }
+  nucleo:     Nucleo | null
+  _count:     { students: number; teachers: number; parents: number }
 }
 
-const emptyForm = { name: '', sieCode: '', tipo: 'FISCAL', area: 'URBANA', address: '', nucleoId: '' }
+const emptyForm = { name: '', sieCode: '', tipo: 'FISCAL', area: 'URBANA', subsistema: 'REGULAR', address: '', nucleoId: '' }
 
 export default function ColegiosPage() {
   const [schools, setSchools] = useState<School[]>([])
@@ -40,6 +48,9 @@ export default function ColegiosPage() {
   const [saving, setSaving] = useState(false)
   const [formError, setFormError] = useState('')
   const [form, setForm] = useState(emptyForm)
+  const [showImport, setShowImport] = useState(false)
+  const [importFile, setImportFile] = useState<File | null>(null)
+  const [importing, setImporting] = useState(false)
   const toast = useToast()
 
   const token = typeof window !== 'undefined' ? localStorage.getItem('token') : ''
@@ -87,6 +98,27 @@ export default function ColegiosPage() {
     finally  { setSaving(false) }
   }
 
+  const handleImport = async () => {
+    if (!importFile) return
+    setImporting(true)
+    try {
+      const formData = new FormData()
+      formData.append('file', importFile)
+      const res  = await fetch(`${API_URL}/api/schools/import`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+        body: formData,
+      })
+      const data = await res.json()
+      if (!res.ok) { toast(data.message, 'error'); return }
+      toast(data.message, 'success')
+      setShowImport(false)
+      setImportFile(null)
+      fetchSchools()
+    } catch { toast('Error de conexión', 'error') }
+    finally  { setImporting(false) }
+  }
+
   return (
     <div>
       <div className="flex items-start justify-between gap-4 mb-6">
@@ -94,7 +126,10 @@ export default function ColegiosPage() {
           <h1 className="text-xl font-bold text-brand-700 mb-1">Unidades Educativas</h1>
           <p className="text-[13px] text-neutral-500">Colegios del distrito</p>
         </div>
-        <Button onClick={openCreate}><Plus size={16} /> Nuevo colegio</Button>
+        <div className="flex gap-2">
+          <Button variant="secondary" onClick={() => { setImportFile(null); setShowImport(true) }}><Upload size={16} /> Importar planilla</Button>
+          <Button onClick={openCreate}><Plus size={16} /> Nuevo colegio</Button>
+        </div>
       </div>
 
       {loading ? (
@@ -116,8 +151,9 @@ export default function ColegiosPage() {
                 <div className="text-sm font-bold text-brand-700 mb-1.5">{s.name}</div>
                 <div className="flex gap-1.5 flex-wrap mb-1.5">
                   <Badge tone="info">SIE: {s.sieCode}</Badge>
-                  <Badge tone="info">{s.tipo === 'FISCAL' ? 'Fiscal' : 'Privada'}</Badge>
+                  <Badge tone="info">{TIPO_LABELS[s.tipo] || s.tipo}</Badge>
                   <Badge tone="info">{s.area === 'URBANA' ? 'Urbana' : 'Rural'}</Badge>
+                  {s.subsistema !== 'REGULAR' && <Badge tone="warning">{SUBSISTEMA_LABELS[s.subsistema] || s.subsistema}</Badge>}
                   {!s.isActive && <Badge tone="danger">Inactiva</Badge>}
                 </div>
                 <div className="text-[11px] text-neutral-500 mb-2">
@@ -153,6 +189,7 @@ export default function ColegiosPage() {
           <div className="grid grid-cols-2 gap-3">
             <Select label="Tipo" required value={form.tipo} onChange={e => setForm({ ...form, tipo: e.target.value })}>
               <option value="FISCAL">Fiscal</option>
+              <option value="CONVENIO">Convenio</option>
               <option value="PRIVADA">Privada</option>
             </Select>
             <Select label="Área" required value={form.area} onChange={e => setForm({ ...form, area: e.target.value })}>
@@ -160,6 +197,12 @@ export default function ColegiosPage() {
               <option value="RURAL">Rural</option>
             </Select>
           </div>
+          <Select label="Subsistema" value={form.subsistema} onChange={e => setForm({ ...form, subsistema: e.target.value })}
+            hint="Educación Regular es el único subsistema con flujo académico propio en el sistema hoy">
+            <option value="REGULAR">Regular</option>
+            <option value="ALTERNATIVA_ESPECIAL">Alternativa y Especial</option>
+            <option value="SUPERIOR_FORMACION_PROFESIONAL">Superior de Formación Profesional</option>
+          </Select>
           <Input label="Dirección" placeholder="Opcional" value={form.address}
             onChange={e => setForm({ ...form, address: e.target.value })} />
           <Select label="Núcleo" value={form.nucleoId} onChange={e => setForm({ ...form, nucleoId: e.target.value })}>
@@ -168,6 +211,30 @@ export default function ColegiosPage() {
               <option key={n.id} value={n.id}>{n.name}{n.location ? ` (${n.location})` : ''}</option>
             ))}
           </Select>
+        </div>
+      </Modal>
+
+      <Modal
+        open={showImport}
+        onClose={() => setShowImport(false)}
+        title="Importar colegios desde planilla"
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setShowImport(false)}>Cancelar</Button>
+            <Button onClick={handleImport} disabled={!importFile} loading={importing}>Importar</Button>
+          </>
+        }
+      >
+        <div className="flex flex-col gap-3.5">
+          <p className="text-[13px] text-neutral-500">
+            Sube un archivo Excel con las columnas <b>SIE</b>, <b>NOMBRE</b>, <b>DEPENDENCIA</b> (Fiscal/Convenio/Privada),
+            <b> AREA</b> (Urbana/Rural) y opcionalmente <b>NUCLEO</b> (por nombre).
+          </p>
+          <input
+            type="file" accept=".xlsx,.xls"
+            onChange={e => setImportFile(e.target.files?.[0] || null)}
+            className="block w-full text-sm text-neutral-700 file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:bg-brand-100 file:text-brand-700 file:text-sm file:font-semibold"
+          />
         </div>
       </Modal>
     </div>

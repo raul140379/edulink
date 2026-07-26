@@ -1,4 +1,17 @@
+import prisma from '../lib/prisma'
+import { getTenantContext } from '../lib/tenant-context'
 import { userRepository } from '../repositories/user.repository'
+
+// Dominio de correo institucional por defecto - usado cuando el distrito activo
+// todavia no configuro el suyo propio en el asistente (Configuracion).
+const DEFAULT_EMAIL_DOMAIN = '@nnuu.edu.bo'
+
+export async function resolveEmailDomain(): Promise<string> {
+  const ctx = getTenantContext()
+  if (ctx?.districtId == null) return DEFAULT_EMAIL_DOMAIN
+  const district = await prisma.district.findUnique({ where: { id: ctx.districtId }, select: { emailDomain: true } })
+  return district?.emailDomain || DEFAULT_EMAIL_DOMAIN
+}
 
 export const normalizeLetters = (str: string) =>
   str.toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^A-Z]/g, '')
@@ -12,17 +25,18 @@ export function generateParentPassword(lastName: string, ci?: string | null): st
   return `padre${normalizeLetters(lastName.split(' ')[0]).slice(0, 3)}${year}`
 }
 
-export async function generateUniqueEmail(firstName: string, lastName: string, domain = '@nnuu.edu.bo'): Promise<string> {
+export async function generateUniqueEmail(firstName: string, lastName: string, domain?: string): Promise<string> {
+  const resolvedDomain = domain ?? await resolveEmailDomain()
   const first = normalizeEmailPart(firstName.split(' ')[0])
   const last  = normalizeEmailPart(lastName.split(' ')[0])
-  const base  = `${first}.${last}${domain}`
+  const base  = `${first}.${last}${resolvedDomain}`
 
   const existing = await userRepository.findByEmail(base)
   if (!existing) return base
 
   let counter = 2
   while (true) {
-    const candidate = `${first}.${last}${counter}${domain}`
+    const candidate = `${first}.${last}${counter}${resolvedDomain}`
     const dup = await userRepository.findByEmail(candidate)
     if (!dup) return candidate
     counter++

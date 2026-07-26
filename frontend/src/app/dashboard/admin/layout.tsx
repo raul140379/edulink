@@ -7,6 +7,7 @@ import {
   Settings, ShieldCheck, Calendar, ClipboardCheck, Building2, Megaphone
 } from 'lucide-react'
 import DashboardShell, { MenuGroup } from '@/components/layout/DashboardShell'
+import { useDistrictConfig } from '@/hooks/useDistrictConfig'
 
 const ADMIN_ROLES = ['SUPER_ADMIN', 'DIRECTOR', 'REGENTE', 'SECRETARY']
 const DISTRICT_ROLES = ['SUPER_ADMIN', 'DIRECTOR_DISTRITAL']
@@ -69,7 +70,7 @@ const menuGroups: MenuGroup[] = [
       { label: 'Colegios',      href: '/dashboard/admin/colegios',      icon: <Building2 size={16}/>, roles: DISTRICT_ROLES },
       { label: 'Comunicados',   href: '/dashboard/admin/comunicados',   icon: <Megaphone size={16}/>, roles: DISTRICT_ROLES },
       { label: 'Usuarios',      href: '/dashboard/admin/usuarios',      icon: <Users size={16}/>,    roles: ['SUPER_ADMIN','DIRECTOR','SECRETARY', ...DISTRICT_ROLES] },
-      { label: 'Configuración', href: '/dashboard/admin/configuracion', icon: <Settings size={16}/>, roles: ['SUPER_ADMIN'] },
+      { label: 'Configuración', href: '/dashboard/admin/configuracion', icon: <Settings size={16}/>, roles: DISTRICT_ROLES },
     ]
   },
   {
@@ -84,6 +85,7 @@ const menuGroups: MenuGroup[] = [
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   const [isDistrict, setIsDistrict] = useState(false)
+  const district = useDistrictConfig()
 
   useEffect(() => {
     try {
@@ -97,9 +99,9 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   return (
     <DashboardShell
       allowedRoles={[...ADMIN_ROLES, ...DISTRICT_ROLES]}
-      brandName={isDistrict ? 'Distrito Educativo El Torno' : 'U.E. Naciones Unidas'}
-      brandLoc="El Torno · Santa Cruz"
-      logoSrc={isDistrict ? '/escudo-el-torno.png' : '/logo-nnuu.jpeg'}
+      brandName={isDistrict ? district.name : 'U.E. Naciones Unidas'}
+      brandLoc={district.location || 'Bolivia'}
+      logoSrc={isDistrict ? (district.logoUrl || '/escudo-el-torno.png') : '/logo-nnuu.jpeg'}
       homeHref="/dashboard/admin"
       profileHref="/dashboard/admin/perfil"
       notificationsHref="/dashboard/admin/notificaciones"

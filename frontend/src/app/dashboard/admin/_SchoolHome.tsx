@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { Users, GraduationCap, BookOpen, DollarSign, Bell, TrendingUp, AlertCircle } from 'lucide-react'
+import { useDistrictConfig } from '@/hooks/useDistrictConfig'
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000'
 
@@ -13,6 +14,7 @@ interface Stats {
 }
 
 export default function SchoolHome() {
+  const district = useDistrictConfig()
   const [user,    setUser]    = useState<any>(null)
   const [stats,   setStats]   = useState<Stats>({ students: 0, parents: 0, courses: 0, pending: 0 })
   const [loading, setLoading] = useState(true)
@@ -62,7 +64,7 @@ export default function SchoolHome() {
       <div className="welcome-card">
         <div>
           <h1>{greeting()}, {user?.email?.split('@')[0]} 👋</h1>
-          <p>Bienvenido al Sistema de Gestión de la U.E. Naciones Unidas — El Torno, Santa Cruz</p>
+          <p>Bienvenido al Sistema de Gestión de la U.E. Naciones Unidas{district.location ? ` — ${district.location}` : ''}</p>
         </div>
         <div className="welcome-badge">Gestión {new Date().getFullYear()}</div>
       </div>

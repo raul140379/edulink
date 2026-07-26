@@ -27,6 +27,10 @@ import schoolRoutes from './routes/school.routes'
 import nucleoRoutes from './routes/nucleo.routes'
 import comunicadoRoutes from './routes/comunicado.routes'
 import publicRoutes from './routes/public.routes'
+import districtRoutes from './routes/district.routes'
+import juntaRoutes from './routes/junta.routes'
+import gobiernoRoutes from './routes/gobierno.routes'
+import poaActaRoutes from './routes/poa-acta.routes'
 
 dotenv.config()
 
@@ -71,6 +75,10 @@ app.use('/api/schools', schoolRoutes)
 app.use('/api/nucleos', nucleoRoutes)
 app.use('/api/comunicados', comunicadoRoutes)
 app.use('/api/public', publicRoutes)
+app.use('/api/district', districtRoutes)
+app.use('/api/junta', juntaRoutes)
+app.use('/api/gobierno', gobiernoRoutes)
+app.use('/api/poa-acta', poaActaRoutes)
 
 app.get('/', (req, res) => {
   res.json({ message: '🚀 EduLink Backend funcionando correctamente', version: '1.0.0' })

@@ -5,6 +5,8 @@ import { studentRepository } from '../repositories/student.repository'
 import { userRepository } from '../repositories/user.repository'
 import { parentRepository } from '../repositories/parent.repository'
 import { HttpError } from '../utils/http-error'
+import { getTenantContext } from '../lib/tenant-context'
+import { Permission, hasPermission } from '../config/permissions'
 import { normalizeLetters, generateUniqueEmail, generateParentPassword } from '../utils/account-generator'
 import {
   CreateStudentInput, UpdateStudentInput, EnrollInput, AutoEvaluacionInput,
@@ -45,13 +47,27 @@ export const studentService = {
       } : {}),
     }
 
+    // Junta de Núcleo/Distrito solo tiene STUDENT_VIEW_BASIC (no STUDENT_VIEW_ALL) —
+    // ve nombre/colegio/padre/dirección, nunca notas/asistencia/kardex.
+    if (studentService.isBasicViewOnly()) return studentRepository.findManyBasic(where)
     return studentRepository.findMany(where)
   },
 
   async getStudentById(id: number) {
+    if (studentService.isBasicViewOnly()) {
+      const student = await studentRepository.findByIdBasic(id)
+      if (!student) throw new HttpError(404, 'Estudiante no encontrado')
+      return student
+    }
     const student = await studentRepository.findById(id)
     if (!student) throw new HttpError(404, 'Estudiante no encontrado')
     return student
+  },
+
+  isBasicViewOnly() {
+    const ctx = getTenantContext()
+    if (!ctx) return false
+    return hasPermission(ctx.role, Permission.STUDENT_VIEW_BASIC) && !hasPermission(ctx.role, Permission.STUDENT_VIEW_ALL)
   },
 
   getStudentEnrollments(id: number) {

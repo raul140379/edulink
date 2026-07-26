@@ -13,7 +13,9 @@ export default function TesoreriaPage() {
   }, [])
 
   if (!role) return null
-  if (role === 'JUNTA_ESCOLAR') return <JuntaView/>
+  // Junta de Núcleo/Distrito reusa la misma vista — el backend ya filtra los
+  // cobros a su alcance (núcleo/distrito) vía el motor de tenant-scoping.
+  if (role === 'JUNTA_ESCOLAR' || role === 'JUNTA_NUCLEO' || role === 'JUNTA_DISTRITO') return <JuntaView/>
   if (role === 'DELEGATE') return <DelegateView/>
   return <ParentView/>
 }

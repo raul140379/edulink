@@ -9,6 +9,7 @@ import {
 import Card, { CardHeader, CardTitle } from '@/components/ui/Card'
 import Badge from '@/components/ui/Badge'
 import Button from '@/components/ui/Button'
+import { useDistrictConfig } from '@/hooks/useDistrictConfig'
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000'
 
@@ -40,6 +41,7 @@ const TYPE_TONE: Record<ComunicadoType, 'brand' | 'warning' | 'danger'> = {
 }
 
 export default function DistrictHome() {
+  const district = useDistrictConfig()
   const [user, setUser] = useState<any>(null)
   const [schools, setSchools] = useState<School[]>([])
   const [nucleos, setNucleos] = useState<Nucleo[]>([])
@@ -100,7 +102,7 @@ export default function DistrictHome() {
       <div className="bg-brand-700 rounded-2xl px-7 py-6 flex items-center justify-between gap-4 mb-6">
         <div>
           <h1 className="text-white text-xl font-bold mb-1.5">{greeting()}, {user?.email?.split('@')[0]} 👋</h1>
-          <p className="text-info-500 text-[13px]">Panel del Distrito Educativo El Torno — visión general de todas las unidades educativas</p>
+          <p className="text-info-500 text-[13px]">Panel del {district.name} — visión general de todas las unidades educativas</p>
         </div>
         <div className="bg-accent-500 text-[#3A2F00] text-xs font-bold px-3.5 py-1.5 rounded-full whitespace-nowrap shrink-0">
           Gestión {new Date().getFullYear()}

@@ -29,6 +29,21 @@ const roleLabels: Record<string, string> = {
   SECRETARY: 'Secretaria', TEACHER: 'Maestro', DELEGATE: 'Delegado',
   JUNTA_ESCOLAR: 'Junta Escolar', TEACHER_TUTOR: 'Maestro Tutor',
   PARENT: 'Padre / Tutor', STUDENT: 'Estudiante', STUDENT_GOV: 'Gob. Estudiantil', STAFF: 'Personal',
+  JUNTA_NUCLEO: 'Junta de Núcleo', JUNTA_DISTRITO: 'Junta de Distrito',
+  GOBIERNO_NUCLEO: 'Gob. Est. de Núcleo', GOBIERNO_DISTRITO: 'Gob. Est. de Distrito',
+}
+
+// La Junta/Gobierno de Núcleo y Distrito NO se crean desde "Nuevo usuario" (ese
+// endpoint genérico solo crea el User) — tienen su propio flujo (ver modal
+// "Designar Junta/Gobierno de Distrito" más abajo, y las páginas dedicadas en
+// dashboard/padres/junta/nueva y dashboard/estudiantes/gobierno/nueva) porque
+// además del User necesitan un JuntaMember/GobiernoMember con nombre/cargo.
+const BOARD_ROLES = new Set(['JUNTA_NUCLEO', 'JUNTA_DISTRITO', 'GOBIERNO_NUCLEO', 'GOBIERNO_DISTRITO'])
+const createUserRoleLabels = Object.fromEntries(Object.entries(roleLabels).filter(([k]) => !BOARD_ROLES.has(k)))
+
+const CARGO_LABELS: Record<string, string> = {
+  PRESIDENTE: 'Presidente', VICEPRESIDENTE: 'Vicepresidente',
+  SECRETARIA: 'Secretaria', TESORERO: 'Tesorero', VOCAL: 'Vocal',
 }
 
 // Roles que necesitan que se indique explícitamente a qué colegio pertenecen
@@ -92,6 +107,18 @@ export default function UsuariosPage() {
   const [showNewCreds,     setShowNewCreds]     = useState(false)
   const [newCredentials,   setNewCredentials]   = useState<{ email: string; password: string } | null>(null)
   const [copiedNew,        setCopiedNew]        = useState(false)
+
+  // ── Designar Junta/Gobierno de Distrito (solo DIRECTOR_DISTRITAL/SUPER_ADMIN) ──
+  const emptyBoardForm = {
+    type: 'JUNTA_DISTRITO' as 'JUNTA_DISTRITO' | 'GOBIERNO_DISTRITO',
+    firstName: '', lastName: '', ci: '', phone: '',
+    cargo: 'PRESIDENTE', academicYear: new Date().getFullYear(),
+    email: '', password: '',
+  }
+  const [showBoardModal, setShowBoardModal] = useState(false)
+  const [boardForm,      setBoardForm]      = useState(emptyBoardForm)
+  const [boardSaving,    setBoardSaving]    = useState(false)
+  const [boardError,     setBoardError]     = useState('')
 
   // ── Reset masivo ──
   const [showMassReset, setShowMassReset] = useState(false)
@@ -168,6 +195,33 @@ export default function UsuariosPage() {
       fetchUsers()
     } catch { setFormError('Error de conexión') }
     finally  { setSaving(false) }
+  }
+
+  const openBoardModal = () => {
+    setBoardForm(emptyBoardForm)
+    setBoardError(''); setShowBoardModal(true)
+  }
+
+  const handleCreateBoard = async () => {
+    if (!boardForm.email || !boardForm.password || !boardForm.firstName || !boardForm.lastName) {
+      setBoardError('Completa correo, contraseña, nombre y apellido'); return
+    }
+    setBoardError(''); setBoardSaving(true)
+    try {
+      const endpoint = boardForm.type === 'JUNTA_DISTRITO' ? 'junta' : 'gobierno'
+      const { type, ...body } = boardForm
+      const res  = await fetch(`${API_URL}/api/${endpoint}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ ...body, role: type }),
+      })
+      const data = await res.json()
+      if (!res.ok) { setBoardError(data.message || 'Error al crear'); return }
+      toast('Miembro de junta/gobierno de distrito creado correctamente', 'success')
+      setShowBoardModal(false)
+      fetchUsers()
+    } catch { setBoardError('Error de conexión') }
+    finally  { setBoardSaving(false) }
   }
 
   const handleEdit = async () => {
@@ -320,6 +374,11 @@ export default function UsuariosPage() {
           <p className="text-[13px] text-neutral-500">Administra los usuarios y roles del sistema</p>
         </div>
         <div className="flex gap-2.5">
+          {(currentRole === 'DIRECTOR_DISTRITAL' || currentRole === 'SUPER_ADMIN') && (
+            <Button variant="secondary" onClick={openBoardModal}>
+              <Plus size={16} /> Junta / Gobierno de Distrito
+            </Button>
+          )}
           <Button variant="secondary" onClick={() => { setShowMassReset(true); setConfirmMass(false); setMassSuccess(false); setMassError(''); setSelectedRole(null) }}>
             <Download size={16} /> Resetear Credenciales
           </Button>
@@ -418,6 +477,42 @@ export default function UsuariosPage() {
         )}
       </Modal>
 
+      {/* ── Modal Junta/Gobierno de Distrito ── */}
+      <Modal
+        open={showBoardModal}
+        onClose={() => setShowBoardModal(false)}
+        title="Designar Junta / Gobierno de Distrito"
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setShowBoardModal(false)}>Cancelar</Button>
+            <Button onClick={handleCreateBoard} loading={boardSaving}>Crear</Button>
+          </>
+        }
+      >
+        <div className="flex flex-col gap-3.5">
+          {boardError && <p className="text-[13px] text-danger-600 bg-danger-100 rounded-lg px-3 py-2">{boardError}</p>}
+          <Select label="Tipo" required value={boardForm.type} onChange={e => setBoardForm({ ...boardForm, type: e.target.value as any })}>
+            <option value="JUNTA_DISTRITO">Junta de Distrito</option>
+            <option value="GOBIERNO_DISTRITO">Gobierno Estudiantil de Distrito</option>
+          </Select>
+          <div className="grid grid-cols-2 gap-3">
+            <Input label="Nombres" required value={boardForm.firstName} onChange={e => setBoardForm({ ...boardForm, firstName: e.target.value })} />
+            <Input label="Apellidos" required value={boardForm.lastName} onChange={e => setBoardForm({ ...boardForm, lastName: e.target.value })} />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <Input label="CI" value={boardForm.ci} onChange={e => setBoardForm({ ...boardForm, ci: e.target.value })} />
+            <Input label="Teléfono" value={boardForm.phone} onChange={e => setBoardForm({ ...boardForm, phone: e.target.value })} />
+          </div>
+          <Select label="Cargo" required value={boardForm.cargo} onChange={e => setBoardForm({ ...boardForm, cargo: e.target.value })}>
+            {Object.entries(CARGO_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+          </Select>
+          <Input label="Correo electrónico" required type="email" value={boardForm.email}
+            onChange={e => setBoardForm({ ...boardForm, email: e.target.value })} />
+          <Input label="Contraseña" required type="password" value={boardForm.password}
+            onChange={e => setBoardForm({ ...boardForm, password: e.target.value })} />
+        </div>
+      </Modal>
+
       {/* ── Modal nuevo usuario ── */}
       <Modal
         open={showModal}
@@ -435,7 +530,7 @@ export default function UsuariosPage() {
           <Input label="Correo electrónico" required type="email" placeholder="usuario@nnuu.edu.bo" value={form.email}
             onChange={e => { setForm({ ...form, email: e.target.value }); setDuplicateEmail(null) }} />
           <Select label="Rol" required value={form.role} onChange={e => setForm({ ...form, role: e.target.value })}>
-            {Object.entries(roleLabels).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+            {Object.entries(createUserRoleLabels).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
           </Select>
           {needsSchoolPicker && (
             <Select label="Colegio" required value={form.schoolId} onChange={e => setForm({ ...form, schoolId: e.target.value })}>

@@ -4,11 +4,13 @@ import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import Image from 'next/image'
 import { LogIn, LogOut, CheckCircle, AlertCircle } from 'lucide-react'
+import { useDistrictConfig } from '@/hooks/useDistrictConfig'
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000'
 
 export default function LoginPage() {
-  const router = useRouter()
+  const router   = useRouter()
+  const district = useDistrictConfig()
 
   // ── Login ──────────────────────────────────
   const [email,      setEmail]      = useState('')
@@ -55,9 +57,9 @@ export default function LoginPage() {
           router.push('/dashboard/admin'); break
         case 'TEACHER': case 'TEACHER_TUTOR':
           router.push('/dashboard/plantel-docente'); break
-        case 'JUNTA_ESCOLAR': case 'PARENT': case 'DELEGATE':
+        case 'JUNTA_ESCOLAR': case 'PARENT': case 'DELEGATE': case 'JUNTA_NUCLEO': case 'JUNTA_DISTRITO':
           router.push('/dashboard/padres'); break
-        case 'STUDENT': case 'STUDENT_GOV':
+        case 'STUDENT': case 'STUDENT_GOV': case 'GOBIERNO_NUCLEO': case 'GOBIERNO_DISTRITO':
           router.push('/dashboard/estudiantes'); break
         case 'PORTERO':       router.push('/dashboard/portero'); break
         default:              router.push('/dashboard')
@@ -90,11 +92,15 @@ export default function LoginPage() {
         <div className="left-inner">
           <div className="brand">
             <div className="brand-logo">
-              <Image src="/logo-nnuu.jpeg" alt="Logo U.E. Naciones Unidas" width={56} height={56} style={{objectFit:'contain'}}/>
+              {district.logoUrl ? (
+                <Image src={district.logoUrl} alt={`Logo ${district.name}`} width={56} height={56} style={{objectFit:'contain'}} unoptimized/>
+              ) : (
+                <Image src="/logo-nnuu.jpeg" alt={`Logo ${district.name}`} width={56} height={56} style={{objectFit:'contain'}}/>
+              )}
             </div>
             <div className="brand-text">
-              <span className="brand-name">U.E. Naciones Unidas</span>
-              <span className="brand-sub">El Torno · Santa Cruz · Bolivia</span>
+              <span className="brand-name">{district.name}</span>
+              <span className="brand-sub">{district.location || 'Bolivia'}</span>
             </div>
           </div>
           <div className="hero-content">

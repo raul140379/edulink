@@ -22,7 +22,7 @@ import {
   saveMyAutoEvaluacion,
   cancelEnrollment,
 } from '../controllers/student.controller'
-import { verifyToken, requirePermission } from '../middlewares/auth.middleware'
+import { verifyToken, requirePermission, requireAnyPermission } from '../middlewares/auth.middleware'
 import { validateBody } from '../middlewares/validate.middleware'
 import { createStudentSchema, updateStudentSchema, enrollSchema, autoEvaluacionSchema } from '../schemas/student.schema'
 import { Permission } from '../config/permissions'
@@ -42,8 +42,11 @@ router.patch('/my-notifications/:id/read',   markNotificationRead)
 router.get('/my-subjects',                   getMySubjects)
 router.put('/my-autoevaluacion',             validateBody(autoEvaluacionSchema), saveMyAutoEvaluacion)
 
-router.get('/',                              requirePermission(Permission.STUDENT_VIEW_ALL),  getStudents)
-router.get('/:id',                           requirePermission(Permission.STUDENT_VIEW_ALL),  getStudentById)
+// Nota: STUDENT_VIEW_BASIC (Junta de Núcleo/Distrito) también entra aquí — el
+// servicio decide qué proyección de campos devolver según qué permiso realmente
+// tenga el actor (ver studentService.listStudents/getStudentById).
+router.get('/',                              requireAnyPermission(Permission.STUDENT_VIEW_ALL, Permission.STUDENT_VIEW_BASIC),  getStudents)
+router.get('/:id',                           requireAnyPermission(Permission.STUDENT_VIEW_ALL, Permission.STUDENT_VIEW_BASIC),  getStudentById)
 router.get('/:id/enrollments',               requirePermission(Permission.STUDENT_VIEW_ALL),  getStudentEnrollments)
 router.post('/',                             requirePermission(Permission.STUDENT_CREATE),    validateBody(createStudentSchema), createStudent)
 router.put('/:id',                           requirePermission(Permission.STUDENT_CREATE),    validateBody(updateStudentSchema), updateStudent)

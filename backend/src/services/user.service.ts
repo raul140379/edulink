@@ -3,6 +3,9 @@ import { Role } from '@prisma/client'
 import { userRepository, UserListFilters } from '../repositories/user.repository'
 import { HttpError } from '../utils/http-error'
 import { getTenantContext } from '../lib/tenant-context'
+import { CREATABLE_ROLES } from '../config/permissions'
+import { DISTRICT_WIDE_ROLES, NUCLEO_WIDE_ROLES } from '../lib/scoped-models'
+import prisma from '../lib/prisma'
 import { CreateUserInput, UpdateUserInput, ResetByEmailInput } from '../schemas/user.schema'
 
 // Un DIRECTOR_DISTRITAL solo puede gestionar (editar/desactivar/resetear/eliminar)
@@ -30,13 +33,48 @@ export const userService = {
     return user
   },
 
-  async createUser({ email, password, role, schoolId, districtId }: CreateUserInput) {
+  async createUser({ email, password, role, schoolId, districtId, nucleoId }: CreateUserInput) {
     const existing = await userRepository.findByEmail(email)
     if (existing) throw new HttpError(409, 'Ya existe un usuario con ese correo')
 
+    const ctx = getTenantContext()
+
+    // Jerarquía de designación: SUPER_ADMIN sigue sin restricción; el resto solo
+    // puede asignar los roles listados en CREATABLE_ROLES para su propio rol.
+    if (ctx && ctx.role !== Role.SUPER_ADMIN) {
+      const allowed = CREATABLE_ROLES[ctx.role]
+      if (!allowed || !allowed.includes(role)) {
+        throw new HttpError(403, `Tu rol no tiene permitido crear cuentas de tipo ${role}`)
+      }
+    }
+
+    // El alcance (colegio/núcleo/distrito) de la cuenta nueva depende del ROL que
+    // se le asigna, no del alcance de quien la crea (ver applyWriteScope en
+    // lib/prisma.ts) — se resuelve y valida acá.
+    let resolvedNucleoId   = nucleoId
+    let resolvedDistrictId = districtId
+
+    if (NUCLEO_WIDE_ROLES.has(role)) {
+      if (nucleoId == null) throw new HttpError(400, 'Falta indicar el núcleo para este rol')
+      if (ctx?.districtId != null) {
+        const nucleo = await prisma.nucleo.findUnique({ where: { id: nucleoId }, select: { districtId: true } })
+        if (!nucleo || nucleo.districtId !== ctx.districtId) {
+          throw new HttpError(403, 'El núcleo indicado no pertenece a tu distrito')
+        }
+      }
+      resolvedDistrictId = undefined
+    } else if (DISTRICT_WIDE_ROLES.has(role)) {
+      // Junta/Gobierno/Director Distrital: pertenece al mismo distrito de quien lo crea.
+      resolvedDistrictId = ctx?.districtId ?? districtId
+      resolvedNucleoId = undefined
+    }
+
     const hashedPassword = await bcrypt.hash(password, 10)
-    const createdByUserId = getTenantContext()?.userId
-    return userRepository.create({ email, password: hashedPassword, role, schoolId, districtId, createdByUserId })
+    const createdByUserId = ctx?.userId
+    return userRepository.create({
+      email, password: hashedPassword, role, schoolId,
+      districtId: resolvedDistrictId, nucleoId: resolvedNucleoId, createdByUserId,
+    })
   },
 
   async updateUser(id: number, input: UpdateUserInput) {
@@ -70,7 +108,7 @@ export const userService = {
     assertManageableByDistrictDirector(user)
 
     const random      = Math.floor(100 + Math.random() * 900)
-    const newPassword = `nnuu${new Date().getFullYear()}${random}`
+    const newPassword = `temp${new Date().getFullYear()}${random}`
     const hashed       = await bcrypt.hash(newPassword, 10)
 
     await userRepository.update(id, { password: hashed })

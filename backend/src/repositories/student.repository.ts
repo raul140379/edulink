@@ -41,6 +41,16 @@ const detailInclude = {
   },
 } satisfies Prisma.StudentInclude
 
+// Proyección reducida para STUDENT_VIEW_BASIC (Junta de Núcleo/Distrito): nombre,
+// colegio, quién es su padre/tutor y dirección — nunca notas/asistencia/kardex.
+const basicSelect = {
+  id: true, firstName: true, lastName: true, address: true,
+  school: { select: { id: true, name: true } },
+  parents: {
+    select: { isTutor: true, parent: { select: { firstName: true, lastName: true } } },
+  },
+} satisfies Prisma.StudentSelect
+
 export const studentRepository = {
   findMany(where: Prisma.StudentWhereInput) {
     return prisma.student.findMany({
@@ -50,8 +60,20 @@ export const studentRepository = {
     })
   },
 
+  findManyBasic(where: Prisma.StudentWhereInput) {
+    return prisma.student.findMany({
+      where,
+      select: basicSelect,
+      orderBy: [{ lastName: 'asc' }, { firstName: 'asc' }],
+    })
+  },
+
   findById(id: number) {
     return prisma.student.findUnique({ where: { id }, include: detailInclude })
+  },
+
+  findByIdBasic(id: number) {
+    return prisma.student.findUnique({ where: { id }, select: basicSelect })
   },
 
   findRaw(id: number) {

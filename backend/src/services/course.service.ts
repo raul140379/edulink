@@ -5,6 +5,7 @@ import { userRepository } from '../repositories/user.repository'
 import { HttpError } from '../utils/http-error'
 import { CreateCourseInput, UpdateCourseInput, AssignTutorInput } from '../schemas/course.schema'
 import { getTenantContext } from '../lib/tenant-context'
+import { resolveEmailDomain } from '../utils/account-generator'
 
 const BTH_GRADES = ['TERCERO', 'CUARTO', 'QUINTO', 'SEXTO']
 
@@ -13,10 +14,11 @@ const GRADE_MAP: Record<string, string> = {
 }
 
 async function generateSequentialEmail(base: string): Promise<string> {
-  let email = `${base}@nnuu.edu.bo`
+  const domain = await resolveEmailDomain()
+  let email = `${base}${domain}`
   let counter = 2
   while (await userRepository.findByEmail(email)) {
-    email = `${base}${counter}@nnuu.edu.bo`
+    email = `${base}${counter}${domain}`
     counter++
   }
   return email

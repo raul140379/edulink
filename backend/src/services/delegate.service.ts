@@ -2,6 +2,7 @@ import bcrypt from 'bcryptjs'
 import { delegateRepository } from '../repositories/delegate.repository'
 import { HttpError } from '../utils/http-error'
 import { AssignDelegateInput } from '../schemas/delegate.schema'
+import { resolveEmailDomain } from '../utils/account-generator'
 
 const GRADE_MAP: Record<string, string> = {
   PRIMERO: '1', SEGUNDO: '2', TERCERO: '3', CUARTO: '4', QUINTO: '5', SEXTO: '6',
@@ -49,12 +50,13 @@ export const delegateService = {
 
     if (parent.delegateUserId) throw new HttpError(409, 'Este padre ya tiene un usuario delegado creado')
 
+    const domain   = await resolveEmailDomain()
     const gradeNum = GRADE_MAP[course.grade] || course.grade.toLowerCase()
     const parallel = course.parallel.toLowerCase()
-    let delegateEmail = `delegado.${gradeNum}${parallel}@nnuu.edu.bo`
+    let delegateEmail = `delegado.${gradeNum}${parallel}${domain}`
     let counter = 2
     while (await delegateRepository.findUserByEmail(delegateEmail)) {
-      delegateEmail = `delegado.${gradeNum}${parallel}${counter}@nnuu.edu.bo`
+      delegateEmail = `delegado.${gradeNum}${parallel}${counter}${domain}`
       counter++
     }
 

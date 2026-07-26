@@ -9,6 +9,18 @@ import { handleControllerError } from '../utils/http-error'
 // que es justo lo que necesita el portal público.
 const router = Router()
 
+router.get('/district', async (req: Request, res: Response) => {
+  try {
+    // Un solo distrito activo por despliegue — no hace falta parámetro alguno.
+    const district = await prisma.district.findFirst({
+      select: { name: true, location: true, logoUrl: true },
+    })
+    res.json(district)
+  } catch (error) {
+    handleControllerError(res, error)
+  }
+})
+
 router.get('/schools', async (req: Request, res: Response) => {
   try {
     const schools = await prisma.school.findMany({
@@ -39,6 +51,48 @@ router.get('/stats', async (req: Request, res: Response) => {
 router.get('/comunicados', async (req: Request, res: Response) => {
   try {
     res.json(await comunicadoRepository.findPublished())
+  } catch (error) {
+    handleControllerError(res, error)
+  }
+})
+
+// Directorio de presidentes de Junta de Padres / Gobierno Estudiantil de Distrito
+// y de cada Núcleo — transparencia institucional en el portal público.
+router.get('/directorio', async (req: Request, res: Response) => {
+  try {
+    const nameOf = (m: { firstName: string; lastName: string } | null | undefined) =>
+      m ? `${m.firstName} ${m.lastName}` : null
+
+    const [juntaDistrito, gobiernoDistrito, nucleos] = await Promise.all([
+      prisma.juntaMember.findFirst({
+        where:  { juntaRole: 'PRESIDENTE', isActive: true, districtId: { not: null } },
+        select: { firstName: true, lastName: true },
+      }),
+      prisma.gobiernoMember.findFirst({
+        where:  { cargo: 'PRESIDENTE', isActive: true, districtId: { not: null } },
+        select: { firstName: true, lastName: true },
+      }),
+      prisma.nucleo.findMany({
+        select: {
+          id: true,
+          name: true,
+          juntaMembers:    { where: { juntaRole: 'PRESIDENTE', isActive: true }, select: { firstName: true, lastName: true }, take: 1 },
+          gobiernoMembers: { where: { cargo: 'PRESIDENTE', isActive: true },    select: { firstName: true, lastName: true }, take: 1 },
+        },
+        orderBy: { name: 'asc' },
+      }),
+    ])
+
+    res.json({
+      juntaDistrito:    nameOf(juntaDistrito),
+      gobiernoDistrito: nameOf(gobiernoDistrito),
+      nucleos: nucleos.map((n) => ({
+        id: n.id,
+        name: n.name,
+        juntaPresidente:    nameOf(n.juntaMembers[0]),
+        gobiernoPresidente: nameOf(n.gobiernoMembers[0]),
+      })),
+    })
   } catch (error) {
     handleControllerError(res, error)
   }

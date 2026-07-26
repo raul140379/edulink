@@ -5,6 +5,8 @@ import { BookOpen, ClipboardList, Bell, TrendingUp, AlertCircle, ChevronRight, C
 import Link from 'next/link'
 import Card from '@/components/ui/Card'
 import Badge from '@/components/ui/Badge'
+import GobiernoDistritoHome from './_GobiernoDistritoHome'
+import GobiernoNucleoHome from './_GobiernoNucleoHome'
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000'
 
@@ -50,6 +52,7 @@ const TYPE_LABEL: Record<string, string> = {
 }
 
 export default function EstudiantesDashboard() {
+  const [role,          setRole]          = useState<string | null>(null)
   const [student,       setStudent]       = useState<StudentInfo | null>(null)
   const [tasks,         setTasks]         = useState<Task[]>([])
   const [notifications, setNotifications] = useState<Notification[]>([])
@@ -58,6 +61,13 @@ export default function EstudiantesDashboard() {
   const [error,         setError]         = useState('')
 
   useEffect(() => {
+    const raw = localStorage.getItem('user')
+    if (raw) setRole(JSON.parse(raw).role)
+  }, [])
+
+  useEffect(() => {
+    if (role === null) return // esperar a saber el rol antes de decidir qué cargar
+    if (role === 'GOBIERNO_DISTRITO' || role === 'GOBIERNO_NUCLEO') { setLoading(false); return }
     const token = localStorage.getItem('token')
     if (!token) return
     const h = { Authorization: `Bearer ${token}` }
@@ -74,7 +84,7 @@ export default function EstudiantesDashboard() {
       if (g.status === 'fulfilled') setGrades(Array.isArray(g.value?.notas) ? g.value.notas : [])
       setLoading(false)
     })
-  }, [])
+  }, [role])
 
   const pendingTasks = tasks.filter(t => t.status === 'PENDIENTE').length
   const unreadNotifs = notifications.filter(n => !n.isRead).length
@@ -94,6 +104,9 @@ export default function EstudiantesDashboard() {
     if (diff === 1) return 'Ayer'
     return date.toLocaleDateString('es-BO', { day:'2-digit', month:'short' })
   }
+
+  if (role === 'GOBIERNO_DISTRITO') return <GobiernoDistritoHome/>
+  if (role === 'GOBIERNO_NUCLEO')   return <GobiernoNucleoHome/>
 
   if (loading) return <div className="flex justify-center py-16"><p className="text-sm text-neutral-500">Cargando...</p></div>
   if (error)   return <div className="flex justify-center py-16"><p className="text-sm text-danger-600">{error}</p></div>
