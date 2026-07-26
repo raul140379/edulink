@@ -38,7 +38,7 @@ async function assignTutors() {
       // Buscar estudiante
       let student = null
       if (rude) {
-        student = await prisma.student.findUnique({ where: { rude } })
+        student = await prisma.student.findFirst({ where: { rude } })
       }
       if (!student && kardex) {
         student = await prisma.student.findFirst({ where: { kardex } })

@@ -2,6 +2,8 @@ import { PrismaClient, AcademicLevel, CampoSaber, EducationType } from '@prisma/
 
 const prisma = new PrismaClient()
 
+const SCHOOL_ID = 1 // U.E. Naciones Unidas (colegio piloto)
+
 // ─── Plan de Estudios SECUNDARIA ────────────────────────────────────────────
 // Basado en el Plan de Estudios oficial - Carga Horaria
 // grade: PRIMERO=1°, SEGUNDO=2°, TERCERO=3°, CUARTO=4°, QUINTO=5°, SEXTO=6°
@@ -228,7 +230,7 @@ async function main() {
   for (const item of planEstudios) {
     // Upsert de la materia
     const subject = await prisma.subject.upsert({
-      where: { name_level: { name: item.name, level: item.level } },
+      where: { name_level_schoolId: { name: item.name, level: item.level, schoolId: SCHOOL_ID } },
       update: { campo: item.campo },
       create: {
         name: item.name,
@@ -236,6 +238,7 @@ async function main() {
         campo: item.campo,
         hoursPerWeek: item.grades[0]?.hours ?? 4,
         isActive: true,
+        schoolId: SCHOOL_ID,
       },
     })
 

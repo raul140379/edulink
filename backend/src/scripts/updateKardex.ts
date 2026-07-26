@@ -36,7 +36,7 @@ async function updateKardex() {
 
       // Buscar por RUDE primero
       if (rude) {
-        student = await prisma.student.findUnique({ where: { rude } })
+        student = await prisma.student.findFirst({ where: { rude } })
       }
 
       // Si no encontró por RUDE, buscar por nombre y apellido

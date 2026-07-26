@@ -178,7 +178,6 @@ async function main() {
   const teachers = await prisma.teacher.findMany({
     where: {
       isActive: true,
-      userId:   { not: null },
       user:     { role: { notIn: ['SUPER_ADMIN'] } },
     },
     include: {

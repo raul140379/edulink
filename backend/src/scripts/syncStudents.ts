@@ -727,6 +727,7 @@ async function main() {
 
         const newStudent = await prisma.student.create({
           data: {
+            schoolId:  course.schoolId,
             firstName,
             lastName,
             ci:        s.ci        || null,

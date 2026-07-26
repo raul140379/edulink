@@ -1,4 +1,4 @@
-const { PrismaClient } = require('@prisma/client')
+import { PrismaClient } from '@prisma/client'
 const p = new PrismaClient()
 p.subject.findMany({ select: { id: true, name: true, campo: true } })
   .then(data => {

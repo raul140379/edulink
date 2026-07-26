@@ -41,7 +41,7 @@ async function restoreLinks() {
     if (nombrePadre && apellidoPadre) {
       let padre = null
       if (ciPadre) {
-        padre = await prisma.parent.findUnique({ where: { ci: ciPadre } })
+        padre = await prisma.parent.findFirst({ where: { ci: ciPadre } })
       }
       if (!padre) {
         padre = await prisma.parent.findFirst({
@@ -86,7 +86,7 @@ async function restoreLinks() {
     if (nombreMadre && apellidoMadre) {
       let madre = null
       if (ciMadre) {
-        madre = await prisma.parent.findUnique({ where: { ci: ciMadre } })
+        madre = await prisma.parent.findFirst({ where: { ci: ciMadre } })
       }
       if (!madre) {
         madre = await prisma.parent.findFirst({

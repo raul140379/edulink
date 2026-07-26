@@ -73,7 +73,7 @@ async function main() {
     try {
       // Verificar si ya existe en producción por CI
       if (t.ci) {
-        const exists = await prodPrisma.teacher.findUnique({ where: { ci: t.ci } })
+        const exists = await prodPrisma.teacher.findFirst({ where: { ci: t.ci } })
         if (exists) {
           console.log(`  ⏭  Omitido (ya existe): ${t.lastName} ${t.firstName} — CI: ${t.ci}`)
           skipped++
@@ -99,6 +99,7 @@ async function main() {
       // Crear maestro en producción
       await prodPrisma.teacher.create({
         data: {
+          schoolId:  t.schoolId,
           firstName: t.firstName,
           lastName:  t.lastName,
           ci:        t.ci        || null,

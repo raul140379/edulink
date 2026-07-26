@@ -8,6 +8,8 @@
 import { PrismaClient } from '@prisma/client'
 const prisma = new PrismaClient()
 
+const SCHOOL_ID = 1 // U.E. Naciones Unidas (colegio piloto)
+
 const MISSING_COURSES = [
   { grade: 'PRIMERO',  parallel: 'C', name: '1°C' },
   { grade: 'SEGUNDO',  parallel: 'B', name: '2°B' },
@@ -28,6 +30,7 @@ async function main() {
   for (const c of MISSING_COURSES) {
     const existing = await prisma.course.findFirst({
       where: {
+        schoolId:      SCHOOL_ID,
         level:         'SECUNDARIA' as any,
         grade:         c.grade      as any,
         parallel:      c.parallel   as any,
@@ -44,6 +47,7 @@ async function main() {
 
     const newCourse = await prisma.course.create({
       data: {
+        schoolId:      SCHOOL_ID,
         level:         'SECUNDARIA' as any,
         grade:         c.grade      as any,
         parallel:      c.parallel   as any,
