@@ -8,6 +8,17 @@ import { useDistrictConfig } from '@/hooks/useDistrictConfig'
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000'
 
+type ComunicadoType = 'COMUNICADO' | 'CONVOCATORIA' | 'AVISO'
+interface PublicComunicado { id: number; title: string; body: string; type: ComunicadoType; publishedAt: string }
+
+const TYPE_LABELS: Record<ComunicadoType, string> = { COMUNICADO: 'Comunicado', CONVOCATORIA: 'Convocatoria', AVISO: 'Aviso' }
+
+const SUBSISTEMAS = [
+  { icon: '🏫', title: 'Educación Regular', desc: 'Inicial · Primaria · Secundaria' },
+  { icon: '🌙', title: 'Alternativa y Especial', desc: 'EPA/ESA · Educación Especial' },
+  { icon: '🎓', title: 'Superior de Formación Profesional', desc: 'ESFM · Institutos · Universidades' },
+]
+
 export default function LoginPage() {
   const router   = useRouter()
   const district = useDistrictConfig()
@@ -18,6 +29,16 @@ export default function LoginPage() {
   const [loginError, setLoginError] = useState('')
   const [loginLoad,  setLoginLoad]  = useState(false)
   const [showPass,   setShowPass]   = useState(false)
+
+  // ── Comunicado destacado ───────────────────
+  const [comunicado, setComunicado] = useState<PublicComunicado | null>(null)
+
+  useEffect(() => {
+    fetch(`${API_URL}/api/public/comunicados`)
+      .then(r => r.json())
+      .then((data: PublicComunicado[]) => { if (Array.isArray(data) && data.length > 0) setComunicado(data[0]) })
+      .catch(() => {})
+  }, [])
 
   // ── Asistencia ─────────────────────────────
   const [code,      setCode]      = useState('')
@@ -105,14 +126,29 @@ export default function LoginPage() {
           </div>
           <div className="hero-content">
             <div className="hero-badge">EduLink · 2026</div>
-            <h1>Educando el<br/><span className="highlight">futuro</span><br/>de Bolivia</h1>
+            <h1>{district.name}</h1>
+            <p className="tagline">Educando el <span className="highlight">futuro</span> de Bolivia</p>
+            <p className="slogan">La educación se moderniza, la educación a un solo click</p>
             <p>Plataforma integral para la gestión de estudiantes, padres de familia, maestros y administración de la Unidad Educativa.</p>
           </div>
           <div className="info-pills">
-            <div className="pill"><span className="pill-icon">🎓</span><span>Inicial · Primaria · Secundaria</span></div>
-            <div className="pill"><span className="pill-icon">🌐</span><span>Regular · BTH</span></div>
-            <div className="pill"><span className="pill-icon">🕐</span><span>Mañana · Tarde · Noche</span></div>
+            {SUBSISTEMAS.map(s => (
+              <div className="pill" key={s.title}>
+                <span className="pill-icon">{s.icon}</span>
+                <div className="pill-text"><strong>{s.title}</strong><span>{s.desc}</span></div>
+              </div>
+            ))}
           </div>
+          {comunicado && (
+            <div className="comunicado-card">
+              <div className="comunicado-head">
+                <span className={`comunicado-tag comunicado-${comunicado.type.toLowerCase()}`}>{TYPE_LABELS[comunicado.type]}</span>
+                <span className="comunicado-date">{new Date(comunicado.publishedAt).toLocaleDateString('es-BO', { day:'2-digit', month:'short' })}</span>
+              </div>
+              <h3>{comunicado.title}</h3>
+              <p>{comunicado.body}</p>
+            </div>
+          )}
         </div>
         <div className="bg-deco">
           <div className="deco-ring r1"/><div className="deco-ring r2"/><div className="deco-ring r3"/>
@@ -233,8 +269,8 @@ export default function LoginPage() {
         .login-container { display:flex; min-height:100vh; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif; }
 
         /* ── Panel izquierdo ── */
-        .login-left { flex:1; background:linear-gradient(145deg,#1A3A7C 0%,#0D2352 60%,#1A3A7C 100%); position:relative; overflow:hidden; display:flex; align-items:center; justify-content:center; }
-        .left-inner { position:relative; z-index:2; padding:48px; display:flex; flex-direction:column; gap:40px; max-width:500px; width:100%; }
+        .login-left { flex:1; background:linear-gradient(145deg,#0F6E56 0%,#0A5A45 60%,#0F6E56 100%); position:relative; overflow:hidden; display:flex; align-items:center; justify-content:center; }
+        .left-inner { position:relative; z-index:2; padding:48px; display:flex; flex-direction:column; gap:32px; max-width:640px; width:100%; }
         .brand { display:flex; align-items:center; gap:14px; }
         .brand-logo { width:56px; height:56px; flex-shrink:0; background:#fff; border-radius:50%; padding:4px; display:flex; align-items:center; justify-content:center; overflow:hidden; }
         .brand-text { display:flex; flex-direction:column; gap:2px; }
@@ -242,49 +278,62 @@ export default function LoginPage() {
         .brand-sub { font-size:11px; color:rgba(255,255,255,.6); letter-spacing:.5px; }
         .hero-content { display:flex; flex-direction:column; gap:16px; }
         .hero-badge { display:inline-block; background:rgba(245,197,24,.15); border:1px solid rgba(245,197,24,.4); color:#F5C518; font-size:11px; font-weight:600; letter-spacing:1.5px; padding:5px 12px; border-radius:20px; width:fit-content; }
-        .hero-content h1 { font-size:48px; font-weight:800; color:#fff; line-height:1.1; letter-spacing:-.5px; }
+        .hero-content h1 { font-size:34px; font-weight:800; color:#fff; line-height:1.15; letter-spacing:-.5px; white-space:nowrap; }
         .highlight { color:#F5C518; }
-        .hero-content p { font-size:14px; color:rgba(255,255,255,.7); line-height:1.7; max-width:360px; }
-        .info-pills { display:flex; flex-direction:column; gap:10px; }
-        .pill { display:flex; align-items:center; gap:10px; background:rgba(255,255,255,.06); border:1px solid rgba(255,255,255,.1); border-radius:8px; padding:10px 14px; font-size:13px; color:rgba(255,255,255,.7); }
-        .pill-icon { font-size:15px; }
+        .hero-content p.tagline { font-size:19px; font-weight:600; color:rgba(255,255,255,.9); white-space:nowrap; }
+        .hero-content p { font-size:14px; color:rgba(255,255,255,.75); line-height:1.7; max-width:400px; }
+        .hero-content p.slogan { font-size:15.5px; font-weight:600; color:#F5C518; max-width:420px; line-height:1.5; }
+        .info-pills { display:flex; flex-direction:column; gap:9px; }
+        .pill { display:flex; align-items:center; gap:10px; background:rgba(255,255,255,.08); border:1px solid rgba(255,255,255,.12); border-radius:9px; padding:9px 14px; font-size:12.5px; color:rgba(255,255,255,.85); }
+        .pill-icon { font-size:16px; }
+        .pill-text { display:flex; flex-direction:column; gap:1px; }
+        .pill-text strong { color:#fff; font-size:12.5px; font-weight:700; }
+        .pill-text span { color:rgba(255,255,255,.6); font-size:10.5px; }
+        .comunicado-card { background:rgba(255,255,255,.08); border:1px solid rgba(245,197,24,.35); border-radius:10px; padding:12px 14px; display:flex; flex-direction:column; gap:6px; }
+        .comunicado-head { display:flex; align-items:center; justify-content:space-between; gap:8px; }
+        .comunicado-tag { font-size:9.5px; font-weight:800; text-transform:uppercase; letter-spacing:.5px; padding:2px 9px; border-radius:20px; background:rgba(245,197,24,.2); color:#F5C518; }
+        .comunicado-convocatoria { background:rgba(255,255,255,.18); color:#fff; }
+        .comunicado-aviso { background:rgba(255,179,179,.2); color:#FFB3B3; }
+        .comunicado-date { font-size:10px; color:rgba(255,255,255,.55); }
+        .comunicado-card h3 { font-size:13px; font-weight:700; color:#fff; }
+        .comunicado-card p { font-size:11.5px; color:rgba(255,255,255,.75); line-height:1.5; max-width:none; display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
         .bg-deco { position:absolute; inset:0; z-index:1; pointer-events:none; }
-        .deco-ring { position:absolute; border-radius:50%; border:1px solid rgba(74,159,212,.12); }
+        .deco-ring { position:absolute; border-radius:50%; border:1px solid rgba(245,197,24,.12); }
         .r1 { width:500px; height:500px; top:-200px; right:-200px; }
         .r2 { width:350px; height:350px; top:-125px; right:-125px; border-color:rgba(245,197,24,.08); }
         .r3 { width:180px; height:180px; top:-40px; right:-40px; background:rgba(245,197,24,.04); }
 
         /* ── Panel derecho ── */
-        .login-right { width:460px; background:#F0F6FC; display:flex; flex-direction:column; }
+        .login-right { width:460px; background:#F5FAF7; display:flex; flex-direction:column; }
 
         /* Fila superior — Login */
         .right-top { flex:1; display:flex; flex-direction:column; justify-content:center; padding:36px 40px; gap:24px; }
         .card-top { display:flex; flex-direction:column; gap:8px; }
-        .card-icon { width:44px; height:44px; background:#1A3A7C; border-radius:12px; display:flex; align-items:center; justify-content:center; margin-bottom:4px; }
+        .card-icon { width:44px; height:44px; background:#0A5A45; border-radius:12px; display:flex; align-items:center; justify-content:center; margin-bottom:4px; }
         .card-icon svg { width:22px; height:22px; stroke:#F5C518; }
-        .card-top h2 { font-size:24px; font-weight:700; color:#1A3A7C; }
-        .card-top p { font-size:13px; color:#6B8BB0; }
+        .card-top h2 { font-size:24px; font-weight:700; color:#0A5A45; }
+        .card-top p { font-size:13px; color:#6B8F7F; }
         .login-form { display:flex; flex-direction:column; gap:16px; }
         .field-group { display:flex; flex-direction:column; gap:6px; }
-        .field-group label { font-size:11px; font-weight:700; color:#1A3A7C; text-transform:uppercase; letter-spacing:.8px; }
+        .field-group label { font-size:11px; font-weight:700; color:#0A5A45; text-transform:uppercase; letter-spacing:.8px; }
         .input-wrapper { position:relative; display:flex; align-items:center; }
-        .input-icon { position:absolute; left:13px; width:15px; height:15px; color:#4A9FD4; pointer-events:none; }
-        .input-wrapper input { width:100%; padding:12px 42px 12px 40px; border:1.5px solid #CBE0F0; border-radius:10px; font-size:14px; background:#fff; color:#1A3A7C; outline:none; transition:border-color .2s,box-shadow .2s; }
-        .input-wrapper input:focus { border-color:#4A9FD4; box-shadow:0 0 0 3px rgba(74,159,212,.15); }
-        .input-wrapper input::placeholder { color:#b0c8e0; }
-        .toggle-pass { position:absolute; right:13px; background:none; border:none; cursor:pointer; color:#6B8BB0; display:flex; align-items:center; padding:0; }
+        .input-icon { position:absolute; left:13px; width:15px; height:15px; color:#0F6E56; pointer-events:none; }
+        .input-wrapper input { width:100%; padding:12px 42px 12px 40px; border:1.5px solid #DCEEE6; border-radius:10px; font-size:14px; background:#fff; color:#173B2E; outline:none; transition:border-color .2s,box-shadow .2s; }
+        .input-wrapper input:focus { border-color:#0F6E56; box-shadow:0 0 0 3px rgba(15,110,86,.15); }
+        .input-wrapper input::placeholder { color:#9AB3A9; }
+        .toggle-pass { position:absolute; right:13px; background:none; border:none; cursor:pointer; color:#6B8F7F; display:flex; align-items:center; padding:0; }
         .toggle-pass svg { width:15px; height:15px; }
         .error-msg { display:flex; align-items:center; gap:8px; background:#FFF0F0; border:1px solid #FFBBBB; border-radius:8px; padding:10px 13px; font-size:13px; color:#C0392B; }
-        .btn-login { width:100%; padding:13px; background:#1A3A7C; color:#fff; border:none; border-radius:10px; font-size:14px; font-weight:600; cursor:pointer; transition:background .2s,box-shadow .2s; display:flex; align-items:center; justify-content:center; box-shadow:0 4px 14px rgba(26,58,124,.25); }
-        .btn-login:hover:not(:disabled) { background:#4A9FD4; }
+        .btn-login { width:100%; padding:13px; background:#0F6E56; color:#fff; border:none; border-radius:10px; font-size:14px; font-weight:600; cursor:pointer; transition:background .2s,box-shadow .2s; display:flex; align-items:center; justify-content:center; box-shadow:0 4px 14px rgba(15,110,86,.25); }
+        .btn-login:hover:not(:disabled) { background:#0A5A45; }
         .btn-login:disabled { opacity:.65; cursor:not-allowed; }
         .spinner { width:18px; height:18px; border:2px solid rgba(255,255,255,.35); border-top-color:#fff; border-radius:50%; animation:spin .7s linear infinite; }
         @keyframes spin { to { transform:rotate(360deg); } }
 
         /* Divisor */
-        .right-divider { display:flex; align-items:center; gap:10px; padding:0 40px; background:#E8F0F8; height:32px; flex-shrink:0; }
-        .div-line { flex:1; height:1px; background:#CBE0F0; }
-        .div-label { font-size:10px; font-weight:700; color:#633806; text-transform:uppercase; letter-spacing:.8px; white-space:nowrap; }
+        .right-divider { display:flex; align-items:center; gap:10px; padding:0 40px; background:#EAF6F0; height:32px; flex-shrink:0; }
+        .div-line { flex:1; height:1px; background:#DCEEE6; }
+        .div-label { font-size:10px; font-weight:700; color:#8A6116; text-transform:uppercase; letter-spacing:.8px; white-space:nowrap; }
 
         /* Fila inferior — Asistencia */
         .right-bot { flex:1; background:linear-gradient(135deg,#2C3E50 0%,#1A252F 100%);flex-direction:column; align-items:center; justify-content:center; padding:28px 40px; gap:16px; }
