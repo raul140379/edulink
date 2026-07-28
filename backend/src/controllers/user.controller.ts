@@ -36,6 +36,21 @@ export const getUserById = async (req: AuthRequest, res: Response): Promise<void
 }
 
 // ─────────────────────────────────────────────
+// POST /api/users/generate-email — Correo institucional automático, para
+// cuando la persona no tiene correo propio (usado por "Nuevo Usuario" y por
+// "Asignar Director" en Colegios).
+// ─────────────────────────────────────────────
+export const generateEmail = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const { firstName, lastName } = req.body
+    const email = await userService.generateEmail(firstName, lastName)
+    res.json({ email })
+  } catch (error) {
+    handleControllerError(res, error)
+  }
+}
+
+// ─────────────────────────────────────────────
 // POST /api/users — Crear usuario
 // ─────────────────────────────────────────────
 export const createUser = async (req: AuthRequest, res: Response): Promise<void> => {

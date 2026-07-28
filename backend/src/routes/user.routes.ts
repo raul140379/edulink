@@ -9,6 +9,7 @@ import {
   resetByEmail,
   deleteUser,
   getJuntaParents,
+  generateEmail,
 } from '../controllers/user.controller'
 import { verifyToken, requirePermission } from '../middlewares/auth.middleware'
 import { validateBody } from '../middlewares/validate.middleware'
@@ -22,6 +23,7 @@ router.use(verifyToken)
 router.get('/',                    requirePermission(Permission.USER_VIEW_ALL), getUsers)
 router.get('/junta-parents',       requirePermission(Permission.USER_VIEW_ALL), getJuntaParents)
 router.post('/reset-by-email', requirePermission(Permission.USER_CREATE), validateBody(resetByEmailSchema), resetByEmail)
+router.post('/generate-email', requirePermission(Permission.USER_CREATE), generateEmail)
 router.get('/:id',                 requirePermission(Permission.USER_VIEW_ALL), getUserById)
 router.post('/',                   requirePermission(Permission.USER_CREATE),   validateBody(createUserSchema), createUser)
 router.put('/:id',                 requirePermission(Permission.USER_CREATE),   validateBody(updateUserSchema), updateUser)

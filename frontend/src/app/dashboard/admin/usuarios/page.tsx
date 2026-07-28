@@ -39,7 +39,36 @@ const roleLabels: Record<string, string> = {
 // dashboard/padres/junta/nueva y dashboard/estudiantes/gobierno/nueva) porque
 // además del User necesitan un JuntaMember/GobiernoMember con nombre/cargo.
 const BOARD_ROLES = new Set(['JUNTA_NUCLEO', 'JUNTA_DISTRITO', 'GOBIERNO_NUCLEO', 'GOBIERNO_DISTRITO'])
-const createUserRoleLabels = Object.fromEntries(Object.entries(roleLabels).filter(([k]) => !BOARD_ROLES.has(k)))
+
+// Espejo de CREATABLE_ROLES en backend/src/config/permissions.ts — el backend
+// ya rechaza (403) cualquier rol fuera de esta lista, esto es solo para no
+// mostrarle a cada rol opciones que igual le van a ser rechazadas. SUPER_ADMIN
+// no tiene restricción (ver getCreatableRoles).
+const CREATABLE_ROLES: Record<string, string[]> = {
+  DIRECTOR_DISTRITAL: ['DIRECTOR', 'REGENTE', 'SECRETARY', 'JUNTA_DISTRITO', 'GOBIERNO_DISTRITO'],
+  DIRECTOR: ['REGENTE', 'SECRETARY', 'TEACHER', 'TEACHER_TUTOR', 'STAFF', 'PORTERO', 'PARENT', 'STUDENT', 'DELEGATE', 'JUNTA_ESCOLAR', 'STUDENT_GOV'],
+  JUNTA_DISTRITO: ['JUNTA_NUCLEO', 'JUNTA_ESCOLAR'],
+  GOBIERNO_DISTRITO: ['GOBIERNO_NUCLEO', 'STUDENT_GOV'],
+}
+
+function getCreatableRoleLabels(currentRole: string): Record<string, string> {
+  const base = Object.fromEntries(Object.entries(roleLabels).filter(([k]) => !BOARD_ROLES.has(k)))
+  if (currentRole === 'SUPER_ADMIN') return base
+  const allowed = new Set(CREATABLE_ROLES[currentRole] || [])
+  return Object.fromEntries(Object.entries(base).filter(([k]) => allowed.has(k)))
+}
+
+// Espejo de MANAGEMENT_ROLES en backend/src/repositories/user.repository.ts — un
+// DIRECTOR_DISTRITAL solo VE (en la lista/filtro) estos roles de gestión más los
+// que él mismo puede crear (CREATABLE_ROLES) — cualquier otro rol siempre da
+// resultado vacío para él, así que ni tiene sentido ofrecerlo como filtro.
+const MANAGEMENT_ROLES_FRONT = ['DIRECTOR', 'REGENTE', 'SECRETARY', 'DIRECTOR_DISTRITAL']
+
+function getFilterRoleLabels(currentRole: string): Record<string, string> {
+  if (currentRole !== 'DIRECTOR_DISTRITAL') return roleLabels
+  const allowed = new Set([...MANAGEMENT_ROLES_FRONT, ...(CREATABLE_ROLES[currentRole] || [])])
+  return Object.fromEntries(Object.entries(roleLabels).filter(([k]) => allowed.has(k)))
+}
 
 const CARGO_LABELS: Record<string, string> = {
   PRESIDENTE: 'Presidente', VICEPRESIDENTE: 'Vicepresidente',
@@ -97,7 +126,8 @@ export default function UsuariosPage() {
   const [editError,      setEditError]      = useState('')
   const [showPass,       setShowPass]       = useState(false)
   const [duplicateEmail, setDuplicateEmail] = useState<string | null>(null)
-  const [form,           setForm]           = useState({ email: '', password: '', role: 'PARENT', schoolId: '' })
+  const [form,           setForm]           = useState({ firstName: '', lastName: '', email: '', password: '', role: 'PARENT', schoolId: '' })
+  const [generatingEmail, setGeneratingEmail] = useState(false)
   const [schools,        setSchools]        = useState<{ id: number; name: string }[]>([])
   const [currentRole,    setCurrentRole]     = useState('')
   const [editForm,       setEditForm]       = useState({ id: 0, email: '', role: '' })
@@ -160,10 +190,29 @@ export default function UsuariosPage() {
   }, [])
 
   const needsSchoolPicker = (currentRole === 'SUPER_ADMIN' || currentRole === 'DIRECTOR_DISTRITAL') && SCHOOL_SCOPED_ROLES.has(form.role)
+  const creatableRoleLabels = getCreatableRoleLabels(currentRole)
+  const filterRoleLabels    = getFilterRoleLabels(currentRole)
 
   const openCreate = () => {
-    setForm({ email: '', password: '', role: 'PARENT', schoolId: '' })
+    const defaultRole = 'PARENT' in creatableRoleLabels ? 'PARENT' : Object.keys(creatableRoleLabels)[0] || 'PARENT'
+    setForm({ firstName: '', lastName: '', email: '', password: '', role: defaultRole, schoolId: '' })
     setShowPass(false); setFormError(''); setDuplicateEmail(null); setShowModal(true)
+  }
+
+  const handleGenerateEmail = async () => {
+    if (!form.firstName || !form.lastName) { setFormError('Escribe el nombre y apellido primero'); return }
+    setGeneratingEmail(true)
+    try {
+      const res  = await fetch(`${API_URL}/api/users/generate-email`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ firstName: form.firstName, lastName: form.lastName }),
+      })
+      const data = await res.json()
+      if (!res.ok) { setFormError(data.message || 'No se pudo generar el correo'); return }
+      setForm(f => ({ ...f, email: data.email })); setDuplicateEmail(null)
+    } catch { setFormError('Error de conexión') }
+    finally  { setGeneratingEmail(false) }
   }
 
   const openEdit = (u: User) => {
@@ -176,7 +225,8 @@ export default function UsuariosPage() {
     if (needsSchoolPicker && !form.schoolId) { setFormError('Selecciona a qué colegio pertenece este usuario'); return }
     setFormError(''); setSaving(true)
     try {
-      const body = { ...form, schoolId: form.schoolId ? parseInt(form.schoolId) : undefined }
+      const { firstName, lastName, ...userFields } = form
+      const body = { ...userFields, schoolId: form.schoolId ? parseInt(form.schoolId) : undefined }
       const res  = await fetch(`${API_URL}/api/users`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
@@ -191,7 +241,7 @@ export default function UsuariosPage() {
       setShowModal(false)
       setNewCredentials({ email: form.email, password: form.password })
       setShowNewCreds(true)
-      setForm({ email: '', password: '', role: 'PARENT', schoolId: '' })
+      setForm({ firstName: '', lastName: '', email: '', password: '', role: 'PARENT', schoolId: '' })
       fetchUsers()
     } catch { setFormError('Error de conexión') }
     finally  { setSaving(false) }
@@ -397,7 +447,7 @@ export default function UsuariosPage() {
         </div>
         <Select value={roleFilter} onChange={e => setRoleFilter(e.target.value)} className="w-auto min-w-[160px]">
           <option value="">Todos los roles</option>
-          {Object.entries(roleLabels).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+          {Object.entries(filterRoleLabels).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
         </Select>
         <Button variant="secondary" onClick={fetchUsers}><RefreshCw size={15} /> Buscar</Button>
       </div>
@@ -527,10 +577,24 @@ export default function UsuariosPage() {
       >
         <div className="flex flex-col gap-3.5">
           {formError && <p className="text-[13px] text-danger-600 bg-danger-100 rounded-lg px-3 py-2">{formError}</p>}
-          <Input label="Correo electrónico" required type="email" placeholder="usuario@nnuu.edu.bo" value={form.email}
-            onChange={e => { setForm({ ...form, email: e.target.value }); setDuplicateEmail(null) }} />
+          <div className="grid grid-cols-2 gap-3">
+            <Input label="Nombres" placeholder="Para generar el correo" value={form.firstName}
+              onChange={e => setForm({ ...form, firstName: e.target.value })} />
+            <Input label="Apellidos" placeholder="Para generar el correo" value={form.lastName}
+              onChange={e => setForm({ ...form, lastName: e.target.value })} />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Input label="Correo electrónico" required type="email" placeholder="usuario@nnuu.edu.bo" value={form.email}
+              onChange={e => { setForm({ ...form, email: e.target.value }); setDuplicateEmail(null) }} />
+            <button
+              type="button" onClick={handleGenerateEmail} disabled={generatingEmail}
+              className="flex items-center gap-1.5 border border-dashed border-neutral-300 text-info-500 rounded-md px-2.5 py-1.5 text-[11px] w-fit hover:bg-neutral-100 hover:border-info-500 disabled:opacity-50"
+            >
+              <RefreshCw size={12} /> {generatingEmail ? 'Generando...' : 'Generar correo automático'}
+            </button>
+          </div>
           <Select label="Rol" required value={form.role} onChange={e => setForm({ ...form, role: e.target.value })}>
-            {Object.entries(createUserRoleLabels).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+            {Object.entries(creatableRoleLabels).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
           </Select>
           {needsSchoolPicker && (
             <Select label="Colegio" required value={form.schoolId} onChange={e => setForm({ ...form, schoolId: e.target.value })}>

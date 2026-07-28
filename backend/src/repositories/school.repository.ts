@@ -6,9 +6,14 @@ export const schoolRepository = {
     return prisma.school.findMany({
       where,
       include: {
-        district: { select: { id: true, name: true } },
-        nucleo:   { select: { id: true, name: true, location: true } },
-        _count:   { select: { students: true, teachers: true, parents: true } },
+        district:  { select: { id: true, name: true } },
+        nucleo:    { select: { id: true, name: true, location: true } },
+        _count:    { select: { students: true, teachers: true, parents: true } },
+        directors: {
+          where:  { isActive: true },
+          select: { id: true, firstName: true, lastName: true, user: { select: { id: true, email: true } } },
+          take:   1,
+        },
       },
       orderBy: { name: 'asc' },
     })
@@ -18,8 +23,13 @@ export const schoolRepository = {
     return prisma.school.findUnique({
       where: { id },
       include: {
-        district: { select: { id: true, name: true } },
-        nucleo:   { select: { id: true, name: true, location: true } },
+        district:  { select: { id: true, name: true } },
+        nucleo:    { select: { id: true, name: true, location: true } },
+        directors: {
+          where:  { isActive: true },
+          select: { id: true, firstName: true, lastName: true, user: { select: { id: true, email: true } } },
+          take:   1,
+        },
       },
     })
   },

@@ -22,5 +22,15 @@ export const updateSchoolSchema = z.object({
   nucleoId:   z.coerce.number().int().nullable().optional(),
 })
 
-export type CreateSchoolInput = z.infer<typeof createSchoolSchema>
-export type UpdateSchoolInput = z.infer<typeof updateSchoolSchema>
+export const assignDirectorSchema = z.object({
+  firstName: z.string().min(1, 'El nombre es requerido'),
+  lastName:  z.string().min(1, 'El apellido es requerido'),
+  ci:        z.string().optional(),
+  phone:     z.string().optional(),
+  email:     z.string().email('Correo inválido').optional().or(z.literal('')),
+  password:  z.string().min(6, 'La contraseña debe tener al menos 6 caracteres'),
+})
+
+export type CreateSchoolInput    = z.infer<typeof createSchoolSchema>
+export type UpdateSchoolInput    = z.infer<typeof updateSchoolSchema>
+export type AssignDirectorInput  = z.infer<typeof assignDirectorSchema>

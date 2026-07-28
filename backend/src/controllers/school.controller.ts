@@ -37,6 +37,15 @@ export const updateSchool = async (req: AuthRequest, res: Response): Promise<voi
   }
 }
 
+export const assignDirector = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const result = await schoolService.assignDirector(parseInt(req.params.id), req.body)
+    res.status(201).json({ message: 'Director asignado correctamente', ...result })
+  } catch (error) {
+    handleControllerError(res, error)
+  }
+}
+
 export const importSchools = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     if (!req.file) { res.status(400).json({ message: 'No se subió ningún archivo' }); return }

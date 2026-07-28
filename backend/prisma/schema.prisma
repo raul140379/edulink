@@ -62,6 +62,7 @@ model School {
   gobiernoMembers         GobiernoMember[]
   comunicados             Comunicado[]
   shiftDirectors          ShiftDirector[]
+  directors               Director[]
   academicYears           AcademicYear[]
   parents                 Parent[]
   students                Student[]
@@ -131,6 +132,7 @@ model User {
   parentDelegate    Parent?         @relation("ParentDelegate")
   parent            Parent?         @relation("ParentUser")
   director          ShiftDirector?
+  schoolDirector    Director?
   staff             Staff?
   student           Student?
   teacherTutor      Teacher?        @relation("TeacherTutor")
@@ -396,6 +398,25 @@ model Staff {
 
   @@unique([ci, schoolId])
   @@unique([attendanceCode, schoolId])
+}
+
+// Perfil del Director de una unidad educativa (mismo patrón que Teacher/Staff:
+// User genérico + tabla de perfil con nombre). Se permite más de una fila por
+// schoolId a lo largo del tiempo (reemplazos), pero el service garantiza que
+// solo una quede isActive=true por colegio a la vez — no es una restricción de
+// base de datos porque Postgres no soporta un unique parcial vía Prisma directo.
+model Director {
+  id        Int      @id @default(autoincrement())
+  firstName String
+  lastName  String
+  ci        String?
+  phone     String?
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  userId    Int      @unique
+  schoolId  Int
+  school    School   @relation(fields: [schoolId], references: [id])
+  user      User     @relation(fields: [userId], references: [id])
 }
 
 model Course {

@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { Plus, Building2, Users, GraduationCap, Upload } from 'lucide-react'
+import { Plus, Building2, Users, GraduationCap, Upload, UserCog, RefreshCw, Copy, Check, Eye, EyeOff } from 'lucide-react'
 import Button from '@/components/ui/Button'
 import { Input, Select } from '@/components/ui/Input'
 import Card from '@/components/ui/Card'
@@ -24,6 +24,11 @@ interface Nucleo {
   location: string | null
 }
 
+interface Director {
+  id: number; firstName: string; lastName: string
+  user: { id: number; email: string }
+}
+
 interface School {
   id:         number
   name:       string
@@ -35,10 +40,19 @@ interface School {
   isActive:   boolean
   district:   { id: number; name: string }
   nucleo:     Nucleo | null
+  directors:  Director[]
   _count:     { students: number; teachers: number; parents: number }
 }
 
 const emptyForm = { name: '', sieCode: '', tipo: 'FISCAL', area: 'URBANA', subsistema: 'REGULAR', address: '', nucleoId: '' }
+
+const emptyDirectorForm = { firstName: '', lastName: '', ci: '', phone: '', email: '', password: '' }
+
+const generateDirectorPassword = (lastName: string): string => {
+  const year = new Date().getFullYear()
+  const last4 = (lastName || 'dir').replace(/\s+/g, '').slice(0, 4).toLowerCase()
+  return `director${last4}${year}`
+}
 
 export default function ColegiosPage() {
   const [schools, setSchools] = useState<School[]>([])
@@ -51,6 +65,18 @@ export default function ColegiosPage() {
   const [showImport, setShowImport] = useState(false)
   const [importFile, setImportFile] = useState<File | null>(null)
   const [importing, setImporting] = useState(false)
+
+  // ── Asignar Director ──
+  const [showDirectorModal, setShowDirectorModal] = useState(false)
+  const [directorSchool,    setDirectorSchool]    = useState<School | null>(null)
+  const [directorForm,      setDirectorForm]      = useState(emptyDirectorForm)
+  const [directorSaving,    setDirectorSaving]    = useState(false)
+  const [directorError,     setDirectorError]     = useState('')
+  const [generatingEmail,   setGeneratingEmail]   = useState(false)
+  const [showDirectorPass,  setShowDirectorPass]  = useState(false)
+  const [newDirectorCreds,  setNewDirectorCreds]  = useState<{ email: string; password: string } | null>(null)
+  const [copiedDirectorCreds, setCopiedDirectorCreds] = useState(false)
+
   const toast = useToast()
 
   const token = typeof window !== 'undefined' ? localStorage.getItem('token') : ''
@@ -119,6 +145,56 @@ export default function ColegiosPage() {
     finally  { setImporting(false) }
   }
 
+  const openDirectorModal = (school: School) => {
+    setDirectorSchool(school)
+    setDirectorForm(emptyDirectorForm)
+    setDirectorError(''); setShowDirectorPass(false); setShowDirectorModal(true)
+  }
+
+  const handleGenerateDirectorEmail = async () => {
+    if (!directorForm.firstName || !directorForm.lastName) {
+      setDirectorError('Escribe el nombre y apellido primero'); return
+    }
+    setGeneratingEmail(true)
+    try {
+      const res  = await fetch(`${API_URL}/api/users/generate-email`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ firstName: directorForm.firstName, lastName: directorForm.lastName }),
+      })
+      const data = await res.json()
+      if (!res.ok) { setDirectorError(data.message || 'No se pudo generar el correo'); return }
+      setDirectorForm(f => ({ ...f, email: data.email }))
+    } catch { setDirectorError('Error de conexión') }
+    finally  { setGeneratingEmail(false) }
+  }
+
+  const handleAssignDirector = async () => {
+    if (!directorSchool) return
+    const { firstName, lastName, password } = directorForm
+    if (!firstName || !lastName || !password) { setDirectorError('Nombre, apellido y contraseña son requeridos'); return }
+    setDirectorError(''); setDirectorSaving(true)
+    try {
+      const res  = await fetch(`${API_URL}/api/schools/${directorSchool.id}/director`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify(directorForm),
+      })
+      const data = await res.json()
+      if (!res.ok) { setDirectorError(data.message); return }
+      setShowDirectorModal(false)
+      setNewDirectorCreds({ email: data.accessEmail, password: data.password })
+      fetchSchools()
+    } catch { setDirectorError('Error de conexión') }
+    finally  { setDirectorSaving(false) }
+  }
+
+  const copyDirectorCreds = () => {
+    if (!newDirectorCreds) return
+    navigator.clipboard.writeText(`Email: ${newDirectorCreds.email}\nContraseña: ${newDirectorCreds.password}`)
+    setCopiedDirectorCreds(true); setTimeout(() => setCopiedDirectorCreds(false), 2000)
+  }
+
   return (
     <div>
       <div className="flex items-start justify-between gap-4 mb-6">
@@ -159,9 +235,28 @@ export default function ColegiosPage() {
                 <div className="text-[11px] text-neutral-500 mb-2">
                   {s.district.name}{s.nucleo ? ` · Núcleo ${s.nucleo.name}` : ''}
                 </div>
-                <div className="flex flex-col gap-1 text-[11px] text-neutral-500">
+                <div className="flex flex-col gap-1 text-[11px] text-neutral-500 mb-2.5">
                   <span className="flex items-center gap-1.5"><GraduationCap size={13} /> {s._count.students} estudiantes</span>
                   <span className="flex items-center gap-1.5"><Users size={13} /> {s._count.teachers} maestros · {s._count.parents} padres</span>
+                </div>
+                <div className="flex items-center justify-between gap-2 border-t border-neutral-100 pt-2.5">
+                  {s.directors.length > 0 ? (
+                    <div className="min-w-0">
+                      <div className="text-[10px] text-neutral-500 uppercase tracking-wide">Director</div>
+                      <div className="text-[12.5px] font-semibold text-brand-700 truncate">
+                        {s.directors[0].firstName} {s.directors[0].lastName}
+                      </div>
+                    </div>
+                  ) : (
+                    <Badge tone="warning">Sin director asignado</Badge>
+                  )}
+                  <button
+                    onClick={() => openDirectorModal(s)}
+                    title={s.directors.length > 0 ? 'Reemplazar director' : 'Asignar director'}
+                    className="shrink-0 flex items-center gap-1 text-[11px] font-semibold text-brand-700 bg-brand-100 hover:bg-brand-100/70 rounded-md px-2.5 py-1.5"
+                  >
+                    <UserCog size={13} /> {s.directors.length > 0 ? 'Reemplazar' : 'Asignar'}
+                  </button>
                 </div>
               </div>
             </Card>
@@ -236,6 +331,103 @@ export default function ColegiosPage() {
             className="block w-full text-sm text-neutral-700 file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:bg-brand-100 file:text-brand-700 file:text-sm file:font-semibold"
           />
         </div>
+      </Modal>
+
+      {/* ── Modal Asignar/Reemplazar Director ── */}
+      <Modal
+        open={showDirectorModal}
+        onClose={() => setShowDirectorModal(false)}
+        title={directorSchool?.directors.length ? `Reemplazar director — ${directorSchool.name}` : `Asignar director — ${directorSchool?.name}`}
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setShowDirectorModal(false)}>Cancelar</Button>
+            <Button onClick={handleAssignDirector} loading={directorSaving}>Guardar</Button>
+          </>
+        }
+      >
+        <div className="flex flex-col gap-3.5">
+          {directorError && <p className="text-[13px] text-danger-600 bg-danger-100 rounded-lg px-3 py-2">{directorError}</p>}
+          {directorSchool && directorSchool.directors.length > 0 && (
+            <p className="text-[12px] text-[#8A6116] bg-warning-100 rounded-lg px-3 py-2.5 leading-relaxed">
+              ⚠️ Este colegio ya tiene director ({directorSchool.directors[0].firstName} {directorSchool.directors[0].lastName}).
+              Al guardar, ese usuario queda desactivado y este pasa a ser el nuevo responsable.
+            </p>
+          )}
+          <div className="grid grid-cols-2 gap-3">
+            <Input label="Nombres" required value={directorForm.firstName}
+              onChange={e => setDirectorForm({ ...directorForm, firstName: e.target.value })} />
+            <Input label="Apellidos" required value={directorForm.lastName}
+              onChange={e => setDirectorForm({ ...directorForm, lastName: e.target.value })} />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <Input label="CI" placeholder="Opcional" value={directorForm.ci}
+              onChange={e => setDirectorForm({ ...directorForm, ci: e.target.value })} />
+            <Input label="Teléfono" placeholder="Opcional" value={directorForm.phone}
+              onChange={e => setDirectorForm({ ...directorForm, phone: e.target.value })} />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Input label="Correo electrónico" type="email" placeholder="Deja vacío para generar uno automático" value={directorForm.email}
+              onChange={e => setDirectorForm({ ...directorForm, email: e.target.value })} />
+            <button
+              type="button" onClick={handleGenerateDirectorEmail} disabled={generatingEmail}
+              className="flex items-center gap-1.5 border border-dashed border-neutral-300 text-info-500 rounded-md px-2.5 py-1.5 text-[11px] w-fit hover:bg-neutral-100 hover:border-info-500 disabled:opacity-50"
+            >
+              <RefreshCw size={12} /> {generatingEmail ? 'Generando...' : 'Generar correo automático'}
+            </button>
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <span className="text-[13px] font-semibold text-neutral-700">Contraseña<span className="text-danger-500"> *</span></span>
+            <div className="relative flex items-center">
+              <input
+                type={showDirectorPass ? 'text' : 'password'} placeholder="Escribe o genera automáticamente"
+                value={directorForm.password} onChange={e => setDirectorForm({ ...directorForm, password: e.target.value })}
+                className="w-full h-10 pl-3 pr-10 rounded-lg border border-neutral-300 text-sm outline-none focus:border-brand-600 focus:ring-2 focus:ring-brand-600/15"
+              />
+              <button type="button" onClick={() => setShowDirectorPass(!showDirectorPass)} className="absolute right-3 text-neutral-500 hover:text-brand-700">
+                {showDirectorPass ? <EyeOff size={14} /> : <Eye size={14} />}
+              </button>
+            </div>
+            <button
+              type="button"
+              onClick={() => { setDirectorForm(f => ({ ...f, password: generateDirectorPassword(f.lastName) })); setShowDirectorPass(true) }}
+              className="flex items-center gap-1.5 border border-dashed border-neutral-300 text-info-500 rounded-md px-2.5 py-1.5 text-[11px] w-fit hover:bg-neutral-100 hover:border-info-500"
+            >
+              <RefreshCw size={12} /> Generar contraseña automática
+            </button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* ── Modal credenciales del director ── */}
+      <Modal
+        open={!!newDirectorCreds}
+        onClose={() => setNewDirectorCreds(null)}
+        title="✅ Director asignado"
+        footer={
+          <>
+            <Button variant="secondary" onClick={copyDirectorCreds}>
+              {copiedDirectorCreds ? <Check size={14} /> : <Copy size={14} />} {copiedDirectorCreds ? 'Copiado' : 'Copiar'}
+            </Button>
+            <Button onClick={() => setNewDirectorCreds(null)}>Entendido</Button>
+          </>
+        }
+      >
+        {newDirectorCreds && (
+          <div className="flex flex-col gap-2.5">
+            <p className="text-[12px] text-success-700 bg-success-100 rounded-lg px-3 py-2.5">
+              ✅ El director ya puede ingresar con estas credenciales.
+            </p>
+            <div className="flex items-center gap-2.5 bg-neutral-100 border border-neutral-300 rounded-lg px-3.5 py-2.5">
+              <span className="text-[11px] font-semibold text-neutral-500 uppercase tracking-wide min-w-[80px]">Email:</span>
+              <span className="text-sm font-semibold text-brand-700 font-mono break-all">{newDirectorCreds.email}</span>
+            </div>
+            <div className="flex items-center gap-2.5 bg-neutral-100 border border-neutral-300 rounded-lg px-3.5 py-2.5">
+              <span className="text-[11px] font-semibold text-neutral-500 uppercase tracking-wide min-w-[80px]">Contraseña:</span>
+              <span className="text-sm font-semibold text-brand-700 font-mono break-all">{newDirectorCreds.password}</span>
+            </div>
+            <p className="text-[12px] text-[#8A6116] bg-warning-100 rounded-lg px-3 py-2.5">⚠️ Esta es la única vez que verás la contraseña.</p>
+          </div>
+        )}
       </Modal>
     </div>
   )

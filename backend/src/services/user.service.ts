@@ -7,6 +7,7 @@ import { CREATABLE_ROLES } from '../config/permissions'
 import { DISTRICT_WIDE_ROLES, NUCLEO_WIDE_ROLES } from '../lib/scoped-models'
 import prisma from '../lib/prisma'
 import { CreateUserInput, UpdateUserInput, ResetByEmailInput } from '../schemas/user.schema'
+import { generateUniqueEmail } from '../utils/account-generator'
 
 // Un DIRECTOR_DISTRITAL solo puede gestionar (editar/desactivar/resetear/eliminar)
 // las cuentas que él mismo creó — ver a un Director de otro colegio en la lista no
@@ -19,6 +20,13 @@ function assertManageableByDistrictDirector(user: { createdByUserId: number | nu
 }
 
 export const userService = {
+  async generateEmail(firstName: string, lastName: string) {
+    if (!firstName?.trim() || !lastName?.trim()) {
+      throw new HttpError(400, 'Nombre y apellido son requeridos para generar el correo')
+    }
+    return generateUniqueEmail(firstName.trim(), lastName.trim())
+  },
+
   listUsers(filters: UserListFilters) {
     const ctx = getTenantContext()
     const scoped = ctx?.role === Role.DIRECTOR_DISTRITAL

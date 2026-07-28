@@ -32,6 +32,7 @@ export const DIRECT_SCHOOL_SCOPED_MODELS = new Set([
   'StudentGamification',
   'StudentAchievement',
   'StudentTrimesterBonus',
+  'Director',
 ])
 
 /**

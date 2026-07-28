@@ -1,11 +1,16 @@
+import bcrypt from 'bcryptjs'
 import * as XLSX from 'xlsx'
 import { Prisma, Role, SchoolType, SchoolArea } from '@prisma/client'
 import { schoolRepository } from '../repositories/school.repository'
 import { nucleoRepository } from '../repositories/nucleo.repository'
+import { directorRepository } from '../repositories/director.repository'
+import { userRepository } from '../repositories/user.repository'
 import { getTenantContext } from '../lib/tenant-context'
 import { DISTRICT_WIDE_ROLES, NUCLEO_WIDE_ROLES } from '../lib/scoped-models'
+import { CREATABLE_ROLES } from '../config/permissions'
 import { HttpError } from '../utils/http-error'
-import { CreateSchoolInput, UpdateSchoolInput } from '../schemas/school.schema'
+import { generateUniqueEmail } from '../utils/account-generator'
+import { CreateSchoolInput, UpdateSchoolInput, AssignDirectorInput } from '../schemas/school.schema'
 
 const VALID_TIPOS: SchoolType[] = ['FISCAL', 'CONVENIO', 'PRIVADA']
 const VALID_AREAS: SchoolArea[] = ['URBANA', 'RURAL']
@@ -69,6 +74,46 @@ export const schoolService = {
   async updateSchool(id: number, input: UpdateSchoolInput) {
     await schoolService.getSchoolById(id) // 404/403 guard, respects district scope
     return schoolRepository.update(id, input)
+  },
+
+  // Crea (o reemplaza) el Director de una unidad educativa: un User nuevo con
+  // rol DIRECTOR + su perfil (nombre/apellido). Si ya había un director activo
+  // en este colegio, queda desactivado (isActive: false) — no se borra, para no
+  // perder el historial de quién ocupó el cargo antes.
+  async assignDirector(schoolId: number, input: AssignDirectorInput) {
+    await schoolService.getSchoolById(schoolId) // 404/403 guard, respeta el alcance de distrito
+
+    // Misma jerarquía de designación que userService.createUser: solo puede
+    // asignar un Director quien tenga Role.DIRECTOR dentro de su propio
+    // CREATABLE_ROLES (hoy: SUPER_ADMIN sin restricción, DIRECTOR_DISTRITAL sí).
+    const ctx = getTenantContext()
+    if (ctx && ctx.role !== Role.SUPER_ADMIN) {
+      const allowed = CREATABLE_ROLES[ctx.role]
+      if (!allowed || !allowed.includes(Role.DIRECTOR)) {
+        throw new HttpError(403, 'Tu rol no tiene permitido asignar directores')
+      }
+    }
+
+    const { firstName, lastName, ci, phone, email, password } = input
+
+    let accessEmail: string
+    if (email && email.trim() !== '') {
+      const existing = await userRepository.findByEmail(email.trim())
+      if (existing) throw new HttpError(409, `El correo ${email} ya está en uso`)
+      accessEmail = email.trim()
+    } else {
+      accessEmail = await generateUniqueEmail(firstName, lastName)
+    }
+
+    const hashedPassword = await bcrypt.hash(password, 10)
+    const user = await userRepository.create({ email: accessEmail, password: hashedPassword, role: Role.DIRECTOR, schoolId })
+
+    await directorRepository.deactivateAllForSchool(schoolId)
+    const director = await directorRepository.create({
+      firstName, lastName, ci: ci || null, phone: phone || null, schoolId, userId: user.id,
+    })
+
+    return { director, accessEmail, password }
   },
 
   // Importación masiva de colegios desde planilla — mismo patrón que
