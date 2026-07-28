@@ -12,7 +12,7 @@ export default function Perfil() {
   }, [])
 
   if (!role) return null
-  if (role === 'JUNTA_ESCOLAR') return <PerfilPage rolLabel="Junta Escolar" roleColor="#006D75" />
-  if (role === 'DELEGATE') return <PerfilPage rolLabel="Delegado de Curso" roleColor="#00838F" />
+  if (role === 'JUNTA_ESCOLAR') return <PerfilPage rolLabel="Junta Escolar" roleColor="#0C4955" />
+  if (role === 'DELEGATE') return <PerfilPage rolLabel="Delegado de Curso" roleColor="#136272" />
   return <ParentPerfil/>
 }

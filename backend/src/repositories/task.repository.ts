@@ -146,11 +146,15 @@ export const taskRepository = {
   },
 
   findSubmissionById(id: number) {
-    return prisma.taskSubmission.findUnique({ where: { id } })
+    return prisma.taskSubmission.findUnique({ where: { id }, include: { task: { select: { dueDate: true } } } })
   },
 
-  updateSubmissionStatus(id: number, status: 'PENDIENTE' | 'CALIFICADO') {
+  updateSubmissionStatus(id: number, status: 'PENDIENTE' | 'ENTREGADO' | 'CALIFICADO') {
     return prisma.taskSubmission.update({ where: { id }, data: { status } })
+  },
+
+  markSubmissionDelivered(id: number, submittedAt: Date) {
+    return prisma.taskSubmission.update({ where: { id }, data: { status: 'ENTREGADO', submittedAt } })
   },
 
   findGradedSubmissionsForStudent(studentId: number, trimesterId?: number) {

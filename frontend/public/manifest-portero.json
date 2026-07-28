@@ -1,12 +1,12 @@
 {
-  "name": "Control de Acceso — U.E. Naciones Unidas",
-  "short_name": "Portero NNUU",
-  "description": "Control de entrada y salida — U.E. Naciones Unidas El Torno",
+  "name": "Seguridad y Control — U.E. Naciones Unidas",
+  "short_name": "Seguridad NNUU",
+  "description": "Seguridad y control de entrada y salida — U.E. Naciones Unidas El Torno",
   "start_url": "/dashboard/portero",
   "scope": "/dashboard/portero",
   "display": "standalone",
   "background_color": "#0F172A",
-  "theme_color": "#1A3A7C",
+  "theme_color": "#344551",
   "orientation": "any",
   "lang": "es",
   "icons": [

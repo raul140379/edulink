@@ -56,33 +56,36 @@ model School {
   district   District   @relation(fields: [districtId], references: [id])
   nucleo     Nucleo?    @relation(fields: [nucleoId], references: [id])
 
-  schoolSchedules    SchoolSchedule[]
-  users              User[]
-  juntaMembers       JuntaMember[]
-  gobiernoMembers    GobiernoMember[]
-  comunicados        Comunicado[]
-  shiftDirectors     ShiftDirector[]
-  academicYears      AcademicYear[]
-  parents            Parent[]
-  students           Student[]
-  teachers           Teacher[]
-  staff              Staff[]
-  courses            Course[]
-  classrooms         Classroom[]
-  subjects           Subject[]
-  charges            Charge[]
-  payments           Payment[]
-  notifications      Notification[]
-  meetings           Meeting[]
-  tasks              Task[]
-  notas              Nota[]
-  schedules          Schedule[]
-  schedulePlans      SchedulePlan[]
-  gateRecords        GateRecord[]
-  teacherAttendances TeacherAttendance[]
-  studentAttendances StudentAttendance[]
-  biometricTemplates BiometricTemplate[]
-  poaActas           PoaActa[]
+  schoolSchedules         SchoolSchedule[]
+  users                   User[]
+  juntaMembers            JuntaMember[]
+  gobiernoMembers         GobiernoMember[]
+  comunicados             Comunicado[]
+  shiftDirectors          ShiftDirector[]
+  academicYears           AcademicYear[]
+  parents                 Parent[]
+  students                Student[]
+  teachers                Teacher[]
+  staff                   Staff[]
+  courses                 Course[]
+  classrooms              Classroom[]
+  subjects                Subject[]
+  charges                 Charge[]
+  payments                Payment[]
+  notifications           Notification[]
+  meetings                Meeting[]
+  tasks                   Task[]
+  notas                   Nota[]
+  schedules               Schedule[]
+  schedulePlans           SchedulePlan[]
+  gateRecords             GateRecord[]
+  teacherAttendances      TeacherAttendance[]
+  studentAttendances      StudentAttendance[]
+  biometricTemplates      BiometricTemplate[]
+  poaActas                PoaActa[]
+  studentGamifications    StudentGamification[]
+  studentAchievements     StudentAchievement[]
+  studentTrimesterBonuses StudentTrimesterBonus[]
 }
 
 model SchoolSchedule {
@@ -104,34 +107,34 @@ model SchoolSchedule {
 }
 
 model User {
-  id                Int            @id @default(autoincrement())
-  email             String         @unique
+  id                Int             @id @default(autoincrement())
+  email             String          @unique
   password          String
   role              Role
-  isActive          Boolean        @default(true)
-  createdAt         DateTime       @default(now())
-  updatedAt         DateTime       @updatedAt
+  isActive          Boolean         @default(true)
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
   schoolId          Int?
   districtId        Int?
   nucleoId          Int?
   createdByUserId   Int?
-  school            School?        @relation(fields: [schoolId], references: [id])
-  district          District?      @relation(fields: [districtId], references: [id])
-  nucleo            Nucleo?        @relation(fields: [nucleoId], references: [id])
-  createdBy         User?          @relation("UserCreatedBy", fields: [createdByUserId], references: [id])
-  createdUsers      User[]         @relation("UserCreatedBy")
+  school            School?         @relation(fields: [schoolId], references: [id])
+  district          District?       @relation(fields: [districtId], references: [id])
+  nucleo            Nucleo?         @relation(fields: [nucleoId], references: [id])
+  createdBy         User?           @relation("UserCreatedBy", fields: [createdByUserId], references: [id])
+  createdUsers      User[]          @relation("UserCreatedBy")
   juntaMember       JuntaMember?
   gobiernoMember    GobiernoMember?
-  meetingsCreated   Meeting[]      @relation("MeetingCreator")
-  notificationsSent Notification[] @relation("NotificationSender")
-  comunicados       Comunicado[]   @relation("ComunicadoAuthor")
-  parentDelegate    Parent?        @relation("ParentDelegate")
-  parent            Parent?        @relation("ParentUser")
+  meetingsCreated   Meeting[]       @relation("MeetingCreator")
+  notificationsSent Notification[]  @relation("NotificationSender")
+  comunicados       Comunicado[]    @relation("ComunicadoAuthor")
+  parentDelegate    Parent?         @relation("ParentDelegate")
+  parent            Parent?         @relation("ParentUser")
   director          ShiftDirector?
   staff             Staff?
   student           Student?
-  teacherTutor      Teacher?       @relation("TeacherTutor")
-  teacher           Teacher?       @relation("TeacherUser")
+  teacherTutor      Teacher?        @relation("TeacherTutor")
+  teacher           Teacher?        @relation("TeacherUser")
   poaActasCreated   PoaActa[]
 }
 
@@ -211,16 +214,17 @@ model AcademicYear {
 }
 
 model Trimester {
-  id             Int          @id @default(autoincrement())
-  number         Int
-  name           String?
-  startDate      DateTime
-  endDate        DateTime
-  academicYearId Int
-  isClosed       Boolean      @default(false)
-  notas          Nota[]
-  tasks          Task[]
-  academicYear   AcademicYear @relation(fields: [academicYearId], references: [id])
+  id               Int                     @id @default(autoincrement())
+  number           Int
+  name             String?
+  startDate        DateTime
+  endDate          DateTime
+  academicYearId   Int
+  isClosed         Boolean                 @default(false)
+  notas            Nota[]
+  tasks            Task[]
+  academicYear     AcademicYear            @relation(fields: [academicYearId], references: [id])
+  trimesterBonuses StudentTrimesterBonus[]
 
   @@unique([academicYearId, number])
 }
@@ -286,6 +290,9 @@ model Student {
   studentAttendances StudentAttendance[]
   taskSubmissions    TaskSubmission[]
   gateRecords        GateRecord[]
+  gamification       StudentGamification?
+  achievements       StudentAchievement[]
+  trimesterBonuses   StudentTrimesterBonus[]
 
   @@unique([ci, schoolId])
   @@unique([rude, schoolId])
@@ -496,18 +503,75 @@ model Task {
 }
 
 model TaskSubmission {
-  id        Int        @id @default(autoincrement())
-  taskId    Int
-  studentId Int
-  score     Float?
-  note      String?
-  status    TaskStatus @default(PENDIENTE)
-  createdAt DateTime   @default(now())
-  updatedAt DateTime   @updatedAt
-  student   Student    @relation(fields: [studentId], references: [id])
-  task      Task       @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  id          Int        @id @default(autoincrement())
+  taskId      Int
+  studentId   Int
+  score       Float?
+  note        String?
+  status      TaskStatus @default(PENDIENTE)
+  submittedAt DateTime?
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+  student     Student    @relation(fields: [studentId], references: [id])
+  task        Task       @relation(fields: [taskId], references: [id], onDelete: Cascade)
 
   @@unique([taskId, studentId])
+}
+
+// Gamificación del panel Estudiante: XP/nivel + racha (1:1 con Student), catálogo de
+// logros global + desbloqueados por estudiante, y bonus de XP idempotente por cierre
+// de trimestre. Ver backend/src/services/gamification.service.ts para la lógica.
+model StudentGamification {
+  id             Int       @id @default(autoincrement())
+  studentId      Int       @unique
+  xp             Int       @default(0)
+  currentStreak  Int       @default(0)
+  longestStreak  Int       @default(0)
+  lastStreakDate DateTime?
+  schoolId       Int
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  student        Student   @relation(fields: [studentId], references: [id])
+  school         School    @relation(fields: [schoolId], references: [id])
+}
+
+model AchievementDefinition {
+  id            Int                  @id @default(autoincrement())
+  code          String               @unique
+  name          String
+  description   String
+  icon          String
+  criteriaKey   String
+  criteriaValue Float?
+  createdAt     DateTime             @default(now())
+  unlocks       StudentAchievement[]
+}
+
+model StudentAchievement {
+  id            Int                   @id @default(autoincrement())
+  studentId     Int
+  achievementId Int
+  unlockedAt    DateTime              @default(now())
+  schoolId      Int
+  student       Student               @relation(fields: [studentId], references: [id])
+  achievement   AchievementDefinition @relation(fields: [achievementId], references: [id])
+  school        School                @relation(fields: [schoolId], references: [id])
+
+  @@unique([studentId, achievementId])
+}
+
+model StudentTrimesterBonus {
+  id          Int       @id @default(autoincrement())
+  studentId   Int
+  trimesterId Int
+  xpAwarded   Int
+  awardedAt   DateTime  @default(now())
+  schoolId    Int
+  student     Student   @relation(fields: [studentId], references: [id])
+  trimester   Trimester @relation(fields: [trimesterId], references: [id])
+  school      School    @relation(fields: [schoolId], references: [id])
+
+  @@unique([studentId, trimesterId])
 }
 
 model StudentAcademicAssignment {
@@ -849,8 +913,8 @@ enum SchoolArea {
 // (inicial/primaria/secundaria) — los otros dos quedan registrados como dato
 // informativo, sin flujo académico propio todavía.
 enum Subsistema {
-  REGULAR                     // Inicial, Primaria y Secundaria Comunitaria
-  ALTERNATIVA_ESPECIAL        // EPA/ESA (adultos) y Educación Especial
+  REGULAR // Inicial, Primaria y Secundaria Comunitaria
+  ALTERNATIVA_ESPECIAL // EPA/ESA (adultos) y Educación Especial
   SUPERIOR_FORMACION_PROFESIONAL // ESFM, institutos técnicos, universidades
 }
 
@@ -978,6 +1042,7 @@ enum TaskType {
 
 enum TaskStatus {
   PENDIENTE
+  ENTREGADO
   CALIFICADO
 }
 

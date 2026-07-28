@@ -4,6 +4,8 @@ import { Prisma, Role } from '@prisma/client'
 import { studentRepository } from '../repositories/student.repository'
 import { userRepository } from '../repositories/user.repository'
 import { parentRepository } from '../repositories/parent.repository'
+import { taskRepository } from '../repositories/task.repository'
+import { gamificationService } from './gamification.service'
 import { HttpError } from '../utils/http-error'
 import { getTenantContext } from '../lib/tenant-context'
 import { Permission, hasPermission } from '../config/permissions'
@@ -305,10 +307,12 @@ export const studentService = {
       id: t.id, title: t.title, description: t.description, type: t.type,
       maxScore: t.maxScore, dueDate: t.dueDate, subject: t.subject,
       teacher: `${t.teacher.firstName} ${t.teacher.lastName}`, trimester: t.trimester,
-      score:    t.submissions[0]?.score      ?? null,
-      status:   t.submissions[0]?.status     ?? 'PENDIENTE',
-      note:     t.submissions[0]?.note       ?? null,
-      gradedAt: t.submissions[0]?.updatedAt   ?? null,
+      submissionId: t.submissions[0]?.id         ?? null,
+      score:        t.submissions[0]?.score      ?? null,
+      status:       t.submissions[0]?.status     ?? 'PENDIENTE',
+      note:         t.submissions[0]?.note       ?? null,
+      submittedAt:  t.submissions[0]?.submittedAt ?? null,
+      gradedAt:     t.submissions[0]?.updatedAt   ?? null,
     }))
   },
 
@@ -382,7 +386,53 @@ export const studentService = {
     if (trimestre?.isClosed) throw new HttpError(400, 'El trimestre fue cerrado por la dirección')
 
     const total = calcTotal(nota.saber, nota.hacer, nota.ser, input.autoEvaluacion)
-    return studentRepository.updateNotaAutoEvaluacion(input.notaId, input.autoEvaluacion, total)
+    const updated = await studentRepository.updateNotaAutoEvaluacion(input.notaId, input.autoEvaluacion, total)
+    await gamificationService.evaluateAchievements(student.id)
+    return updated
+  },
+
+  async getMyGamification(userId: number | undefined, role: string) {
+    if (role === 'GOBIERNO_NUCLEO' || role === 'GOBIERNO_DISTRITO') {
+      return {
+        enabled: false, xp: 0, level: 1, xpIntoLevel: 0, xpForNextLevel: 500, progressPct: 0,
+        currentStreak: 0, longestStreak: 0, weekCalendar: [], attendancePct: null,
+      }
+    }
+
+    const student = await studentRepository.findByUserId(userId)
+    if (!student) throw new HttpError(404, 'Estudiante no encontrado')
+
+    const summary = await gamificationService.getSummary(student.id)
+    return { enabled: true, ...summary }
+  },
+
+  async getMyAchievements(userId: number | undefined) {
+    const student = await studentRepository.findByUserId(userId)
+    if (!student) throw new HttpError(404, 'Estudiante no encontrado')
+
+    return gamificationService.getAchievementsList(student.id)
+  },
+
+  async deliverTask(userId: number | undefined, submissionId: number) {
+    const submission = await taskRepository.findSubmissionById(submissionId)
+    if (!submission) throw new HttpError(404, 'Entrega no encontrada')
+
+    const student = await studentRepository.findByUserId(userId)
+    if (!student || student.id !== submission.studentId) throw new HttpError(403, 'No tienes permiso')
+
+    if (submission.status === 'CALIFICADO') throw new HttpError(400, 'Esta tarea ya fue calificada')
+    if (submission.status === 'ENTREGADO')  throw new HttpError(400, 'Ya marcaste esta tarea como entregada')
+
+    const now = new Date()
+    const onTime = !submission.task.dueDate || now <= submission.task.dueDate
+
+    const updated = await taskRepository.markSubmissionDelivered(submissionId, now)
+
+    const gam = onTime
+      ? await gamificationService.awardXp(student.id, gamificationService.XP_TASK_ON_TIME)
+      : await gamificationService.getCurrentGamification(student.id)
+
+    return { submission: updated, ...gam, onTime }
   },
 
   // ── Importación masiva ────────────────────────

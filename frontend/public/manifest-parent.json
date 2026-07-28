@@ -5,8 +5,8 @@
   "start_url": "/dashboard/parent",
   "scope": "/dashboard/parent",
   "display": "standalone",
-  "background_color": "#27500A",
-  "theme_color": "#27500A",
+  "background_color": "#136272",
+  "theme_color": "#136272",
   "orientation": "any",
   "lang": "es",
   "icons": [

@@ -8,17 +8,32 @@
 @property --dsh-primary {
   syntax: '<color>';
   inherits: true;
-  initial-value: #1a3a7c;
+  initial-value: #0a5a45;
 }
 @property --dsh-accent {
   syntax: '<color>';
   inherits: true;
-  initial-value: #2a57a8;
+  initial-value: #0f6e56;
 }
 @property --dsh-hover {
   syntax: '<color>';
   inherits: true;
-  initial-value: #3768c4;
+  initial-value: #14876a;
+}
+@property --dsh-bg {
+  syntax: '<color>';
+  inherits: true;
+  initial-value: #f5f7f8;
+}
+
+/* Selección de texto con el azul de marca del panel Estudiante — scoped a
+   .estudiantes-scope (ver dashboard/estudiantes/layout.tsx) para no afectar
+   la selección de texto en Admin/Padres/Docente/Portero. No existía ninguna
+   regla ::selection en el proyecto antes de esta; el rosa que se veía era el
+   color de selección por defecto del navegador/SO, no algo de EduLink. */
+.estudiantes-scope ::selection {
+  background: #3b5bdb;
+  color: #ffffff;
 }
 
 :root {
@@ -55,8 +70,46 @@
   --color-warning-500: #e0a800;
   --color-warning-100: #fff8e6;
 
+  /* ── Paleta de apoyo ("Opción 1") — análoga a nuestro verde/dorado de marca,
+     para acentos que hoy no teníamos: dorado mate, coral cálido para CTAs
+     secundarios/alertas suaves, menta pastel para fondos de éxito, y un
+     neutro oscuro. No reemplaza brand/accent — es de uso puntual. ── */
+  --color-warm-gold: #e9c46a;
+  --color-coral: #e76f51;
+  --color-coral-600: #d35a3c;
+  --color-mint-100: #d8f3dc;
+  --color-slate-800: #2a3439;
+
+  /* ── Paleta "tiza/pizarra" del panel de Plantel Docente — tokens de apoyo
+     además de primary/navbar/accent/hover/bg (ver dashboard/plantel-docente/layout.tsx).
+     Uso: tiza-suave para fondos secundarios/avatares, tiza-amarilla/rosa para
+     chips semánticos (p.ej. tardanza/ausente), grafito para texto secundario,
+     linea para bordes — todos dentro de páginas de plantel-docente. ── */
+  --color-docente-bg-soft: #ede7d6;
+  --color-docente-tardanza: #e3b94f;
+  --color-docente-ausente: #d98080;
+  --color-docente-text-secondary: #5b6b62;
+  --color-docente-text-tertiary: #8c978f;
+  --color-docente-border: #d8d0bc;
+
+  /* ── Paleta "gamificación" del panel de Estudiantes/Gobierno Estudiantil —
+     tokens de apoyo además de primary/navbar/accent/hover/bg/textSecondary/
+     border/bgSoft (ver dashboard/estudiantes/layout.tsx). logro = Verde
+     Resaltador (insignias desbloqueadas), racha = Naranja Resaltador (ícono
+     de llama). Rojo de alerta reutiliza --color-danger-* compartido, con
+     moderación (nunca como "fallaste"). --color-estudiante-dark-bg queda
+     registrado sin usar, para un futuro toggle de modo oscuro. ── */
+  --color-estudiante-logro: #a6e22e;
+  --color-estudiante-racha: #ff9f1c;
+  --color-estudiante-alerta: #ff4d8d;
+  --color-estudiante-dark-bg: #1a1a19;
+
   --color-neutral-900: #1f2937;
   --color-neutral-700: #4b5563;
+  /* Estos 3 se re-declaran por panel igual que brand-700/600/500/100: cada
+     DashboardShell puede pisar --color-neutral-500/300/100 directo en su nodo
+     raíz (hoy solo lo hace plantel-docente, con grafito/línea/tiza-suave) —
+     el resto conserva este mismo valor de siempre sin ningún cambio. */
   --color-neutral-500: #6b8bb0;
   --color-neutral-300: #cbe0f0;
   --color-neutral-100: #f0f6fc;
@@ -89,6 +142,24 @@
 
   --color-warning-500: var(--color-warning-500);
   --color-warning-100: var(--color-warning-100);
+
+  --color-warm-gold: var(--color-warm-gold);
+  --color-coral: var(--color-coral);
+  --color-coral-600: var(--color-coral-600);
+  --color-mint-100: var(--color-mint-100);
+  --color-slate-800: var(--color-slate-800);
+
+  --color-docente-bg-soft: var(--color-docente-bg-soft);
+  --color-docente-tardanza: var(--color-docente-tardanza);
+  --color-docente-ausente: var(--color-docente-ausente);
+  --color-docente-text-secondary: var(--color-docente-text-secondary);
+  --color-docente-text-tertiary: var(--color-docente-text-tertiary);
+  --color-docente-border: var(--color-docente-border);
+
+  --color-estudiante-logro: var(--color-estudiante-logro);
+  --color-estudiante-racha: var(--color-estudiante-racha);
+  --color-estudiante-alerta: var(--color-estudiante-alerta);
+  --color-estudiante-dark-bg: var(--color-estudiante-dark-bg);
 
   --color-neutral-900: var(--color-neutral-900);
   --color-neutral-700: var(--color-neutral-700);

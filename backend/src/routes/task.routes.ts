@@ -13,7 +13,6 @@ import {
   getTaskSubmissions,
   gradeSubmissions,
   getStudentTaskSummary,
-  markDelivered,
 } from '../controllers/task.controller'
 
 const router = Router()
@@ -34,8 +33,5 @@ router.delete('/:id',                          requirePermission(Permission.GRAD
 // Calificaciones
 router.get('/:id/submissions',                 requirePermission(Permission.GRADE_VIEW_ALL), getTaskSubmissions)
 router.patch('/:id/submissions/bulk',          requirePermission(Permission.GRADE_CREATE), validateBody(gradeSubmissionsSchema), gradeSubmissions)
-
-// Estudiante marca entrega (ownership validado en el service)
-router.patch('/submissions/:submissionId/mark-delivered', markDelivered)
 
 export default router

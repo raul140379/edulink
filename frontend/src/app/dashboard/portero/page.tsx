@@ -304,7 +304,7 @@ export default function PorteroPage() {
         </div>
         <div style={{ fontSize: 64, marginBottom: 16 }}>🔒</div>
         <div style={{ fontSize: 22, fontWeight: 800, color: '#F1F5F9', marginBottom: 8 }}>
-          Portería cerrada
+          Control cerrado
         </div>
         <div style={{ fontSize: 14, color: '#94A3B8', marginBottom: 32 }}>
           El turno finalizó. El módulo se habilitará nuevamente mañana.
@@ -348,7 +348,7 @@ export default function PorteroPage() {
         <>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, marginBottom: 12 }}>
             <button onClick={() => { setMode('teacher'); setStep('input'); setCode('') }} style={{
-              background: '#1A3A7C', border: 'none', borderRadius: 16, padding: '28px 16px',
+              background: '#3D5B71', border: 'none', borderRadius: 16, padding: '28px 16px',
               cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10,
             }}>
               <span style={{ fontSize: 40 }}>👨‍🏫</span>
@@ -507,7 +507,7 @@ export default function PorteroPage() {
 
           <button onClick={handleSearchCode} disabled={!code.trim() || loading} style={{
             width: '100%', padding: '15px', fontSize: 16, fontWeight: 700,
-            background: mode === 'staff' ? '#1A4A2A' : '#1A3A7C',
+            background: mode === 'staff' ? '#1A4A2A' : '#3D5B71',
             color: '#fff', border: 'none', borderRadius: 12, cursor: 'pointer',
             opacity: (!code.trim() || loading) ? 0.5 : 1,
           }}>
@@ -628,7 +628,7 @@ export default function PorteroPage() {
               {/* Stats */}
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: 10, marginBottom: 16 }}>
                 {[
-                  { label: 'Maestros esperados',   val: expected.summary?.teachersExpected  ?? 0, color: '#1A3A7C' },
+                  { label: 'Maestros esperados',   val: expected.summary?.teachersExpected  ?? 0, color: '#3D5B71' },
                   { label: 'Maestros registrados',  val: expected.summary?.teachersRegistered ?? 0, color: '#0F6E56' },
                 ].map(s => (
                   <div key={s.label} style={{

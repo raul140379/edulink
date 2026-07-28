@@ -115,12 +115,13 @@ export default function PerfilPage() {
       {/* Header */}
       <div
         className="rounded-xl px-6 py-5 mb-6 text-white flex items-center gap-4"
-        style={{ background: 'linear-gradient(135deg, var(--color-brand-700), var(--color-brand-500))' }}
+        style={{ background: 'linear-gradient(90deg, #3B5BDB, #5B7CF0)' }}
       >
         <div className="w-[60px] h-[60px] rounded-full bg-white/20 flex items-center justify-center shrink-0">
           <UserCircle size={36} className="text-white"/>
         </div>
         <div>
+          <div className="text-[12px] uppercase tracking-wide text-white/70 mb-0.5">Tu perfil 🙌</div>
           <div className="text-xl font-extrabold">{profile.firstName} {profile.lastName}</div>
           {profile.course && (
             <div className="text-[13px] text-white/80 mt-1">

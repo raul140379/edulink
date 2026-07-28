@@ -89,16 +89,16 @@ export default function NotificacionesPage() {
       {/* Header */}
       <div
         className="rounded-xl px-6 py-5 mb-6 text-white flex items-center justify-between flex-wrap gap-3"
-        style={{ background: 'linear-gradient(135deg, var(--color-brand-700), var(--color-brand-500))' }}
+        style={{ background: 'linear-gradient(90deg, #3B5BDB, #5B7CF0)' }}
       >
         <div>
           <div className="flex items-center gap-1.5 text-[13px] text-white/75 mb-1"><Bell size={14}/> Notificaciones</div>
-          <div className="text-xl font-extrabold">Mis Notificaciones</div>
-          {unreadCount > 0 && (
-            <div className="text-[13px] text-white/80 mt-1">
-              {unreadCount} notificación{unreadCount > 1 ? 'es' : ''} sin leer
-            </div>
-          )}
+          <div className="text-xl font-extrabold">🔔 Mis Notificaciones</div>
+          <div className="text-[13px] text-white/80 mt-1">
+            {unreadCount > 0
+              ? <>Tenés <span className="font-extrabold text-accent-500">{unreadCount}</span> sin leer 👀</>
+              : 'Estás al día con todo ✅'}
+          </div>
         </div>
         {unreadCount > 0 && (
           <button
@@ -156,7 +156,7 @@ export default function NotificacionesPage() {
       {filtradas.length === 0 ? (
         <Card className="text-center py-12">
           <Bell size={40} className="mx-auto mb-3 opacity-40"/>
-          <div className="text-[15px] text-neutral-500">No hay notificaciones.</div>
+          <div className="text-[15px] text-neutral-500">Todo tranqui, nada nuevo por acá 😌</div>
         </Card>
       ) : (
         <div className="flex flex-col gap-2.5">

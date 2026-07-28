@@ -38,15 +38,15 @@ export default function GobiernoNucleoHome() {
 
   const greeting = () => {
     const h = new Date().getHours()
-    return h < 12 ? 'Buenos días' : h < 18 ? 'Buenas tardes' : 'Buenas noches'
+    return h < 12 ? '¡Buen día' : h < 19 ? '¡Qué tal' : '¡Todo bien'
   }
 
   return (
     <div>
       <div className="bg-brand-700 rounded-2xl px-7 py-6 flex items-center justify-between gap-4 mb-6">
         <div>
-          <h1 className="text-white text-xl font-bold mb-1.5">{greeting()}, {user?.email?.split('@')[0]} 👋</h1>
-          <p className="text-info-500 text-[13px]">Gobierno Estudiantil de Núcleo</p>
+          <h1 className="text-white text-xl font-bold mb-1.5">{greeting()}, {user?.email?.split('@')[0]}! 🚀</h1>
+          <p className="text-info-500 text-[13px]">Gobierno Estudiantil de Núcleo — tu núcleo cuenta con vos 💪</p>
         </div>
         <div className="bg-accent-500 text-[#3A2F00] text-xs font-bold px-3.5 py-1.5 rounded-full whitespace-nowrap shrink-0">
           Gestión {new Date().getFullYear()}
@@ -59,7 +59,7 @@ export default function GobiernoNucleoHome() {
           {loading ? (
             <p className="text-sm text-neutral-500 py-6 text-center">Cargando...</p>
           ) : schools.length === 0 ? (
-            <p className="text-sm text-neutral-500 py-6 text-center">No hay colegios en tu núcleo todavía</p>
+            <p className="text-sm text-neutral-500 py-6 text-center">Todavía no hay colegios en tu núcleo 🚧</p>
           ) : (
             <div className="flex flex-col gap-2">
               {schools.map(s => (
@@ -92,7 +92,7 @@ export default function GobiernoNucleoHome() {
         {loading ? (
           <p className="text-sm text-neutral-500 py-6 text-center">Cargando...</p>
         ) : comunicados.length === 0 ? (
-          <p className="text-sm text-neutral-500 py-6 text-center">No hay comunicados publicados todavía</p>
+          <p className="text-sm text-neutral-500 py-6 text-center">Todavía no publicaste nada — dale, arrancá 📣</p>
         ) : (
           <div className="flex flex-col gap-2">
             {comunicados.slice(0, 3).map(c => (

@@ -3,6 +3,7 @@ import { HttpError } from '../utils/http-error'
 import {
   InitNotaInput, AddNotaItemInput, UpdateNotaItemInput, UpdateSerInput, UpdateAutoEvaluacionInput,
 } from '../schemas/nota.schema'
+import { gamificationService } from './gamification.service'
 
 function calcularTotal(saber: number | null, hacer: number | null, ser: number | null, autoEval: number | null): number | null {
   const vals = [saber, hacer, ser, autoEval].filter((v) => v !== null) as number[]
@@ -58,7 +59,9 @@ async function recalcularNota(notaId: number) {
   const autoEval = nota?.autoEvaluacion ?? null
   const total    = calcularTotal(saber, hacer, ser, autoEval)
 
-  return notaRepository.updateNotaCalculated(notaId, { saber, hacer, total })
+  const updated = await notaRepository.updateNotaCalculated(notaId, { saber, hacer, total })
+  if (nota) await gamificationService.evaluateAchievements(nota.studentId)
+  return updated
 }
 
 export const notaService = {
@@ -193,7 +196,9 @@ export const notaService = {
     if (errorTrimCerrado) throw new HttpError(400, errorTrimCerrado)
 
     const total = calcularTotal(nota.saber, nota.hacer, input.ser, nota.autoEvaluacion)
-    return notaRepository.updateSer(notaId, input.ser, total)
+    const updated = await notaRepository.updateSer(notaId, input.ser, total)
+    await gamificationService.evaluateAchievements(nota.studentId)
+    return updated
   },
 
   async updateAutoEvaluacion(notaId: number, input: UpdateAutoEvaluacionInput) {
@@ -202,7 +207,9 @@ export const notaService = {
     if (nota.cerrado) throw new HttpError(400, 'El trimestre está cerrado')
 
     const total = calcularTotal(nota.saber, nota.hacer, nota.ser, input.autoEvaluacion)
-    return notaRepository.updateAutoEvaluacion(notaId, input.autoEvaluacion, total)
+    const updated = await notaRepository.updateAutoEvaluacion(notaId, input.autoEvaluacion, total)
+    await gamificationService.evaluateAchievements(nota.studentId)
+    return updated
   },
 
   async cerrarNota(notaId: number) {

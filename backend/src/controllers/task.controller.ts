@@ -104,18 +104,6 @@ export const gradeSubmissions = async (req: AuthRequest, res: Response): Promise
 }
 
 // ─────────────────────────────────────────────
-// PATCH /api/tasks/submissions/:submissionId/mark-delivered
-// ─────────────────────────────────────────────
-export const markDelivered = async (req: AuthRequest, res: Response): Promise<void> => {
-  try {
-    const submission = await taskService.markDelivered(req.userId, parseInt(req.params.submissionId))
-    res.json({ message: 'Tarea marcada como entregada', submission })
-  } catch (error) {
-    handleControllerError(res, error)
-  }
-}
-
-// ─────────────────────────────────────────────
 // GET /api/tasks/summary/by-student/:studentId
 // ─────────────────────────────────────────────
 export const getStudentTaskSummary = async (req: AuthRequest, res: Response): Promise<void> => {

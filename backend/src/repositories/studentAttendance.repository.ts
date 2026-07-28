@@ -26,6 +26,10 @@ export const studentAttendanceRepository = {
     return prisma.course.findUnique({ where: { id } })
   },
 
+  findOneForDay(studentId: number, courseId: number, date: Date) {
+    return prisma.studentAttendance.findUnique({ where: { studentId_courseId_date: { studentId, courseId, date } } })
+  },
+
   upsertAttendance(data: { studentId: number; courseId: number; teacherId: number; academicYearId: number; date: Date; status: string; note: string | null }) {
     return prisma.studentAttendance.upsert({
       where: { studentId_courseId_date: { studentId: data.studentId, courseId: data.courseId, date: data.date } },

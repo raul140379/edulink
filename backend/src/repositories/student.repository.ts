@@ -299,7 +299,7 @@ export const studentRepository = {
         trimester: { select: { id: true, number: true, name: true } },
         submissions: {
           where: { studentId },
-          select: { score: true, status: true, note: true, updatedAt: true },
+          select: { id: true, score: true, status: true, note: true, submittedAt: true, updatedAt: true },
         },
       },
       orderBy: { createdAt: 'desc' },

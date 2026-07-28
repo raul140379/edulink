@@ -185,6 +185,30 @@ export const getMySubjects = async (req: AuthRequest, res: Response): Promise<vo
   }
 }
 
+export const getMyGamification = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    res.json(await studentService.getMyGamification(req.userId, req.userRole as string))
+  } catch (error) {
+    handleControllerError(res, error)
+  }
+}
+
+export const getMyAchievements = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    res.json(await studentService.getMyAchievements(req.userId))
+  } catch (error) {
+    handleControllerError(res, error)
+  }
+}
+
+export const deliverTask = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    res.json(await studentService.deliverTask(req.userId, parseInt(req.params.submissionId)))
+  } catch (error) {
+    handleControllerError(res, error)
+  }
+}
+
 export const getMyNotifications = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
     res.json(await studentService.getMyNotifications(req.userId))

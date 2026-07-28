@@ -96,7 +96,7 @@ export default function PadresLayout({ children }: { children: React.ReactNode }
       profileHref={isDistrictLevel ? '/dashboard/padres' : '/dashboard/padres/perfil'}
       notificationsHref={isDistrictLevel ? undefined : '/dashboard/padres/notificaciones'}
       menuGroups={menuGroups}
-      theme={{ primary: '#00838F', navbar: '#006D75', accent: '#0097A7', hover: '#00ACC1' }}
+      theme={{ primary: '#136272', navbar: '#0C4955', accent: '#1A7789', hover: '#2790A5', bg: '#D7EFF4' }}
     >
       {children}
     </DashboardShell>

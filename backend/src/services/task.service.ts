@@ -2,6 +2,7 @@ import { taskRepository } from '../repositories/task.repository'
 import { HttpError } from '../utils/http-error'
 import { CreateTaskInput, UpdateTaskInput, GradeSubmissionsInput } from '../schemas/task.schema'
 import { getTenantContext } from '../lib/tenant-context'
+import { gamificationService } from './gamification.service'
 
 function getDimension(type: string): 'SABER' | 'HACER' | null {
   if (type === 'EVALUACION') return 'SABER'
@@ -28,7 +29,9 @@ async function recalcularNotaDesdeTask(notaId: number) {
   const vals = [saber, hacer, ser, autoEval].filter((v) => v !== null) as number[]
   const total = vals.length > 0 ? Math.round(vals.reduce((a, b) => a + b, 0) * 100) / 100 : null
 
-  return taskRepository.updateNotaCalculated(notaId, { saber, hacer, total })
+  const updated = await taskRepository.updateNotaCalculated(notaId, { saber, hacer, total })
+  if (nota) await gamificationService.evaluateAchievements(nota.studentId)
+  return updated
 }
 
 export const taskService = {
@@ -139,18 +142,6 @@ export const taskService = {
         await recalcularNotaDesdeTask(nota.id)
       }
     }
-  },
-
-  async markDelivered(userId: number | undefined, submissionId: number) {
-    const submission = await taskRepository.findSubmissionById(submissionId)
-    if (!submission) throw new HttpError(404, 'Entrega no encontrada')
-
-    const student = await taskRepository.findStudentByUserId(userId)
-    if (!student || student.id !== submission.studentId) throw new HttpError(403, 'No tienes permiso')
-
-    if (submission.status === 'CALIFICADO') throw new HttpError(400, 'Esta tarea ya fue calificada')
-
-    return taskRepository.updateSubmissionStatus(submissionId, 'PENDIENTE')
   },
 
   async getStudentTaskSummary(studentId: number, trimesterId?: string) {

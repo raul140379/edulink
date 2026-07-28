@@ -29,6 +29,9 @@ export const DIRECT_SCHOOL_SCOPED_MODELS = new Set([
   'StudentAttendance',
   'BiometricTemplate',
   'PoaActa',
+  'StudentGamification',
+  'StudentAchievement',
+  'StudentTrimesterBonus',
 ])
 
 /**

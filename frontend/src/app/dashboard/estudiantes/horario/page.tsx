@@ -92,14 +92,14 @@ export default function EstudianteHorarioPage() {
   if (!student?.course) return (
     <Card className="text-center py-12 border-dashed">
       <div className="text-4xl mb-3">📅</div>
-      <p className="text-neutral-500">No tienes curso asignado aún.</p>
+      <p className="text-neutral-500">Todavía no tenés curso asignado — hablá con la dirección de tu colegio.</p>
     </Card>
   )
 
   return (
     <div>
       <div className="mb-5">
-        <h1 className="text-xl font-bold text-brand-700 mb-1">Mi Horario</h1>
+        <h1 className="text-xl font-bold text-brand-700 mb-1">🗓️ Mi Horario</h1>
         <p className="text-[13px] text-neutral-500">
           {GRADES[student.course.grade]} &quot;{student.course.parallel}&quot; · {SHIFTS[student.course.shift]}
         </p>
@@ -108,7 +108,7 @@ export default function EstudianteHorarioPage() {
       {schedule.length === 0 ? (
         <Card className="text-center py-12 border-dashed">
           <div className="text-4xl mb-3">📅</div>
-          <p className="text-neutral-500">El horario de tu curso aún no ha sido publicado.</p>
+          <p className="text-neutral-500">Tu horario está por salir, ya casi 👀</p>
         </Card>
       ) : (
         <>

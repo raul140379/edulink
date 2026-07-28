@@ -106,9 +106,9 @@ export default function CodigosPage() {
       <html><head><title>QR - ${selected.lastName} ${selected.firstName}</title>
       <style>
         body { font-family: Arial, sans-serif; display: flex; flex-direction: column; align-items: center; padding: 40px; }
-        .card { border: 2px solid #1A3A7C; border-radius: 12px; padding: 24px; text-align: center; max-width: 280px; }
-        .name { font-size: 16px; font-weight: 700; color: #1A3A7C; margin: 12px 0 4px; }
-        .role { font-size: 12px; color: #6B8BB0; margin-bottom: 8px; }
+        .card { border: 2px solid #0A5A45; border-radius: 12px; padding: 24px; text-align: center; max-width: 280px; }
+        .name { font-size: 16px; font-weight: 700; color: #0A5A45; margin: 12px 0 4px; }
+        .role { font-size: 12px; color: #6B8F7F; margin-bottom: 8px; }
         .code { font-size: 20px; font-weight: 800; letter-spacing: 4px; color: #0F172A; font-family: monospace; }
         .school { font-size: 11px; color: #94A3B8; margin-top: 12px; }
         img { width: 220px; height: 220px; }
@@ -152,11 +152,11 @@ export default function CodigosPage() {
       <html><head><title>Códigos QR — EduLink</title>
       <style>
         body { font-family: Arial, sans-serif; padding: 20px; }
-        h1 { font-size: 16px; color: #1A3A7C; text-align: center; margin-bottom: 20px; }
+        h1 { font-size: 16px; color: #0A5A45; text-align: center; margin-bottom: 20px; }
         .grid { display: flex; flex-wrap: wrap; gap: 16px; justify-content: center; }
-        .card { border: 1.5px solid #1A3A7C; border-radius: 10px; padding: 14px; text-align: center; width: 180px; page-break-inside: avoid; }
-        .name { font-size: 11px; font-weight: 700; color: #1A3A7C; margin: 8px 0 2px; }
-        .role { font-size: 9px; color: #6B8BB0; margin-bottom: 4px; }
+        .card { border: 1.5px solid #0A5A45; border-radius: 10px; padding: 14px; text-align: center; width: 180px; page-break-inside: avoid; }
+        .name { font-size: 11px; font-weight: 700; color: #0A5A45; margin: 8px 0 2px; }
+        .role { font-size: 9px; color: #6B8F7F; margin-bottom: 4px; }
         .code { font-size: 13px; font-weight: 800; letter-spacing: 3px; color: #0F172A; font-family: monospace; }
         .school { font-size: 9px; color: #94A3B8; }
         img { width: 150px; height: 150px; }

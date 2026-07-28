@@ -44,7 +44,7 @@ const DAYS = ['', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado
 
 const CAMPO_COLOR: Record<string,string> = {
   VIDA_TIERRA_TERRITORIO:        '#0F6E56',
-  COMUNIDAD_SOCIEDAD:            '#1A3A7C',
+  COMUNIDAD_SOCIEDAD:            '#0A5A45',
   COSMOS_PENSAMIENTO:            '#633806',
   CIENCIA_TECNOLOGIA_PRODUCCION: '#8B1A7C',
 }
@@ -61,7 +61,7 @@ const SUBJECT_EMOJI: Record<string, string> = {
 }
 
 const SLOT_COLORS: Record<string, {bg:string; border:string; text:string; badge:string}> = {
-  TEMP: { bg:'#F0F6FC', border:'#CBE0F0', text:'#1A3A7C', badge:'#1A3A7C' },
+  TEMP: { bg:'#F5FAF7', border:'#DCEEE6', text:'#0A5A45', badge:'#0A5A45' },
   A:    { bg:'#E8F5F0', border:'#9FE1CB', text:'#0F6E56', badge:'#0F6E56' },
   B:    { bg:'#F3E8FF', border:'#C4A8E8', text:'#6B21A8', badge:'#6B21A8' },
 }
@@ -313,14 +313,14 @@ export default function PlanificacionPage() {
             <span style={{fontSize:11,background:slotCol.badge+'22',color:slotCol.badge,padding:'2px 8px',borderRadius:20,fontWeight:600}}>
               {SHIFTS[course.shift]}
             </span>
-            <span style={{fontSize:11,color:'#6B8BB0'}}>{course.level}</span>
+            <span style={{fontSize:11,color:'#6B8F7F'}}>{course.level}</span>
           </div>
           <div style={{display:'flex',alignItems:'center',gap:10}}>
             <span style={{fontSize:12,color:pct===100?'#0F6E56':'#BA7517',fontWeight:600}}>
               {totalAsig}/{totalMax}P ({pct}%)
             </span>
             <div style={{width:80,height:6,background:'#E0ECF8',borderRadius:3,overflow:'hidden'}}>
-              <div style={{height:'100%',width:`${pct}%`,background:pct===100?'#0F6E56':pct>=60?'#BA7517':'#1A3A7C',borderRadius:3}}/>
+              <div style={{height:'100%',width:`${pct}%`,background:pct===100?'#0F6E56':pct>=60?'#BA7517':'#0A5A45',borderRadius:3}}/>
             </div>
           </div>
         </div>
@@ -341,8 +341,8 @@ export default function PlanificacionPage() {
                   <React.Fragment key={period}>
                     <tr>
                       <td style={{...tdStyle,textAlign:'center',background:'#F8FBFF',fontSize:10,whiteSpace:'nowrap',fontWeight:700}}>
-                        <div style={{color:'#1A3A7C'}}>P{period}</div>
-                        <div style={{fontSize:9,color:'#6B8BB0',fontWeight:400}}>{pt.startTime}</div>
+                        <div style={{color:'#0A5A45'}}>P{period}</div>
+                        <div style={{fontSize:9,color:'#6B8F7F',fontWeight:400}}>{pt.startTime}</div>
                       </td>
                       {days.map(day => {
                         const cell  = getCell(day, period)
@@ -372,7 +372,7 @@ export default function PlanificacionPage() {
                                   {SUBJECT_EMOJI[cell.teacherSubjectCourse.subject.name] || '📚'}{' '}
                                   {cell.teacherSubjectCourse.subject.name.slice(0,12)}
                                 </div>
-                                <div style={{fontSize:9,color:'#6B8BB0'}}>
+                                <div style={{fontSize:9,color:'#6B8F7F'}}>
                                   {cell.teacherSubjectCourse.teacher.lastName}
                                 </div>
                                 {editMode && (
@@ -457,10 +457,10 @@ export default function PlanificacionPage() {
                 key={slot}
                 onClick={() => handleSlotChange(slot)}
                 className="rounded-[10px] px-4 py-2.5 cursor-pointer"
-                style={{ border:`2px solid ${isActive ? col.badge : '#CBE0F0'}`, background: isActive ? col.bg : '#fff', minWidth:160 }}
+                style={{ border:`2px solid ${isActive ? col.badge : '#DCEEE6'}`, background: isActive ? col.bg : '#fff', minWidth:160 }}
               >
                 <div className="flex items-center justify-between mb-1">
-                  <span className="font-bold text-[13px]" style={{ color:isActive?col.text:'#6B8BB0' }}>
+                  <span className="font-bold text-[13px]" style={{ color:isActive?col.text:'#6B8F7F' }}>
                     {slot === 'TEMP' ? '⏳ Temporal' : `📋 Slot ${slot}`}
                   </span>
                   {count > 0 && slot !== 'TEMP' && (
@@ -702,9 +702,9 @@ export default function PlanificacionPage() {
 }
 
 const thStyle: React.CSSProperties = {
-  padding:'6px 8px',background:'#F0F6FC',fontSize:11,fontWeight:700,
-  color:'#1A3A7C',textAlign:'center',border:'1px solid #CBE0F0',
+  padding:'6px 8px',background:'#F5FAF7',fontSize:11,fontWeight:700,
+  color:'#0A5A45',textAlign:'center',border:'1px solid #DCEEE6',
 }
 const tdStyle: React.CSSProperties = {
-  padding:'4px 6px',border:'1px solid #CBE0F0',verticalAlign:'middle',fontSize:11,
+  padding:'4px 6px',border:'1px solid #DCEEE6',verticalAlign:'middle',fontSize:11,
 }

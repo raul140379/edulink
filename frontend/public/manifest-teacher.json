@@ -5,8 +5,8 @@
   "start_url": "/dashboard/teacher",
   "scope": "/dashboard/teacher",
   "display": "standalone",
-  "background_color": "#633806",
-  "theme_color": "#633806",
+  "background_color": "#5A358D",
+  "theme_color": "#5A358D",
   "orientation": "any",
   "lang": "es",
   "icons": [

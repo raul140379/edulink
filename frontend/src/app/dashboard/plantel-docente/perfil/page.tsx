@@ -12,6 +12,6 @@ export default function Perfil() {
 
   if (!role) return null
   return role === 'TEACHER_TUTOR'
-    ? <PerfilPage rolLabel="Maestro Tutor" roleColor="#0F6E56" />
-    : <PerfilPage rolLabel="Maestro Docente" roleColor="#1A3A7C" />
+    ? <PerfilPage rolLabel="Maestro Tutor" roleColor="#6D44A7" />
+    : <PerfilPage rolLabel="Maestro Docente" roleColor="#5A358D" />
 }

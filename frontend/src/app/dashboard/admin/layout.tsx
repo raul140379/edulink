@@ -51,7 +51,7 @@ const menuGroups: MenuGroup[] = [
     items: [
       { label: 'Padres / Tutores',  href: '/dashboard/admin/padres',     icon: <Users size={16}/>,         roles: ADMIN_ROLES },
       { label: 'Asistencia de Maestros', href: '/dashboard/admin/asistencia', icon: <ClipboardCheck size={16}/>, roles: ['SUPER_ADMIN','DIRECTOR','SECRETARY'] },
-      { label: 'Portero',           href: '/dashboard/admin/portero',    icon: <ShieldCheck size={16}/>,   roles: ['SUPER_ADMIN','DIRECTOR'] },
+      { label: 'Seguridad y Control', href: '/dashboard/admin/portero',    icon: <ShieldCheck size={16}/>,   roles: ['SUPER_ADMIN','DIRECTOR'] },
     ]
   },
   {
@@ -106,7 +106,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       profileHref="/dashboard/admin/perfil"
       notificationsHref="/dashboard/admin/notificaciones"
       menuGroups={menuGroups}
-      theme={{ primary: '#1A3A7C', navbar: '#15316B', accent: '#2A57A8', hover: '#3768C4' }}
+      theme={{ primary: '#0A5A45', navbar: '#073F30', accent: '#0F6E56', hover: '#14876A', bg: '#D8F3DC' }}
     >
       {children}
     </DashboardShell>

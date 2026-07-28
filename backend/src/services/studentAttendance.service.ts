@@ -1,6 +1,7 @@
 import { studentAttendanceRepository } from '../repositories/studentAttendance.repository'
 import { HttpError } from '../utils/http-error'
 import { SaveAttendanceInput, CloseAttendanceInput } from '../schemas/studentAttendance.schema'
+import { gamificationService } from './gamification.service'
 
 const GRADES: Record<string, string> = { PRIMERO: '1°', SEGUNDO: '2°', TERCERO: '3°', CUARTO: '4°', QUINTO: '5°', SEXTO: '6°' }
 
@@ -65,11 +66,21 @@ export const studentAttendanceService = {
     let notifCount = 0
 
     for (const att of input.attendances) {
+      const existing = await studentAttendanceRepository.findOneForDay(att.studentId, courseId, base)
+
       await studentAttendanceRepository.upsertAttendance({
         studentId: att.studentId, courseId, teacherId: teacher.id, academicYearId: activeYear.id,
         date: base, status: att.status, note: att.note || null,
       })
       count++
+
+      // XP y racha solo la primera vez que se registra este día para este
+      // estudiante — si un profesor corrige PRESENTE→RETRASO el mismo día no
+      // debe volver a sumar.
+      if (!existing && (att.status === 'PRESENTE' || att.status === 'RETRASO')) {
+        await gamificationService.awardXp(att.studentId, gamificationService.XP_ATTENDANCE_DAY)
+        await gamificationService.recalculateStreak(att.studentId)
+      }
 
       if (att.status === 'AUSENTE' || att.status === 'RETRASO') {
         const statusLabel = att.status === 'AUSENTE' ? 'ausente' : 'con retraso'

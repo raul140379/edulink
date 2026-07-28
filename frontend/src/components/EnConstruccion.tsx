@@ -11,7 +11,7 @@ interface Props {
 export default function EnConstruccion({
   titulo      = 'Módulo en construcción',
   descripcion = 'Esta funcionalidad estará disponible próximamente.',
-  color       = '#1A3A7C',
+  color       = '#0A5A45',
 }: Props) {
   return (
     <div style={{
@@ -26,7 +26,7 @@ export default function EnConstruccion({
         <Construction size={40} color="#F5C518"/>
       </div>
       <h2 style={{ fontSize: '20px', fontWeight: '700', color, margin: 0 }}>{titulo}</h2>
-      <p style={{ fontSize: '14px', color: '#6B8BB0', maxWidth: '400px', lineHeight: '1.6', margin: 0 }}>
+      <p style={{ fontSize: '14px', color: '#6B8F7F', maxWidth: '400px', lineHeight: '1.6', margin: 0 }}>
         {descripcion}
       </p>
       <div style={{

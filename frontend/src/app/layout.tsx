@@ -35,7 +35,7 @@ export default function RootLayout({
         <meta name="apple-mobile-web-app-status-bar-style" content="default" />
         <meta name="apple-mobile-web-app-title" content="EduLink NNUU" />
         <meta name="mobile-web-app-capable" content="yes" />
-        <meta name="theme-color" content="#1A3A7C" />
+        <meta name="theme-color" content="#0A5A45" />
         <link rel="manifest" href="/manifest.json" id="pwa-manifest" />
         <link rel="apple-touch-icon" href="/logo-nnuu.jpeg" />
         <script dangerouslySetInnerHTML={{ __html: `

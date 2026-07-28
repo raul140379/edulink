@@ -150,7 +150,7 @@ export default function AsistenciaKioscoPage() {
 
       <style>{`
         * { margin:0; padding:0; box-sizing:border-box; }
-        .root { min-height:100vh; background:linear-gradient(135deg,#1A3A7C 0%,#633806 100%); display:flex; flex-direction:column; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif; }
+        .root { min-height:100vh; background:linear-gradient(135deg,#344551 0%,#633806 100%); display:flex; flex-direction:column; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif; }
         .header { display:flex; align-items:center; justify-content:space-between; padding:16px 32px; background:rgba(0,0,0,.2); }
         .logo-area { display:flex; align-items:center; gap:12px; }
         .logo-circle { width:44px; height:44px; background:#fff; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:22px; flex-shrink:0; }
@@ -166,15 +166,15 @@ export default function AsistenciaKioscoPage() {
         .result-card.ok .result-icon { color:#0F6E56; }
         .result-card.err .result-icon { color:#C0392B; }
         .result-icon { display:flex; justify-content:center; margin-bottom:16px; }
-        .result-message { font-size:18px; font-weight:700; color:#1A3A7C; margin-bottom:12px; line-height:1.4; }
-        .result-hint { font-size:12px; color:#6B8BB0; }
+        .result-message { font-size:18px; font-weight:700; color:#344551; margin-bottom:12px; line-height:1.4; }
+        .result-hint { font-size:12px; color:#6B8F7F; }
         .form-card { background:#fff; border-radius:20px; padding:36px; max-width:480px; width:100%; box-shadow:0 20px 60px rgba(0,0,0,.3); }
         .form-title { display:flex; align-items:center; gap:10px; font-size:16px; font-weight:700; color:#633806; margin-bottom:28px; justify-content:center; }
         .form-group { margin-bottom:24px; }
-        .form-label { display:block; font-size:12px; font-weight:700; color:#1A3A7C; text-transform:uppercase; letter-spacing:.6px; margin-bottom:8px; }
-        .code-input { width:100%; padding:16px; border:2px solid #CBE0F0; border-radius:12px; font-size:24px; font-weight:800; text-align:center; letter-spacing:4px; color:#1A3A7C; outline:none; transition:border .2s; }
+        .form-label { display:block; font-size:12px; font-weight:700; color:#344551; text-transform:uppercase; letter-spacing:.6px; margin-bottom:8px; }
+        .code-input { width:100%; padding:16px; border:2px solid #DCEEE6; border-radius:12px; font-size:24px; font-weight:800; text-align:center; letter-spacing:4px; color:#344551; outline:none; transition:border .2s; }
         .code-input:focus { border-color:#633806; box-shadow:0 0 0 4px rgba(99,56,6,.1); }
-        .form-hint { font-size:12px; color:#6B8BB0; text-align:center; margin-top:8px; }
+        .form-hint { font-size:12px; color:#6B8F7F; text-align:center; margin-top:8px; }
         .action-btns { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
         .btn-checkin { display:flex; align-items:center; justify-content:center; gap:8px; padding:14px; background:#0F6E56; color:#fff; border:none; border-radius:12px; font-size:15px; font-weight:700; cursor:pointer; transition:all .2s; }
         .btn-checkin:hover:not(:disabled) { background:#0A5A45; transform:translateY(-1px); }

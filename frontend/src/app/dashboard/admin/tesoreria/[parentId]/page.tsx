@@ -185,7 +185,7 @@ export default function TutorAccountPage() {
       {/* Resumen económico */}
       <div className="summary-grid">
         <div className="sum-card blue">
-          <DollarSign size={20} color="#1A3A7C"/>
+          <DollarSign size={20} color="#0A5A45"/>
           <div>
             <div className="sum-label">Total cargado</div>
             <div className="sum-value">{fmt(summary.totalDebt)}</div>
@@ -291,7 +291,7 @@ export default function TutorAccountPage() {
 
       {charges.length === 0 && (
         <div className="empty-card">
-          <DollarSign size={40} color="#CBE0F0"/>
+          <DollarSign size={40} color="#DCEEE6"/>
           <p>No hay cargos registrados para este tutor</p>
           <button className="btn-primary" onClick={() => router.push(`/dashboard/admin/tesoreria/nuevo-cargo?parentId=${parentId}`)}>
             <Plus size={14}/> Crear primer cargo
@@ -353,49 +353,49 @@ export default function TutorAccountPage() {
       )}
 
       <style>{`
-        .center{display:flex;justify-content:center;align-items:center;padding:48px;color:#6B8BB0}
+        .center{display:flex;justify-content:center;align-items:center;padding:48px;color:#6B8F7F}
         .page-header{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:24px;gap:16px;flex-wrap:wrap}
-        .back-btn{display:flex;align-items:center;gap:6px;background:none;border:none;cursor:pointer;color:#6B8BB0;font-size:13px;padding:0}
-        .back-btn:hover{color:#1A3A7C}
+        .back-btn{display:flex;align-items:center;gap:6px;background:none;border:none;cursor:pointer;color:#6B8F7F;font-size:13px;padding:0}
+        .back-btn:hover{color:#0A5A45}
         .tutor-header{display:flex;align-items:center;gap:14px;flex:1}
-        .avatar{width:52px;height:52px;border-radius:50%;background:#1A3A7C;color:#fff;display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:700;flex-shrink:0}
-        .tutor-header h1{font-size:20px;font-weight:800;color:#1A3A7C;margin-bottom:4px}
-        .tutor-meta{display:flex;gap:12px;font-size:12px;color:#6B8BB0;margin-bottom:6px}
+        .avatar{width:52px;height:52px;border-radius:50%;background:#0A5A45;color:#fff;display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:700;flex-shrink:0}
+        .tutor-header h1{font-size:20px;font-weight:800;color:#0A5A45;margin-bottom:4px}
+        .tutor-meta{display:flex;gap:12px;font-size:12px;color:#6B8F7F;margin-bottom:6px}
         .students-list{display:flex;gap:6px;flex-wrap:wrap}
-        .student-chip{font-size:11px;background:#E0ECF8;color:#1A3A7C;padding:2px 8px;border-radius:20px}
+        .student-chip{font-size:11px;background:#E0ECF8;color:#0A5A45;padding:2px 8px;border-radius:20px}
         .alert{padding:10px 14px;border-radius:8px;font-size:13px;margin-bottom:16px}
         .alert.suc{background:#E1F5EE;border:1px solid #9FE1CB;color:#0F6E56}
         .alert.err{background:#FFF0F0;border:1px solid #FFBBBB;color:#C0392B}
         .summary-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:20px}
-        .sum-card{background:#fff;border:1px solid #CBE0F0;border-radius:12px;padding:16px;display:flex;align-items:center;gap:12px}
-        .sum-label{font-size:11px;color:#6B8BB0;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px}
-        .sum-value{font-size:18px;font-weight:700;color:#1A3A7C}
-        .section-card{background:#fff;border:1px solid #CBE0F0;border-radius:12px;overflow:hidden;margin-bottom:16px}
-        .section-title{display:flex;align-items:center;gap:8px;padding:14px 18px;border-bottom:1px solid #F0F6FC;font-size:13px;font-weight:700;color:#1A3A7C}
+        .sum-card{background:#fff;border:1px solid #DCEEE6;border-radius:12px;padding:16px;display:flex;align-items:center;gap:12px}
+        .sum-label{font-size:11px;color:#6B8F7F;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px}
+        .sum-value{font-size:18px;font-weight:700;color:#0A5A45}
+        .section-card{background:#fff;border:1px solid #DCEEE6;border-radius:12px;overflow:hidden;margin-bottom:16px}
+        .section-title{display:flex;align-items:center;gap:8px;padding:14px 18px;border-bottom:1px solid #F5FAF7;font-size:13px;font-weight:700;color:#0A5A45}
         .charges-list{display:flex;flex-direction:column}
-        .charge-item{display:flex;justify-content:space-between;align-items:flex-start;padding:16px 18px;border-bottom:1px solid #F0F6FC;gap:16px}
+        .charge-item{display:flex;justify-content:space-between;align-items:flex-start;padding:16px 18px;border-bottom:1px solid #F5FAF7;gap:16px}
         .charge-item.paid{background:#FAFCFF}
         .charge-item:last-child{border-bottom:none}
         .charge-left{flex:1;display:flex;flex-direction:column;gap:6px}
         .charge-top{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
         .type-badge{padding:2px 8px;border-radius:20px;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.5px}
-        .type-badge.blue{background:#E0ECF8;color:#1A3A7C}
+        .type-badge.blue{background:#E0ECF8;color:#0A5A45}
         .type-badge.purple{background:#EEE8FD;color:#3C3489}
         .tolerance-badge{background:#FFFBEA;color:#7A6000;padding:2px 8px;border-radius:20px;font-size:10px;font-weight:500}
-        .charge-title{font-size:14px;font-weight:600;color:#1A3A7C}
+        .charge-title{font-size:14px;font-weight:600;color:#0A5A45}
         .charge-student{font-size:12px;color:#4A9FD4}
-        .charge-desc{font-size:12px;color:#6B8BB0}
+        .charge-desc{font-size:12px;color:#6B8F7F}
         .charge-tolerance{font-size:11px;color:#7A6000;background:#FFFBEA;border-radius:6px;padding:4px 8px}
-        .charge-meta{display:flex;align-items:center;gap:10px;font-size:11px;color:#6B8BB0}
+        .charge-meta{display:flex;align-items:center;gap:10px;font-size:11px;color:#6B8F7F}
         .payments-list{display:flex;flex-direction:column;gap:4px;margin-top:4px}
-        .payment-item{display:flex;align-items:center;gap:8px;background:#F0F6FC;border-radius:6px;padding:6px 10px;font-size:11px}
-        .pay-method{background:#E0ECF8;color:#1A3A7C;padding:1px 6px;border-radius:10px;font-weight:500}
+        .payment-item{display:flex;align-items:center;gap:8px;background:#F5FAF7;border-radius:6px;padding:6px 10px;font-size:11px}
+        .pay-method{background:#E0ECF8;color:#0A5A45;padding:1px 6px;border-radius:10px;font-weight:500}
         .pay-amount{font-weight:600;color:#0F6E56}
-        .pay-date{color:#6B8BB0}
-        .pay-ref{color:#6B8BB0;font-style:italic}
+        .pay-date{color:#6B8F7F}
+        .pay-ref{color:#6B8F7F;font-style:italic}
         .charge-right{display:flex;flex-direction:column;align-items:flex-end;gap:8px;min-width:140px}
         .charge-amount{display:flex;flex-direction:column;align-items:flex-end;gap:2px}
-        .amount-total{font-size:16px;font-weight:700;color:#1A3A7C}
+        .amount-total{font-size:16px;font-weight:700;color:#0A5A45}
         .amount-paid{font-size:11px;color:#0F6E56}
         .amount-pending{font-size:12px;font-weight:600;color:#C0392B}
         .paid-total{color:#0F6E56}
@@ -405,27 +405,27 @@ export default function TutorAccountPage() {
         .sbadge.green{background:#E1F5EE;color:#0F6E56}
         .sbadge.red{background:#FFF0F0;color:#C0392B}
         .sbadge.yellow{background:#FFFBEA;color:#7A6000}
-        .sbadge.gray{background:#F0F6FC;color:#6B8BB0}
-        .empty-card{background:#fff;border:1px solid #CBE0F0;border-radius:12px;padding:48px;display:flex;flex-direction:column;align-items:center;gap:12px;color:#6B8BB0;font-size:13px}
+        .sbadge.gray{background:#F5FAF7;color:#6B8F7F}
+        .empty-card{background:#fff;border:1px solid #DCEEE6;border-radius:12px;padding:48px;display:flex;flex-direction:column;align-items:center;gap:12px;color:#6B8F7F;font-size:13px}
         .overlay{position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:500;display:flex;align-items:center;justify-content:center;padding:16px}
         .modal{background:#fff;border-radius:14px;width:100%;max-width:440px;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,0.15)}
-        .mhead{display:flex;align-items:center;justify-content:space-between;padding:18px 20px;border-bottom:1px solid #CBE0F0}
-        .mhead h2{font-size:16px;font-weight:600;color:#1A3A7C}
-        .mhead button{background:none;border:none;cursor:pointer;color:#6B8BB0;display:flex;padding:4px;border-radius:6px}
-        .mhead button:hover{background:#F0F6FC;color:#1A3A7C}
+        .mhead{display:flex;align-items:center;justify-content:space-between;padding:18px 20px;border-bottom:1px solid #DCEEE6}
+        .mhead h2{font-size:16px;font-weight:600;color:#0A5A45}
+        .mhead button{background:none;border:none;cursor:pointer;color:#6B8F7F;display:flex;padding:4px;border-radius:6px}
+        .mhead button:hover{background:#F5FAF7;color:#0A5A45}
         .mbody{padding:20px;display:flex;flex-direction:column;gap:14px}
-        .mfoot{display:flex;justify-content:flex-end;gap:10px;padding:16px 20px;border-top:1px solid #CBE0F0}
+        .mfoot{display:flex;justify-content:flex-end;gap:10px;padding:16px 20px;border-top:1px solid #DCEEE6}
         .fg{display:flex;flex-direction:column;gap:6px}
-        .fg label{font-size:11px;font-weight:700;color:#1A3A7C;text-transform:uppercase;letter-spacing:.6px}
-        .fg input,.fg select{padding:10px 12px;border:1.5px solid #CBE0F0;border-radius:8px;font-size:13px;color:#1A3A7C;outline:none}
+        .fg label{font-size:11px;font-weight:700;color:#0A5A45;text-transform:uppercase;letter-spacing:.6px}
+        .fg input,.fg select{padding:10px 12px;border:1.5px solid #DCEEE6;border-radius:8px;font-size:13px;color:#0A5A45;outline:none}
         .fg input:focus,.fg select:focus{border-color:#4A9FD4;box-shadow:0 0 0 3px rgba(74,159,212,.12)}
-        .info-box{background:#F0F6FC;border:1px solid #CBE0F0;border-radius:8px;padding:12px;font-size:13px;color:#6B8BB0;line-height:1.6}
-        .btn-primary{display:flex;align-items:center;gap:6px;padding:9px 16px;background:#1A3A7C;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:500;cursor:pointer}
+        .info-box{background:#F5FAF7;border:1px solid #DCEEE6;border-radius:8px;padding:12px;font-size:13px;color:#6B8F7F;line-height:1.6}
+        .btn-primary{display:flex;align-items:center;gap:6px;padding:9px 16px;background:#0A5A45;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:500;cursor:pointer}
         .btn-primary:hover:not(:disabled){background:#4A9FD4}
         .btn-primary:disabled{opacity:.6;cursor:not-allowed}
-        .btn-outline{display:flex;align-items:center;gap:6px;padding:9px 14px;background:#fff;color:#1A3A7C;border:1.5px solid #CBE0F0;border-radius:8px;font-size:13px;cursor:pointer}
-        .btn-outline:hover{background:#F0F6FC}
-        .spinner{width:24px;height:24px;border:2px solid rgba(26,58,124,.2);border-top-color:#1A3A7C;border-radius:50%;animation:spin .7s linear infinite}
+        .btn-outline{display:flex;align-items:center;gap:6px;padding:9px 14px;background:#fff;color:#0A5A45;border:1.5px solid #DCEEE6;border-radius:8px;font-size:13px;cursor:pointer}
+        .btn-outline:hover{background:#F5FAF7}
+        .spinner{width:24px;height:24px;border:2px solid rgba(10,90,69,.2);border-top-color:#0A5A45;border-radius:50%;animation:spin .7s linear infinite}
         .spinsm{width:14px;height:14px;border:2px solid rgba(255,255,255,.3);border-top-color:#fff;border-radius:50%;animation:spin .7s linear infinite;display:inline-block}
         @keyframes spin{to{transform:rotate(360deg)}}
         @media(max-width:600px){.summary-grid{grid-template-columns:1fr}.charge-item{flex-direction:column}.charge-right{align-items:flex-start}}

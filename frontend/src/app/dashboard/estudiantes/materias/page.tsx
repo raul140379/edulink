@@ -68,13 +68,13 @@ export default function MateriasPage() {
       {/* Header */}
       <div
         className="rounded-2xl px-7 py-6 mb-5 text-white"
-        style={{ background: 'linear-gradient(135deg, var(--color-brand-700), var(--color-brand-500))' }}
+        style={{ background: 'linear-gradient(90deg, #3B5BDB, #5B7CF0)' }}
       >
         <div className="flex items-center gap-1.5 text-[13px] text-white/80 mb-1">
           <BookOpen size={14}/> Mis Materias
         </div>
-        <div className="text-[22px] font-extrabold">Plan de Estudios</div>
-        <div className="text-[13px] text-white/80 mt-1">Materias, maestros y calificaciones de tu curso</div>
+        <div className="text-[22px] font-extrabold">🎒 Tu Plan de Estudios</div>
+        <div className="text-[13px] text-white/80 mt-1">Todo lo que estás cursando esta gestión, en un solo lugar 💪</div>
       </div>
 
       {/* Stats */}
@@ -85,15 +85,24 @@ export default function MateriasPage() {
         </Card>
         <Card className="flex items-center gap-3">
           <Clock size={26} className="text-brand-700"/>
-          <div><div className="text-[11px] text-neutral-500 uppercase tracking-wide mb-0.5">Horas / semana</div><div className="text-xl font-bold text-brand-700">{totalHoras}</div></div>
+          <div>
+            <div className="text-[11px] font-semibold uppercase tracking-wide mb-1 bg-accent-500 inline-block px-2 py-0.5 rounded-full" style={{ color: '#3A2F00' }}>Horas / semana</div>
+            <div className="text-xl font-bold text-brand-700">{totalHoras}</div>
+          </div>
         </Card>
         <Card className="flex items-center gap-3">
           <CheckCircle size={26} className="text-success-700"/>
-          <div><div className="text-[11px] text-neutral-500 uppercase tracking-wide mb-0.5">Aprobadas</div><div className="text-xl font-bold text-success-700">{aprobadas}</div></div>
+          <div>
+            <div className="text-[11px] font-semibold uppercase tracking-wide mb-1 bg-accent-500 inline-block px-2 py-0.5 rounded-full" style={{ color: '#3A2F00' }}>Aprobadas</div>
+            <div className="text-xl font-bold text-success-700">{aprobadas}</div>
+          </div>
         </Card>
         <Card className="flex items-center gap-3">
           <AlertCircle size={26} className="text-danger-600"/>
-          <div><div className="text-[11px] text-neutral-500 uppercase tracking-wide mb-0.5">Reprobadas</div><div className="text-xl font-bold text-danger-600">{reprobadas}</div></div>
+          <div>
+            <div className="text-[11px] font-semibold uppercase tracking-wide mb-1 bg-accent-500 inline-block px-2 py-0.5 rounded-full" style={{ color: '#3A2F00' }}>Reprobadas</div>
+            <div className="text-xl font-bold text-danger-600">{reprobadas}</div>
+          </div>
         </Card>
       </div>
 
@@ -123,7 +132,7 @@ export default function MateriasPage() {
       {filtradas.length === 0 ? (
         <Card className="text-center py-12 border-dashed">
           <BookOpen size={40} className="mx-auto mb-3 opacity-30"/>
-          <div className="text-neutral-500">No hay materias registradas aún.</div>
+          <div className="text-neutral-500">Todavía no tenés materias cargadas — ya va a estar 🚀</div>
         </Card>
       ) : (
         <div className="flex flex-col gap-3.5">

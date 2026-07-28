@@ -346,7 +346,7 @@ function DetalleNota({
       <div className="grid gap-3 mb-5" style={{ gridTemplateColumns: 'repeat(5, 1fr)' }}>
         <DimCard label="Saber" max={45} value={nota.saber} colorVar="var(--color-brand-700)" items={itemsSaber.length}/>
         <DimCard label="Hacer" max={40} value={nota.hacer} colorVar="var(--color-success-500)" items={itemsHacer.length}/>
-        <DimCard label="Ser" max={10} value={nota.ser} colorVar="#1565C0" items={null}/>
+        <DimCard label="Ser" max={10} value={nota.ser} colorVar="#5A358D" items={null}/>
         <DimCard label="Autoevaluación" max={5} value={nota.autoEvaluacion} colorVar="var(--color-info-500)" items={null}/>
         <div className="bg-neutral-100/60 border border-brand-700 rounded-[10px] p-3.5 text-center">
           <div className="text-[10px] font-bold text-neutral-500 uppercase tracking-wide mb-1.5">TOTAL</div>
@@ -363,7 +363,7 @@ function DetalleNota({
         hint="Los ítems de Hacer se registran automáticamente desde el módulo de Tareas y Exámenes."/>
 
       <Card className="mb-3.5">
-        <div className="flex items-center gap-2 text-sm font-bold mb-3" style={{ color: '#1565C0' }}>
+        <div className="flex items-center gap-2 text-sm font-bold mb-3" style={{ color: '#5A358D' }}>
           Ser <Badge tone="info">máx 10 pts</Badge>
         </div>
         {nota.cerrado

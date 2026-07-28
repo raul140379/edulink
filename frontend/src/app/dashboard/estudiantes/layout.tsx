@@ -6,6 +6,8 @@ import {
 } from 'lucide-react'
 import DashboardShell, { MenuGroup } from '@/components/layout/DashboardShell'
 import { useDistrictConfig } from '@/hooks/useDistrictConfig'
+import { GamificationProvider } from './_gamification/GamificationContext'
+import GamificationTopBar from './_gamification/GamificationTopBar'
 
 const ESTUDIANTE_ROLES = ['STUDENT', 'STUDENT_GOV', 'GOBIERNO_NUCLEO', 'GOBIERNO_DISTRITO']
 const GOBIERNO_ROLES   = ['STUDENT_GOV', 'GOBIERNO_NUCLEO', 'GOBIERNO_DISTRITO']
@@ -76,9 +78,25 @@ export default function EstudiantesLayout({ children }: { children: React.ReactN
       profileHref={isDistrictLevel ? '/dashboard/estudiantes' : '/dashboard/estudiantes/perfil'}
       notificationsHref={isDistrictLevel ? undefined : '/dashboard/estudiantes/notificaciones'}
       menuGroups={menuGroups}
-      theme={{ primary: '#1A7DB8', navbar: '#1565A0', accent: '#F5C518', hover: '#2B93CE' }}
+      theme={{
+        // Paleta "gamificación" (reemplaza Índigo/Coral): primary = Azul Tinta
+        // (navbar + texto de títulos vía brand-700), accent = Rosa Resaltador
+        // (botón principal, ítem activo). bg/bgSoft quedan de la iteración
+        // anterior (ya son de esta misma familia azul, sin cambios).
+        primary: '#3B5BDB', navbar: '#1E3AA6', accent: '#FF4D8D', hover: '#5B7CF0', bg: '#EDF1FE',
+        textSecondary: '#707BA9', border: '#DADFF1', bgSoft: '#C0CAED',
+      }}
     >
-      {children}
+      {/* .estudiantes-scope: hook de CSS para reglas que deben aplicar SOLO a
+          este panel (ej. ::selection en globals.css) — DashboardShell usa la
+          misma clase .dashboard-root en todos los paneles, así que no sirve
+          para aislar algo a un solo módulo; esta clase sí. */}
+      <div className="estudiantes-scope">
+        <GamificationProvider role={role}>
+          <GamificationTopBar />
+          {children}
+        </GamificationProvider>
+      </div>
     </DashboardShell>
   )
 }

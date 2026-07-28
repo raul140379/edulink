@@ -37,6 +37,14 @@ export interface DashboardTheme {
   accent: string
   /** Color de hover sobre ítems interactivos (opcional, cae a accent si no se pasa) */
   hover?: string
+  /** Fondo del área de contenido (opcional, cae al gris neutro de siempre si no se pasa) */
+  bg?: string
+  /** Texto secundario (opcional, cae al gris-azulado de siempre si no se pasa) */
+  textSecondary?: string
+  /** Bordes (opcional, cae al celeste de siempre si no se pasa) */
+  border?: string
+  /** Fondos suaves de tarjeta/fila (opcional, cae al celeste claro de siempre si no se pasa) */
+  bgSoft?: string
 }
 
 interface DashboardShellProps {
@@ -133,6 +141,15 @@ export default function DashboardShell({
         '--dsh-navbar': theme.navbar,
         '--dsh-accent': theme.accent,
         '--dsh-hover': theme.hover || theme.accent,
+        '--dsh-bg': theme.bg || '#F5F7F8',
+        // Igual truco que --color-brand-700 más abajo: si no se pasan, la
+        // propiedad queda ausente del inline style y el elemento hereda el
+        // --color-neutral-500/300/100 fijo de :root (el gris-azulado de
+        // siempre) — sin esto, un var() a mitad de cascada no se re-resuelve
+        // por panel, hay que re-declarar el token final en el mismo nodo.
+        ...(theme.textSecondary ? { '--color-neutral-500': theme.textSecondary } : {}),
+        ...(theme.border        ? { '--color-neutral-300': theme.border }        : {}),
+        ...(theme.bgSoft        ? { '--color-neutral-100': theme.bgSoft }        : {}),
         // Re-declarar los tokens de marca de Tailwind (components/ui/*) en el
         // MISMO nodo donde cambian los --dsh-*: un var() anidado solo se
         // resuelve una vez, en el elemento donde el custom property final se
@@ -235,7 +252,7 @@ export default function DashboardShell({
 
       <style>{`
         *,*::before,*::after{box-sizing:border-box}
-        .dashboard-root{min-height:100vh;display:flex;flex-direction:column;background:#F5F7F8;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}
+        .dashboard-root{min-height:100vh;display:flex;flex-direction:column;background:var(--dsh-bg);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}
         .topbar{height:60px;background:var(--dsh-primary);display:flex;align-items:center;justify-content:space-between;padding:0 20px;position:sticky;top:0;z-index:200}
         .topbar-brand{display:flex;align-items:center;gap:10px}
         .brand-logo{width:32px;height:32px;flex-shrink:0;background:#fff;border-radius:50%;display:flex;align-items:center;justify-content:center;overflow:hidden}

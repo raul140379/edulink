@@ -21,6 +21,9 @@ import {
   getMySubjects,
   saveMyAutoEvaluacion,
   cancelEnrollment,
+  getMyGamification,
+  getMyAchievements,
+  deliverTask,
 } from '../controllers/student.controller'
 import { verifyToken, requirePermission, requireAnyPermission } from '../middlewares/auth.middleware'
 import { validateBody } from '../middlewares/validate.middleware'
@@ -41,6 +44,9 @@ router.get('/my-notifications',              getMyNotifications)
 router.patch('/my-notifications/:id/read',   markNotificationRead)
 router.get('/my-subjects',                   getMySubjects)
 router.put('/my-autoevaluacion',             validateBody(autoEvaluacionSchema), saveMyAutoEvaluacion)
+router.get('/my-gamification',               getMyGamification)
+router.get('/my-achievements',               getMyAchievements)
+router.patch('/tasks/:submissionId/deliver', deliverTask)
 
 // Nota: STUDENT_VIEW_BASIC (Junta de Núcleo/Distrito) también entra aquí — el
 // servicio decide qué proyección de campos devolver según qué permiso realmente

@@ -72,7 +72,7 @@ export default function SchoolHome() {
       {/* Estadísticas */}
       <div className="stats-grid">
         <div className="stat-card" onClick={() => window.location.href='/dashboard/admin/estudiantes'} style={{cursor:'pointer'}}>
-          <div className="stat-icon" style={{ background:'#1A3A7C15', color:'#1A3A7C' }}>
+          <div className="stat-icon" style={{ background:'#0A5A4515', color:'#0A5A45' }}>
             <GraduationCap size={22}/>
           </div>
           <div className="stat-info">
@@ -125,7 +125,7 @@ export default function SchoolHome() {
             <Bell size={16}/> <span>Notificaciones recientes</span>
           </div>
           <div className="empty-state">
-            <AlertCircle size={32} color="#CBE0F0"/>
+            <AlertCircle size={32} color="#DCEEE6"/>
             <p>No hay notificaciones</p>
           </div>
         </div>
@@ -155,27 +155,27 @@ export default function SchoolHome() {
       </div>
 
       <style>{`
-        h1{font-size:20px;font-weight:700;color:#1A3A7C;margin-bottom:6px}
-        .welcome-card{background:#1A3A7C;border-radius:14px;padding:24px 28px;display:flex;align-items:center;justify-content:space-between;margin-bottom:24px;gap:16px}
+        h1{font-size:20px;font-weight:700;color:#0A5A45;margin-bottom:6px}
+        .welcome-card{background:#0A5A45;border-radius:14px;padding:24px 28px;display:flex;align-items:center;justify-content:space-between;margin-bottom:24px;gap:16px}
         .welcome-card h1{color:#fff;font-size:20px;margin-bottom:6px}
         .welcome-card p{color:#7BBFE8;font-size:13px}
         .welcome-badge{background:#F5C518;color:#3A2F00;font-size:12px;font-weight:700;padding:6px 14px;border-radius:20px;white-space:nowrap;flex-shrink:0}
         .stats-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:16px;margin-bottom:24px}
-        .stat-card{background:#fff;border:1px solid #CBE0F0;border-radius:12px;padding:20px;display:flex;align-items:center;gap:16px;transition:box-shadow .2s}
-        .stat-card:hover{box-shadow:0 2px 12px rgba(26,58,124,.1)}
+        .stat-card{background:#fff;border:1px solid #DCEEE6;border-radius:12px;padding:20px;display:flex;align-items:center;gap:16px;transition:box-shadow .2s}
+        .stat-card:hover{box-shadow:0 2px 12px rgba(10,90,69,.1)}
         .stat-icon{width:48px;height:48px;border-radius:12px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
         .stat-info{display:flex;flex-direction:column;gap:2px}
-        .stat-value{font-size:22px;font-weight:700;color:#1A3A7C}
-        .stat-label{font-size:13px;font-weight:500;color:#1A3A7C}
-        .stat-sub{font-size:11px;color:#6B8BB0}
+        .stat-value{font-size:22px;font-weight:700;color:#0A5A45}
+        .stat-label{font-size:13px;font-weight:500;color:#0A5A45}
+        .stat-sub{font-size:11px;color:#6B8F7F}
         .bottom-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
-        .panel{background:#fff;border:1px solid #CBE0F0;border-radius:12px;overflow:hidden}
-        .panel-header{display:flex;align-items:center;gap:8px;padding:14px 18px;border-bottom:1px solid #CBE0F0;font-size:13px;font-weight:600;color:#1A3A7C}
+        .panel{background:#fff;border:1px solid #DCEEE6;border-radius:12px;overflow:hidden}
+        .panel-header{display:flex;align-items:center;gap:8px;padding:14px 18px;border-bottom:1px solid #DCEEE6;font-size:13px;font-weight:600;color:#0A5A45}
         .empty-state{display:flex;flex-direction:column;align-items:center;justify-content:center;padding:40px;gap:10px}
-        .empty-state p{font-size:13px;color:#6B8BB0}
+        .empty-state p{font-size:13px;color:#6B8F7F}
         .quick-links{display:flex;flex-direction:column;padding:8px;gap:4px}
-        .quick-link{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:8px;font-size:13px;color:#1A3A7C;text-decoration:none;transition:background .15s}
-        .quick-link:hover{background:#F0F6FC}
+        .quick-link{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:8px;font-size:13px;color:#0A5A45;text-decoration:none;transition:background .15s}
+        .quick-link:hover{background:#F5FAF7}
         @media(max-width:600px){.bottom-grid{grid-template-columns:1fr}.welcome-badge{display:none}}
       `}</style>
     </div>

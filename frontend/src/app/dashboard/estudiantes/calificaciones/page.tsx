@@ -62,7 +62,7 @@ export default function CalificacionesPage() {
   if (!data || !data.notas.length) return (
     <Card className="text-center py-12 border-dashed flex flex-col items-center gap-2">
       <BookOpen size={40} className="opacity-40"/>
-      <p className="text-[15px] text-neutral-500">No hay calificaciones registradas aún.</p>
+      <p className="text-[15px] text-neutral-500">Tus notas van a aparecer acá apenas el profe las suba 📊</p>
     </Card>
   )
 
@@ -86,6 +86,10 @@ export default function CalificacionesPage() {
   }
 
   const trimLabel = (t: Trimestre) => t.name || `${t.number}er Trim.`
+
+  const motivo = reprobadas === 0
+    ? { emoji: '🔥', text: 'Ni una jalada, seguí así' }
+    : { emoji: '📈', text: 'A subir de nivel en un par de materias' }
 
   const columns: Column<NotaMateria>[] = [
     { key: 'materia', header: 'Materia', render: n => <span className="font-semibold text-brand-700">{n.subjectName}</span> },
@@ -130,7 +134,7 @@ export default function CalificacionesPage() {
       {/* Header */}
       <div
         className="rounded-xl px-6 py-5 mb-6 text-white"
-        style={{ background: 'linear-gradient(135deg, var(--color-brand-700), var(--color-brand-500))' }}
+        style={{ background: 'linear-gradient(90deg, #3B5BDB, #5B7CF0)' }}
       >
         <div className="flex items-center gap-1.5 text-[13px] text-white/75 mb-1">
           <BookOpen size={14}/> Calificaciones
@@ -143,13 +147,14 @@ export default function CalificacionesPage() {
             {course.grade} {course.parallel} · {course.level} · Turno {course.shift}
           </div>
         )}
+        <div className="text-[12.5px] font-semibold text-white/95 mt-1.5">{motivo.emoji} {motivo.text}</div>
       </div>
 
       {/* Stats */}
       <div className="grid grid-cols-3 gap-4 mb-6">
-        <Card className="flex flex-col gap-2">
-          <div className="flex items-center gap-2 text-brand-700"><TrendingUp size={20}/><span className="text-[11px] font-semibold uppercase tracking-wide">Promedio General</span></div>
-          <div className="text-[28px] font-extrabold text-brand-700">{promedioGeneral}</div>
+        <Card className="!bg-accent-500 !border-accent-500 flex flex-col gap-2" style={{ color: '#3A2F00' }}>
+          <div className="flex items-center gap-2"><TrendingUp size={20}/><span className="text-[11px] font-semibold uppercase tracking-wide">Promedio General</span></div>
+          <div className="text-[28px] font-extrabold">{promedioGeneral}</div>
         </Card>
         <Card className="flex flex-col gap-2">
           <div className="flex items-center gap-2 text-success-700"><CheckCircle size={20}/><span className="text-[11px] font-semibold uppercase tracking-wide">Aprobadas</span></div>

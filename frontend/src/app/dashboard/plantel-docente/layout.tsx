@@ -64,7 +64,10 @@ export default function PlantelDocenteLayout({ children }: { children: React.Rea
       profileHref="/dashboard/plantel-docente/perfil"
       notificationsHref="/dashboard/plantel-docente/notificaciones"
       menuGroups={menuGroups}
-      theme={{ primary: '#1565C0', navbar: '#0F4E96', accent: '#1976D2', hover: '#2196F3' }}
+      theme={{
+        primary: '#1F3B34', navbar: '#294F45', accent: '#2F6F5E', hover: '#234F43', bg: '#F6F2E7',
+        textSecondary: '#5B6B62', border: '#D8D0BC', bgSoft: '#EDE7D6',
+      }}
     >
       {children}
     </DashboardShell>

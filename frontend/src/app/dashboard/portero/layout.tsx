@@ -2,14 +2,14 @@ import type { Metadata } from 'next'
 import PorteroHeaderLoc from './PorteroHeaderLoc'
 
 export const metadata: Metadata = {
-  title: 'Control de Acceso — NNUU',
-  description: 'Control de entrada y salida U.E. Naciones Unidas',
+  title: 'Seguridad y Control — NNUU',
+  description: 'Seguridad y control de entrada y salida U.E. Naciones Unidas',
   manifest: '/manifest-portero.json',
-  themeColor: '#1A3A7C',
+  themeColor: '#344551',
   appleWebApp: {
     capable: true,
     statusBarStyle: 'black-translucent',
-    title: 'Portero NNUU',
+    title: 'Seguridad NNUU',
   },
   viewport: {
     width: 'device-width',
@@ -22,13 +22,13 @@ export default function PorteroLayout({ children }: { children: React.ReactNode 
   return (
     <div style={{
       minHeight: '100vh',
-      background: '#0F172A',
+      background: '#1F2B33',
       display: 'flex',
       flexDirection: 'column',
     }}>
       <div style={{
-        background: '#1E293B',
-        borderBottom: '1px solid #334155',
+        background: '#2A3439',
+        borderBottom: '1px solid #3D5B71',
         padding: '12px 20px',
         display: 'flex',
         alignItems: 'center',
@@ -36,13 +36,13 @@ export default function PorteroLayout({ children }: { children: React.ReactNode 
       }}>
         <div style={{
           width: 36, height: 36, borderRadius: 8,
-          background: '#1A3A7C',
+          background: '#3D5B71',
           display: 'flex', alignItems: 'center', justifyContent: 'center',
           fontSize: 18,
         }}>🚪</div>
         <div>
           <div style={{ fontSize: 14, fontWeight: 700, color: '#F1F5F9' }}>
-            Control de Acceso
+            Seguridad y Control
           </div>
           <PorteroHeaderLoc/>
         </div>

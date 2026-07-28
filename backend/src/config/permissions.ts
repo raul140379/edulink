@@ -402,6 +402,7 @@ export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
     Permission.GRADE_VIEW_OWN,      // Solo sus propias notas
     Permission.SCHEDULE_VIEW_OWN,   // Solo su propio horario
     Permission.NOTIFICATION_VIEW,
+    Permission.COMUNICADO_VIEW,     // Solo lectura — ve los comunicados de su colegio en Inicio
   ],
 
   [Role.STUDENT_GOV]: [

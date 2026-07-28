@@ -101,7 +101,7 @@ export default function PorteroAdminPage() {
         })
       }).catch(() => null)
 
-      toast(`✅ Portero creado — Email: ${finalEmail} · Contraseña: ${finalPassword}`, 'success')
+      toast(`✅ Personal de seguridad creado — Email: ${finalEmail} · Contraseña: ${finalPassword}`, 'success')
       setShowModal(false)
       setForm({ firstName:'', lastName:'', ci:'', phone:'', email:'', password:'', shift:'MORNING' })
       loadUsers()
@@ -135,12 +135,12 @@ export default function PorteroAdminPage() {
 
   const columns: Column<PorteroUser>[] = [
     {
-      key: 'name', header: 'Portero', render: (u) => (
+      key: 'name', header: 'Nombre', render: (u) => (
         <div className="flex items-center gap-2.5">
           <div className="w-9 h-9 rounded-lg bg-brand-100 flex items-center justify-center text-lg shrink-0">🚪</div>
           <div>
             <div className="text-[13px] font-semibold text-brand-700">
-              {u.staff ? `${u.staff.lastName} ${u.staff.firstName}` : `Portero #${u.id}`}
+              {u.staff ? `${u.staff.lastName} ${u.staff.firstName}` : `Seguridad #${u.id}`}
             </div>
             <div className="text-[11px] text-neutral-500">{u.email}</div>
           </div>
@@ -168,14 +168,14 @@ export default function PorteroAdminPage() {
     <div>
       <div className="flex items-start justify-between gap-4 mb-6 flex-wrap">
         <div>
-          <h1 className="text-xl font-bold text-brand-700 mb-1">Usuarios Portero</h1>
+          <h1 className="text-xl font-bold text-brand-700 mb-1">Usuarios de Seguridad y Control</h1>
           <p className="text-[13px] text-neutral-500">Gestiona el acceso al módulo de control de entrada</p>
         </div>
         <div className="flex gap-2.5">
           <Button variant="secondary" onClick={() => window.location.href = '/dashboard/admin/portero/codigoQR'}>
             <QrCode size={15} /> Códigos QR
           </Button>
-          <Button onClick={() => setShowModal(true)}><Plus size={15} /> Nuevo Portero</Button>
+          <Button onClick={() => setShowModal(true)}><Plus size={15} /> Nuevo personal de seguridad</Button>
         </div>
       </div>
 
@@ -212,11 +212,11 @@ export default function PorteroAdminPage() {
       <Modal
         open={showModal}
         onClose={() => setShowModal(false)}
-        title="Nuevo Portero"
+        title="Nuevo personal de seguridad"
         footer={
           <>
             <Button variant="secondary" onClick={() => setShowModal(false)}>Cancelar</Button>
-            <Button onClick={handleCreate} loading={saving}><Save size={14} /> Crear Portero</Button>
+            <Button onClick={handleCreate} loading={saving}><Save size={14} /> Crear usuario</Button>
           </>
         }
       >

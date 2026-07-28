@@ -1,6 +1,7 @@
 import { academicRepository } from '../repositories/academic.repository'
 import { HttpError } from '../utils/http-error'
 import { CreateAcademicYearInput, UpdateAcademicYearInput, CreateTrimesterInput, CreateHolidayInput } from '../schemas/academic.schema'
+import { gamificationService } from './gamification.service'
 
 export const academicService = {
   getAcademicYears() {
@@ -97,6 +98,7 @@ export const academicService = {
     }
 
     await academicRepository.updateTrimesterClosed(id, true)
+    await gamificationService.awardTrimesterBonusIfEligible(id)
 
     const siguiente = todosTrimesters.find((t) => t.number === trimestre.number + 1)
     if (siguiente) {

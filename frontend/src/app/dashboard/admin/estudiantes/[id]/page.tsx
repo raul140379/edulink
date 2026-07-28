@@ -63,7 +63,7 @@ const REL_LABELS: Record<string, string> = {
   PADRE: 'Padre', MADRE: 'Madre', TUTOR_LEGAL: 'Tutor Legal', OTRO: 'Otro'
 }
 const REL_COLORS: Record<string, string> = {
-  PADRE: '#1A3A7C', MADRE: '#0F6E56', TUTOR_LEGAL: '#712B13', OTRO: '#444441'
+  PADRE: '#0A5A45', MADRE: '#0F6E56', TUTOR_LEGAL: '#712B13', OTRO: '#444441'
 }
 
 const formatDate = (d?: string) => {
@@ -190,7 +190,7 @@ export default function StudentDetailPage() {
             </div>
           ) : (
             <div className="no-access">
-              <KeyRound size={24} color="#CBE0F0"/>
+              <KeyRound size={24} color="#DCEEE6"/>
               <p>El estudiante no tiene acceso al sistema</p>
             </div>
           )}
@@ -276,54 +276,54 @@ export default function StudentDetailPage() {
         .center{display:flex;justify-content:center;align-items:center;padding:48px}
         .err-msg{color:#C0392B;font-size:14px}
         .page-header{margin-bottom:24px;display:flex;flex-direction:column;gap:12px}
-        .back-btn{display:flex;align-items:center;gap:6px;background:none;border:none;cursor:pointer;color:#6B8BB0;font-size:13px;padding:0;width:fit-content}
-        .back-btn:hover{color:#1A3A7C}
+        .back-btn{display:flex;align-items:center;gap:6px;background:none;border:none;cursor:pointer;color:#6B8F7F;font-size:13px;padding:0;width:fit-content}
+        .back-btn:hover{color:#0A5A45}
         .student-header{display:flex;align-items:center;gap:16px}
-        .avatar{width:56px;height:56px;border-radius:50%;background:#1A3A7C;color:#fff;display:flex;align-items:center;justify-content:center;font-size:20px;font-weight:700;flex-shrink:0}
-        .student-header h1{font-size:22px;font-weight:800;color:#1A3A7C;margin-bottom:6px}
+        .avatar{width:56px;height:56px;border-radius:50%;background:#0A5A45;color:#fff;display:flex;align-items:center;justify-content:center;font-size:20px;font-weight:700;flex-shrink:0}
+        .student-header h1{font-size:22px;font-weight:800;color:#0A5A45;margin-bottom:6px}
         .header-meta{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
         .status-badge{padding:3px 10px;border-radius:20px;font-size:11px;font-weight:600}
         .status-badge.act{background:#E1F5EE;color:#0F6E56}
         .status-badge.ina{background:#FFF0F0;color:#C0392B}
-        .course-pill{background:#E0ECF8;color:#1A3A7C;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:500}
+        .course-pill{background:#E0ECF8;color:#0A5A45;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:500}
         .access-pill{background:#E1F5EE;color:#0F6E56;padding:3px 10px;border-radius:20px;font-size:11px;font-weight:500;display:flex;align-items:center;gap:4px}
         .grid-layout{display:grid;grid-template-columns:1fr 1fr;gap:16px}
-        .card{background:#fff;border:1px solid #CBE0F0;border-radius:12px;padding:18px;display:flex;flex-direction:column;gap:14px}
+        .card{background:#fff;border:1px solid #DCEEE6;border-radius:12px;padding:18px;display:flex;flex-direction:column;gap:14px}
         .card-full{grid-column:1/-1}
-        .card-title{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:700;color:#1A3A7C;padding-bottom:10px;border-bottom:1px solid #F0F6FC}
+        .card-title{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:700;color:#0A5A45;padding-bottom:10px;border-bottom:1px solid #F5FAF7}
         .data-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
         .data-item{display:flex;flex-direction:column;gap:3px}
-        .data-label{display:flex;align-items:center;gap:4px;font-size:10px;font-weight:600;color:#6B8BB0;text-transform:uppercase;letter-spacing:.5px}
-        .data-value{font-size:13px;color:#1A3A7C;font-weight:500}
+        .data-label{display:flex;align-items:center;gap:4px;font-size:10px;font-weight:600;color:#6B8F7F;text-transform:uppercase;letter-spacing:.5px}
+        .data-value{font-size:13px;color:#0A5A45;font-weight:500}
         .access-box{display:flex;flex-direction:column;gap:10px}
         .access-row{display:flex;flex-direction:column;gap:3px}
-        .access-email{font-size:13px;font-weight:600;color:#1A3A7C;font-family:monospace;word-break:break-all}
+        .access-email{font-size:13px;font-weight:600;color:#0A5A45;font-family:monospace;word-break:break-all}
         .access-hint{font-size:11px;color:#0F6E56;background:#E1F5EE;border:1px solid #9FE1CB;border-radius:8px;padding:8px;line-height:1.5}
-        .no-access{display:flex;flex-direction:column;align-items:center;gap:8px;padding:20px;color:#6B8BB0;font-size:12px;text-align:center}
+        .no-access{display:flex;flex-direction:column;align-items:center;gap:8px;padding:20px;color:#6B8F7F;font-size:12px;text-align:center}
         .course-box{display:flex;flex-direction:column;gap:8px}
-        .course-big{font-size:36px;font-weight:800;color:#1A3A7C}
+        .course-big{font-size:36px;font-weight:800;color:#0A5A45}
         .course-details{display:flex;flex-wrap:wrap;gap:8px}
-        .course-details span{background:#F0F6FC;color:#1A3A7C;padding:3px 10px;border-radius:20px;font-size:12px}
-        .no-data{color:#6B8BB0;font-size:13px;padding:12px 0;font-style:italic}
+        .course-details span{background:#F5FAF7;color:#0A5A45;padding:3px 10px;border-radius:20px;font-size:12px}
+        .no-data{color:#6B8F7F;font-size:13px;padding:12px 0;font-style:italic}
         .parents-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:12px}
-        .parent-card{background:#F8FBFF;border:1px solid #CBE0F0;border-radius:10px;padding:14px;display:flex;flex-direction:column;gap:8px}
+        .parent-card{background:#F8FBFF;border:1px solid #DCEEE6;border-radius:10px;padding:14px;display:flex;flex-direction:column;gap:8px}
         .parent-card.tutor{border-color:#F5C518;background:#FFFDF0}
         .parent-top{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:6px}
         .rel-badge{padding:2px 8px;border-radius:20px;font-size:10px;font-weight:600}
         .tutor-icon{font-size:11px;color:#7A6000}
-        .parent-name{font-size:14px;font-weight:700;color:#1A3A7C}
+        .parent-name{font-size:14px;font-weight:700;color:#0A5A45}
         .parent-info{display:flex;flex-direction:column;gap:4px}
-        .parent-info span{display:flex;align-items:center;gap:5px;font-size:11px;color:#6B8BB0}
+        .parent-info span{display:flex;align-items:center;gap:5px;font-size:11px;color:#6B8F7F}
         table{width:100%;border-collapse:collapse}
-        thead tr{background:#F0F6FC}
-        th{padding:10px 14px;text-align:left;font-size:11px;font-weight:600;color:#1A3A7C;text-transform:uppercase;letter-spacing:.5px}
-        td{padding:11px 14px;font-size:13px;color:#1A3A7C;border-top:1px solid #F0F6FC}
+        thead tr{background:#F5FAF7}
+        th{padding:10px 14px;text-align:left;font-size:11px;font-weight:600;color:#0A5A45;text-transform:uppercase;letter-spacing:.5px}
+        td{padding:11px 14px;font-size:13px;color:#0A5A45;border-top:1px solid #F5FAF7}
         tr:hover td{background:#FAFCFF}
-        .muted{color:#6B8BB0}
+        .muted{color:#6B8F7F}
         .sbadge{padding:3px 9px;border-radius:20px;font-size:11px;font-weight:500}
         .sbadge.act{background:#E1F5EE;color:#0F6E56}
-        .sbadge.ina{background:#F0F6FC;color:#6B8BB0}
-        .spinner{width:24px;height:24px;border:2px solid rgba(26,58,124,.2);border-top-color:#1A3A7C;border-radius:50%;animation:spin .7s linear infinite}
+        .sbadge.ina{background:#F5FAF7;color:#6B8F7F}
+        .spinner{width:24px;height:24px;border:2px solid rgba(10,90,69,.2);border-top-color:#0A5A45;border-radius:50%;animation:spin .7s linear infinite}
         @keyframes spin{to{transform:rotate(360deg)}}
         @media(max-width:700px){.grid-layout{grid-template-columns:1fr}.data-grid{grid-template-columns:1fr}}
       `}</style>

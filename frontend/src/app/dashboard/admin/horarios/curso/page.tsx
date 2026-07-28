@@ -49,7 +49,7 @@ const DAYS = ['', 'Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado
 
 const CAMPO_COLOR: Record<string,string> = {
   VIDA_TIERRA_TERRITORIO:        '#0F6E56',
-  COMUNIDAD_SOCIEDAD:            '#1A3A7C',
+  COMUNIDAD_SOCIEDAD:            '#0A5A45',
   COSMOS_PENSAMIENTO:            '#633806',
   CIENCIA_TECNOLOGIA_PRODUCCION: '#8B1A7C',
 }
@@ -446,7 +446,7 @@ export default function HorarioCursoPage() {
               <div className="h-2 bg-neutral-100 rounded overflow-hidden">
                 <div
                   className="h-full rounded transition-[width] duration-300"
-                  style={{ width:`${progresoPct}%`, background: progresoPct===100?'#0F6E56':progresoPct>=60?'#BA7517':'#1A3A7C' }}
+                  style={{ width:`${progresoPct}%`, background: progresoPct===100?'#0F6E56':progresoPct>=60?'#BA7517':'#0A5A45' }}
                 />
               </div>
             </Card>
@@ -464,17 +464,17 @@ export default function HorarioCursoPage() {
                       key={t.id}
                       className="rounded-lg px-3 py-1.5 text-xs flex items-center gap-1.5"
                       style={{
-                        background: t.completo ? '#E1F5EE' : (campo ? CAMPO_BG[campo]||'#F0F6FC' : '#F0F6FC'),
-                        border:`1px solid ${t.completo ? '#9FE1CB' : (campo ? CAMPO_COLOR[campo]||'#CBE0F0' : '#CBE0F0')}33`,
+                        background: t.completo ? '#E1F5EE' : (campo ? CAMPO_BG[campo]||'#F5FAF7' : '#F5FAF7'),
+                        border:`1px solid ${t.completo ? '#9FE1CB' : (campo ? CAMPO_COLOR[campo]||'#DCEEE6' : '#DCEEE6')}33`,
                       }}
                     >
-                      <span className="font-bold" style={{ color: t.completo?'#0F6E56':(campo?CAMPO_COLOR[campo]:'#1A3A7C') }}>
+                      <span className="font-bold" style={{ color: t.completo?'#0F6E56':(campo?CAMPO_COLOR[campo]:'#0A5A45') }}>
                         {t.completo?'✅ ':''}{t.subject.name}
                       </span>
                       <span className="text-neutral-500 text-[11px]">{t.teacher.lastName}</span>
                       <span
                         className="text-white px-1.5 py-0.5 rounded-[10px] text-[10px] font-bold whitespace-nowrap"
-                        style={{ background: t.completo?'#0F6E56':pct>=0.5?'#BA7517':'#1A3A7C' }}
+                        style={{ background: t.completo?'#0F6E56':pct>=0.5?'#BA7517':'#0A5A45' }}
                       >
                         {t.asignados}/{t.maxPeriodos}P
                       </span>
@@ -522,9 +522,9 @@ export default function HorarioCursoPage() {
                       <React.Fragment key={period}>
                         <tr>
                           <td style={{...tdStyle,textAlign:'center',background:'#F8FBFF',fontWeight:700,fontSize:11,whiteSpace:'nowrap'}}>
-                            <div style={{color:'#1A3A7C'}}>P{period}</div>
-                            <div style={{fontSize:10,color:'#6B8BB0',fontWeight:400}}>{pt.startTime}</div>
-                            <div style={{fontSize:10,color:'#6B8BB0',fontWeight:400}}>{pt.endTime}</div>
+                            <div style={{color:'#0A5A45'}}>P{period}</div>
+                            <div style={{fontSize:10,color:'#6B8F7F',fontWeight:400}}>{pt.startTime}</div>
+                            <div style={{fontSize:10,color:'#6B8F7F',fontWeight:400}}>{pt.endTime}</div>
                           </td>
                           {days.map(day => {
                             const cell        = getCell(day, period)
@@ -558,10 +558,10 @@ export default function HorarioCursoPage() {
                                     <div style={{fontSize:16,lineHeight:1,marginBottom:3}}>
                                       {SUBJECT_EMOJI[cell.teacherSubjectCourse.subject.name] || '📚'}
                                     </div>
-                                    <div style={{fontSize:11,fontWeight:700,lineHeight:1.3,color:campo?CAMPO_COLOR[campo]:'#1A3A7C'}}>
+                                    <div style={{fontSize:11,fontWeight:700,lineHeight:1.3,color:campo?CAMPO_COLOR[campo]:'#0A5A45'}}>
                                       {cell.teacherSubjectCourse.subject.name}
                                     </div>
-                                    <div style={{fontSize:10,color:'#6B8BB0',marginTop:1}}>
+                                    <div style={{fontSize:10,color:'#6B8F7F',marginTop:1}}>
                                       {cell.teacherSubjectCourse.teacher.lastName}
                                     </div>
                                     {cell.classroom && (
@@ -717,9 +717,9 @@ export default function HorarioCursoPage() {
 }
 
 const thStyle: React.CSSProperties = {
-  padding:'10px 12px', background:'#F0F6FC', fontSize:12, fontWeight:700,
-  color:'#1A3A7C', textAlign:'center', border:'1px solid #CBE0F0',
+  padding:'10px 12px', background:'#F5FAF7', fontSize:12, fontWeight:700,
+  color:'#0A5A45', textAlign:'center', border:'1px solid #DCEEE6',
 }
 const tdStyle: React.CSSProperties = {
-  padding:'8px 10px', border:'1px solid #CBE0F0', verticalAlign:'middle', fontSize:12,
+  padding:'8px 10px', border:'1px solid #DCEEE6', verticalAlign:'middle', fontSize:12,
 }
