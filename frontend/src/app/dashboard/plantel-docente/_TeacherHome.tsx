@@ -186,6 +186,22 @@ export default function TeacherDashboard() {
       return { ...item, estado }
     })
 
+  // Cursos que le tocan mañana (día 7 = domingo, no hay clases).
+  const tomorrow    = new Date(now); tomorrow.setDate(now.getDate() + 1)
+  const tomorrowDay = tomorrow.getDay() === 0 ? 7 : tomorrow.getDay()
+  const tomorrowPeriodByCourse: Record<number, { grade: string; parallel: string; period: number }> = {}
+  schedule
+    .filter(s => s.dayOfWeek === tomorrowDay)
+    .forEach(s => {
+      const prev = tomorrowPeriodByCourse[s.course.id]
+      if (!prev || s.period < prev.period) {
+        tomorrowPeriodByCourse[s.course.id] = { grade: s.course.grade, parallel: s.course.parallel, period: s.period }
+      }
+    })
+  const tomorrowCourses = Object.entries(tomorrowPeriodByCourse)
+    .map(([courseId, v]) => ({ courseId: +courseId, ...v }))
+    .sort((a, b) => a.period - b.period)
+
   if (loading) return <div className="flex justify-center py-16"><p className="text-sm text-neutral-500">Cargando...</p></div>
   if (error)   return <div className="flex justify-center py-16"><p className="text-sm text-danger-600">{error}</p></div>
   if (!data)   return null
@@ -276,6 +292,22 @@ export default function TeacherDashboard() {
             ))
           )}
         </Card>
+      </div>
+
+      {/* Preview de mañana */}
+      <div className="bg-brand-100 rounded-xl p-3.5 mb-5 text-xs text-brand-700 flex items-center gap-2 flex-wrap">
+        <span className="font-bold shrink-0">📆 Mañana:</span>
+        {tomorrowDay === 7 ? (
+          <span className="text-brand-700/70">No hay clases — es domingo</span>
+        ) : tomorrowCourses.length === 0 ? (
+          <span className="text-brand-700/70">No tenés clases</span>
+        ) : (
+          tomorrowCourses.map(c => (
+            <span key={c.courseId} className="bg-white rounded-full px-2.5 py-0.5 font-semibold border border-neutral-300">
+              📚 {GRADES[c.grade]} &quot;{c.parallel}&quot; · P{c.period}
+            </span>
+          ))
+        )}
       </div>
 
       {/* Resumen superior */}

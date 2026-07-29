@@ -14,6 +14,7 @@ interface Course {
 interface ScheduleItem {
   dayOfWeek: number; period: number
   course: { id: number }
+  teacherSubjectCourse: { subject: { name: string } }
 }
 
 interface StudentAtt {
@@ -29,7 +30,6 @@ interface Summary {
 }
 
 const GRADES: Record<string,string> = { PRIMERO:'1°', SEGUNDO:'2°', TERCERO:'3°', CUARTO:'4°', QUINTO:'5°', SEXTO:'6°' }
-const SHIFTS: Record<string,string> = { MORNING:'Mañana', AFTERNOON:'Tarde' }
 
 const STATUS_CONFIG = {
   PRESENTE: { label:'Presente', emoji:'✅', bg:'#E1F5EE', color:'#0F6E56', border:'#9FE1CB' },
@@ -43,9 +43,9 @@ type StatusKey = keyof typeof STATUS_CONFIG
 export default function AsistenciaEstudiantesPage() {
   const confirm = useConfirm()
   const toast   = useToast()
-  const [courses,   setCourses]   = useState<Course[]>([])
-  const [todaySched, setTodaySched] = useState<ScheduleItem[]>([])
-  const [selCourse, setSelCourse] = useState<Course | null>(null)
+  const [courses,     setCourses]     = useState<Course[]>([])
+  const [mySchedule,  setMySchedule]  = useState<ScheduleItem[]>([])
+  const [selCourse,   setSelCourse]   = useState<Course | null>(null)
   const [students,  setStudents]  = useState<StudentAtt[]>([])
   const [summary,   setSummary]   = useState<Summary | null>(null)
   const [date,      setDate]      = useState(() => new Date().toISOString().split('T')[0])
@@ -80,28 +80,42 @@ export default function AsistenciaEstudiantesPage() {
     fetch(`${API}/api/schedules/my-schedule`, { headers: auth() })
       .then(r => r.json())
       .then(d => {
-        if (Array.isArray(d)) setTodaySched(d.flatMap((day: any) => day.periods || []))
+        if (Array.isArray(d)) setMySchedule(d.flatMap((day: any) => day.periods || []))
       })
       .catch(() => {})
   }, [])
 
-  const todayDay = new Date().getDay() === 0 ? 7 : new Date().getDay()
+  const now       = new Date()
+  const todayDay  = now.getDay() === 0 ? 7 : now.getDay()
 
-  // Periodo más temprano de hoy para cada curso — para ordenar y destacar
-  // en el selector cuál curso le toca dar clase hoy y a qué hora.
+  // Periodo más temprano de hoy para cada curso — solo interesa mostrar en
+  // Asistencia los cursos que el docente dicta HOY, no todos los que tiene.
   const todayPeriodByCourse: Record<number, number> = {}
-  todaySched
+  mySchedule
     .filter(s => s.dayOfWeek === todayDay)
     .forEach(s => {
       const prev = todayPeriodByCourse[s.course.id]
       if (prev === undefined || s.period < prev) todayPeriodByCourse[s.course.id] = s.period
     })
 
-  const orderedCourses = [...courses].sort((a, b) => {
-    const pa = todayPeriodByCourse[a.id] ?? 999
-    const pb = todayPeriodByCourse[b.id] ?? 999
-    return pa - pb
-  })
+  const todayCourses = courses
+    .filter(c => todayPeriodByCourse[c.id] !== undefined)
+    .sort((a, b) => todayPeriodByCourse[a.id] - todayPeriodByCourse[b.id])
+
+  // Auto-selecciona si hoy solo dicta un curso, para no obligar a tocarlo.
+  useEffect(() => {
+    if (selCourse || mySchedule.length === 0) return
+    if (todayCourses.length === 1) setSelCourse(todayCourses[0])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mySchedule])
+
+  // Materias y periodos de HOY del curso seleccionado — para el banner.
+  const selCourseSchedule = selCourse ? mySchedule.filter(s => s.course.id === selCourse.id) : []
+  const selCourseSubjects = [...new Set(selCourseSchedule.map(s => s.teacherSubjectCourse.subject.name))]
+  const selCourseTodayPeriods = selCourseSchedule
+    .filter(s => s.dayOfWeek === todayDay)
+    .map(s => s.period)
+    .sort((a, b) => a - b)
 
   useEffect(() => {
     if (!selCourse) return
@@ -206,51 +220,74 @@ export default function AsistenciaEstudiantesPage() {
 
   return (
     <div className="pb-[70px]">
-      <div className="mb-4">
-        <h1 className="text-xl font-bold text-brand-700 mb-1">Asistencia de Estudiantes</h1>
-        <p className="text-[13px] text-neutral-500">Toca el estado para registrar — se guarda automáticamente</p>
+      <div className="mb-4 flex items-start justify-between gap-4 flex-wrap">
+        <div>
+          <h1 className="text-xl font-bold text-brand-700 mb-1">Asistencia de Estudiantes</h1>
+          <p className="text-[13px] text-neutral-500">Toca el estado para registrar — se guarda automáticamente</p>
+        </div>
+        <div className="shrink-0">
+          <label className="text-[11px] font-bold text-brand-700 uppercase tracking-wide block mb-1.5">Fecha</label>
+          <input
+            type="date" value={date} onChange={e => setDate(e.target.value)} max={today}
+            className="px-3 py-2 border border-neutral-300 rounded-lg text-sm text-brand-700 outline-none focus:border-info-500"
+          />
+        </div>
       </div>
 
-      {courses.length > 1 && (
-        <div className="mb-3">
-          <label className="text-[11px] font-bold text-brand-700 uppercase tracking-wide block mb-1.5">Curso</label>
-          <div className="flex gap-2 flex-wrap">
-            {orderedCourses.map(c => {
-              const period = todayPeriodByCourse[c.id]
-              return (
-                <button
-                  key={c.id} onClick={() => setSelCourse(c)}
-                  className={`px-3.5 py-2 rounded-full text-[13px] font-semibold transition-colors flex items-center gap-1.5 ${selCourse?.id === c.id ? 'bg-brand-700 text-white' : 'bg-neutral-100 text-brand-700 hover:bg-brand-100'}`}
-                >
-                  {GRADES[c.grade]} &quot;{c.parallel}&quot; {SHIFTS[c.shift]}
-                  {period !== undefined && (
-                    <span
-                      className="text-[10px] font-bold px-1.5 py-0.5 rounded-full"
-                      style={{ background: selCourse?.id === c.id ? 'rgba(255,255,255,.25)' : 'var(--color-accent-500)', color: selCourse?.id === c.id ? '#fff' : '#3A2F00' }}
+      {courses.length > 0 && (
+        <div className="bg-neutral-100 rounded-xl p-3.5 mb-3 flex flex-col md:flex-row gap-4">
+          <div className="flex-1 min-w-0">
+            <label className="text-[11px] font-bold text-brand-700 uppercase tracking-wide block mb-2">Curso de Hoy</label>
+            {todayCourses.length === 0 ? (
+              <p className="text-[13px] text-neutral-500">No tenés clases programadas hoy</p>
+            ) : (
+              <div className="flex gap-2 flex-wrap">
+                {todayCourses.map(c => {
+                  const period = todayPeriodByCourse[c.id]
+                  const isSel  = selCourse?.id === c.id
+                  return (
+                    <button
+                      key={c.id} onClick={() => setSelCourse(c)}
+                      className={`flex items-center gap-2 pl-1.5 pr-3.5 py-1.5 rounded-full text-[13px] font-bold transition-colors ${isSel ? 'bg-brand-700 text-white' : 'bg-white border border-neutral-300 text-brand-700 hover:bg-brand-100'}`}
                     >
-                      Hoy P{period}
-                    </span>
-                  )}
-                </button>
-              )
-            })}
+                      <span className="w-8 h-8 rounded-full bg-[#173B2E] text-white flex items-center justify-center text-[10px] font-extrabold shrink-0">
+                        {GRADES[c.grade]}{c.parallel}
+                      </span>
+                      <span
+                        className="text-[10px] font-bold px-1.5 py-0.5 rounded-full"
+                        style={{ background: isSel ? 'rgba(255,255,255,.25)' : 'var(--color-accent-500)', color: isSel ? '#fff' : '#3A2F00' }}
+                      >
+                        Hoy P{period}
+                      </span>
+                    </button>
+                  )
+                })}
+              </div>
+            )}
           </div>
+
+          {selCourse && (
+            <div className="md:w-[280px] md:shrink-0 bg-white rounded-xl border border-neutral-200 p-3">
+              <label className="text-[10px] font-bold text-brand-700 uppercase tracking-wide block mb-1.5">Detalle de curso</label>
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <div className="w-7 h-7 rounded-lg bg-brand-700 text-white flex items-center justify-center text-[9px] font-extrabold shrink-0">
+                  {GRADES[selCourse.grade]}{selCourse.parallel}
+                </div>
+                {selCourseSubjects.map(name => (
+                  <span key={name} className="bg-success-100 text-success-700 rounded-full px-2 py-0.5 text-[11px] font-semibold">{name}</span>
+                ))}
+                {selCourseTodayPeriods.length > 0 && (
+                  <span className="bg-neutral-100 text-brand-700 rounded-full px-2 py-0.5 text-[11px] font-semibold">
+                    Hoy: P{selCourseTodayPeriods.join(', P')}
+                  </span>
+                )}
+              </div>
+            </div>
+          )}
         </div>
       )}
 
-      {selCourse && (
-        <div className="bg-brand-100 rounded-lg px-3.5 py-2 mb-3 text-xs text-brand-700 font-semibold">
-          📚 {GRADES[selCourse.grade]} &quot;{selCourse.parallel}&quot; · {selCourse.level} · {SHIFTS[selCourse.shift]}
-        </div>
-      )}
-
-      <div className="mb-4">
-        <label className="text-[11px] font-bold text-brand-700 uppercase tracking-wide block mb-1.5">Fecha</label>
-        <input
-          type="date" value={date} onChange={e => setDate(e.target.value)} max={today}
-          className="px-3 py-2.5 border border-neutral-300 rounded-lg text-sm text-brand-700 outline-none focus:border-info-500 w-full"
-        />
-      </div>
+      <hr className="border-neutral-300 mb-4" />
 
       {summary && summary.registrado && (
         <div className="grid grid-cols-4 gap-2 mb-4">

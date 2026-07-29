@@ -16,6 +16,11 @@ interface Course {
   id: number; grade: string; parallel: string; shift: string; educationType: string
 }
 
+interface ScheduleItem {
+  dayOfWeek: number
+  course: { id: number }
+}
+
 interface Parent {
   id: number; firstName: string; lastName: string; phone?: string; ci?: string
 }
@@ -59,6 +64,7 @@ export default function TeacherReunionesPage() {
   const confirm = useConfirm()
   const toast   = useToast()
   const [courses,      setCourses]      = useState<Course[]>([])
+  const [mySchedule,   setMySchedule]   = useState<ScheduleItem[]>([])
   const [selCourseId,  setSelCourseId]  = useState<number | null>(null)
   const [meetings,     setMeetings]     = useState<Meeting[]>([])
   const [tutors,       setTutors]       = useState<Parent[]>([])
@@ -98,6 +104,11 @@ export default function TeacherReunionesPage() {
       } catch { toast('Error al cargar cursos', 'error') }
     }
     init()
+
+    fetch(`${API_URL}/api/schedules/my-schedule`, { headers: auth() })
+      .then(r => r.json())
+      .then(d => { if (Array.isArray(d)) setMySchedule(d.flatMap((day: any) => day.periods || [])) })
+      .catch(() => {})
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -283,6 +294,11 @@ export default function TeacherReunionesPage() {
 
   const selCourse = courses.find(c => c.id === selCourseId)
 
+  const todayDay = new Date().getDay() === 0 ? 7 : new Date().getDay()
+  const todayCourseIds = new Set(
+    mySchedule.filter(s => s.dayOfWeek === todayDay).map(s => s.course.id)
+  )
+
   return (
     <div>
       <div className="flex items-start justify-between gap-4 mb-6">
@@ -299,15 +315,24 @@ export default function TeacherReunionesPage() {
         <Card className="mb-4">
           <div className="text-[11px] font-bold text-neutral-500 uppercase tracking-wide mb-2.5">Selecciona el curso:</div>
           <div className="flex gap-2 flex-wrap">
-            {courses.map(c => (
-              <button
-                key={c.id} onClick={() => setSelCourseId(c.id)}
-                className={`flex items-center gap-1.5 px-4 py-2 rounded-lg text-[13px] font-medium border transition-colors ${selCourseId === c.id ? 'bg-brand-700 text-white border-brand-700' : 'bg-white text-brand-700 border-neutral-300 hover:border-brand-500'}`}
-              >
-                {GRADES[c.grade]} &quot;{c.parallel}&quot; · {SHIFTS[c.shift]}
-                {c.educationType === 'BTH' && <span className="bg-white/20 px-1.5 py-0.5 rounded-[10px] text-[10px] ml-1">BTH</span>}
-              </button>
-            ))}
+            {courses.map(c => {
+              const isSel   = selCourseId === c.id
+              const isToday = todayCourseIds.has(c.id)
+              return (
+                <button
+                  key={c.id} onClick={() => setSelCourseId(c.id)}
+                  className={`flex items-center justify-center rounded-full border-2 transition-colors ${isSel ? 'border-accent-500 bg-accent-500' : 'border-neutral-300 bg-white hover:bg-brand-100'}`}
+                  style={{ padding: 3 }}
+                >
+                  <span
+                    className={`w-9 h-9 rounded-full bg-[#173B2E] text-white flex items-center justify-center text-[10px] font-extrabold shrink-0 ${isToday && !isSel ? 'ring-2 ring-offset-1' : ''}`}
+                    style={isToday && !isSel ? { ['--tw-ring-color' as any]: '#C0392B' } : undefined}
+                  >
+                    {GRADES[c.grade]}{c.parallel}
+                  </span>
+                </button>
+              )
+            })}
           </div>
         </Card>
       )}

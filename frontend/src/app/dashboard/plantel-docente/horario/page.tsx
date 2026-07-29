@@ -175,11 +175,12 @@ export default function TeacherHorarioPage() {
                           )}
                         </td>
                         {days.map(day => {
-                          const cell = getCell(day, period)
+                          const cell    = getCell(day, period)
+                          const isToday = day === todayDay
                           return (
                             <td
                               key={day}
-                              className={`p-2 align-top ${cell ? 'bg-brand-100/40 border border-neutral-300' : 'bg-neutral-100/30 border border-dashed border-neutral-300'}`}
+                              className={`p-2 align-top ${cell ? (isToday ? 'bg-accent-500/15 border border-accent-500/40' : 'bg-brand-100/40 border border-neutral-300') : 'bg-neutral-100/30 border border-dashed border-neutral-300'}`}
                               style={{ minWidth: 120 }}
                             >
                               {cell ? (
