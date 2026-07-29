@@ -269,7 +269,7 @@ export default function DashboardShell({
         .navbar{background:var(--dsh-navbar);display:flex;flex-wrap:wrap;align-items:stretch;padding:0 16px;position:sticky;top:60px;z-index:150}
         .nav-top-item{display:flex;align-items:center;gap:6px;padding:11px 14px;font-size:13.5px;font-weight:600;color:rgba(255,255,255,.78);background:none;border:none;cursor:pointer;text-decoration:none;white-space:nowrap;border-bottom:2.5px solid transparent;transition:background .15s,color .15s}
         .nav-top-item:hover{color:#fff;background:var(--dsh-hover)}
-        .nav-top-item.active{color:#fff;border-bottom-color:var(--dsh-accent)}
+        .nav-top-item.active{color:#fff;background:rgba(255,255,255,.14);border-bottom-color:var(--dsh-accent)}
         .chev-open{transform:rotate(180deg);transition:transform .15s}
         .nav-dropdown-wrap{position:relative}
         .nav-dropdown{position:absolute;top:100%;left:0;background:#fff;border-radius:0 0 10px 10px;box-shadow:0 12px 28px -10px rgba(0,0,0,.28);min-width:230px;padding:6px;z-index:160}
