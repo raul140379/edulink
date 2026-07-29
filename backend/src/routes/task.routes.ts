@@ -7,6 +7,7 @@ import {
   getTasksByCourse,
   getTasksByStudent,
   getMyTasks,
+  getMyPendingGrading,
   createTask,
   updateTask,
   deleteTask,
@@ -21,6 +22,7 @@ router.use(verifyToken)
 
 // Rutas específicas primero
 router.get('/my-tasks',                        getMyTasks)
+router.get('/my-pending-review',               getMyPendingGrading)
 router.get('/by-course/:courseId',             requirePermission(Permission.GRADE_VIEW_ALL), getTasksByCourse)
 router.get('/by-student/:studentId',           requirePermission(Permission.GRADE_VIEW_ALL), getTasksByStudent)
 router.get('/summary/by-student/:studentId',   requirePermission(Permission.GRADE_VIEW_ALL), getStudentTaskSummary)

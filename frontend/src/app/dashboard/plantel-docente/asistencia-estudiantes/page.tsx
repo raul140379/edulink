@@ -11,6 +11,11 @@ interface Course {
   id: number; grade: string; parallel: string; level: string; shift: string
 }
 
+interface ScheduleItem {
+  dayOfWeek: number; period: number
+  course: { id: number }
+}
+
 interface StudentAtt {
   studentId: number; firstName: string; lastName: string; gender: string
   status: 'PRESENTE' | 'AUSENTE' | 'RETRASO' | 'LICENCIA' | null
@@ -39,6 +44,7 @@ export default function AsistenciaEstudiantesPage() {
   const confirm = useConfirm()
   const toast   = useToast()
   const [courses,   setCourses]   = useState<Course[]>([])
+  const [todaySched, setTodaySched] = useState<ScheduleItem[]>([])
   const [selCourse, setSelCourse] = useState<Course | null>(null)
   const [students,  setStudents]  = useState<StudentAtt[]>([])
   const [summary,   setSummary]   = useState<Summary | null>(null)
@@ -70,7 +76,32 @@ export default function AsistenciaEstudiantesPage() {
         }
       })
       .catch(() => {})
+
+    fetch(`${API}/api/schedules/my-schedule`, { headers: auth() })
+      .then(r => r.json())
+      .then(d => {
+        if (Array.isArray(d)) setTodaySched(d.flatMap((day: any) => day.periods || []))
+      })
+      .catch(() => {})
   }, [])
+
+  const todayDay = new Date().getDay() === 0 ? 7 : new Date().getDay()
+
+  // Periodo más temprano de hoy para cada curso — para ordenar y destacar
+  // en el selector cuál curso le toca dar clase hoy y a qué hora.
+  const todayPeriodByCourse: Record<number, number> = {}
+  todaySched
+    .filter(s => s.dayOfWeek === todayDay)
+    .forEach(s => {
+      const prev = todayPeriodByCourse[s.course.id]
+      if (prev === undefined || s.period < prev) todayPeriodByCourse[s.course.id] = s.period
+    })
+
+  const orderedCourses = [...courses].sort((a, b) => {
+    const pa = todayPeriodByCourse[a.id] ?? 999
+    const pb = todayPeriodByCourse[b.id] ?? 999
+    return pa - pb
+  })
 
   useEffect(() => {
     if (!selCourse) return
@@ -184,14 +215,25 @@ export default function AsistenciaEstudiantesPage() {
         <div className="mb-3">
           <label className="text-[11px] font-bold text-brand-700 uppercase tracking-wide block mb-1.5">Curso</label>
           <div className="flex gap-2 flex-wrap">
-            {courses.map(c => (
-              <button
-                key={c.id} onClick={() => setSelCourse(c)}
-                className={`px-3.5 py-2 rounded-full text-[13px] font-semibold transition-colors ${selCourse?.id === c.id ? 'bg-brand-700 text-white' : 'bg-neutral-100 text-brand-700 hover:bg-brand-100'}`}
-              >
-                {GRADES[c.grade]} &quot;{c.parallel}&quot; {SHIFTS[c.shift]}
-              </button>
-            ))}
+            {orderedCourses.map(c => {
+              const period = todayPeriodByCourse[c.id]
+              return (
+                <button
+                  key={c.id} onClick={() => setSelCourse(c)}
+                  className={`px-3.5 py-2 rounded-full text-[13px] font-semibold transition-colors flex items-center gap-1.5 ${selCourse?.id === c.id ? 'bg-brand-700 text-white' : 'bg-neutral-100 text-brand-700 hover:bg-brand-100'}`}
+                >
+                  {GRADES[c.grade]} &quot;{c.parallel}&quot; {SHIFTS[c.shift]}
+                  {period !== undefined && (
+                    <span
+                      className="text-[10px] font-bold px-1.5 py-0.5 rounded-full"
+                      style={{ background: selCourse?.id === c.id ? 'rgba(255,255,255,.25)' : 'var(--color-accent-500)', color: selCourse?.id === c.id ? '#fff' : '#3A2F00' }}
+                    >
+                      Hoy P{period}
+                    </span>
+                  )}
+                </button>
+              )
+            })}
           </div>
         </div>
       )}

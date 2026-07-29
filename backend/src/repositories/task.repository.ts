@@ -166,4 +166,15 @@ export const taskRepository = {
       include: { task: { select: { type: true, maxScore: true, subject: { select: { id: true, name: true } } } } },
     })
   },
+
+  findPendingGradingByTeacher(teacherId: number) {
+    return prisma.taskSubmission.findMany({
+      where: { status: 'ENTREGADO', task: { teacherId } },
+      include: {
+        task: { select: { id: true, title: true, type: true, dueDate: true,
+          subject: { select: { id: true, name: true } },
+          course:  { select: { id: true, grade: true, parallel: true } } } },
+      },
+    })
+  },
 }

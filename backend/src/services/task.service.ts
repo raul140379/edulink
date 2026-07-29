@@ -144,6 +144,25 @@ export const taskService = {
     }
   },
 
+  async getMyPendingGrading(userId: number | undefined) {
+    const teacher = await taskRepository.findTeacherByUserId(userId)
+    if (!teacher) throw new HttpError(404, 'Perfil no encontrado')
+
+    const submissions = await taskRepository.findPendingGradingByTeacher(teacher.id)
+
+    const byTask: Record<number, any> = {}
+    submissions.forEach((s) => {
+      const t = s.task
+      if (!byTask[t.id]) byTask[t.id] = {
+        taskId: t.id, title: t.title, type: t.type,
+        subject: t.subject, course: t.course, count: 0,
+      }
+      byTask[t.id].count++
+    })
+
+    return { total: submissions.length, byTask: Object.values(byTask) }
+  },
+
   async getStudentTaskSummary(studentId: number, trimesterId?: string) {
     const submissions = await taskRepository.findGradedSubmissionsForStudent(
       studentId, trimesterId ? parseInt(trimesterId) : undefined

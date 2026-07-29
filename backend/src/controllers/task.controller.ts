@@ -45,6 +45,17 @@ export const getMyTasks = async (req: AuthRequest, res: Response): Promise<void>
 }
 
 // ─────────────────────────────────────────────
+// GET /api/tasks/my-pending-review
+// ─────────────────────────────────────────────
+export const getMyPendingGrading = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    res.json(await taskService.getMyPendingGrading(req.userId))
+  } catch (error) {
+    handleControllerError(res, error)
+  }
+}
+
+// ─────────────────────────────────────────────
 // POST /api/tasks
 // ─────────────────────────────────────────────
 export const createTask = async (req: AuthRequest, res: Response): Promise<void> => {

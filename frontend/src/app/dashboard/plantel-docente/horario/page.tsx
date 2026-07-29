@@ -39,10 +39,14 @@ export default function TeacherHorarioPage() {
   const [schedule, setSchedule] = useState<ScheduleItem[]>([])
   const [loading,  setLoading]  = useState(true)
   const [view,     setView]     = useState<'grilla'|'lista'>('grilla')
+  const [todayDay, setTodayDay] = useState(0)
 
   const auth = () => ({ Authorization: `Bearer ${localStorage.getItem('token') || ''}` })
 
   useEffect(() => {
+    const d = new Date().getDay()
+    setTodayDay(d === 0 ? 7 : d)
+
     const load = async () => {
       setLoading(true)
       try {
@@ -73,6 +77,8 @@ export default function TeacherHorarioPage() {
   const totalClases   = schedule.length
   const totalCursos   = new Set(schedule.map(s => s.course.id)).size
   const totalMaterias = new Set(schedule.map(s => s.teacherSubjectCourse.subject.name)).size
+
+  const clasesHoy = schedule.filter(s => s.dayOfWeek === todayDay).sort((a,b)=>a.period-b.period)
 
   if (loading) return <div className="flex justify-center py-16"><p className="text-sm text-neutral-500">Cargando...</p></div>
 
@@ -106,6 +112,26 @@ export default function TeacherHorarioPage() {
         </Card>
       ) : (
         <>
+          {/* Clases de hoy */}
+          {clasesHoy.length > 0 && (
+            <Card className="!bg-brand-100 !border-brand-300 mb-5">
+              <div className="font-bold text-[13px] text-brand-700 mb-2.5">📅 Hoy — {DAYS[todayDay]}</div>
+              <div className="flex flex-wrap gap-2">
+                {clasesHoy.map(item => (
+                  <div key={item.id} className="bg-white rounded-lg px-3 py-2 border border-neutral-300 flex items-center gap-2">
+                    <span className="text-lg">{SUBJECT_EMOJI[item.teacherSubjectCourse.subject.name]||'📚'}</span>
+                    <div>
+                      <div className="text-xs font-bold text-brand-700">{item.teacherSubjectCourse.subject.name}</div>
+                      <div className="text-[10px] text-neutral-500">
+                        P{item.period} · {item.startTime}–{item.endTime} · {GRADES[item.course.grade]} &quot;{item.course.parallel}&quot;
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </Card>
+          )}
+
           <div className="flex gap-2 mb-4">
             {(['grilla','lista'] as const).map(v => (
               <button
@@ -124,7 +150,13 @@ export default function TeacherHorarioPage() {
                   <tr>
                     <th className="p-2.5 bg-neutral-100 text-xs font-bold text-brand-700 text-center border border-neutral-300">Periodo</th>
                     {days.map(d => (
-                      <th key={d} className="p-2.5 bg-neutral-100 text-xs font-bold text-brand-700 text-center border border-neutral-300">{DAYS[d]}</th>
+                      <th
+                        key={d}
+                        className={`p-2.5 text-xs font-bold text-center border border-neutral-300 ${d === todayDay ? 'bg-brand-700 text-white' : 'bg-neutral-100 text-brand-700'}`}
+                      >
+                        {DAYS[d]}
+                        {d === todayDay && <div className="text-[9px] font-normal opacity-80">Hoy</div>}
+                      </th>
                     ))}
                   </tr>
                 </thead>
@@ -172,10 +204,13 @@ export default function TeacherHorarioPage() {
 
           {view === 'lista' && (
             <div className="flex flex-col gap-3">
-              {Object.entries(byDay).sort(([a],[b]) => parseInt(a) - parseInt(b)).map(([day, items]) => (
-                <Card key={day} padded={false} className="overflow-hidden">
-                  <div className="bg-brand-100 px-4 py-2.5 font-bold text-[13px] text-brand-700 border-b border-neutral-300/60">
+              {Object.entries(byDay).sort(([a],[b]) => parseInt(a) - parseInt(b)).map(([day, items]) => {
+                const isToday = parseInt(day) === todayDay
+                return (
+                <Card key={day} padded={false} className={`overflow-hidden ${isToday ? '!border-brand-700' : ''}`}>
+                  <div className={`px-4 py-2.5 font-bold text-[13px] flex items-center gap-2 border-b border-neutral-100 ${isToday ? 'bg-brand-700 text-white' : 'bg-brand-100 text-brand-700'}`}>
                     📅 {DAYS[parseInt(day)]}
+                    {isToday && <span className="text-[10px] bg-white/20 px-2 py-0.5 rounded-full">Hoy</span>}
                   </div>
                   <div className="flex flex-col">
                     {items.sort((a,b) => a.period - b.period).map(item => (
@@ -197,7 +232,8 @@ export default function TeacherHorarioPage() {
                     ))}
                   </div>
                 </Card>
-              ))}
+                )
+              })}
             </div>
           )}
         </>
