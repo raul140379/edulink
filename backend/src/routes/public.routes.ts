@@ -25,7 +25,7 @@ router.get('/schools', async (req: Request, res: Response) => {
   try {
     const schools = await prisma.school.findMany({
       where:   { isActive: true },
-      select:  { id: true, name: true, tipo: true, area: true, nucleo: { select: { id: true, name: true } } },
+      select:  { id: true, name: true, tipo: true, area: true, shifts: true, nucleo: { select: { id: true, name: true } } },
       orderBy: { name: 'asc' },
     })
     res.json(schools)

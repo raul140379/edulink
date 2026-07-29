@@ -52,6 +52,10 @@ export const schoolService = {
     const existing = await schoolRepository.findBySieCode(input.sieCode)
     if (existing) throw new HttpError(409, `Ya existe una unidad educativa con el SIE ${input.sieCode}`)
 
+    if (input.offersBTH && !input.levels.includes('SECUNDARIA')) {
+      throw new HttpError(400, 'BTH es una variante de Secundaria — marca ese nivel para poder ofrecerlo')
+    }
+
     const ctx = getTenantContext()
     const districtId = ctx?.role === Role.DIRECTOR_DISTRITAL ? ctx.districtId : input.districtId
     if (!districtId) throw new HttpError(400, 'Falta indicar el distrito')
@@ -65,6 +69,9 @@ export const schoolService = {
       tipo:       input.tipo,
       area:       input.area,
       subsistema: input.subsistema,
+      levels:     input.levels,
+      offersBTH:  input.offersBTH ?? false,
+      shifts:     input.shifts,
       address:    input.address || null,
       district: { connect: { id: districtId } },
       ...(input.nucleoId != null ? { nucleo: { connect: { id: input.nucleoId } } } : {}),
@@ -73,6 +80,9 @@ export const schoolService = {
 
   async updateSchool(id: number, input: UpdateSchoolInput) {
     await schoolService.getSchoolById(id) // 404/403 guard, respects district scope
+    if (input.offersBTH && input.levels && !input.levels.includes('SECUNDARIA')) {
+      throw new HttpError(400, 'BTH es una variante de Secundaria — marca ese nivel para poder ofrecerlo')
+    }
     return schoolRepository.update(id, input)
   },
 

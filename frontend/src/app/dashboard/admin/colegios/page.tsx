@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { Plus, Building2, Users, GraduationCap, Upload, UserCog, RefreshCw, Copy, Check, Eye, EyeOff } from 'lucide-react'
+import { Plus, Building2, Users, GraduationCap, Upload, UserCog, RefreshCw, Copy, Check, Eye, EyeOff, Pencil } from 'lucide-react'
 import Button from '@/components/ui/Button'
 import { Input, Select } from '@/components/ui/Input'
 import Card from '@/components/ui/Card'
@@ -17,6 +17,10 @@ const SUBSISTEMA_LABELS: Record<string, string> = {
   ALTERNATIVA_ESPECIAL: 'Alternativa y Especial',
   SUPERIOR_FORMACION_PROFESIONAL: 'Superior de Formación Profesional',
 }
+const LEVEL_LABELS: Record<string, string> = { INICIAL: 'Inicial', PRIMARIA: 'Primaria', SECUNDARIA: 'Secundaria' }
+const LEVEL_OPTIONS = ['INICIAL', 'PRIMARIA', 'SECUNDARIA'] as const
+const SHIFT_LABELS: Record<string, string> = { MORNING: 'Mañana', AFTERNOON: 'Tarde', NIGHT: 'Noche' }
+const SHIFT_OPTIONS = ['MORNING', 'AFTERNOON', 'NIGHT'] as const
 
 interface Nucleo {
   id:       number
@@ -36,6 +40,9 @@ interface School {
   tipo:       'FISCAL' | 'CONVENIO' | 'PRIVADA'
   area:       'URBANA' | 'RURAL'
   subsistema: string
+  levels:     string[]
+  offersBTH:  boolean
+  shifts:     string[]
   address:    string | null
   isActive:   boolean
   district:   { id: number; name: string }
@@ -44,7 +51,7 @@ interface School {
   _count:     { students: number; teachers: number; parents: number }
 }
 
-const emptyForm = { name: '', sieCode: '', tipo: 'FISCAL', area: 'URBANA', subsistema: 'REGULAR', address: '', nucleoId: '' }
+const emptyForm = { name: '', sieCode: '', tipo: 'FISCAL', area: 'URBANA', subsistema: 'REGULAR', levels: [] as string[], offersBTH: false, shifts: [] as string[], address: '', nucleoId: '' }
 
 const emptyDirectorForm = { firstName: '', lastName: '', ci: '', phone: '', email: '', password: '' }
 
@@ -65,6 +72,13 @@ export default function ColegiosPage() {
   const [showImport, setShowImport] = useState(false)
   const [importFile, setImportFile] = useState<File | null>(null)
   const [importing, setImporting] = useState(false)
+
+  // ── Editar Colegio ──
+  const [showEditModal, setShowEditModal] = useState(false)
+  const [editSchoolId,  setEditSchoolId]  = useState<number | null>(null)
+  const [editForm,      setEditForm]      = useState({ ...emptyForm, isActive: true })
+  const [editSaving,    setEditSaving]    = useState(false)
+  const [editError,     setEditError]     = useState('')
 
   // ── Asignar Director ──
   const [showDirectorModal, setShowDirectorModal] = useState(false)
@@ -106,8 +120,22 @@ export default function ColegiosPage() {
     setFormError(''); setShowModal(true)
   }
 
+  const toggleLevel = (level: string) => {
+    setForm(f => {
+      const has = f.levels.includes(level)
+      const levels = has ? f.levels.filter(l => l !== level) : [...f.levels, level]
+      return { ...f, levels, offersBTH: levels.includes('SECUNDARIA') ? f.offersBTH : false }
+    })
+  }
+
+  const toggleShift = (shift: string) => {
+    setForm(f => ({ ...f, shifts: f.shifts.includes(shift) ? f.shifts.filter(s => s !== shift) : [...f.shifts, shift] }))
+  }
+
   const handleCreate = async () => {
     if (!form.name || !form.sieCode) { setFormError('El nombre y el código SIE son requeridos'); return }
+    if (form.levels.length === 0) { setFormError('Selecciona al menos un nivel (Inicial/Primaria/Secundaria)'); return }
+    if (form.shifts.length === 0) { setFormError('Selecciona al menos un turno (Mañana/Tarde/Noche)'); return }
     setFormError(''); setSaving(true)
     try {
       const res  = await fetch(`${API_URL}/api/schools`, {
@@ -143,6 +171,50 @@ export default function ColegiosPage() {
       fetchSchools()
     } catch { toast('Error de conexión', 'error') }
     finally  { setImporting(false) }
+  }
+
+  const openEdit = (school: School) => {
+    setEditSchoolId(school.id)
+    setEditForm({
+      name: school.name, sieCode: school.sieCode, tipo: school.tipo, area: school.area,
+      subsistema: school.subsistema, levels: [...school.levels], offersBTH: school.offersBTH,
+      shifts: [...school.shifts], address: school.address || '', nucleoId: school.nucleo ? String(school.nucleo.id) : '',
+      isActive: school.isActive,
+    })
+    setEditError(''); setShowEditModal(true)
+  }
+
+  const toggleEditLevel = (level: string) => {
+    setEditForm(f => {
+      const has = f.levels.includes(level)
+      const levels = has ? f.levels.filter(l => l !== level) : [...f.levels, level]
+      return { ...f, levels, offersBTH: levels.includes('SECUNDARIA') ? f.offersBTH : false }
+    })
+  }
+
+  const toggleEditShift = (shift: string) => {
+    setEditForm(f => ({ ...f, shifts: f.shifts.includes(shift) ? f.shifts.filter(s => s !== shift) : [...f.shifts, shift] }))
+  }
+
+  const handleEditSave = async () => {
+    if (!editSchoolId) return
+    if (!editForm.name || !editForm.sieCode) { setEditError('El nombre y el código SIE son requeridos'); return }
+    if (editForm.levels.length === 0) { setEditError('Selecciona al menos un nivel (Inicial/Primaria/Secundaria)'); return }
+    if (editForm.shifts.length === 0) { setEditError('Selecciona al menos un turno (Mañana/Tarde/Noche)'); return }
+    setEditError(''); setEditSaving(true)
+    try {
+      const res  = await fetch(`${API_URL}/api/schools/${editSchoolId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ ...editForm, nucleoId: editForm.nucleoId ? Number(editForm.nucleoId) : null }),
+      })
+      const data = await res.json()
+      if (!res.ok) { setEditError(data.message); return }
+      toast('Unidad educativa actualizada correctamente', 'success')
+      setShowEditModal(false)
+      fetchSchools()
+    } catch { setEditError('Error de conexión') }
+    finally  { setEditSaving(false) }
   }
 
   const openDirectorModal = (school: School) => {
@@ -195,6 +267,29 @@ export default function ColegiosPage() {
     setCopiedDirectorCreds(true); setTimeout(() => setCopiedDirectorCreds(false), 2000)
   }
 
+  // Orden por núcleo (alfabético, "Sin núcleo" al final) y dentro de cada
+  // núcleo por turno (Mañana → Tarde → Noche, según el primero que tenga cada
+  // colegio) y de ahí por nombre.
+  const SHIFT_ORDER: Record<string, number> = { MORNING: 0, AFTERNOON: 1, NIGHT: 2 }
+  const shiftRank = (s: School) => Math.min(...(s.shifts.length ? s.shifts.map(t => SHIFT_ORDER[t] ?? 9) : [9]))
+
+  const groupedSchools = (() => {
+    const groups = new Map<string, School[]>()
+    for (const s of schools) {
+      const key = s.nucleo?.name || 'Sin núcleo'
+      if (!groups.has(key)) groups.set(key, [])
+      groups.get(key)!.push(s)
+    }
+    for (const list of groups.values()) {
+      list.sort((a, b) => shiftRank(a) - shiftRank(b) || a.name.localeCompare(b.name))
+    }
+    return [...groups.entries()].sort(([a], [b]) => {
+      if (a === 'Sin núcleo') return 1
+      if (b === 'Sin núcleo') return -1
+      return a.localeCompare(b)
+    })
+  })()
+
   return (
     <div>
       <div className="flex items-start justify-between gap-4 mb-6">
@@ -217,20 +312,42 @@ export default function ColegiosPage() {
           No hay unidades educativas registradas todavía
         </div>
       ) : (
-        <div className="grid gap-3.5" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))' }}>
-          {schools.map((s) => (
+        <div className="flex flex-col gap-6">
+        {groupedSchools.map(([nucleoName, group]) => (
+          <div key={nucleoName}>
+            <div className="flex items-center gap-2 mb-3">
+              <h2 className="text-sm font-bold text-brand-700">Núcleo {nucleoName}</h2>
+              <span className="text-[11px] text-neutral-500">({group.length})</span>
+            </div>
+            <div className="grid gap-3.5" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))' }}>
+          {group.map((s) => (
             <Card key={s.id} className="flex gap-3">
               <div className="w-10 h-10 rounded-[10px] bg-brand-100 text-brand-700 flex items-center justify-center shrink-0">
                 <Building2 size={20} />
               </div>
               <div className="flex-1 min-w-0">
-                <div className="text-sm font-bold text-brand-700 mb-1.5">{s.name}</div>
+                <div className="flex items-start justify-between gap-2 mb-1.5">
+                  <div className="text-sm font-bold text-brand-700">{s.name}</div>
+                  <button
+                    onClick={() => openEdit(s)} title="Editar colegio"
+                    className="shrink-0 w-6 h-6 rounded-md bg-neutral-100 text-neutral-500 flex items-center justify-center hover:bg-brand-100 hover:text-brand-700"
+                  >
+                    <Pencil size={12} />
+                  </button>
+                </div>
                 <div className="flex gap-1.5 flex-wrap mb-1.5">
                   <Badge tone="info">SIE: {s.sieCode}</Badge>
                   <Badge tone="info">{TIPO_LABELS[s.tipo] || s.tipo}</Badge>
                   <Badge tone="info">{s.area === 'URBANA' ? 'Urbana' : 'Rural'}</Badge>
                   {s.subsistema !== 'REGULAR' && <Badge tone="warning">{SUBSISTEMA_LABELS[s.subsistema] || s.subsistema}</Badge>}
                   {!s.isActive && <Badge tone="danger">Inactiva</Badge>}
+                </div>
+                <div className="flex gap-1.5 flex-wrap mb-1.5">
+                  {s.levels.length > 0 ? s.levels.map(l => <Badge key={l} tone="brand">{LEVEL_LABELS[l] || l}</Badge>) : <Badge tone="warning">Sin nivel registrado</Badge>}
+                  {s.offersBTH && <Badge tone="success">BTH</Badge>}
+                </div>
+                <div className="flex gap-1.5 flex-wrap mb-1.5">
+                  {s.shifts.length > 0 ? s.shifts.map(t => <Badge key={t} tone="neutral">{SHIFT_LABELS[t] || t}</Badge>) : <Badge tone="warning">Sin turno registrado</Badge>}
                 </div>
                 <div className="text-[11px] text-neutral-500 mb-2">
                   {s.district.name}{s.nucleo ? ` · Núcleo ${s.nucleo.name}` : ''}
@@ -261,6 +378,9 @@ export default function ColegiosPage() {
               </div>
             </Card>
           ))}
+            </div>
+          </div>
+        ))}
         </div>
       )}
 
@@ -298,6 +418,42 @@ export default function ColegiosPage() {
             <option value="ALTERNATIVA_ESPECIAL">Alternativa y Especial</option>
             <option value="SUPERIOR_FORMACION_PROFESIONAL">Superior de Formación Profesional</option>
           </Select>
+          <div className="flex flex-col gap-1.5">
+            <span className="text-[13px] font-semibold text-neutral-700">Niveles que ofrece<span className="text-danger-500"> *</span></span>
+            <div className="flex gap-2 flex-wrap">
+              {LEVEL_OPTIONS.map(level => (
+                <button
+                  key={level} type="button" onClick={() => toggleLevel(level)}
+                  className={`px-3 py-1.5 rounded-full text-xs font-semibold border-2 transition-colors ${
+                    form.levels.includes(level) ? 'border-brand-700 bg-brand-100 text-brand-700' : 'border-neutral-300 bg-white text-neutral-500 hover:bg-neutral-100'
+                  }`}
+                >
+                  {LEVEL_LABELS[level]}
+                </button>
+              ))}
+            </div>
+            {form.levels.includes('SECUNDARIA') && (
+              <label className="flex items-center gap-2 mt-1 text-[13px] text-neutral-700">
+                <input type="checkbox" checked={form.offersBTH} onChange={e => setForm({ ...form, offersBTH: e.target.checked })} />
+                También ofrece Bachillerato Técnico Humanístico (BTH)
+              </label>
+            )}
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <span className="text-[13px] font-semibold text-neutral-700">Turno(s) en que funciona<span className="text-danger-500"> *</span></span>
+            <div className="flex gap-2 flex-wrap">
+              {SHIFT_OPTIONS.map(shift => (
+                <button
+                  key={shift} type="button" onClick={() => toggleShift(shift)}
+                  className={`px-3 py-1.5 rounded-full text-xs font-semibold border-2 transition-colors ${
+                    form.shifts.includes(shift) ? 'border-brand-700 bg-brand-100 text-brand-700' : 'border-neutral-300 bg-white text-neutral-500 hover:bg-neutral-100'
+                  }`}
+                >
+                  {SHIFT_LABELS[shift]}
+                </button>
+              ))}
+            </div>
+          </div>
           <Input label="Dirección" placeholder="Opcional" value={form.address}
             onChange={e => setForm({ ...form, address: e.target.value })} />
           <Select label="Núcleo" value={form.nucleoId} onChange={e => setForm({ ...form, nucleoId: e.target.value })}>
@@ -306,6 +462,91 @@ export default function ColegiosPage() {
               <option key={n.id} value={n.id}>{n.name}{n.location ? ` (${n.location})` : ''}</option>
             ))}
           </Select>
+        </div>
+      </Modal>
+
+      {/* ── Modal Editar Colegio ── */}
+      <Modal
+        open={showEditModal}
+        onClose={() => setShowEditModal(false)}
+        title="Editar Colegio"
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setShowEditModal(false)}>Cancelar</Button>
+            <Button onClick={handleEditSave} loading={editSaving}>Guardar cambios</Button>
+          </>
+        }
+      >
+        <div className="flex flex-col gap-3.5">
+          {editError && <p className="text-[13px] text-danger-600 bg-danger-100 rounded-lg px-3 py-2">{editError}</p>}
+          <Input label="Nombre" required value={editForm.name}
+            onChange={e => setEditForm({ ...editForm, name: e.target.value })} />
+          <Input label="Código SIE" required value={editForm.sieCode}
+            onChange={e => setEditForm({ ...editForm, sieCode: e.target.value })} />
+          <div className="grid grid-cols-2 gap-3">
+            <Select label="Tipo" required value={editForm.tipo} onChange={e => setEditForm({ ...editForm, tipo: e.target.value })}>
+              <option value="FISCAL">Fiscal</option>
+              <option value="CONVENIO">Convenio</option>
+              <option value="PRIVADA">Privada</option>
+            </Select>
+            <Select label="Área" required value={editForm.area} onChange={e => setEditForm({ ...editForm, area: e.target.value })}>
+              <option value="URBANA">Urbana</option>
+              <option value="RURAL">Rural</option>
+            </Select>
+          </div>
+          <Select label="Subsistema" value={editForm.subsistema} onChange={e => setEditForm({ ...editForm, subsistema: e.target.value })}>
+            <option value="REGULAR">Regular</option>
+            <option value="ALTERNATIVA_ESPECIAL">Alternativa y Especial</option>
+            <option value="SUPERIOR_FORMACION_PROFESIONAL">Superior de Formación Profesional</option>
+          </Select>
+          <div className="flex flex-col gap-1.5">
+            <span className="text-[13px] font-semibold text-neutral-700">Niveles que ofrece<span className="text-danger-500"> *</span></span>
+            <div className="flex gap-2 flex-wrap">
+              {LEVEL_OPTIONS.map(level => (
+                <button
+                  key={level} type="button" onClick={() => toggleEditLevel(level)}
+                  className={`px-3 py-1.5 rounded-full text-xs font-semibold border-2 transition-colors ${
+                    editForm.levels.includes(level) ? 'border-brand-700 bg-brand-100 text-brand-700' : 'border-neutral-300 bg-white text-neutral-500 hover:bg-neutral-100'
+                  }`}
+                >
+                  {LEVEL_LABELS[level]}
+                </button>
+              ))}
+            </div>
+            {editForm.levels.includes('SECUNDARIA') && (
+              <label className="flex items-center gap-2 mt-1 text-[13px] text-neutral-700">
+                <input type="checkbox" checked={editForm.offersBTH} onChange={e => setEditForm({ ...editForm, offersBTH: e.target.checked })} />
+                También ofrece Bachillerato Técnico Humanístico (BTH)
+              </label>
+            )}
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <span className="text-[13px] font-semibold text-neutral-700">Turno(s) en que funciona<span className="text-danger-500"> *</span></span>
+            <div className="flex gap-2 flex-wrap">
+              {SHIFT_OPTIONS.map(shift => (
+                <button
+                  key={shift} type="button" onClick={() => toggleEditShift(shift)}
+                  className={`px-3 py-1.5 rounded-full text-xs font-semibold border-2 transition-colors ${
+                    editForm.shifts.includes(shift) ? 'border-brand-700 bg-brand-100 text-brand-700' : 'border-neutral-300 bg-white text-neutral-500 hover:bg-neutral-100'
+                  }`}
+                >
+                  {SHIFT_LABELS[shift]}
+                </button>
+              ))}
+            </div>
+          </div>
+          <Input label="Dirección" placeholder="Opcional" value={editForm.address}
+            onChange={e => setEditForm({ ...editForm, address: e.target.value })} />
+          <Select label="Núcleo" value={editForm.nucleoId} onChange={e => setEditForm({ ...editForm, nucleoId: e.target.value })}>
+            <option value="">Sin asignar</option>
+            {nucleos.map(n => (
+              <option key={n.id} value={n.id}>{n.name}{n.location ? ` (${n.location})` : ''}</option>
+            ))}
+          </Select>
+          <label className="flex items-center gap-2 text-[13px] text-neutral-700">
+            <input type="checkbox" checked={editForm.isActive} onChange={e => setEditForm({ ...editForm, isActive: e.target.checked })} />
+            Colegio activo
+          </label>
         </div>
       </Modal>
 

@@ -3,7 +3,8 @@
 import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import Image from 'next/image'
-import { LogIn, LogOut, CheckCircle, AlertCircle } from 'lucide-react'
+import Link from 'next/link'
+import { LogIn, LogOut, CheckCircle, AlertCircle, ArrowLeft } from 'lucide-react'
 import { useDistrictConfig } from '@/hooks/useDistrictConfig'
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000'
@@ -111,6 +112,9 @@ export default function LoginPage() {
       {/* ── PANEL IZQUIERDO — igual que antes ── */}
       <div className="login-left">
         <div className="left-inner">
+          <Link href="/" className="back-home">
+            <ArrowLeft size={14}/> Volver al portal
+          </Link>
           <div className="brand">
             <div className="brand-logo">
               {district.logoUrl ? (
@@ -271,6 +275,8 @@ export default function LoginPage() {
         /* ── Panel izquierdo ── */
         .login-left { flex:1; background:linear-gradient(145deg,#0F6E56 0%,#0A5A45 60%,#0F6E56 100%); position:relative; overflow:hidden; display:flex; align-items:center; justify-content:center; }
         .left-inner { position:relative; z-index:2; padding:48px; display:flex; flex-direction:column; gap:32px; max-width:640px; width:100%; }
+        .back-home { display:flex; align-items:center; gap:6px; font-size:12.5px; font-weight:600; color:rgba(255,255,255,.75); text-decoration:none; width:fit-content; padding:6px 0; }
+        .back-home:hover { color:#fff; }
         .brand { display:flex; align-items:center; gap:14px; }
         .brand-logo { width:56px; height:56px; flex-shrink:0; background:#fff; border-radius:50%; padding:4px; display:flex; align-items:center; justify-content:center; overflow:hidden; }
         .brand-text { display:flex; flex-direction:column; gap:2px; }

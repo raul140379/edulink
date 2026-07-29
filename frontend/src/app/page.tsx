@@ -16,8 +16,12 @@ interface PublicSchool {
   name:   string
   tipo:   'FISCAL' | 'CONVENIO' | 'PRIVADA'
   area:   'URBANA' | 'RURAL'
+  shifts: string[]
   nucleo: { id: number; name: string } | null
 }
+
+const SHIFT_ORDER: Record<string, number> = { MORNING: 0, AFTERNOON: 1, NIGHT: 2 }
+const shiftRank = (s: PublicSchool) => Math.min(...(s.shifts?.length ? s.shifts.map(t => SHIFT_ORDER[t] ?? 9) : [9]))
 
 interface PublicStats {
   schools:  number
@@ -89,6 +93,23 @@ export default function Home() {
       return true
     })
   }, [schools, search, level, zone])
+
+  const groupedSchools = useMemo(() => {
+    const groups = new Map<string, PublicSchool[]>()
+    for (const s of filteredSchools) {
+      const key = s.nucleo?.name || 'Sin núcleo'
+      if (!groups.has(key)) groups.set(key, [])
+      groups.get(key)!.push(s)
+    }
+    for (const list of groups.values()) {
+      list.sort((a, b) => shiftRank(a) - shiftRank(b) || a.name.localeCompare(b.name))
+    }
+    return [...groups.entries()].sort(([a], [b]) => {
+      if (a === 'Sin núcleo') return 1
+      if (b === 'Sin núcleo') return -1
+      return a.localeCompare(b)
+    })
+  }, [filteredSchools])
 
   const goLogin = () => router.push('/login')
   const scrollTo = (id: string) => document.getElementById(id)?.scrollIntoView({ behavior: 'smooth' })
@@ -205,17 +226,23 @@ export default function Home() {
           ) : filteredSchools.length === 0 ? (
             <div className="empty-state">No se encontraron unidades educativas con ese criterio</div>
           ) : (
-            <div className="schools-grid">
-              {filteredSchools.map(s => (
-                <div key={s.id} className="school-card">
-                  <div className="school-icon"><School size={18}/></div>
-                  <div className="school-name">{s.name}</div>
-                  <div className="school-meta">
-                    <span className="mpill">{TIPO_LABELS[s.tipo] || s.tipo}</span>
-                    <span className="mpill">{s.area === 'URBANA' ? 'Urbana' : 'Rural'}</span>
+            <div className="nucleo-groups">
+              {groupedSchools.map(([nucleoName, group]) => (
+                <div key={nucleoName} className="nucleo-group">
+                  <h3 className="nucleo-heading">Núcleo {nucleoName} <span>({group.length})</span></h3>
+                  <div className="schools-grid">
+                    {group.map(s => (
+                      <div key={s.id} className="school-card">
+                        <div className="school-icon"><School size={18}/></div>
+                        <div className="school-name">{s.name}</div>
+                        <div className="school-meta">
+                          <span className="mpill">{TIPO_LABELS[s.tipo] || s.tipo}</span>
+                          <span className="mpill">{s.area === 'URBANA' ? 'Urbana' : 'Rural'}</span>
+                        </div>
+                        <button className="btn-access" onClick={goLogin}>Acceder →</button>
+                      </div>
+                    ))}
                   </div>
-                  {s.nucleo && <div className="school-nucleo">Núcleo {s.nucleo.name}</div>}
-                  <button className="btn-access" onClick={goLogin}>Acceder →</button>
                 </div>
               ))}
             </div>
@@ -350,13 +377,15 @@ export default function Home() {
         .search-box input { border:none; outline:none; font-size:13px; flex:1; color:#173B2E; }
         .filters-bar select { padding:9px 12px; border:1.5px solid #DCEEE6; border-radius:9px; font-size:13px; color:#173B2E; background:#fff; outline:none; }
 
+        .nucleo-groups { display:flex; flex-direction:column; gap:28px; }
+        .nucleo-heading { font-size:13px; font-weight:800; color:#0A5A45; text-transform:uppercase; letter-spacing:.5px; margin-bottom:14px; }
+        .nucleo-heading span { font-weight:600; color:#6B8F7F; text-transform:none; letter-spacing:normal; }
         .schools-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(240px,1fr)); gap:16px; }
         .school-card { background:#fff; border:1px solid #DCEEE6; border-radius:14px; padding:18px; display:flex; flex-direction:column; gap:8px; }
         .school-icon { width:38px; height:38px; border-radius:10px; background:#E0F2EA; color:#0A5A45; display:flex; align-items:center; justify-content:center; }
         .school-name { font-size:14px; font-weight:800; color:#173B2E; }
         .school-meta { display:flex; gap:6px; flex-wrap:wrap; }
         .mpill { font-size:10px; font-weight:700; background:#F5FAF7; color:#0A5A45; padding:3px 9px; border-radius:20px; }
-        .school-nucleo { font-size:11px; color:#6B8F7F; }
         .btn-access { margin-top:6px; padding:9px; background:#0F6E56; color:#fff; border:none; border-radius:8px; font-size:12px; font-weight:700; cursor:pointer; }
         .btn-access:hover { background:#0A5A45; }
 

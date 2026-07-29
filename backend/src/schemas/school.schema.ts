@@ -1,11 +1,17 @@
 import { z } from 'zod'
 
+const LEVELS = z.array(z.enum(['INICIAL', 'PRIMARIA', 'SECUNDARIA'])).min(1, 'Selecciona al menos un nivel')
+const SHIFTS = z.array(z.enum(['MORNING', 'AFTERNOON', 'NIGHT'])).min(1, 'Selecciona al menos un turno')
+
 export const createSchoolSchema = z.object({
   name:       z.string().min(1, 'El nombre de la unidad educativa es requerido'),
   sieCode:    z.string().min(1, 'El código SIE es requerido'),
   tipo:       z.enum(['FISCAL', 'CONVENIO', 'PRIVADA']),
   area:       z.enum(['URBANA', 'RURAL']),
   subsistema: z.enum(['REGULAR', 'ALTERNATIVA_ESPECIAL', 'SUPERIOR_FORMACION_PROFESIONAL']).optional(),
+  levels:     LEVELS,
+  offersBTH:  z.boolean().optional(),
+  shifts:     SHIFTS,
   address:    z.string().optional(),
   districtId: z.coerce.number().int().optional(),
   nucleoId:   z.coerce.number().int().nullable().optional(),
@@ -17,6 +23,9 @@ export const updateSchoolSchema = z.object({
   tipo:       z.enum(['FISCAL', 'CONVENIO', 'PRIVADA']).optional(),
   area:       z.enum(['URBANA', 'RURAL']).optional(),
   subsistema: z.enum(['REGULAR', 'ALTERNATIVA_ESPECIAL', 'SUPERIOR_FORMACION_PROFESIONAL']).optional(),
+  levels:     LEVELS.optional(),
+  offersBTH:  z.boolean().optional(),
+  shifts:     SHIFTS.optional(),
   address:    z.string().optional(),
   isActive:   z.boolean().optional(),
   nucleoId:   z.coerce.number().int().nullable().optional(),

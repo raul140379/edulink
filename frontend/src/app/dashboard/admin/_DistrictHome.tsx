@@ -19,9 +19,13 @@ interface School {
   id: number
   name: string
   isActive: boolean
+  shifts: string[]
   nucleo: { id: number; name: string } | null
   _count: { students: number; teachers: number; parents: number }
 }
+
+const SHIFT_ORDER: Record<string, number> = { MORNING: 0, AFTERNOON: 1, NIGHT: 2 }
+const shiftRank = (s: School) => Math.min(...(s.shifts?.length ? s.shifts.map(t => SHIFT_ORDER[t] ?? 9) : [9]))
 
 type ComunicadoType = 'COMUNICADO' | 'CONVOCATORIA' | 'AVISO'
 
@@ -89,6 +93,23 @@ export default function DistrictHome() {
     { students: 0, teachers: 0, parents: 0 },
   )
 
+  const groupedSchools = (() => {
+    const groups = new Map<string, School[]>()
+    for (const s of schools) {
+      const key = s.nucleo?.name || 'Sin núcleo'
+      if (!groups.has(key)) groups.set(key, [])
+      groups.get(key)!.push(s)
+    }
+    for (const list of groups.values()) {
+      list.sort((a, b) => shiftRank(a) - shiftRank(b) || a.name.localeCompare(b.name))
+    }
+    return [...groups.entries()].sort(([a], [b]) => {
+      if (a === 'Sin núcleo') return 1
+      if (b === 'Sin núcleo') return -1
+      return a.localeCompare(b)
+    })
+  })()
+
   const statCards = [
     { label: 'Núcleos escolares',  value: nucleos.length,      icon: Layers,        bg: 'bg-brand-100',   fg: 'text-brand-700',   href: null },
     { label: 'Unidades educativas', value: schools.length,     icon: Building2,     bg: 'bg-info-500/15', fg: 'text-info-500',    href: '/dashboard/admin/colegios' },
@@ -144,17 +165,25 @@ export default function DistrictHome() {
           ) : schools.length === 0 ? (
             <p className="text-sm text-neutral-500 py-6 text-center">No hay unidades educativas registradas todavía</p>
           ) : (
-            <div className="flex flex-col gap-2">
-              {schools.map((s) => (
-                <div key={s.id} className="flex items-center justify-between gap-3 px-3 py-2.5 rounded-lg bg-neutral-100/60">
-                  <div className="min-w-0">
-                    <div className="text-[13.5px] font-semibold text-brand-700 truncate">{s.name}</div>
-                    <div className="text-[11px] text-neutral-500">{s.nucleo ? `Núcleo ${s.nucleo.name}` : 'Sin núcleo asignado'}</div>
+            <div className="flex flex-col gap-4 max-h-[420px] overflow-y-auto pr-1">
+              {groupedSchools.map(([nucleoName, group]) => (
+                <div key={nucleoName}>
+                  <div className="text-[11px] font-bold text-neutral-500 uppercase tracking-wide mb-1.5">
+                    Núcleo {nucleoName} <span className="font-normal normal-case">({group.length})</span>
                   </div>
-                  <div className="flex items-center gap-2 shrink-0">
-                    {!s.isActive && <Badge tone="danger">Inactiva</Badge>}
-                    <Badge tone="info">{s._count.students} est.</Badge>
-                    <Badge tone="neutral">{s._count.teachers} doc.</Badge>
+                  <div className="flex flex-col gap-2">
+                    {group.map((s) => (
+                      <div key={s.id} className="flex items-center justify-between gap-3 px-3 py-2.5 rounded-lg bg-neutral-100/60">
+                        <div className="min-w-0">
+                          <div className="text-[13.5px] font-semibold text-brand-700 truncate">{s.name}</div>
+                        </div>
+                        <div className="flex items-center gap-2 shrink-0">
+                          {!s.isActive && <Badge tone="danger">Inactiva</Badge>}
+                          <Badge tone="info">{s._count.students} est.</Badge>
+                          <Badge tone="neutral">{s._count.teachers} doc.</Badge>
+                        </div>
+                      </div>
+                    ))}
                   </div>
                 </div>
               ))}

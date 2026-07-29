@@ -41,20 +41,31 @@ model Nucleo {
 }
 
 model School {
-  id         Int        @id @default(autoincrement())
+  id         Int             @id @default(autoincrement())
   name       String
-  sieCode    String     @unique
+  sieCode    String          @unique
   tipo       SchoolType
   area       SchoolArea
-  subsistema Subsistema @default(REGULAR)
+  subsistema Subsistema      @default(REGULAR)
+  // Niveles que ofrece el colegio (uno o varios: INICIAL/PRIMARIA/SECUNDARIA —
+  // mismo enum AcademicLevel que ya usa Course, pero acá es un array porque un
+  // colegio puede tener varios niveles a la vez). offersBTH solo tiene sentido
+  // si SECUNDARIA está entre los niveles (Bachillerato Técnico Humanístico es
+  // una variante de Secundaria, no un nivel aparte) — no se fuerza por schema,
+  // se valida en school.service.ts.
+  levels     AcademicLevel[] @default([])
+  offersBTH  Boolean         @default(false)
+  // Turno(s) en que funciona el colegio (uno o varios) — mismo enum Shift que
+  // ya usa Course/ShiftDirector, acá como array por la misma razón que levels.
+  shifts     Shift[]         @default([])
   address    String?
-  isActive   Boolean    @default(true)
+  isActive   Boolean         @default(true)
   districtId Int
   nucleoId   Int?
-  createdAt  DateTime   @default(now())
-  updatedAt  DateTime   @updatedAt
-  district   District   @relation(fields: [districtId], references: [id])
-  nucleo     Nucleo?    @relation(fields: [nucleoId], references: [id])
+  createdAt  DateTime        @default(now())
+  updatedAt  DateTime        @updatedAt
+  district   District        @relation(fields: [districtId], references: [id])
+  nucleo     Nucleo?         @relation(fields: [nucleoId], references: [id])
 
   schoolSchedules         SchoolSchedule[]
   users                   User[]
