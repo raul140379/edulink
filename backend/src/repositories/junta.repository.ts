@@ -5,8 +5,10 @@ export const juntaRepository = {
   findMany() {
     return prisma.juntaMember.findMany({
       include: {
-        user:     { select: { email: true, isActive: true, role: true } },
-        school:   { select: { id: true, name: true } },
+        user:     { select: { id: true, email: true, isActive: true, role: true } },
+        // school.nucleo es el fallback de agrupamiento: hoy un JuntaMember de tipo
+        // JUNTA_ESCOLAR no siempre trae nucleoId propio seteado, pero su colegio sí.
+        school:   { select: { id: true, name: true, nucleo: { select: { id: true, name: true } } } },
         nucleo:   { select: { id: true, name: true } },
         district: { select: { id: true, name: true } },
       },
@@ -16,6 +18,10 @@ export const juntaRepository = {
 
   findById(id: number) {
     return prisma.juntaMember.findUnique({ where: { id } })
+  },
+
+  findByUserId(userId: number) {
+    return prisma.juntaMember.findFirst({ where: { userId } })
   },
 
   create(data: Prisma.JuntaMemberCreateInput) {

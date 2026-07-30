@@ -47,7 +47,8 @@ const BOARD_ROLES = new Set(['JUNTA_NUCLEO', 'JUNTA_DISTRITO', 'GOBIERNO_NUCLEO'
 const CREATABLE_ROLES: Record<string, string[]> = {
   DIRECTOR_DISTRITAL: ['DIRECTOR', 'REGENTE', 'SECRETARY', 'JUNTA_DISTRITO', 'GOBIERNO_DISTRITO'],
   DIRECTOR: ['REGENTE', 'SECRETARY', 'TEACHER', 'TEACHER_TUTOR', 'STAFF', 'PORTERO', 'PARENT', 'STUDENT', 'DELEGATE', 'JUNTA_ESCOLAR', 'STUDENT_GOV'],
-  JUNTA_DISTRITO: ['JUNTA_NUCLEO', 'JUNTA_ESCOLAR'],
+  JUNTA_DISTRITO: ['JUNTA_DISTRITO', 'JUNTA_NUCLEO', 'JUNTA_ESCOLAR'],
+  JUNTA_NUCLEO: ['JUNTA_ESCOLAR'],
   GOBIERNO_DISTRITO: ['GOBIERNO_NUCLEO', 'STUDENT_GOV'],
 }
 
@@ -110,6 +111,7 @@ const generatePassword = (email: string, role: string): string => {
     SECRETARY: 'secretaria', STAFF: 'portero', DIRECTOR: 'director',
     REGENTE: 'regente', STUDENT: 'estudiante', DELEGATE: 'delegado',
     JUNTA_ESCOLAR: 'junta', SUPER_ADMIN: 'admin',
+    JUNTA_DISTRITO: 'junta', GOBIERNO_DISTRITO: 'gobierno',
   }
   return `${prefixes[role] || 'usuario'}${last4}${year}`
 }
@@ -149,6 +151,7 @@ export default function UsuariosPage() {
   const [boardForm,      setBoardForm]      = useState(emptyBoardForm)
   const [boardSaving,    setBoardSaving]    = useState(false)
   const [boardError,     setBoardError]     = useState('')
+  const [generatingBoardEmail, setGeneratingBoardEmail] = useState(false)
 
   // ── Reset masivo ──
   const [showMassReset, setShowMassReset] = useState(false)
@@ -215,6 +218,22 @@ export default function UsuariosPage() {
     finally  { setGeneratingEmail(false) }
   }
 
+  const handleGenerateBoardEmail = async () => {
+    if (!boardForm.firstName || !boardForm.lastName) { setBoardError('Escribe el nombre y apellido primero'); return }
+    setGeneratingBoardEmail(true)
+    try {
+      const res  = await fetch(`${API_URL}/api/users/generate-email`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ firstName: boardForm.firstName, lastName: boardForm.lastName }),
+      })
+      const data = await res.json()
+      if (!res.ok) { setBoardError(data.message || 'No se pudo generar el correo'); return }
+      setBoardForm(f => ({ ...f, email: data.email })); setBoardError('')
+    } catch { setBoardError('Error de conexión') }
+    finally  { setGeneratingBoardEmail(false) }
+  }
+
   const openEdit = (u: User) => {
     setEditForm({ id: u.id, email: u.email, role: u.role })
     setEditError(''); setShowEditModal(true)
@@ -267,8 +286,9 @@ export default function UsuariosPage() {
       })
       const data = await res.json()
       if (!res.ok) { setBoardError(data.message || 'Error al crear'); return }
-      toast('Miembro de junta/gobierno de distrito creado correctamente', 'success')
       setShowBoardModal(false)
+      setNewCredentials({ email: boardForm.email, password: boardForm.password })
+      setShowNewCreds(true)
       fetchUsers()
     } catch { setBoardError('Error de conexión') }
     finally  { setBoardSaving(false) }
@@ -556,10 +576,30 @@ export default function UsuariosPage() {
           <Select label="Cargo" required value={boardForm.cargo} onChange={e => setBoardForm({ ...boardForm, cargo: e.target.value })}>
             {Object.entries(CARGO_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
           </Select>
-          <Input label="Correo electrónico" required type="email" value={boardForm.email}
-            onChange={e => setBoardForm({ ...boardForm, email: e.target.value })} />
-          <Input label="Contraseña" required type="password" value={boardForm.password}
-            onChange={e => setBoardForm({ ...boardForm, password: e.target.value })} />
+          <div>
+            <Input label="Correo electrónico" required type="email" value={boardForm.email}
+              onChange={e => setBoardForm({ ...boardForm, email: e.target.value })} />
+            <button
+              type="button" onClick={handleGenerateBoardEmail} disabled={generatingBoardEmail}
+              className="flex items-center gap-1.5 border border-dashed border-neutral-300 text-info-500 rounded-md px-2.5 py-1.5 text-[11px] w-fit mt-1.5 hover:bg-neutral-100 hover:border-info-500"
+            >
+              <RefreshCw size={12} /> {generatingBoardEmail ? 'Generando...' : 'Generar correo automático'}
+            </button>
+          </div>
+          <div>
+            <Input label="Contraseña" required type="password" value={boardForm.password}
+              onChange={e => setBoardForm({ ...boardForm, password: e.target.value })} />
+            <button
+              type="button"
+              onClick={() => {
+                if (!boardForm.email) { setBoardError('Ingresa el correo primero'); return }
+                setBoardForm(f => ({ ...f, password: generatePassword(f.email, f.type) }))
+              }}
+              className="flex items-center gap-1.5 border border-dashed border-neutral-300 text-info-500 rounded-md px-2.5 py-1.5 text-[11px] w-fit mt-1.5 hover:bg-neutral-100 hover:border-info-500"
+            >
+              <RefreshCw size={12} /> Generar contraseña automática
+            </button>
+          </div>
         </div>
       </Modal>
 

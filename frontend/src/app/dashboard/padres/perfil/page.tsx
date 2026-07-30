@@ -2,6 +2,7 @@
 import { useEffect, useState } from 'react'
 import { PerfilPage } from '@/components/PerfilPage'
 import ParentPerfil from '../_ParentPerfil'
+import JuntaPerfil from '../_JuntaPerfil'
 
 export default function Perfil() {
   const [role, setRole] = useState<string | null>(null)
@@ -14,5 +15,6 @@ export default function Perfil() {
   if (!role) return null
   if (role === 'JUNTA_ESCOLAR') return <PerfilPage rolLabel="Junta Escolar" roleColor="#0C4955" />
   if (role === 'DELEGATE') return <PerfilPage rolLabel="Delegado de Curso" roleColor="#136272" />
+  if (role === 'JUNTA_NUCLEO' || role === 'JUNTA_DISTRITO') return <JuntaPerfil/>
   return <ParentPerfil/>
 }

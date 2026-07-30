@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
+import { RefreshCw } from 'lucide-react'
 import Card from '@/components/ui/Card'
 import Button from '@/components/ui/Button'
 import { Input, Select } from '@/components/ui/Input'
@@ -12,6 +13,12 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000'
 const CARGO_LABELS: Record<string, string> = {
   PRESIDENTE: 'Presidente', VICEPRESIDENTE: 'Vicepresidente',
   SECRETARIA: 'Secretaria', TESORERO: 'Tesorero', VOCAL: 'Vocal',
+}
+
+const generatePassword = (lastName: string): string => {
+  const year  = new Date().getFullYear()
+  const last4 = (lastName || 'gob').replace(/\s+/g, '').slice(0, 4).toLowerCase()
+  return `gobierno${last4}${year}`
 }
 
 const emptyForm = {
@@ -33,6 +40,7 @@ export default function NuevoGobiernoPage() {
   const [schools, setSchools] = useState<{ id: number; name: string }[]>([])
   const [saving, setSaving]   = useState(false)
   const [error,  setError]    = useState('')
+  const [generatingEmail, setGeneratingEmail] = useState(false)
 
   const token = typeof window !== 'undefined' ? localStorage.getItem('token') : ''
 
@@ -41,6 +49,22 @@ export default function NuevoGobiernoPage() {
     fetch(`${API_URL}/api/nucleos`, { headers }).then(r => r.ok ? r.json() : []).then(setNucleos).catch(() => {})
     fetch(`${API_URL}/api/schools`, { headers }).then(r => r.ok ? r.json() : []).then(setSchools).catch(() => {})
   }, [])
+
+  const handleGenerateEmail = async () => {
+    if (!form.firstName || !form.lastName) { setError('Escribe el nombre y apellido primero'); return }
+    setGeneratingEmail(true)
+    try {
+      const res  = await fetch(`${API_URL}/api/users/generate-email`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ firstName: form.firstName, lastName: form.lastName }),
+      })
+      const data = await res.json()
+      if (!res.ok) { setError(data.message || 'No se pudo generar el correo'); return }
+      setForm(f => ({ ...f, email: data.email })); setError('')
+    } catch { setError('Error de conexión') }
+    finally  { setGeneratingEmail(false) }
+  }
 
   const handleSubmit = async () => {
     if (!form.email || !form.password || !form.firstName || !form.lastName) {
@@ -107,10 +131,27 @@ export default function NuevoGobiernoPage() {
             {Object.entries(CARGO_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
           </Select>
 
-          <Input label="Correo electrónico" required type="email" value={form.email}
-            onChange={e => setForm({ ...form, email: e.target.value })} />
-          <Input label="Contraseña" required type="password" value={form.password}
-            onChange={e => setForm({ ...form, password: e.target.value })} />
+          <div>
+            <Input label="Correo electrónico" required type="email" value={form.email}
+              onChange={e => setForm({ ...form, email: e.target.value })} />
+            <button
+              type="button" onClick={handleGenerateEmail} disabled={generatingEmail}
+              className="flex items-center gap-1.5 border border-dashed border-neutral-300 text-info-500 rounded-md px-2.5 py-1.5 text-[11px] w-fit mt-1.5 hover:bg-neutral-100 hover:border-info-500"
+            >
+              <RefreshCw size={12} /> {generatingEmail ? 'Generando...' : 'Generar correo automático'}
+            </button>
+          </div>
+          <div>
+            <Input label="Contraseña" required type="password" value={form.password}
+              onChange={e => setForm({ ...form, password: e.target.value })} />
+            <button
+              type="button"
+              onClick={() => setForm(f => ({ ...f, password: generatePassword(f.lastName) }))}
+              className="flex items-center gap-1.5 border border-dashed border-neutral-300 text-info-500 rounded-md px-2.5 py-1.5 text-[11px] w-fit mt-1.5 hover:bg-neutral-100 hover:border-info-500"
+            >
+              <RefreshCw size={12} /> Generar contraseña automática
+            </button>
+          </div>
 
           <Button onClick={handleSubmit} loading={saving} className="justify-center">Crear miembro de gobierno estudiantil</Button>
         </div>

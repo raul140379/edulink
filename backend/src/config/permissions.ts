@@ -466,6 +466,7 @@ export const CREATABLE_ROLES: Partial<Record<string, string[]>> = {
     Role.STAFF, Role.PORTERO, Role.PARENT, Role.STUDENT,
     Role.DELEGATE, Role.JUNTA_ESCOLAR, Role.STUDENT_GOV,
   ],
-  [Role.JUNTA_DISTRITO]:    [Role.JUNTA_NUCLEO, Role.JUNTA_ESCOLAR],
+  [Role.JUNTA_DISTRITO]:    [Role.JUNTA_DISTRITO, Role.JUNTA_NUCLEO, Role.JUNTA_ESCOLAR],
+  [Role.JUNTA_NUCLEO]:      [Role.JUNTA_ESCOLAR],
   [Role.GOBIERNO_DISTRITO]: [Role.GOBIERNO_NUCLEO, Role.STUDENT_GOV],
 }

@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 import {
   LayoutDashboard, UserCircle, Calendar, BookOpen, Users,
-  DollarSign, ClipboardCheck, ClipboardList, FileBarChart, Bell, Megaphone
+  DollarSign, ClipboardCheck, ClipboardList, FileBarChart, Bell, Megaphone, Layers, UserCog,
 } from 'lucide-react'
 import DashboardShell, { MenuGroup } from '@/components/layout/DashboardShell'
 import { useDistrictConfig } from '@/hooks/useDistrictConfig'
@@ -65,8 +65,16 @@ const menuGroups: MenuGroup[] = [
     items: [{ label: 'Comunicados', href: '/dashboard/padres/comunicados', icon: <Megaphone size={15}/>, roles: JUNTA_ROLES }],
   },
   {
-    label: 'Designar Junta', icon: <Users size={15}/>, roles: ['JUNTA_DISTRITO'],
-    items: [{ label: 'Designar Junta', href: '/dashboard/padres/junta/nueva', icon: <Users size={15}/>, roles: ['JUNTA_DISTRITO'] }],
+    label: 'Núcleos', icon: <Layers size={15}/>, roles: ['JUNTA_DISTRITO', 'JUNTA_NUCLEO'],
+    items: [{ label: 'Núcleos', href: '/dashboard/padres/nucleos', icon: <Layers size={15}/>, roles: ['JUNTA_DISTRITO', 'JUNTA_NUCLEO'] }],
+  },
+  {
+    label: 'Gestionar Junta', icon: <UserCog size={15}/>, roles: ['JUNTA_DISTRITO', 'JUNTA_NUCLEO'],
+    items: [{ label: 'Gestionar Junta', href: '/dashboard/padres/junta', icon: <UserCog size={15}/>, roles: ['JUNTA_DISTRITO', 'JUNTA_NUCLEO'] }],
+  },
+  {
+    label: 'Designar Junta', icon: <Users size={15}/>, roles: ['JUNTA_DISTRITO', 'JUNTA_NUCLEO'],
+    items: [{ label: 'Designar Junta', href: '/dashboard/padres/junta/nueva', icon: <Users size={15}/>, roles: ['JUNTA_DISTRITO', 'JUNTA_NUCLEO'] }],
   },
 ]
 
@@ -93,7 +101,7 @@ export default function PadresLayout({ children }: { children: React.ReactNode }
       brandLoc={district.location || 'Bolivia'}
       logoSrc={isDistrictLevel ? (district.logoUrl || '/escudo-el-torno.png') : '/logo-nnuu.jpeg'}
       homeHref="/dashboard/padres"
-      profileHref={isDistrictLevel ? '/dashboard/padres' : '/dashboard/padres/perfil'}
+      profileHref="/dashboard/padres/perfil"
       notificationsHref={isDistrictLevel ? undefined : '/dashboard/padres/notificaciones'}
       menuGroups={menuGroups}
       theme={{ primary: '#136272', navbar: '#0C4955', accent: '#1A7789', hover: '#2790A5', bg: '#D7EFF4' }}

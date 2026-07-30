@@ -30,5 +30,12 @@ export const updateJuntaMemberSchema = z.object({
   isActive:  z.boolean().optional(),
 })
 
+// Auto-perfil: un miembro de junta editando sus propios datos — a propósito NO
+// incluye cargo/isActive, eso solo lo puede tocar quien lo gestiona (updateJuntaMemberSchema).
+export const updateOwnJuntaProfileSchema = updateJuntaMemberSchema.pick({
+  firstName: true, lastName: true, ci: true, phone: true,
+})
+
 export type CreateJuntaMemberInput = z.infer<typeof createJuntaMemberSchema>
 export type UpdateJuntaMemberInput = z.infer<typeof updateJuntaMemberSchema>
+export type UpdateOwnJuntaProfileInput = z.infer<typeof updateOwnJuntaProfileSchema>

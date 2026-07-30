@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react'
 import ParentView from './_ParentView'
 import JuntaView from './_JuntaView'
 import DelegateView from './_DelegateView'
+import TesoreriaEnConstruccion from './_EnConstruccion'
 
 export default function TesoreriaPage() {
   const [role, setRole] = useState<string | null>(null)
@@ -13,9 +14,10 @@ export default function TesoreriaPage() {
   }, [])
 
   if (!role) return null
-  // Junta de Núcleo/Distrito reusa la misma vista — el backend ya filtra los
-  // cobros a su alcance (núcleo/distrito) vía el motor de tenant-scoping.
-  if (role === 'JUNTA_ESCOLAR' || role === 'JUNTA_NUCLEO' || role === 'JUNTA_DISTRITO') return <JuntaView/>
+  if (role === 'JUNTA_ESCOLAR') return <JuntaView/>
+  // No existe (todavía) un concepto de tesorería a nivel de núcleo/distrito —
+  // JuntaView está pensada para un solo colegio, no tiene sentido reusarla acá.
+  if (role === 'JUNTA_NUCLEO' || role === 'JUNTA_DISTRITO') return <TesoreriaEnConstruccion/>
   if (role === 'DELEGATE') return <DelegateView/>
   return <ParentView/>
 }

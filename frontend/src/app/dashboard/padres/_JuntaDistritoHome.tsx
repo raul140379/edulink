@@ -2,14 +2,14 @@
 
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
-import { Building2, Layers, Megaphone, ArrowRight, UserCog, Users } from 'lucide-react'
+import { Building2, Layers, MapPin, Megaphone, ArrowRight, UserCog, Users } from 'lucide-react'
 import Card, { CardHeader, CardTitle } from '@/components/ui/Card'
 import Badge from '@/components/ui/Badge'
 import { useDistrictConfig } from '@/hooks/useDistrictConfig'
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000'
 
-interface Nucleo { id: number; name: string }
+interface Nucleo { id: number; name: string; location: string | null }
 interface School { id: number; name: string; isActive: boolean; nucleo: { id: number; name: string } | null }
 
 type ComunicadoType = 'COMUNICADO' | 'CONVOCATORIA' | 'AVISO'
@@ -61,10 +61,12 @@ export default function JuntaDistritoHome() {
       </div>
 
       <div className="grid gap-4 mb-6" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))' }}>
-        <Card className="flex items-center gap-4">
-          <div className="w-12 h-12 rounded-xl flex items-center justify-center shrink-0 bg-brand-100 text-brand-700"><Layers size={22}/></div>
-          <div className="flex flex-col gap-0.5"><span className="text-[22px] font-bold text-brand-700">{loading ? '...' : nucleos.length}</span><span className="text-[13px] font-medium text-brand-700">Núcleos escolares</span></div>
-        </Card>
+        <Link href="/dashboard/padres/nucleos" className="hover:shadow-md transition-shadow rounded-xl">
+          <Card className="flex items-center gap-4 h-full">
+            <div className="w-12 h-12 rounded-xl flex items-center justify-center shrink-0 bg-brand-100 text-brand-700"><Layers size={22}/></div>
+            <div className="flex flex-col gap-0.5"><span className="text-[22px] font-bold text-brand-700">{loading ? '...' : nucleos.length}</span><span className="text-[13px] font-medium text-brand-700">Núcleos escolares</span></div>
+          </Card>
+        </Link>
         <Card className="flex items-center gap-4">
           <div className="w-12 h-12 rounded-xl flex items-center justify-center shrink-0 bg-info-500/15 text-info-500"><Building2 size={22}/></div>
           <div className="flex flex-col gap-0.5"><span className="text-[22px] font-bold text-brand-700">{loading ? '...' : schools.length}</span><span className="text-[13px] font-medium text-brand-700">Unidades educativas</span></div>
@@ -73,20 +75,19 @@ export default function JuntaDistritoHome() {
 
       <div className="grid gap-4 mb-6" style={{ gridTemplateColumns: '1.3fr 1fr' }}>
         <Card>
-          <CardHeader><CardTitle className="flex items-center gap-2"><Building2 size={16}/> Colegios de tu distrito</CardTitle></CardHeader>
+          <CardHeader><CardTitle className="flex items-center gap-2"><Layers size={16}/> Núcleos del distrito</CardTitle></CardHeader>
           {loading ? (
             <p className="text-sm text-neutral-500 py-6 text-center">Cargando...</p>
-          ) : schools.length === 0 ? (
-            <p className="text-sm text-neutral-500 py-6 text-center">No hay colegios registrados todavía</p>
+          ) : nucleos.length === 0 ? (
+            <p className="text-sm text-neutral-500 py-6 text-center">No hay núcleos registrados todavía</p>
           ) : (
             <div className="flex flex-col gap-2">
-              {schools.slice(0, 8).map(s => (
-                <div key={s.id} className="flex items-center justify-between gap-3 px-3 py-2.5 rounded-lg bg-neutral-100/60">
+              {nucleos.slice(0, 8).map(n => (
+                <div key={n.id} className="flex items-center justify-between gap-3 px-3 py-2.5 rounded-lg bg-neutral-100/60">
                   <div className="min-w-0">
-                    <div className="text-[13.5px] font-semibold text-brand-700 truncate">{s.name}</div>
-                    <div className="text-[11px] text-neutral-500">{s.nucleo ? `Núcleo ${s.nucleo.name}` : 'Sin núcleo asignado'}</div>
+                    <div className="text-[13.5px] font-semibold text-brand-700 truncate">{n.name}</div>
+                    <div className="text-[11px] text-neutral-500 flex items-center gap-1"><MapPin size={11}/> {n.location || 'Sin ubicación registrada'}</div>
                   </div>
-                  {!s.isActive && <Badge tone="danger">Inactiva</Badge>}
                 </div>
               ))}
             </div>
@@ -104,6 +105,12 @@ export default function JuntaDistritoHome() {
             </Link>
             <Link href="/dashboard/padres/junta/nueva" className="flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-[13px] text-brand-700 hover:bg-neutral-100 transition-colors">
               <Users size={16}/> Designar Junta de Núcleo / Escolar
+            </Link>
+            <Link href="/dashboard/padres/junta" className="flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-[13px] text-brand-700 hover:bg-neutral-100 transition-colors">
+              <UserCog size={16}/> Gestionar Junta de Núcleo / Escolar
+            </Link>
+            <Link href="/dashboard/padres/nucleos" className="flex items-center gap-2.5 px-3 py-2.5 rounded-lg text-[13px] text-brand-700 hover:bg-neutral-100 transition-colors">
+              <Layers size={16}/> Ver núcleos y colegios
             </Link>
           </div>
         </Card>

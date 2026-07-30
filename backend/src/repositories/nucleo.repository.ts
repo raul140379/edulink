@@ -3,7 +3,19 @@ import prisma from '../lib/prisma'
 
 export const nucleoRepository = {
   findMany(where: Prisma.NucleoWhereInput) {
-    return prisma.nucleo.findMany({ where, orderBy: { name: 'asc' } })
+    return prisma.nucleo.findMany({
+      where,
+      orderBy: { name: 'asc' },
+      include: {
+        schools: {
+          select: {
+            id: true, name: true, isActive: true, shifts: true, levels: true, tipo: true, area: true,
+            _count: { select: { students: true, teachers: true } },
+          },
+          orderBy: { name: 'asc' },
+        },
+      },
+    })
   },
 
   findById(id: number) {
