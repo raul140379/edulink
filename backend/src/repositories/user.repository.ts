@@ -107,11 +107,14 @@ export const userRepository = {
     })
   },
 
-  update(id: number, data: Partial<{ email: string; role: Role; password: string; isActive: boolean }>) {
+  update(id: number, data: Partial<{
+    email: string; role: Role; password: string; isActive: boolean
+    schoolId: number | null; nucleoId: number | null; districtId: number | null
+  }>) {
     return prisma.user.update({
       where:  { id },
       data,
-      select: { id: true, email: true, role: true, isActive: true },
+      select: { id: true, email: true, role: true, isActive: true, schoolId: true, nucleoId: true, districtId: true },
     })
   },
 

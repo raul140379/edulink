@@ -17,7 +17,13 @@ export const juntaRepository = {
   },
 
   findById(id: number) {
-    return prisma.juntaMember.findUnique({ where: { id } })
+    // El `user.role` se usa en updateJuntaMember para saber si el body está
+    // pidiendo un cambio de rol (comparándolo contra el rol actual) y para
+    // resolver el alcance nuevo — no hace falta un fetch aparte.
+    return prisma.juntaMember.findUnique({
+      where: { id },
+      include: { user: { select: { id: true, role: true } } },
+    })
   },
 
   findByUserId(userId: number) {

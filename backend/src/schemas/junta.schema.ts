@@ -28,6 +28,11 @@ export const updateJuntaMemberSchema = z.object({
   phone:     z.string().optional(),
   cargo:     juntaCargoSchema.optional(),
   isActive:  z.boolean().optional(),
+  // Reasignación de nivel/alcance — opcional, solo se resuelve en el servicio
+  // cuando alguno de estos 3 viene en el body (ver junta.service.ts:updateJuntaMember).
+  role:      juntaRoleLevelSchema.optional(),
+  schoolId:  z.coerce.number().int().optional(),
+  nucleoId:  z.coerce.number().int().optional(),
 })
 
 // Auto-perfil: un miembro de junta editando sus propios datos — a propósito NO

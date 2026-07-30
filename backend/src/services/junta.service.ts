@@ -1,9 +1,12 @@
-import { Role } from '@prisma/client'
+import { Prisma, Role } from '@prisma/client'
 import prisma from '../lib/prisma'
 import { juntaRepository } from '../repositories/junta.repository'
 import { userRepository } from '../repositories/user.repository'
 import { userService } from './user.service'
 import { HttpError } from '../utils/http-error'
+import { getTenantContext } from '../lib/tenant-context'
+import { CREATABLE_ROLES } from '../config/permissions'
+import { DISTRICT_WIDE_ROLES, NUCLEO_WIDE_ROLES } from '../lib/scoped-models'
 import {
   CreateJuntaMemberInput, UpdateJuntaMemberInput, UpdateOwnJuntaProfileInput,
 } from '../schemas/junta.schema'
@@ -55,8 +58,76 @@ export const juntaService = {
     // El campo del schema/API se llama "cargo" (así lo espera el frontend), pero
     // en el modelo Prisma la columna es "juntaRole" — hay que traducirlo acá,
     // Prisma rechaza "cargo" como argumento desconocido si se pasa tal cual.
-    const { cargo, ...rest } = input
-    return juntaRepository.update(id, { ...rest, ...(cargo !== undefined ? { juntaRole: cargo } : {}) })
+    const { cargo, role, schoolId, nucleoId, ...rest } = input
+    const memberUpdate: Prisma.JuntaMemberUpdateInput = {
+      ...rest,
+      ...(cargo !== undefined ? { juntaRole: cargo } : {}),
+    }
+
+    // Reasignar nivel/alcance (rol y/o colegio/núcleo) solo se resuelve si el
+    // body efectivamente toca alguno de estos 3 campos — no en cada edición de
+    // nombre/CI/teléfono. Cubre tanto "cambiar de rol" (ej. Junta Escolar ->
+    // Junta de Núcleo) como "mismo rol, mover de colegio/núcleo".
+    if (role !== undefined || schoolId !== undefined || nucleoId !== undefined) {
+      const targetRole = role ?? existing.user.role
+      const ctx = getTenantContext()
+
+      // Cambiar de rol exige la misma jerarquía de designación que al crear un
+      // miembro nuevo (CREATABLE_ROLES) — quien edita no puede mover a alguien a
+      // un nivel que tampoco podría asignar de cero.
+      if (role !== undefined && role !== existing.user.role && ctx && ctx.role !== Role.SUPER_ADMIN) {
+        const allowed = CREATABLE_ROLES[ctx.role]
+        if (!allowed || !allowed.includes(role)) {
+          throw new HttpError(403, `Tu rol no tiene permitido asignar el rol ${role}`)
+        }
+      }
+
+      let resolvedSchoolId: number | null = null
+      let resolvedNucleoId: number | null = null
+      let resolvedDistrictId: number | null = null
+
+      if (targetRole === 'JUNTA_ESCOLAR') {
+        if (!schoolId) throw new HttpError(400, 'Selecciona un colegio para Junta Escolar')
+        const school = await prisma.school.findUnique({ where: { id: schoolId }, select: { districtId: true, nucleoId: true } })
+        if (!school) throw new HttpError(404, 'Colegio no encontrado')
+        // El motor de tenant-scoping (lib/prisma.ts) solo valida el schoolId en
+        // creates/upserts, no en updates — acá hay que repetir el mismo chequeo
+        // a mano para no dejar que un Junta de Núcleo/Distrito reasigne a un
+        // colegio fuera de su alcance.
+        if (ctx?.nucleoId != null && NUCLEO_WIDE_ROLES.has(ctx.role) && school.nucleoId !== ctx.nucleoId) {
+          throw new HttpError(403, 'El colegio indicado no pertenece a tu núcleo')
+        }
+        if (ctx?.districtId != null && DISTRICT_WIDE_ROLES.has(ctx.role) && school.districtId !== ctx.districtId) {
+          throw new HttpError(403, 'El colegio indicado no pertenece a tu distrito')
+        }
+        resolvedSchoolId = schoolId
+        resolvedNucleoId = school.nucleoId ?? null
+      } else if (targetRole === 'JUNTA_NUCLEO') {
+        const targetNucleoId = nucleoId ?? existing.nucleoId
+        if (!targetNucleoId) throw new HttpError(400, 'Selecciona un núcleo')
+        const nucleo = await prisma.nucleo.findUnique({ where: { id: targetNucleoId }, select: { districtId: true } })
+        if (!nucleo) throw new HttpError(404, 'Núcleo no encontrado')
+        if (ctx?.districtId != null && DISTRICT_WIDE_ROLES.has(ctx.role) && nucleo.districtId !== ctx.districtId) {
+          throw new HttpError(403, 'El núcleo indicado no pertenece a tu distrito')
+        }
+        resolvedNucleoId = targetNucleoId
+      } else if (targetRole === 'JUNTA_DISTRITO') {
+        resolvedDistrictId = ctx?.districtId ?? existing.districtId ?? null
+      }
+
+      await userRepository.update(existing.userId, {
+        ...(role !== undefined ? { role: role as unknown as Role } : {}),
+        schoolId:   resolvedSchoolId,
+        nucleoId:   resolvedNucleoId,
+        districtId: resolvedDistrictId,
+      })
+
+      memberUpdate.school   = resolvedSchoolId   != null ? { connect: { id: resolvedSchoolId } }   : { disconnect: true }
+      memberUpdate.nucleo   = resolvedNucleoId   != null ? { connect: { id: resolvedNucleoId } }   : { disconnect: true }
+      memberUpdate.district = resolvedDistrictId != null ? { connect: { id: resolvedDistrictId } } : { disconnect: true }
+    }
+
+    return juntaRepository.update(id, memberUpdate)
   },
 
   // Baja reversible: desactiva el JuntaMember Y el User que lo respalda (si no se

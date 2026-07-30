@@ -36,9 +36,17 @@ function mergeWhere(where: any, filter: Record<string, unknown>, operation: stri
 /** Builds the read-side scoping filter for the acting context, or `null` if nothing to add. */
 function buildReadFilter(ctx: NonNullable<ReturnType<typeof getTenantContext>>, isDirect: boolean, isTenant: boolean) {
   if (ctx.districtId != null && DISTRICT_WIDE_ROLES.has(ctx.role)) {
+    // El tercer OR (nucleo.districtId) cubre User/JuntaMember de alcance núcleo
+    // (JUNTA_NUCLEO/GOBIERNO_NUCLEO): esas filas solo traen nucleoId seteado, sin
+    // schoolId ni districtId propio — sin este OR quedaban invisibles para el
+    // distrito aunque su núcleo sí perteneciera a él.
     return isDirect
       ? { school: { districtId: ctx.districtId } }
-      : { OR: [{ districtId: ctx.districtId }, { school: { districtId: ctx.districtId } }] }
+      : { OR: [
+          { districtId: ctx.districtId },
+          { school: { districtId: ctx.districtId } },
+          { nucleo: { districtId: ctx.districtId } },
+        ] }
   }
   if (ctx.nucleoId != null && NUCLEO_WIDE_ROLES.has(ctx.role)) {
     return isDirect

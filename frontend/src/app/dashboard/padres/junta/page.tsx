@@ -31,6 +31,14 @@ const CARGO_LABELS: Record<string, string> = {
   SECRETARIA: 'Secretaria', TESORERO: 'Tesorero', VOCAL: 'Vocal',
 }
 
+// Espejo de CREATABLE_ROLES en backend/src/config/permissions.ts — determina a
+// qué roles puede reasignar un miembro quien está editando (el backend valida
+// lo mismo, esto solo evita ofrecer opciones que igual serían rechazadas).
+const CREATABLE_BY_ROLE: Record<string, string[]> = {
+  JUNTA_DISTRITO: ['JUNTA_DISTRITO', 'JUNTA_NUCLEO', 'JUNTA_ESCOLAR'],
+  JUNTA_NUCLEO:   ['JUNTA_ESCOLAR'],
+}
+
 function CredRow({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex items-center gap-2.5 bg-neutral-100 border border-neutral-300 rounded-lg px-3.5 py-2.5">
@@ -45,9 +53,11 @@ export default function GestionarJuntaPage() {
   const confirm = useConfirm()
   const [members, setMembers] = useState<JuntaMember[]>([])
   const [loading, setLoading] = useState(true)
+  const [nucleos, setNucleos] = useState<{ id: number; name: string }[]>([])
+  const [schools, setSchools] = useState<{ id: number; name: string; nucleo: { id: number; name: string } | null }[]>([])
 
   const [showEditModal, setShowEditModal] = useState(false)
-  const [editForm, setEditForm] = useState({ id: 0, firstName: '', lastName: '', ci: '', phone: '', cargo: 'VOCAL' })
+  const [editForm, setEditForm] = useState({ id: 0, firstName: '', lastName: '', ci: '', phone: '', cargo: 'VOCAL', role: '', nucleoId: '', schoolId: '' })
   const [editSaving, setEditSaving] = useState(false)
   const [editError, setEditError] = useState('')
 
@@ -55,8 +65,20 @@ export default function GestionarJuntaPage() {
   const [creds, setCreds]           = useState<{ email: string; password: string } | null>(null)
   const [copied, setCopied]         = useState(false)
 
-  const myUserId = typeof window !== 'undefined' ? JSON.parse(localStorage.getItem('user') || '{}').id : null
+  const myUser   = typeof window !== 'undefined' ? JSON.parse(localStorage.getItem('user') || '{}') : {}
+  const myUserId = myUser?.id ?? null
+  const myRole   = myUser?.role || ''
+  const creatableRoles = CREATABLE_BY_ROLE[myRole] || []
   const auth = () => ({ Authorization: `Bearer ${localStorage.getItem('token') || ''}` })
+
+  // El localStorage 'user' no trae nucleoId — igual que en junta/nueva, hace
+  // falta el propio perfil para saber el núcleo implícito de un Junta de Núcleo.
+  const [myNucleoId, setMyNucleoId] = useState<number | null>(null)
+
+  const effectiveNucleoId = myRole === 'JUNTA_NUCLEO' ? myNucleoId : (editForm.nucleoId ? Number(editForm.nucleoId) : null)
+  const schoolsInNucleo = effectiveNucleoId != null
+    ? schools.filter(s => s.nucleo?.id === effectiveNucleoId)
+    : []
 
   const fetchMembers = () => {
     setLoading(true)
@@ -67,7 +89,19 @@ export default function GestionarJuntaPage() {
       .finally(() => setLoading(false))
   }
 
-  useEffect(fetchMembers, [])
+  useEffect(() => {
+    fetchMembers()
+    const headers = auth()
+    fetch(`${API_URL}/api/nucleos`, { headers }).then(r => r.ok ? r.json() : []).then(setNucleos).catch(() => {})
+    fetch(`${API_URL}/api/schools`, { headers }).then(r => r.ok ? r.json() : []).then(setSchools).catch(() => {})
+    if (myRole === 'JUNTA_NUCLEO') {
+      fetch(`${API_URL}/api/junta/me`, { headers })
+        .then(r => r.ok ? r.json() : null)
+        .then(data => { if (data?.nucleoId != null) setMyNucleoId(data.nucleoId) })
+        .catch(() => {})
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const groupKey = (m: JuntaMember) => m.nucleo?.name ?? m.school?.nucleo?.name ?? 'Sin núcleo'
   const groups = new Map<string, JuntaMember[]>()
@@ -83,21 +117,36 @@ export default function GestionarJuntaPage() {
   })
 
   const openEdit = (m: JuntaMember) => {
-    setEditForm({ id: m.id, firstName: m.firstName, lastName: m.lastName, ci: m.ci || '', phone: m.phone || '', cargo: m.juntaRole })
+    const nucleoId = m.nucleo?.id ?? m.school?.nucleo?.id ?? ''
+    setEditForm({
+      id: m.id, firstName: m.firstName, lastName: m.lastName, ci: m.ci || '', phone: m.phone || '', cargo: m.juntaRole,
+      role: m.user.role, nucleoId: nucleoId ? String(nucleoId) : '', schoolId: m.school?.id ? String(m.school.id) : '',
+    })
     setEditError(''); setShowEditModal(true)
   }
 
   const handleEditSave = async () => {
     if (!editForm.firstName || !editForm.lastName) { setEditError('Nombre y apellido son requeridos'); return }
+    if (editForm.role === 'JUNTA_NUCLEO' && !editForm.nucleoId) { setEditError('Selecciona el núcleo'); return }
+    if (editForm.role === 'JUNTA_ESCOLAR' && myRole === 'JUNTA_DISTRITO' && !editForm.nucleoId) { setEditError('Selecciona el núcleo'); return }
+    if (editForm.role === 'JUNTA_ESCOLAR' && !editForm.schoolId) { setEditError('Selecciona el colegio'); return }
+
     setEditError(''); setEditSaving(true)
     try {
+      const body: Record<string, unknown> = {
+        firstName: editForm.firstName, lastName: editForm.lastName,
+        ci: editForm.ci || undefined, phone: editForm.phone || undefined, cargo: editForm.cargo,
+      }
+      if (editForm.role) body.role = editForm.role
+      if (editForm.role === 'JUNTA_NUCLEO') body.nucleoId = effectiveNucleoId ?? undefined
+      if (editForm.role === 'JUNTA_ESCOLAR') {
+        body.schoolId = editForm.schoolId ? parseInt(editForm.schoolId) : undefined
+        body.nucleoId = effectiveNucleoId ?? undefined
+      }
       const res  = await fetch(`${API_URL}/api/junta/${editForm.id}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json', ...auth() },
-        body: JSON.stringify({
-          firstName: editForm.firstName, lastName: editForm.lastName,
-          ci: editForm.ci || undefined, phone: editForm.phone || undefined, cargo: editForm.cargo,
-        }),
+        body: JSON.stringify(body),
       })
       const data = await res.json()
       if (!res.ok) { setEditError(data.message || 'Error al guardar'); return }
@@ -218,6 +267,42 @@ export default function GestionarJuntaPage() {
             <Input label="CI" value={editForm.ci} onChange={e => setEditForm({ ...editForm, ci: e.target.value })} />
             <Input label="Teléfono" value={editForm.phone} onChange={e => setEditForm({ ...editForm, phone: e.target.value })} />
           </div>
+
+          <Select
+            label="Rol" required value={editForm.role}
+            onChange={e => setEditForm({ ...editForm, role: e.target.value, nucleoId: '', schoolId: '' })}
+          >
+            {(creatableRoles.includes(editForm.role) ? creatableRoles : [editForm.role, ...creatableRoles]).map(r => (
+              <option key={r} value={r}>{ROLE_LABELS[r] || r}</option>
+            ))}
+          </Select>
+
+          {editForm.role === 'JUNTA_NUCLEO' && (
+            <Select label="Núcleo" required value={editForm.nucleoId} onChange={e => setEditForm({ ...editForm, nucleoId: e.target.value })}>
+              <option value="">Selecciona un núcleo</option>
+              {nucleos.map(n => <option key={n.id} value={n.id}>{n.name}</option>)}
+            </Select>
+          )}
+          {editForm.role === 'JUNTA_ESCOLAR' && myRole === 'JUNTA_DISTRITO' && (
+            <Select
+              label="Núcleo" required value={editForm.nucleoId}
+              onChange={e => setEditForm({ ...editForm, nucleoId: e.target.value, schoolId: '' })}
+            >
+              <option value="">Selecciona un núcleo</option>
+              {nucleos.map(n => <option key={n.id} value={n.id}>{n.name}</option>)}
+            </Select>
+          )}
+          {editForm.role === 'JUNTA_ESCOLAR' && (
+            <Select
+              label="Colegio" required value={editForm.schoolId}
+              disabled={effectiveNucleoId == null}
+              onChange={e => setEditForm({ ...editForm, schoolId: e.target.value })}
+            >
+              <option value="">{effectiveNucleoId == null ? 'Selecciona primero un núcleo' : 'Selecciona un colegio'}</option>
+              {schoolsInNucleo.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+            </Select>
+          )}
+
           <Select label="Cargo" value={editForm.cargo} onChange={e => setEditForm({ ...editForm, cargo: e.target.value })}>
             {Object.entries(CARGO_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
           </Select>
