@@ -75,6 +75,7 @@ export default function DashboardShell({
   const [displayName, setDisplayName] = useState<string>('')
   const [openGroup,   setOpenGroup]   = useState<string | null>(null)
   const [mobileOpen,  setMobileOpen]  = useState(false)
+  const [hasUnread,   setHasUnread]   = useState(false)
   const navRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
@@ -92,6 +93,16 @@ export default function DashboardShell({
       .then(res => res.ok ? res.json() : null)
       .then(me => { if (me) setDisplayName(extractDisplayName(me, parsed.email)) })
       .catch(() => {})
+
+    // El punto del ícono de campana antes se mostraba siempre, sin importar si
+    // había algo sin leer — acá se calcula de verdad contra la misma lista que
+    // usa la página de Notificaciones.
+    if (notificationsHref) {
+      fetch(`${API_URL}/api/notifications`, { headers: { Authorization: `Bearer ${token}` } })
+        .then(res => res.ok ? res.json() : [])
+        .then(list => setHasUnread(Array.isArray(list) && list.some((n: any) => !n.isRead)))
+        .catch(() => {})
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -183,7 +194,7 @@ export default function DashboardShell({
           {notificationsHref && (
             <Link href={notificationsHref} className="action-pill" title="Notificaciones">
               <Bell size={17}/>
-              <span className="notif-dot"/>
+              {hasUnread && <span className="notif-dot"/>}
             </Link>
           )}
           <Link href={profileHref} className="action-pill" title="Mi perfil">
