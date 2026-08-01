@@ -37,6 +37,7 @@ const CARGO_LABELS: Record<string, string> = {
 const CREATABLE_BY_ROLE: Record<string, string[]> = {
   JUNTA_DISTRITO: ['JUNTA_DISTRITO', 'JUNTA_NUCLEO', 'JUNTA_ESCOLAR'],
   JUNTA_NUCLEO:   ['JUNTA_ESCOLAR'],
+  JUNTA_ESCOLAR:  ['JUNTA_ESCOLAR'],
 }
 
 function CredRow({ label, value }: { label: string; value: string }) {
@@ -74,6 +75,10 @@ export default function GestionarJuntaPage() {
   // El localStorage 'user' no trae nucleoId — igual que en junta/nueva, hace
   // falta el propio perfil para saber el núcleo implícito de un Junta de Núcleo.
   const [myNucleoId, setMyNucleoId] = useState<number | null>(null)
+  // Solo el Presidente de Junta Escolar puede gestionar el directorio — el
+  // backend ya lo exige (assertIsPresidente), acá solo se refleja en la UI.
+  const [myCargo, setMyCargo] = useState<string | null>(null)
+  const [loadingCargo, setLoadingCargo] = useState(myRole === 'JUNTA_ESCOLAR')
 
   const effectiveNucleoId = myRole === 'JUNTA_NUCLEO' ? myNucleoId : (editForm.nucleoId ? Number(editForm.nucleoId) : null)
   const schoolsInNucleo = effectiveNucleoId != null
@@ -92,13 +97,25 @@ export default function GestionarJuntaPage() {
   useEffect(() => {
     fetchMembers()
     const headers = auth()
-    fetch(`${API_URL}/api/nucleos`, { headers }).then(r => r.ok ? r.json() : []).then(setNucleos).catch(() => {})
-    fetch(`${API_URL}/api/schools`, { headers }).then(r => r.ok ? r.json() : []).then(setSchools).catch(() => {})
+    // Junta Escolar no tiene permiso de colegio/núcleo (SCHOOL_VIEW_ALL) ni le
+    // hace falta — su cascada núcleo→colegio del modal de edición nunca se
+    // muestra para ese rol (solo aplica a Núcleo/Distrito).
+    if (myRole !== 'JUNTA_ESCOLAR') {
+      fetch(`${API_URL}/api/nucleos`, { headers }).then(r => r.ok ? r.json() : []).then(setNucleos).catch(() => {})
+      fetch(`${API_URL}/api/schools`, { headers }).then(r => r.ok ? r.json() : []).then(setSchools).catch(() => {})
+    }
     if (myRole === 'JUNTA_NUCLEO') {
       fetch(`${API_URL}/api/junta/me`, { headers })
         .then(r => r.ok ? r.json() : null)
         .then(data => { if (data?.nucleoId != null) setMyNucleoId(data.nucleoId) })
         .catch(() => {})
+    }
+    if (myRole === 'JUNTA_ESCOLAR') {
+      fetch(`${API_URL}/api/junta/me`, { headers })
+        .then(r => r.ok ? r.json() : null)
+        .then(data => setMyCargo(data?.juntaRole ?? null))
+        .catch(() => setMyCargo(null))
+        .finally(() => setLoadingCargo(false))
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
@@ -215,6 +232,20 @@ export default function GestionarJuntaPage() {
     ) },
   ]
 
+  if (myRole === 'JUNTA_ESCOLAR' && loadingCargo) {
+    return <div className="flex justify-center py-16"><p className="text-sm text-neutral-500">Cargando...</p></div>
+  }
+
+  if (myRole === 'JUNTA_ESCOLAR' && myCargo !== 'PRESIDENTE') {
+    return (
+      <Card className="text-center py-16 text-neutral-500">
+        <UserCog size={40} className="mx-auto mb-3 text-neutral-300"/>
+        <p className="font-semibold text-brand-700 mb-1">Acceso restringido</p>
+        <p className="text-[13px]">Solo el Presidente de la Junta Escolar puede gestionar el directorio.</p>
+      </Card>
+    )
+  }
+
   return (
     <div>
       <div className="flex items-start justify-between gap-4 mb-6">
@@ -304,7 +335,9 @@ export default function GestionarJuntaPage() {
           )}
 
           <Select label="Cargo" value={editForm.cargo} onChange={e => setEditForm({ ...editForm, cargo: e.target.value })}>
-            {Object.entries(CARGO_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+            {Object.entries(CARGO_LABELS)
+              .filter(([k]) => myRole !== 'JUNTA_ESCOLAR' || k !== 'PRESIDENTE')
+              .map(([k, v]) => <option key={k} value={k}>{v}</option>)}
           </Select>
         </div>
       </Modal>

@@ -39,6 +39,20 @@ interface Summary {
   }
 }
 
+const GRADE_LABELS: Record<string, string> = {
+  PRIMERO: '1°', SEGUNDO: '2°', TERCERO: '3°', CUARTO: '4°', QUINTO: '5°', SEXTO: '6°',
+}
+const SHIFT_LABELS: Record<string, string> = { MORNING: 'Mañana', AFTERNOON: 'Tarde', NIGHT: 'Noche' }
+
+interface CourseGroup {
+  course: { id: number; level: string; grade: string; parallel: string; shift: string }
+  tutores: {
+    id: number; firstName: string; lastName: string; ci: string | null; phone: string | null
+    studentName: string
+    summary: { totalDebt: number; totalPaid: number; totalPending: number; hasDebt: boolean; hasSharedCharge: boolean }
+  }[]
+}
+
 export default function TesoreriaPage() {
   const router = useRouter()
   const toast  = useToast()
@@ -49,6 +63,28 @@ export default function TesoreriaPage() {
   const [filter,   setFilter]   = useState('')
   const userRole = typeof window !== 'undefined' ? JSON.parse(localStorage.getItem('user') || '{}').role : ''
   const canEdit  = userRole === 'SUPER_ADMIN' || userRole === 'JUNTA_ESCOLAR'
+
+  // Vista alternativa agrupada por curso — mismo dato de fondo (padres
+  // tutores + sus cargos), reorganizado por curso en vez de listado plano.
+  const [viewMode, setViewMode] = useState<'tutor' | 'curso'>('tutor')
+  const [byCourse, setByCourse] = useState<CourseGroup[]>([])
+  const [loadingByCourse, setLoadingByCourse] = useState(false)
+
+  const fetchByCourse = async () => {
+    const token = localStorage.getItem('token')
+    setLoadingByCourse(true)
+    try {
+      const res  = await fetch(`${API_URL}/api/treasury/by-course`, { headers: { Authorization: `Bearer ${token}` } })
+      const data = await res.json()
+      if (res.ok) setByCourse(data)
+    } catch { toast('Error de conexión', 'error') }
+    finally  { setLoadingByCourse(false) }
+  }
+
+  useEffect(() => {
+    if (viewMode === 'curso' && byCourse.length === 0) fetchByCourse()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [viewMode])
 
   const fetchData = async () => {
     const token = localStorage.getItem('token')
@@ -162,42 +198,104 @@ export default function TesoreriaPage() {
         </div>
       )}
 
-      <Card className="flex gap-2.5 flex-wrap items-center mb-4">
-        <div className="relative flex-1 min-w-[200px]">
-          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-info-500 pointer-events-none"/>
-          <Input
-            placeholder="Buscar tutor por nombre o CI..." value={search}
-            onChange={e => setSearch(e.target.value)}
-            onKeyDown={e => e.key === 'Enter' && fetchData()}
-            className="pl-9"
-          />
-        </div>
-        <div className="flex items-center gap-1.5">
-          <Filter size={14} className="text-neutral-500"/>
-          <Select value={filter} onChange={e => setFilter(e.target.value)} className="w-auto">
-            <option value="">Todos los tutores</option>
-            <option value="CON_DEUDA">Con deuda</option>
-            <option value="AL_DIA">Al día</option>
-          </Select>
-        </div>
-        <Button variant="secondary" onClick={fetchData}>Buscar</Button>
-      </Card>
-
-      <Card padded={false} className="overflow-hidden">
-        {loading ? (
-          <div className="flex justify-center py-16"><p className="text-sm text-neutral-500">Cargando...</p></div>
-        ) : parents.length === 0 ? (
-          <div className="flex justify-center py-16"><p className="text-sm text-neutral-500">No se encontraron tutores</p></div>
-        ) : (
-          <div className="p-4">
-            <Table columns={columns} rows={parents} rowKey={p => p.id} />
-          </div>
-        )}
-      </Card>
-
-      <div className="px-3.5 py-2.5 text-xs text-neutral-500">
-        Total: <strong>{parents.length}</strong> tutores · <strong>{deudores}</strong> con deuda · <strong>{alDia}</strong> al día
+      <div className="flex gap-1 bg-neutral-100 rounded-lg p-1 w-fit mb-4">
+        <button
+          onClick={() => setViewMode('tutor')}
+          className={`px-3 py-1.5 rounded-md text-[12.5px] font-semibold transition-colors ${viewMode === 'tutor' ? 'bg-white text-brand-700 shadow-sm' : 'text-neutral-500'}`}
+        >
+          Por tutor
+        </button>
+        <button
+          onClick={() => setViewMode('curso')}
+          className={`px-3 py-1.5 rounded-md text-[12.5px] font-semibold transition-colors ${viewMode === 'curso' ? 'bg-white text-brand-700 shadow-sm' : 'text-neutral-500'}`}
+        >
+          Por curso
+        </button>
       </div>
+
+      {viewMode === 'tutor' ? (
+        <>
+          <Card className="flex gap-2.5 flex-wrap items-center mb-4">
+            <div className="relative flex-1 min-w-[200px]">
+              <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-info-500 pointer-events-none"/>
+              <Input
+                placeholder="Buscar tutor por nombre o CI..." value={search}
+                onChange={e => setSearch(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && fetchData()}
+                className="pl-9"
+              />
+            </div>
+            <div className="flex items-center gap-1.5">
+              <Filter size={14} className="text-neutral-500"/>
+              <Select value={filter} onChange={e => setFilter(e.target.value)} className="w-auto">
+                <option value="">Todos los tutores</option>
+                <option value="CON_DEUDA">Con deuda</option>
+                <option value="AL_DIA">Al día</option>
+              </Select>
+            </div>
+            <Button variant="secondary" onClick={fetchData}>Buscar</Button>
+          </Card>
+
+          <Card padded={false} className="overflow-hidden">
+            {loading ? (
+              <div className="flex justify-center py-16"><p className="text-sm text-neutral-500">Cargando...</p></div>
+            ) : parents.length === 0 ? (
+              <div className="flex justify-center py-16"><p className="text-sm text-neutral-500">No se encontraron tutores</p></div>
+            ) : (
+              <div className="p-4">
+                <Table columns={columns} rows={parents} rowKey={p => p.id} />
+              </div>
+            )}
+          </Card>
+
+          <div className="px-3.5 py-2.5 text-xs text-neutral-500">
+            Total: <strong>{parents.length}</strong> tutores · <strong>{deudores}</strong> con deuda · <strong>{alDia}</strong> al día
+          </div>
+        </>
+      ) : (
+        <div className="flex flex-col gap-4">
+          {loadingByCourse ? (
+            <div className="flex justify-center py-16"><p className="text-sm text-neutral-500">Cargando...</p></div>
+          ) : byCourse.length === 0 ? (
+            <Card className="text-center py-12 text-neutral-500">No hay gestión académica activa o no hay cursos con tutores.</Card>
+          ) : byCourse.map(({ course, tutores }) => (
+            <Card key={course.id} padded={false} className="overflow-hidden">
+              <div className="flex items-center justify-between px-4.5 py-3 border-b border-neutral-100">
+                <span className="text-[13.5px] font-bold text-brand-700">
+                  {GRADE_LABELS[course.grade] || course.grade} &quot;{course.parallel}&quot; · {SHIFT_LABELS[course.shift] || course.shift}
+                </span>
+                <span className="text-[11px] text-neutral-500">{tutores.length} tutor(es)</span>
+              </div>
+              {tutores.length === 0 ? (
+                <p className="text-[13px] text-neutral-500 italic px-4.5 py-4">Sin tutores registrados en este curso</p>
+              ) : (
+                <div className="p-4">
+                  <Table
+                    columns={[
+                      { key: 'tutor', header: 'Tutor', render: (t: CourseGroup['tutores'][number]) => (
+                        <div>
+                          <div className="font-medium text-brand-700">{t.lastName} {t.firstName}</div>
+                          <div className="text-[11px] text-neutral-500">{t.studentName}</div>
+                        </div>
+                      ) },
+                      { key: 'cargado', header: 'Cargado', render: (t: CourseGroup['tutores'][number]) => <span className="font-semibold text-[13px] text-brand-700">{fmt(t.summary.totalDebt)}</span> },
+                      { key: 'pagado', header: 'Pagado', render: (t: CourseGroup['tutores'][number]) => <span className="font-semibold text-[13px] text-success-700">{fmt(t.summary.totalPaid)}</span> },
+                      { key: 'pendiente', header: 'Pendiente', render: (t: CourseGroup['tutores'][number]) => (
+                        <span className={`font-semibold text-[13px] ${t.summary.totalPending > 0 ? 'text-danger-600' : 'text-success-700'}`}>
+                          {fmt(t.summary.totalPending)}
+                          {t.summary.hasSharedCharge && <Badge tone="neutral" className="ml-1.5">Compartido entre cursos</Badge>}
+                        </span>
+                      ) },
+                    ]}
+                    rows={tutores}
+                    rowKey={t => t.id}
+                  />
+                </div>
+              )}
+            </Card>
+          ))}
+        </div>
+      )}
 
       {userRole === 'JUNTA_ESCOLAR' && <PoaActaSection/>}
     </div>

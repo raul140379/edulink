@@ -1,9 +1,11 @@
 import bcrypt from 'bcryptjs'
 import * as XLSX from 'xlsx'
 import { Prisma, Role, RelationType } from '@prisma/client'
+import prisma from '../lib/prisma'
 import { parentRepository } from '../repositories/parent.repository'
 import { studentRepository } from '../repositories/student.repository'
 import { userRepository } from '../repositories/user.repository'
+import { delegateRepository } from '../repositories/delegate.repository'
 import { HttpError } from '../utils/http-error'
 import { generateUniqueEmail, generateParentPassword } from '../utils/account-generator'
 import { getTenantContext } from '../lib/tenant-context'
@@ -24,7 +26,12 @@ async function createTutorUser(firstName: string, lastName: string, ci?: string 
 
   const defaultPassword = generateParentPassword(lastName, ci)
   const hashed = await bcrypt.hash(defaultPassword, 10)
-  const user = await userRepository.create({ email: accessEmail, password: hashed, role: Role.PARENT })
+  // createdByUserId: quién registró a este padre/tutor — hoy solo se usa para
+  // trazabilidad (Junta Escolar/Delegado son ahora los únicos que registran
+  // padres nuevos), no gatea nada por sí solo.
+  const user = await userRepository.create({
+    email: accessEmail, password: hashed, role: Role.PARENT, createdByUserId: getTenantContext()?.userId,
+  })
 
   return { user, accessEmail, defaultPassword }
 }
@@ -85,6 +92,26 @@ export const parentService = {
       }
     }
 
+    // Un Delegado solo puede registrar padres de estudiantes de SU propio
+    // curso — no hay ninguna otra restricción de curso hoy (Junta Escolar ya
+    // queda acotada a su colegio por el motor de tenant-scoping).
+    const ctx = getTenantContext()
+    if (ctx?.role === Role.DELEGATE && studentIds && studentIds.length > 0) {
+      const delegateParent = await delegateRepository.findParentByDelegateUserId(ctx.userId)
+      const myCourseId = delegateParent?.delegateCourse?.id
+      if (!myCourseId) throw new HttpError(400, 'No tenés un curso asignado como delegado')
+
+      const activeYear = await delegateRepository.findActiveAcademicYear()
+      if (!activeYear) throw new HttpError(404, 'No hay gestión académica activa')
+
+      for (const sid of studentIds) {
+        const inMyCourse = await prisma.studentAcademicAssignment.findFirst({
+          where: { studentId: sid, courseId: myCourseId, academicYearId: activeYear.id },
+        })
+        if (!inMyCourse) throw new HttpError(403, 'Solo podés registrar padres de estudiantes de tu propio curso')
+      }
+    }
+
     let accessEmail: string | undefined
     let defaultPassword: string | undefined
     let userId: number | undefined
@@ -99,8 +126,8 @@ export const parentService = {
     const parent = await parentRepository.create({
       firstName, lastName,
       ci: ci || null, phone: phone || null, email: email || null, address: address || null,
-      ...(userId ? { user: { connect: { id: userId } } } : {}),
-      school: { connect: { id: getTenantContext()?.schoolId ?? 0 } },
+      userId: userId ?? undefined,
+      schoolId: getTenantContext()?.schoolId ?? 0,
     })
 
     if (studentIds && studentIds.length > 0) {

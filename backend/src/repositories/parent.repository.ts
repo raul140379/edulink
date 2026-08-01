@@ -78,7 +78,13 @@ export const parentRepository = {
     })
   },
 
-  create(data: Prisma.ParentCreateInput) {
+  // Unchecked (FKs escalares) a propósito: el motor de tenant-scoping
+  // (lib/prisma.ts) fuerza `data.schoolId` como escalar para cualquier actor
+  // de alcance colegio (Director, Secretaria, Junta Escolar, Delegado...) —
+  // mezclar eso con `school: {connect}}` hace que Prisma rechace el create
+  // ("Unknown argument schoolId"). Con Unchecked, esa asignación solo pisa el
+  // mismo campo escalar, sin conflicto.
+  create(data: Prisma.ParentUncheckedCreateInput) {
     return prisma.parent.create({ data })
   },
 

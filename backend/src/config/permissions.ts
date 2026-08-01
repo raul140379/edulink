@@ -39,9 +39,14 @@ export enum Permission {
   TEACHER_VIEW_ALL   = 'teacher:view:all',
 
   // Padres y tutores
-  PARENT_CREATE      = 'parent:create',
-  PARENT_VIEW_ALL    = 'parent:view:all',
-  PARENT_VERIFY      = 'parent:verify',        // Solo portero
+  PARENT_CREATE       = 'parent:create',
+  // Vincular un padre YA EXISTENTE a un estudiante / cambiar tutor (matrícula,
+  // cambio de gestión) — separado de PARENT_CREATE porque Director/Regente/
+  // Secretaria conservan esta capacidad aunque ya no puedan registrar padres
+  // nuevos (eso pasa a ser responsabilidad exclusiva de Junta Escolar/Delegado).
+  PARENT_ASSIGN_TUTOR = 'parent:assign-tutor',
+  PARENT_VIEW_ALL     = 'parent:view:all',
+  PARENT_VERIFY       = 'parent:verify',        // Solo portero
 
   // Portería
   GATE_REGISTER      = 'gate:register',        // Registrar ingreso/salida (maestro, administrativo, visitante/padre)
@@ -107,10 +112,15 @@ export enum Permission {
   COMUNICADO_CREATE  = 'comunicado:create',
   COMUNICADO_VIEW    = 'comunicado:view',
 
-  // Junta de Padres / Gobierno Estudiantil (Núcleo y Distrito) — alta/edición de
-  // los miembros de la junta directiva en esos niveles
+  // Junta de Padres / Gobierno Estudiantil (Núcleo, Distrito y ahora también
+  // Escolar) — alta/edición de los miembros de la junta directiva
   JUNTA_MANAGE       = 'junta:manage',
   GOBIERNO_MANAGE    = 'gobierno:manage',
+
+  // Convocatoria (Junta Escolar) — asamblea ordinaria/emergencia o actividad
+  // planificada, con asistencia y multa automática
+  CONVOCATORIA_CREATE = 'convocatoria:create',
+  CONVOCATORIA_VIEW   = 'convocatoria:view',
 }
 
 // Mapa de permisos por rol
@@ -153,7 +163,10 @@ export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
     Permission.STUDENT_VIEW_ALL,
     Permission.TEACHER_CREATE,
     Permission.TEACHER_VIEW_ALL,
-    Permission.PARENT_CREATE,
+    // Sin PARENT_CREATE: registrar un padre nuevo es responsabilidad exclusiva
+    // de Junta Escolar/Delegado. Director conserva solo asignar/cambiar tutor
+    // (matrícula, cambio de gestión) usando un padre ya registrado.
+    Permission.PARENT_ASSIGN_TUTOR,
     Permission.PARENT_VIEW_ALL,
     Permission.COURSE_CREATE,
     Permission.COURSE_VIEW_ALL,
@@ -189,7 +202,8 @@ export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
     Permission.STUDENT_VIEW_ALL,
     // Sin TEACHER_CREATE: contratar/registrar un maestro nuevo queda como decisión de Dirección.
     Permission.TEACHER_VIEW_ALL,
-    Permission.PARENT_CREATE,
+    // Sin PARENT_CREATE: ver DIRECTOR arriba — Regente solo asigna/cambia tutor.
+    Permission.PARENT_ASSIGN_TUTOR,
     Permission.PARENT_VIEW_ALL,
     Permission.COURSE_VIEW_ALL,
     Permission.ENROLLMENT_CREATE,
@@ -207,13 +221,15 @@ export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
 
   [Role.SECRETARY]: [
     // Sin USER_CREATE ni TEACHER_CREATE: crear cuentas de sistema (maestros, staff, otros roles) queda solo para Director/Admin.
-    // STUDENT_CREATE/PARENT_CREATE ya cubren el flujo de matrícula (crean su propio User internamente).
+    // STUDENT_CREATE ya cubre el flujo de matrícula (crea su propio User internamente) — el
+    // padre/tutor ya tiene que existir de antemano (lo registra Junta Escolar/Delegado).
     Permission.USER_VIEW_ALL,
     Permission.USER_EDIT_OWN,
     Permission.STUDENT_CREATE,
     Permission.STUDENT_VIEW_ALL,
     Permission.TEACHER_VIEW_ALL,
-    Permission.PARENT_CREATE,
+    // Sin PARENT_CREATE: ver DIRECTOR arriba — Secretaria solo asigna/cambia tutor.
+    Permission.PARENT_ASSIGN_TUTOR,
     Permission.PARENT_VIEW_ALL,
     Permission.COURSE_CREATE,
     Permission.COURSE_VIEW_ALL,
@@ -271,6 +287,7 @@ export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
   [Role.DELEGATE]: [
     Permission.USER_EDIT_OWN,
     Permission.PARENT_CREATE,
+    Permission.PARENT_ASSIGN_TUTOR,
     Permission.PARENT_VIEW_ALL,
     Permission.COURSE_VIEW_ALL,
     Permission.ENROLLMENT_VIEW,
@@ -289,6 +306,7 @@ export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
   Permission.TEACHER_VIEW_ALL,
   Permission.STUDENT_VIEW_ALL,
   Permission.PARENT_CREATE,
+  Permission.PARENT_ASSIGN_TUTOR,
   Permission.PARENT_VIEW_ALL,
   // Asistencia de maestros: ver reporte + corregir/marcar ausente
   Permission.ATTENDANCE_VIEW,
@@ -310,6 +328,12 @@ export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
   // Asignar/remover delegados de curso
   Permission.DELEGATE_MANAGE,
   Permission.ACADEMIC_VIEW,
+  // Gestionar el directorio (Vicepresidente/Secretaria/Tesorero/Vocal) de su
+  // propio colegio — acotado en junta.service.ts a solo el Presidente.
+  Permission.JUNTA_MANAGE,
+  // Convocar asamblea/actividad con asistencia y multa automática.
+  Permission.CONVOCATORIA_CREATE,
+  Permission.CONVOCATORIA_VIEW,
 ],
 
   // Junta de Núcleo y de Distrito: mismo espíritu que JUNTA_ESCOLAR (ven a todos los
@@ -468,5 +492,9 @@ export const CREATABLE_ROLES: Partial<Record<string, string[]>> = {
   ],
   [Role.JUNTA_DISTRITO]:    [Role.JUNTA_DISTRITO, Role.JUNTA_NUCLEO, Role.JUNTA_ESCOLAR],
   [Role.JUNTA_NUCLEO]:      [Role.JUNTA_ESCOLAR],
+  // Auto-referencia: el Presidente de Junta Escolar puede designar al resto del
+  // directorio de su propio colegio (Vicepresidente/Secretaria/Tesorero/Vocal —
+  // nunca Presidente, eso se valida aparte en junta.service.ts).
+  [Role.JUNTA_ESCOLAR]:     [Role.JUNTA_ESCOLAR],
   [Role.GOBIERNO_DISTRITO]: [Role.GOBIERNO_NUCLEO, Role.STUDENT_GOV],
 }

@@ -1,5 +1,6 @@
 import { Prisma } from '@prisma/client'
 import { treasuryRepository } from '../repositories/treasury.repository'
+import { delegateRepository } from '../repositories/delegate.repository'
 import { HttpError } from '../utils/http-error'
 import { getTenantContext } from '../lib/tenant-context'
 import {
@@ -40,6 +41,11 @@ export const treasuryService = {
     const parent = await treasuryRepository.findParentRaw(input.parentId)
     if (!parent) throw new HttpError(404, 'Padre/tutor no encontrado')
 
+    // Todo cargo va al tutor designado — nunca a un padre/madre vinculado que
+    // no tenga ese rol.
+    const isTutor = await treasuryRepository.isParentTutor(input.parentId)
+    if (!isTutor) throw new HttpError(400, 'Solo se puede generar un cargo al tutor designado del estudiante')
+
     if (input.target === 'ESTUDIANTE' && input.studentId) {
       const student = await treasuryRepository.findStudentRaw(input.studentId)
       if (!student) throw new HttpError(404, 'Estudiante no encontrado')
@@ -54,10 +60,10 @@ export const treasuryService = {
       dueDate: input.dueDate ? new Date(input.dueDate) : null,
       tolerance: input.tolerance || false,
       toleranceNote: input.toleranceNote || null,
-      parent: { connect: { id: input.parentId } },
-      ...(input.target === 'ESTUDIANTE' && input.studentId ? { student: { connect: { id: input.studentId } } } : {}),
-      academicYear: { connect: { id: input.academicYearId } },
-      school: { connect: { id: getTenantContext()?.schoolId ?? 0 } },
+      parentId: input.parentId,
+      studentId: (input.target === 'ESTUDIANTE' && input.studentId) ? input.studentId : undefined,
+      academicYearId: input.academicYearId,
+      schoolId: getTenantContext()?.schoolId ?? 0,
     })
   },
 
@@ -68,6 +74,11 @@ export const treasuryService = {
     const schoolId = getTenantContext()?.schoolId ?? 0
     for (const parentId of input.parentIds) {
       try {
+        // Todo cargo va al tutor designado — se salta (no rompe el lote) a
+        // quien no tenga ese rol.
+        const isTutor = await treasuryRepository.isParentTutor(parentId)
+        if (!isTutor) { errors.push(parentId); continue }
+
         const charge = await treasuryRepository.createChargeRaw({
           title: input.title,
           description: input.description || null,
@@ -202,5 +213,49 @@ export const treasuryService = {
     if (status === 'CON_DEUDA') return result.filter((p) => p.summary.hasDebt)
     if (status === 'AL_DIA') return result.filter((p) => !p.summary.hasDebt)
     return result
+  },
+
+  async getTreasuryByCourse(academicYearId?: string) {
+    const ctx = getTenantContext()
+    const schoolId = ctx?.schoolId ?? 0
+
+    let yearId = academicYearId ? parseInt(academicYearId) : undefined
+    if (!yearId) {
+      const activeYear = await delegateRepository.findActiveAcademicYear()
+      yearId = activeYear?.id
+    }
+    if (!yearId) throw new HttpError(404, 'No hay gestión académica activa')
+
+    const courses = await treasuryRepository.findChargesGroupedByCourse(schoolId, yearId)
+
+    return courses.map((course) => {
+      // Un mismo tutor puede tener más de un hijo en el curso — se agrupa por
+      // padre para no listarlo duplicado dentro del propio curso.
+      const tutorsMap = new Map<number, any>()
+      for (const assignment of course.assignments) {
+        for (const ps of assignment.student.parents) {
+          const p = ps.parent
+          if (tutorsMap.has(p.id)) continue
+          const totalDebt    = p.charges.reduce((sum: number, c: any) => sum + c.amount, 0)
+          const totalPaid    = p.charges.reduce((sum: number, c: any) => sum + c.paidAmount, 0)
+          const totalPending = totalDebt - totalPaid
+          // Un cargo TUTOR (sin studentId) no pertenece a un solo curso si el
+          // padre tiene hijos en cursos distintos — se muestra en cada uno
+          // donde tenga un hijo activo, marcado como compartido. No se
+          // duplica en base de datos, solo en esta vista agrupada.
+          const hasSharedCharge = p.charges.some((c: any) => c.studentId == null)
+          tutorsMap.set(p.id, {
+            id: p.id, firstName: p.firstName, lastName: p.lastName, ci: p.ci, phone: p.phone,
+            studentName: `${assignment.student.lastName} ${assignment.student.firstName}`,
+            summary: { totalDebt, totalPaid, totalPending, hasDebt: totalPending > 0, hasSharedCharge },
+          })
+        }
+      }
+
+      return {
+        course: { id: course.id, level: course.level, grade: course.grade, parallel: course.parallel, shift: course.shift },
+        tutores: Array.from(tutorsMap.values()),
+      }
+    })
   },
 }

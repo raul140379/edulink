@@ -30,7 +30,26 @@ export const juntaRepository = {
     return prisma.juntaMember.findFirst({ where: { userId } })
   },
 
-  create(data: Prisma.JuntaMemberCreateInput) {
+  // Elegibilidad para Junta Escolar: el Parent tiene que ser tutor
+  // (ParentStudent.isTutor=true) de al menos un estudiante activo de ESE
+  // colegio — no alcanza con figurar como padre/madre sin ese rol.
+  findEligibleParentForBoard(parentId: number, schoolId: number) {
+    return prisma.parent.findFirst({
+      where: {
+        id: parentId,
+        schoolId,
+        students: { some: { isTutor: true, student: { isActive: true } } },
+      },
+    })
+  },
+
+  // Unchecked (FKs escalares, no sintaxis de relación `{connect}}`) a propósito:
+  // el motor de tenant-scoping (lib/prisma.ts) fuerza `data.schoolId` como
+  // escalar para un actor de alcance colegio (ej. Presidente de Junta Escolar
+  // creando su directorio) — mezclar eso con `school: {connect}}` hace que
+  // Prisma rechace el create ("Unknown argument schoolId"). Con Unchecked,
+  // esa asignación solo pisa el mismo campo escalar, sin conflicto.
+  create(data: Prisma.JuntaMemberUncheckedCreateInput) {
     return prisma.juntaMember.create({ data })
   },
 

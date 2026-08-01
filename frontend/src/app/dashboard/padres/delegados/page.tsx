@@ -85,6 +85,10 @@ export default function DelegadosPage() {
   const [working,         setWorking]         = useState<number | null>(null)
   const [creds,           setCreds]           = useState<Credentials | null>(null)
   const [copied,          setCopied]          = useState(false)
+  // Solo el Presidente puede asignar/quitar/resetear — el resto de la
+  // directiva puede ver la lista (misma regla que ya aplica el backend en
+  // delegateService.assignDelegate/removeDelegate).
+  const [isPresidente, setIsPresidente] = useState(false)
 
   const fetchCourses = async () => {
     const token = localStorage.getItem('token')
@@ -100,7 +104,14 @@ export default function DelegadosPage() {
     finally  { setLoading(false) }
   }
 
-  useEffect(() => { fetchCourses() }, [])
+  useEffect(() => {
+    fetchCourses()
+    const token = localStorage.getItem('token')
+    fetch(`${API_URL}/api/junta/me`, { headers: { Authorization: `Bearer ${token}` } })
+      .then(r => r.ok ? r.json() : null)
+      .then(data => setIsPresidente(data?.juntaRole === 'PRESIDENTE'))
+      .catch(() => {})
+  }, [])
 
   const openAssignModal = async (course: Course) => {
     const token = localStorage.getItem('token')
@@ -282,24 +293,26 @@ export default function DelegadosPage() {
                       </div>
                     )}
 
-                    <div className="flex flex-col gap-1.5 mt-1">
-                      {hasDelegate ? (
-                        <>
-                          {c.delegate?.delegateUserId && (
-                            <Button variant="secondary" size="sm" onClick={() => handleResetPassword(c)} loading={isWorking} className="justify-center">
-                              {!isWorking && <RefreshCw size={13}/>} Resetear password
+                    {isPresidente && (
+                      <div className="flex flex-col gap-1.5 mt-1">
+                        {hasDelegate ? (
+                          <>
+                            {c.delegate?.delegateUserId && (
+                              <Button variant="secondary" size="sm" onClick={() => handleResetPassword(c)} loading={isWorking} className="justify-center">
+                                {!isWorking && <RefreshCw size={13}/>} Resetear password
+                              </Button>
+                            )}
+                            <Button variant="danger" size="sm" onClick={() => handleRemove(c)} className="justify-center">
+                              <UserMinus size={13}/> Quitar delegado
                             </Button>
-                          )}
-                          <Button variant="danger" size="sm" onClick={() => handleRemove(c)} className="justify-center">
-                            <UserMinus size={13}/> Quitar delegado
+                          </>
+                        ) : (
+                          <Button size="sm" onClick={() => openAssignModal(c)} className="justify-center">
+                            <UserPlus size={13}/> Asignar delegado
                           </Button>
-                        </>
-                      ) : (
-                        <Button size="sm" onClick={() => openAssignModal(c)} className="justify-center">
-                          <UserPlus size={13}/> Asignar delegado
-                        </Button>
-                      )}
-                    </div>
+                        )}
+                      </div>
+                    )}
                   </Card>
                 )
               })}

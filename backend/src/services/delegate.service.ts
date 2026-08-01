@@ -1,8 +1,11 @@
 import bcrypt from 'bcryptjs'
+import { Role } from '@prisma/client'
 import { delegateRepository } from '../repositories/delegate.repository'
 import { HttpError } from '../utils/http-error'
 import { AssignDelegateInput } from '../schemas/delegate.schema'
 import { resolveEmailDomain } from '../utils/account-generator'
+import { getTenantContext } from '../lib/tenant-context'
+import { juntaService } from './junta.service'
 
 const GRADE_MAP: Record<string, string> = {
   PRIMERO: '1', SEGUNDO: '2', TERCERO: '3', CUARTO: '4', QUINTO: '5', SEXTO: '6',
@@ -36,6 +39,9 @@ export const delegateService = {
   },
 
   async assignDelegate(courseId: number, input: AssignDelegateInput) {
+    const ctx = getTenantContext()
+    if (ctx?.role === Role.JUNTA_ESCOLAR) await juntaService.assertIsPresidente(ctx.userId)
+
     const course = await delegateRepository.findCourseById(courseId)
     if (!course) throw new HttpError(404, 'Curso no encontrado')
 
@@ -77,6 +83,9 @@ export const delegateService = {
   },
 
   async removeDelegate(courseId: number) {
+    const ctx = getTenantContext()
+    if (ctx?.role === Role.JUNTA_ESCOLAR) await juntaService.assertIsPresidente(ctx.userId)
+
     const course = await delegateRepository.findCourseWithDelegate(courseId)
     if (!course) throw new HttpError(404, 'Curso no encontrado')
     if (!course.delegateId) throw new HttpError(400, 'Este curso no tiene delegado asignado')

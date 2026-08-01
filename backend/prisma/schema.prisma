@@ -98,6 +98,7 @@ model School {
   studentGamifications    StudentGamification[]
   studentAchievements     StudentAchievement[]
   studentTrimesterBonuses StudentTrimesterBonus[]
+  convocatorias           Convocatoria[]
 }
 
 model SchoolSchedule {
@@ -149,6 +150,8 @@ model User {
   teacherTutor      Teacher?        @relation("TeacherTutor")
   teacher           Teacher?        @relation("TeacherUser")
   poaActasCreated   PoaActa[]
+  convocatoriasCreated    Convocatoria[]           @relation("ConvocatoriaCreator")
+  convocatoriaAttendances ConvocatoriaAttendance[]
 }
 
 model JuntaMember {
@@ -162,10 +165,17 @@ model JuntaMember {
   isActive     Boolean   @default(true)
   createdAt    DateTime  @default(now())
   userId       Int       @unique
+  // Padre/tutor del que proviene este miembro — nullable a nivel de esquema
+  // (no rompe filas ya creadas de Núcleo/Distrito), pero obligatorio en la
+  // práctica para cualquier alta/edición de nivel JUNTA_ESCOLAR (validado en
+  // junta.service.ts): un directivo de colegio siempre tiene que ser el tutor
+  // (ParentStudent.isTutor=true) de algún estudiante ya registrado.
+  parentId     Int?
   schoolId     Int?
   nucleoId     Int?
   districtId   Int?
   user         User      @relation(fields: [userId], references: [id])
+  parent       Parent?   @relation(fields: [parentId], references: [id])
   school       School?   @relation(fields: [schoolId], references: [id])
   nucleo       Nucleo?   @relation(fields: [nucleoId], references: [id])
   district     District? @relation(fields: [districtId], references: [id])
@@ -272,6 +282,7 @@ model Parent {
   user           User?           @relation("ParentUser", fields: [userId], references: [id])
   students       ParentStudent[]
   payments       Payment[]
+  juntaMemberships JuntaMember[]
 
   @@unique([ci, schoolId])
   @@unique([email, schoolId])
@@ -761,6 +772,62 @@ model Attendance {
   parent    Parent   @relation(fields: [parentId], references: [id])
 
   @@unique([meetingId, parentId])
+}
+
+enum ConvocatoriaKind {
+  ORDINARIA
+  EMERGENCIA
+  ACTIVIDAD
+}
+
+enum ConvocatoriaAudience {
+  DELEGADOS
+  DIRECTORIO
+  TODOS_LOS_PADRES
+}
+
+// Convocatoria de la Junta Escolar (asamblea ordinaria/emergencia o actividad
+// planificada) — a diferencia de Meeting (siempre atado a un solo Course, con
+// asistencia por Parent), acá el destinatario puede ser todo el directorio o
+// todos los delegados del colegio, y no todo asistente es necesariamente un
+// Parent (un directivo lo es siempre por regla de negocio, pero la identidad
+// que se registra es el User, ver ConvocatoriaAttendance).
+model Convocatoria {
+  id          Int                      @id @default(autoincrement())
+  title       String
+  description String?
+  kind        ConvocatoriaKind         @default(ORDINARIA)
+  audience    ConvocatoriaAudience
+  date        DateTime
+  location    String?
+  // Monto de la multa por inasistencia, definido al crear — permite que el
+  // cobro al cerrar la convocatoria sea automático, sin pedir el monto de nuevo.
+  multaAmount Float?
+  isCancelled Boolean                  @default(false)
+  // Una vez cerrada (asistencia tomada + multas generadas) queda de solo
+  // lectura — evita reabrir y generar doble cobro.
+  isClosed    Boolean                  @default(false)
+  createdAt   DateTime                 @default(now())
+  createdById Int
+  schoolId    Int
+  school      School                   @relation(fields: [schoolId], references: [id])
+  createdBy   User                     @relation("ConvocatoriaCreator", fields: [createdById], references: [id])
+  attendances ConvocatoriaAttendance[]
+}
+
+model ConvocatoriaAttendance {
+  id             Int          @id @default(autoincrement())
+  convocatoriaId Int
+  userId         Int
+  present        Boolean      @default(false)
+  // Si ya se generó el Charge de multa para este ausente (evita doble cobro).
+  charged        Boolean      @default(false)
+  note           String?
+  createdAt      DateTime     @default(now())
+  convocatoria   Convocatoria @relation(fields: [convocatoriaId], references: [id])
+  user           User         @relation(fields: [userId], references: [id])
+
+  @@unique([convocatoriaId, userId])
 }
 
 model Nota {

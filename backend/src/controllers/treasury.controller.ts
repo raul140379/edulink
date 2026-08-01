@@ -135,3 +135,15 @@ export const getParentsWithBalance = async (req: AuthRequest, res: Response): Pr
     handleControllerError(res, error)
   }
 }
+
+// ─────────────────────────────────────────────
+// GET /api/treasury/by-course
+// ─────────────────────────────────────────────
+export const getTreasuryByCourse = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const byCourse = await treasuryService.getTreasuryByCourse(req.query.academicYearId as string | undefined)
+    res.json(byCourse)
+  } catch (error) {
+    handleControllerError(res, error)
+  }
+}

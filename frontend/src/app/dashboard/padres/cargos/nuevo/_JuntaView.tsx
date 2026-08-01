@@ -19,6 +19,13 @@ interface AcademicYear {
   id: number; year: number; isActive: boolean
 }
 
+interface CourseOption { id: number; level: string; grade: string; parallel: string; shift: string }
+
+const GRADE_LABELS: Record<string, string> = {
+  PRIMERO: '1°', SEGUNDO: '2°', TERCERO: '3°', CUARTO: '4°', QUINTO: '5°', SEXTO: '6°',
+}
+const SHIFT_LABELS: Record<string, string> = { MORNING: 'Mañana', AFTERNOON: 'Tarde', NIGHT: 'Noche' }
+
 const TYPE_OPTIONS = [
   { value: 'CUOTA_INICIAL',    label: 'Cuota Inicial',     target: 'TUTOR' },
   { value: 'DEUDA_ANTERIOR',   label: 'Deuda Anterior',    target: 'TUTOR' },
@@ -43,6 +50,15 @@ export default function NuevoCargoPage() {
   const [bulk,          setBulk]          = useState(false)
   const [selectedParents, setSelectedParents] = useState<number[]>([])
 
+  // Modo "Por curso": tercera pestaña junto a individual/masivo — auto-resuelve
+  // los tutores de un curso elegido (mismo endpoint que ya usa Delegado para
+  // asignarse a sí mismo) y reutiliza el envío masivo existente.
+  const [courseMode, setCourseMode] = useState(false)
+  const [courses, setCourses] = useState<CourseOption[]>([])
+  const [selectedCourseId, setSelectedCourseId] = useState('')
+  const [courseTutorIds, setCourseTutorIds] = useState<number[]>([])
+  const [loadingCourseTutors, setLoadingCourseTutors] = useState(false)
+
   const [form, setForm] = useState({
     title:         '',
     description:   '',
@@ -61,12 +77,14 @@ export default function NuevoCargoPage() {
     const token = localStorage.getItem('token')
     setLoading(true)
     try {
-      const [pRes, yRes] = await Promise.all([
+      const [pRes, yRes, cRes] = await Promise.all([
         fetch(`${API_URL}/api/treasury/parents`, { headers: { Authorization: `Bearer ${token}` } }),
         fetch(`${API_URL}/api/academic`,          { headers: { Authorization: `Bearer ${token}` } }),
+        fetch(`${API_URL}/api/courses`,           { headers: { Authorization: `Bearer ${token}` } }),
       ])
-      const [pData, yData] = await Promise.all([pRes.json(), yRes.json()])
+      const [pData, yData, cData] = await Promise.all([pRes.json(), yRes.json(), cRes.json()])
       if (pRes.ok) setParents(pData)
+      if (cRes.ok) setCourses(cData)
       if (yRes.ok) {
         setAcademicYears(yData)
         const active = yData.find((y: AcademicYear) => y.isActive)
@@ -151,6 +169,33 @@ export default function NuevoCargoPage() {
   const toggleParent = (id: number) =>
     setSelectedParents(p => p.includes(id) ? p.filter(x => x !== id) : [...p, id])
 
+  const handleSelectCourse = async (courseId: string) => {
+    setSelectedCourseId(courseId)
+    setSelectedParents([])
+    setCourseTutorIds([])
+    if (!courseId) return
+    const token = localStorage.getItem('token')
+    setLoadingCourseTutors(true)
+    try {
+      const res  = await fetch(`${API_URL}/api/delegates/course/${courseId}/eligible-parents`, { headers: { Authorization: `Bearer ${token}` } })
+      const data = await res.json()
+      if (res.ok) {
+        // Los tutores del curso no siempre están en `parents` (ese listado
+        // viene de /api/treasury/parents, ya filtrado a isTutor) — se
+        // completan acá para que la lista los pueda mostrar.
+        setParents(prev => {
+          const known = new Set(prev.map(p => p.id))
+          const extra = (data as any[]).filter(p => !known.has(p.id)).map(p => ({ id: p.id, firstName: p.firstName, lastName: p.lastName, ci: p.ci, students: [] }))
+          return [...prev, ...extra]
+        })
+        const ids = (data as any[]).map(p => p.id)
+        setCourseTutorIds(ids)
+        setSelectedParents(ids)
+      }
+    } catch { toast('Error al cargar tutores del curso', 'error') }
+    finally  { setLoadingCourseTutors(false) }
+  }
+
   const currentType = TYPE_OPTIONS.find(o => o.value === form.type)
   const isForStudent = currentType?.target === 'ESTUDIANTE'
 
@@ -169,22 +214,33 @@ export default function NuevoCargoPage() {
         <Card className="flex flex-col gap-4.5">
           <div className="flex bg-neutral-100 rounded-[10px] p-1 gap-1">
             <button
-              onClick={() => setBulk(false)}
-              className={`flex-1 py-2 rounded-lg text-[13px] transition-colors ${!bulk ? 'bg-white text-brand-700 font-semibold shadow-sm' : 'text-neutral-500'}`}
+              onClick={() => { setBulk(false); setCourseMode(false) }}
+              className={`flex-1 py-2 rounded-lg text-[13px] transition-colors ${!bulk && !courseMode ? 'bg-white text-brand-700 font-semibold shadow-sm' : 'text-neutral-500'}`}
             >
               Cargo individual
             </button>
             <button
-              onClick={() => setBulk(true)}
-              className={`flex-1 py-2 rounded-lg text-[13px] flex items-center justify-center gap-1.5 transition-colors ${bulk ? 'bg-white text-brand-700 font-semibold shadow-sm' : 'text-neutral-500'}`}
+              onClick={() => { setBulk(true); setCourseMode(false) }}
+              className={`flex-1 py-2 rounded-lg text-[13px] flex items-center justify-center gap-1.5 transition-colors ${bulk && !courseMode ? 'bg-white text-brand-700 font-semibold shadow-sm' : 'text-neutral-500'}`}
             >
               <Users size={14}/> Cargo masivo
             </button>
+            <button
+              onClick={() => { setBulk(true); setCourseMode(true) }}
+              className={`flex-1 py-2 rounded-lg text-[13px] flex items-center justify-center gap-1.5 transition-colors ${courseMode ? 'bg-white text-brand-700 font-semibold shadow-sm' : 'text-neutral-500'}`}
+            >
+              <Users size={14}/> Por curso
+            </button>
           </div>
 
-          {bulk && (
+          {bulk && !courseMode && (
             <div className="bg-neutral-100 border border-neutral-300 rounded-lg p-3 text-xs text-neutral-500 leading-relaxed">
               💡 El cargo masivo crea el mismo cargo para múltiples tutores a la vez. Ideal para cuota inicial, mingas y multas de asamblea.
+            </div>
+          )}
+          {courseMode && (
+            <div className="bg-neutral-100 border border-neutral-300 rounded-lg p-3 text-xs text-neutral-500 leading-relaxed">
+              💡 Elegí un curso y se auto-completan sus tutores — podés deseleccionar los que no correspondan.
             </div>
           )}
 
@@ -235,7 +291,7 @@ export default function NuevoCargoPage() {
             </div>
           </div>
 
-          {!bulk && (
+          {!bulk && !courseMode && (
             <>
               <div className="text-xs font-bold text-brand-700 uppercase tracking-wide pb-1 border-b border-neutral-100">Asignar a tutor</div>
               <Select label="Tutor legal" required value={form.parentId} onChange={e => setForm({ ...form, parentId: e.target.value, studentId: '' })}>
@@ -274,17 +330,31 @@ export default function NuevoCargoPage() {
             </>
           )}
 
-          {bulk && (
+          {courseMode && (
+            <>
+              <div className="text-xs font-bold text-brand-700 uppercase tracking-wide pb-1 border-b border-neutral-100">Elegir curso</div>
+              <Select label="Curso" required value={selectedCourseId} onChange={e => handleSelectCourse(e.target.value)}>
+                <option value="">Selecciona un curso</option>
+                {courses.map(c => (
+                  <option key={c.id} value={c.id}>{GRADE_LABELS[c.grade] || c.grade} &quot;{c.parallel}&quot; · {SHIFT_LABELS[c.shift] || c.shift}</option>
+                ))}
+              </Select>
+            </>
+          )}
+
+          {bulk && (!courseMode || selectedCourseId) && (
             <>
               <div className="text-xs font-bold text-brand-700 uppercase tracking-wide pb-1 border-b border-neutral-100">
-                Seleccionar tutores ({selectedParents.length} seleccionados)
+                {loadingCourseTutors ? 'Cargando tutores del curso...' : `Tutores (${selectedParents.length} seleccionados)`}
               </div>
-              <div className="flex gap-2">
-                <Button variant="secondary" size="sm" onClick={() => setSelectedParents(parents.map(p => p.id))}>Seleccionar todos</Button>
-                <Button variant="secondary" size="sm" onClick={() => setSelectedParents([])}>Limpiar selección</Button>
-              </div>
+              {!courseMode && (
+                <div className="flex gap-2">
+                  <Button variant="secondary" size="sm" onClick={() => setSelectedParents(parents.map(p => p.id))}>Seleccionar todos</Button>
+                  <Button variant="secondary" size="sm" onClick={() => setSelectedParents([])}>Limpiar selección</Button>
+                </div>
+              )}
               <div className="flex flex-col gap-1.5 max-h-[280px] overflow-y-auto border border-neutral-300 rounded-lg p-2">
-                {parents.map(p => (
+                {(courseMode ? parents.filter(p => courseTutorIds.includes(p.id)) : parents).map(p => (
                   <label
                     key={p.id}
                     className={`flex items-center gap-2.5 p-2.5 rounded-md cursor-pointer border ${selectedParents.includes(p.id) ? 'bg-brand-100 border-neutral-300' : 'border-transparent hover:bg-neutral-100'}`}

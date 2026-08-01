@@ -12,8 +12,9 @@ const router = Router()
 router.use(verifyToken)
 
 // Rutas de auto-perfil ANTES que /:id — si no, Express matchea "me" como :id.
-// Sin requirePermission(JUNTA_MANAGE): cualquier rol de junta (incluido
-// JUNTA_ESCOLAR, que no tiene ese permiso) necesita leer/editar su propio perfil.
+// Sin requirePermission(JUNTA_MANAGE): cualquier rol de junta necesita poder
+// leer/editar su propio perfil, sin importar el candado de Presidente que
+// aplica sobre el resto de las rutas (ver junta.service.ts:assertIsPresidente).
 router.get('/me', getMyJuntaProfile)
 router.put('/me', validateBody(updateOwnJuntaProfileSchema), updateMyJuntaProfile)
 

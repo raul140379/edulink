@@ -25,6 +25,15 @@ export function generateParentPassword(lastName: string, ci?: string | null): st
   return `padre${normalizeLetters(lastName.split(' ')[0]).slice(0, 3)}${year}`
 }
 
+// Usada al elevar a un Parent/tutor ya existente a un cargo de Junta Escolar
+// (segunda cuenta, mismo patrón que generateParentPassword pero con prefijo
+// "junta" para distinguirla a simple vista).
+export function generateJuntaPassword(lastName: string, ci?: string | null): string {
+  const year = new Date().getFullYear()
+  if (ci && ci.trim().length >= 4) return `junta${ci.trim().slice(-4)}${year}`
+  return `junta${normalizeLetters(lastName.split(' ')[0]).slice(0, 3)}${year}`
+}
+
 export async function generateUniqueEmail(firstName: string, lastName: string, domain?: string): Promise<string> {
   const resolvedDomain = domain ?? await resolveEmailDomain()
   const first = normalizeEmailPart(firstName.split(' ')[0])

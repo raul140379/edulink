@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import {
   LayoutDashboard, UserCircle, Calendar, BookOpen, Users,
   DollarSign, ClipboardCheck, ClipboardList, FileBarChart, Bell, Megaphone, Layers, UserCog,
+  UserPlus, CalendarClock,
 } from 'lucide-react'
 import DashboardShell, { MenuGroup } from '@/components/layout/DashboardShell'
 import { useDistrictConfig } from '@/hooks/useDistrictConfig'
@@ -49,8 +50,25 @@ const menuGroups: MenuGroup[] = [
     items: [{ label: 'Nuevo Cargo', href: '/dashboard/padres/cargos/nuevo', icon: <ClipboardList size={15}/>, roles: ['JUNTA_ESCOLAR', 'DELEGATE'] }],
   },
   {
-    label: 'Delegados', icon: <Users size={15}/>, roles: ['JUNTA_ESCOLAR'],
-    items: [{ label: 'Delegados', href: '/dashboard/padres/delegados', icon: <Users size={15}/>, roles: ['JUNTA_ESCOLAR'] }],
+    // Presidente gestiona directorio+delegados; el resto de la directiva ve
+    // "Delegados" en solo lectura (el candado real está en cada página/backend).
+    label: 'Usuarios', icon: <UserCog size={15}/>, roles: ['JUNTA_ESCOLAR'],
+    items: [
+      { label: 'Directorio',      href: '/dashboard/padres/junta',       icon: <UserCog size={15}/>, roles: ['JUNTA_ESCOLAR'] },
+      { label: 'Designar cargo',  href: '/dashboard/padres/junta/nueva', icon: <Users size={15}/>,   roles: ['JUNTA_ESCOLAR'] },
+      { label: 'Delegados',       href: '/dashboard/padres/delegados',   icon: <Users size={15}/>,   roles: ['JUNTA_ESCOLAR'] },
+    ],
+  },
+  {
+    label: 'Familias', icon: <UserPlus size={15}/>, roles: ['JUNTA_ESCOLAR', 'DELEGATE'],
+    items: [
+      { label: 'Listado',        href: '/dashboard/padres/familias',       icon: <Users size={15}/>,   roles: ['JUNTA_ESCOLAR', 'DELEGATE'] },
+      { label: 'Registrar Padre', href: '/dashboard/padres/familias/nueva', icon: <UserPlus size={15}/>, roles: ['JUNTA_ESCOLAR', 'DELEGATE'] },
+    ],
+  },
+  {
+    label: 'Convocatoria', icon: <CalendarClock size={15}/>, roles: ['JUNTA_ESCOLAR'],
+    items: [{ label: 'Convocatoria', href: '/dashboard/padres/convocatoria', icon: <CalendarClock size={15}/>, roles: ['JUNTA_ESCOLAR'] }],
   },
   {
     label: 'Reportes', icon: <FileBarChart size={15}/>, roles: ['JUNTA_ESCOLAR'],

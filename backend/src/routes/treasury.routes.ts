@@ -16,6 +16,7 @@ import {
   registerPayment,
   getTreasurySummary,
   getParentsWithBalance,
+  getTreasuryByCourse,
 } from '../controllers/treasury.controller'
 
 const router = Router()
@@ -27,6 +28,9 @@ router.use(verifyToken)
 router.get('/summary',          requirePermission(Permission.CHARGE_VIEW_ALL), getTreasurySummary)
 
 // ── Tutores con estado de cuenta ─────────────
+// /by-course ANTES que /:id genérico más abajo, si no Express matchearía
+// "by-course" como el :id de una ruta de cargo.
+router.get('/by-course',        requirePermission(Permission.CHARGE_VIEW_ALL), getTreasuryByCourse)
 router.get('/parents',          requirePermission(Permission.CHARGE_VIEW_ALL), getParentsWithBalance)
 router.get('/parents/:parentId/account', requireAnyPermission(Permission.CHARGE_VIEW_ALL, Permission.CHARGE_VIEW_OWN), getParentAccount)
 

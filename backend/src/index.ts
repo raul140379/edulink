@@ -11,6 +11,7 @@ import teacherRoutes  from './routes/teacher.routes'
 import treasuryRoutes from './routes/treasury.routes'
 import delegateRoutes from './routes/delegate.routes'
 import meetingRoutes from './routes/meeting.routes'
+import convocatoriaRoutes from './routes/convocatoria.routes'
 import subjectRoutes from './routes/subject.routes'
 import reportRoutes from './routes/report.routes'
 import notificationRoutes from './routes/notification.routes'
@@ -77,6 +78,7 @@ app.use('/api/comunicados', comunicadoRoutes)
 app.use('/api/public', publicRoutes)
 app.use('/api/district', districtRoutes)
 app.use('/api/junta', juntaRoutes)
+app.use('/api/convocatorias', convocatoriaRoutes)
 app.use('/api/gobierno', gobiernoRoutes)
 app.use('/api/poa-acta', poaActaRoutes)
 

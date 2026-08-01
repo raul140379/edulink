@@ -7,6 +7,7 @@ import { HttpError } from '../utils/http-error'
 import { getTenantContext } from '../lib/tenant-context'
 import { CREATABLE_ROLES } from '../config/permissions'
 import { DISTRICT_WIDE_ROLES, NUCLEO_WIDE_ROLES } from '../lib/scoped-models'
+import { generateUniqueEmail, generateJuntaPassword } from '../utils/account-generator'
 import {
   CreateJuntaMemberInput, UpdateJuntaMemberInput, UpdateOwnJuntaProfileInput,
 } from '../schemas/junta.schema'
@@ -18,37 +19,96 @@ export const juntaService = {
     return juntaRepository.findMany()
   },
 
+  // Candado de cargo (no de rol): solo el Presidente de la Junta Escolar puede
+  // gestionar el resto del directorio y los Delegados de su colegio. Se llama
+  // desde el service (no un middleware) porque solo aplica cuando quien actúa
+  // es JUNTA_ESCOLAR — Núcleo/Distrito no pasan por acá.
+  async assertIsPresidente(userId: number) {
+    const member = await juntaRepository.findByUserId(userId)
+    if (!member?.isActive || member.juntaRole !== 'PRESIDENTE') {
+      throw new HttpError(403, 'Solo el Presidente de la Junta Escolar puede realizar esta acción')
+    }
+  },
+
   async createJuntaMember(input: CreateJuntaMemberInput) {
-    // Para JUNTA_ESCOLAR el núcleo no lo manda el cliente — se deriva del propio
-    // colegio, así el JuntaMember/User quedan agrupables por núcleo desde el alta
-    // (antes quedaban con nucleoId null aunque su colegio sí tuviera núcleo).
-    let nucleoId = input.nucleoId
-    if (input.role === 'JUNTA_ESCOLAR' && input.schoolId) {
-      const school = await prisma.school.findUnique({ where: { id: input.schoolId }, select: { nucleoId: true } })
-      if (school?.nucleoId != null) nucleoId = school.nucleoId
+    const ctx = getTenantContext()
+
+    if (input.role === 'JUNTA_ESCOLAR') {
+      // Ser miembro de Junta Escolar (cualquier cargo) exige ser ya un
+      // Parent/tutor registrado en el sistema — no se tipean datos nuevos,
+      // se elige un padre existente y se le genera una segunda cuenta
+      // (mismo patrón que delegateService.assignDelegate).
+      if (!input.parentId) throw new HttpError(400, 'Selecciona un padre/tutor ya registrado')
+
+      if (ctx?.role === Role.JUNTA_ESCOLAR) {
+        await this.assertIsPresidente(ctx.userId)
+        if (input.cargo === 'PRESIDENTE') {
+          throw new HttpError(403, 'No podés asignar el cargo de Presidente — esa reasignación es exclusiva de Junta de Núcleo/Distrito')
+        }
+      }
+
+      // Para el Presidente, el colegio es siempre el propio — no hace falta
+      // que el frontend lo mande. Núcleo/Distrito sí tienen que elegirlo
+      // (cascada núcleo→colegio existente en junta/nueva).
+      const targetSchoolId = input.schoolId ?? (ctx?.role === Role.JUNTA_ESCOLAR ? ctx.schoolId ?? undefined : undefined)
+      if (!targetSchoolId) throw new HttpError(400, 'Selecciona un colegio')
+
+      const parent = await juntaRepository.findEligibleParentForBoard(input.parentId, targetSchoolId)
+      if (!parent) {
+        throw new HttpError(400, 'Esta persona debe estar registrada como tutor de un estudiante del colegio antes de poder ser parte de la Junta Escolar')
+      }
+
+      const accessEmail    = await generateUniqueEmail(parent.firstName, parent.lastName)
+      const defaultPassword = generateJuntaPassword(parent.lastName, parent.ci)
+
+      // El núcleo no lo manda el cliente — se deriva del propio colegio, así
+      // el JuntaMember/User quedan agrupables por núcleo desde el alta.
+      const school = await prisma.school.findUnique({ where: { id: targetSchoolId }, select: { nucleoId: true } })
+
+      const user = await userService.createUser({
+        email:    accessEmail,
+        password: defaultPassword,
+        role:     Role.JUNTA_ESCOLAR,
+        schoolId: targetSchoolId,
+        nucleoId: school?.nucleoId ?? undefined,
+      })
+
+      const member = await juntaRepository.create({
+        firstName:    parent.firstName,
+        lastName:     parent.lastName,
+        ci:           parent.ci,
+        phone:        parent.phone,
+        juntaRole:    input.cargo,
+        academicYear: input.academicYear,
+        userId:       user.id,
+        parentId:     parent.id,
+        schoolId:     user.schoolId ?? undefined,
+        nucleoId:     user.nucleoId ?? undefined,
+      })
+
+      return { ...member, accessEmail, defaultPassword }
     }
 
-    // Crea primero el User (valida jerarquía CREATABLE_ROLES y resuelve el
-    // alcance schoolId/nucleoId/districtId según el rol — ver user.service.ts).
+    // ---- JUNTA_NUCLEO / JUNTA_DISTRITO: alta "en blanco" de siempre ----
     const user = await userService.createUser({
-      email:    input.email,
-      password: input.password,
+      email:    input.email!,
+      password: input.password!,
       role:     input.role as unknown as Role,
       schoolId: input.schoolId,
-      nucleoId,
+      nucleoId: input.nucleoId,
     })
 
     return juntaRepository.create({
-      firstName:    input.firstName,
-      lastName:     input.lastName,
+      firstName:    input.firstName!,
+      lastName:     input.lastName!,
       ci:           input.ci || null,
       phone:        input.phone || null,
       juntaRole:    input.cargo,
       academicYear: input.academicYear,
-      user:         { connect: { id: user.id } },
-      ...(user.schoolId   != null ? { school:   { connect: { id: user.schoolId } } }   : {}),
-      ...(user.nucleoId   != null ? { nucleo:   { connect: { id: user.nucleoId } } }   : {}),
-      ...(user.districtId != null ? { district: { connect: { id: user.districtId } } } : {}),
+      userId:       user.id,
+      schoolId:     user.schoolId ?? undefined,
+      nucleoId:     user.nucleoId ?? undefined,
+      districtId:   user.districtId ?? undefined,
     })
   },
 
@@ -59,6 +119,18 @@ export const juntaService = {
     // en el modelo Prisma la columna es "juntaRole" — hay que traducirlo acá,
     // Prisma rechaza "cargo" como argumento desconocido si se pasa tal cual.
     const { cargo, role, schoolId, nucleoId, ...rest } = input
+    const ctxForCargo = getTenantContext()
+
+    // El Presidente de Junta Escolar puede editar al resto del directorio, pero
+    // nunca puede auto-asignarse (ni asignarle a otro) el cargo de Presidente —
+    // esa reasignación queda reservada para Junta de Núcleo/Distrito.
+    if (ctxForCargo?.role === Role.JUNTA_ESCOLAR) {
+      await this.assertIsPresidente(ctxForCargo.userId)
+      if (cargo === 'PRESIDENTE') {
+        throw new HttpError(403, 'No podés asignar el cargo de Presidente — esa reasignación es exclusiva de Junta de Núcleo/Distrito')
+      }
+    }
+
     const memberUpdate: Prisma.JuntaMemberUpdateInput = {
       ...rest,
       ...(cargo !== undefined ? { juntaRole: cargo } : {}),
@@ -71,6 +143,13 @@ export const juntaService = {
     if (role !== undefined || schoolId !== undefined || nucleoId !== undefined) {
       const targetRole = role ?? existing.user.role
       const ctx = getTenantContext()
+
+      // Un Presidente de Junta Escolar solo gestiona su propio colegio — el
+      // motor de tenant-scoping fuerza schoolId en creates pero no en updates,
+      // así que acá hay que rechazar a mano un intento de mover a otro colegio.
+      if (ctx?.role === Role.JUNTA_ESCOLAR && schoolId !== undefined && schoolId !== ctx.schoolId) {
+        throw new HttpError(403, 'Solo podés gestionar miembros de tu propio colegio')
+      }
 
       // Cambiar de rol exige la misma jerarquía de designación que al crear un
       // miembro nuevo (CREATABLE_ROLES) — quien edita no puede mover a alguien a
@@ -140,6 +219,8 @@ export const juntaService = {
     if (existing.userId === requesterId) {
       throw new HttpError(400, 'No podés desactivar tu propia cuenta desde acá')
     }
+    const ctx = getTenantContext()
+    if (ctx?.role === Role.JUNTA_ESCOLAR) await this.assertIsPresidente(ctx.userId)
     const next = !existing.isActive
     await juntaRepository.update(id, { isActive: next })
     await userRepository.setActive(existing.userId, next)

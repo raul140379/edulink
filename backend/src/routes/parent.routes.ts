@@ -37,16 +37,24 @@ router.get('/me', getMe)
 router.put('/me', validateBody(updateMeSchema), updateMe)
 router.get('/:id',                        requirePermission(Permission.PARENT_VIEW_ALL), getParentById)
 router.get('/:id/students',               requirePermission(Permission.PARENT_VIEW_ALL), getParentStudents)
+
+// Registrar/editar/dar de baja un padre — responsabilidad exclusiva de Junta
+// Escolar/Delegado (Director/Regente/Secretaria ya NO tienen este permiso,
+// solo PARENT_ASSIGN_TUTOR más abajo).
 router.post('/',                          requirePermission(Permission.PARENT_CREATE),   validateBody(createParentSchema), createParent)
 router.put('/:id',                        requirePermission(Permission.PARENT_CREATE),   validateBody(updateParentSchema), updateParent)
 router.patch('/:id/toggle',              requirePermission(Permission.PARENT_CREATE),   toggleParentStatus)
 router.delete('/:id',                    requirePermission(Permission.PARENT_CREATE),   deleteParent)
-router.post('/:id/link-students',        requirePermission(Permission.PARENT_CREATE),   validateBody(linkStudentsSchema), linkStudents)
-router.delete('/:id/unlink/:studentId',  requirePermission(Permission.PARENT_CREATE),   unlinkStudent)
 router.post('/:id/generate-credentials', requirePermission(Permission.PARENT_CREATE),   generateParentCredentials)
-router.patch('/student/:id/change-tutor', requirePermission(Permission.PARENT_CREATE),  validateBody(changeTutorSchema), changeTutor)
 router.post('/import', requirePermission(Permission.PARENT_CREATE), upload.single('file'), importParents)
-router.patch('/:id/change-relation/:studentId', requirePermission(Permission.PARENT_CREATE), validateBody(changeRelationSchema), changeRelation)
+
+// Vincular un padre YA EXISTENTE a un estudiante / cambiar tutor — esto sí lo
+// conserva el administrador del colegio (matrícula, cambio de gestión), además
+// de Junta Escolar/Delegado.
+router.post('/:id/link-students',        requirePermission(Permission.PARENT_ASSIGN_TUTOR), validateBody(linkStudentsSchema), linkStudents)
+router.delete('/:id/unlink/:studentId',  requirePermission(Permission.PARENT_ASSIGN_TUTOR), unlinkStudent)
+router.patch('/student/:id/change-tutor', requirePermission(Permission.PARENT_ASSIGN_TUTOR), validateBody(changeTutorSchema), changeTutor)
+router.patch('/:id/change-relation/:studentId', requirePermission(Permission.PARENT_ASSIGN_TUTOR), validateBody(changeRelationSchema), changeRelation)
 
 
 export default router

@@ -6,19 +6,35 @@ export const juntaRoleLevelSchema = z.enum(['JUNTA_ESCOLAR', 'JUNTA_NUCLEO', 'JU
 export const juntaCargoSchema = z.enum(['PRESIDENTE', 'VICEPRESIDENTE', 'SECRETARIA', 'TESORERO', 'VOCAL'])
 
 export const createJuntaMemberSchema = z.object({
-  email:        z.string().email('Email inválido'),
-  password:     z.string().min(6, 'La contraseña debe tener al menos 6 caracteres'),
   role:         juntaRoleLevelSchema,
   // Requerido según el rol: schoolId para JUNTA_ESCOLAR, nucleoId para JUNTA_NUCLEO.
   // JUNTA_DISTRITO no necesita ninguno (hereda el distrito de quien lo crea).
   schoolId:     z.coerce.number().int().optional(),
   nucleoId:     z.coerce.number().int().optional(),
-  firstName:    z.string().min(1, 'El nombre es requerido'),
-  lastName:     z.string().min(1, 'El apellido es requerido'),
+  // JUNTA_ESCOLAR: la persona tiene que ser ya un Parent/tutor existente — se
+  // manda parentId y el resto (nombre/CI/email/contraseña) se resuelve en el
+  // servicio a partir de ese Parent, igual que ya hace delegateService.assignDelegate.
+  // JUNTA_NUCLEO/JUNTA_DISTRITO: sigue el alta "en blanco" de siempre (sin parentId).
+  parentId:     z.coerce.number().int().optional(),
+  email:        z.string().email('Email inválido').optional(),
+  password:     z.string().min(6, 'La contraseña debe tener al menos 6 caracteres').optional(),
+  firstName:    z.string().min(1).optional(),
+  lastName:     z.string().min(1).optional(),
   ci:           z.string().optional(),
   phone:        z.string().optional(),
   cargo:        juntaCargoSchema.default('VOCAL'),
   academicYear: z.coerce.number().int(),
+}).superRefine((data, ctx) => {
+  if (data.role === 'JUNTA_ESCOLAR') {
+    if (!data.parentId) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['parentId'], message: 'Selecciona un padre/tutor ya registrado' })
+    }
+  } else {
+    if (!data.email)     ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['email'],     message: 'Email inválido' })
+    if (!data.password)  ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['password'],  message: 'La contraseña debe tener al menos 6 caracteres' })
+    if (!data.firstName) ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['firstName'], message: 'El nombre es requerido' })
+    if (!data.lastName)  ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['lastName'],  message: 'El apellido es requerido' })
+  }
 })
 
 export const updateJuntaMemberSchema = z.object({
