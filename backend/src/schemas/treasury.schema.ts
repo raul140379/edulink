@@ -42,7 +42,16 @@ export const registerPaymentSchema = z.object({
   date:      z.string().optional(),
 })
 
+export const updatePaymentSchema = z.object({
+  amount:    z.coerce.number().positive('El monto debe ser mayor a 0').optional(),
+  method:    z.nativeEnum(PaymentMethod).optional(),
+  reference: z.string().optional(),
+  note:      z.string().optional(),
+  date:      z.string().optional(),
+})
+
 export type CreateChargeInput       = z.infer<typeof createChargeSchema>
 export type CreateBulkChargesInput  = z.infer<typeof createBulkChargesSchema>
 export type UpdateChargeInput       = z.infer<typeof updateChargeSchema>
 export type RegisterPaymentInput    = z.infer<typeof registerPaymentSchema>
+export type UpdatePaymentInput      = z.infer<typeof updatePaymentSchema>

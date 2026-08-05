@@ -334,6 +334,10 @@ export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
   // Convocar asamblea/actividad con asistencia y multa automática.
   Permission.CONVOCATORIA_CREATE,
   Permission.CONVOCATORIA_VIEW,
+  // Crear/tomar asistencia de reuniones de cualquier curso del colegio —
+  // acotado en meeting.service.ts a solo el Presidente.
+  Permission.MEETING_CREATE,
+  Permission.MEETING_VIEW,
 ],
 
   // Junta de Núcleo y de Distrito: mismo espíritu que JUNTA_ESCOLAR (ven a todos los

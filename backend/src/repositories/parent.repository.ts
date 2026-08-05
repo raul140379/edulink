@@ -225,4 +225,83 @@ export const parentRepository = {
     // schoolId below is overwritten by the tenant-scoping extension in lib/prisma.ts for the acting user's school.
     return prisma.parent.create({ data: { ...data, schoolId: getTenantContext()?.schoolId ?? 0 } })
   },
+
+  // ── Código/QR de asistencia (solo tutores) ────
+  findTutorsWithoutCode() {
+    return prisma.parent.findMany({
+      where: { attendanceCode: null, students: { some: { isTutor: true } } },
+    })
+  },
+
+  findByAttendanceCode(code: string) {
+    return prisma.parent.findFirst({ where: { attendanceCode: code } })
+  },
+
+  updateAttendanceCode(id: number, code: string) {
+    return prisma.parent.update({ where: { id }, data: { attendanceCode: code } })
+  },
+
+  findAllTutorsWithCodes() {
+    return prisma.parent.findMany({
+      where: { students: { some: { isTutor: true } } },
+      select: { id: true, firstName: true, lastName: true, ci: true, attendanceCode: true, kardex: true },
+      orderBy: [{ lastName: 'asc' }, { firstName: 'asc' }],
+    })
+  },
+
+  // ── Kardex de tutor (atributo del Parent, no del Student) ────
+  findByKardex(kardex: string) {
+    return prisma.parent.findFirst({ where: { kardex } })
+  },
+
+  updateKardex(id: number, kardex: string) {
+    return prisma.parent.update({ where: { id }, data: { kardex } })
+  },
+
+  // Liberación manual — un humano confirma que la familia ya no tiene ningún
+  // estudiante en la UE. Libera también attendanceCode: el código quedaría
+  // apuntando a un kardex que ya no le pertenece.
+  releaseKardex(id: number) {
+    return prisma.parent.update({ where: { id }, data: { kardex: null, attendanceCode: null } })
+  },
+
+  findAllKardexValues() {
+    return prisma.parent.findMany({ where: { kardex: { not: null } }, select: { kardex: true } })
+  },
+
+  findActiveAcademicYear() {
+    return prisma.academicYear.findFirst({ where: { isActive: true } })
+  },
+
+  // Padres/tutores agrupados por curso (Familias → Listado) — mismo shape que
+  // treasuryRepository.findChargesGroupedByCourse, sin la parte de cargos.
+  findAllGroupedByCourse(schoolId: number, academicYearId: number) {
+    return prisma.course.findMany({
+      where: { schoolId },
+      include: {
+        assignments: {
+          where: { academicYearId },
+          include: {
+            student: {
+              select: {
+                id: true, firstName: true, lastName: true,
+                parents: {
+                  include: {
+                    parent: {
+                      select: {
+                        id: true, firstName: true, lastName: true, ci: true, phone: true,
+                        email: true, address: true, kardex: true, attendanceCode: true,
+                        user: { select: { id: true, email: true, isActive: true } },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+      orderBy: [{ level: 'asc' }, { grade: 'asc' }, { parallel: 'asc' }],
+    })
+  },
 }

@@ -6,8 +6,9 @@ export const createParentSchema = z.object({
   lastName:     z.string().min(1, 'El apellido es requerido'),
   ci:           z.string().optional(),
   phone:        z.string().optional(),
-  email:        z.string().email('Email inválido').optional(),
+  email:        z.string().email('Email inválido').optional().or(z.literal('')),
   address:      z.string().optional(),
+  kardex:       z.string().optional(),
   relationType: z.nativeEnum(RelationType),
   studentIds:   z.array(z.coerce.number().int()).optional(),
 })
@@ -17,13 +18,14 @@ export const updateParentSchema = z.object({
   lastName:  z.string().min(1).optional(),
   ci:        z.string().optional(),
   phone:     z.string().optional(),
-  email:     z.string().email('Email inválido').optional(),
+  email:     z.string().email('Email inválido').optional().or(z.literal('')),
   address:   z.string().optional(),
+  kardex:    z.string().optional(),
 })
 
 export const updateMeSchema = z.object({
   phone:   z.string().optional(),
-  email:   z.string().email('Email inválido').optional(),
+  email:   z.string().email('Email inválido').optional().or(z.literal('')),
   address: z.string().optional(),
 })
 

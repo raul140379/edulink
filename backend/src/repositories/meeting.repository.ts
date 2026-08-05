@@ -129,4 +129,14 @@ export const meetingRepository = {
   updateMeeting(id: number, data: { title: string; date: Date }) {
     return prisma.meeting.update({ where: { id }, data })
   },
+
+  // Check-in por QR/código: reunión de hoy para este tutor, sin importar el
+  // curso. Lectura simple — el escaneo escribe vía updateAttendance de arriba,
+  // no pasa por meetingService (así evita el candado de Presidente).
+  findOpenTodayForTutor(parentId: number, start: Date, end: Date) {
+    return prisma.attendance.findFirst({
+      where: { parentId, meeting: { date: { gte: start, lt: end } } },
+      include: { meeting: true },
+    })
+  },
 }

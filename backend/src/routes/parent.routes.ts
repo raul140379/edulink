@@ -16,6 +16,12 @@ import {
   getMe,
   updateMe,
   getMyStudents,
+  getTutorAttendanceCodes,
+  generateTutorAttendanceCodes,
+  regenerateTutorCode,
+  releaseTutorKardex,
+  getParentsByCourse,
+  resetTutorPassword,
 } from '../controllers/parent.controller'
 import { verifyToken, requirePermission } from '../middlewares/auth.middleware'
 import { validateBody } from '../middlewares/validate.middleware'
@@ -35,6 +41,15 @@ router.get('/my-students', getMyStudents)
 router.get('/',                           requirePermission(Permission.PARENT_VIEW_ALL), getParents)
 router.get('/me', getMe)
 router.put('/me', validateBody(updateMeSchema), updateMe)
+
+// Código/QR de asistencia — solo tutores (rutas específicas antes de /:id).
+router.get('/attendance-codes',     requirePermission(Permission.PARENT_VIEW_ALL),    getTutorAttendanceCodes)
+router.post('/generate-codes',      requirePermission(Permission.PARENT_ASSIGN_TUTOR), generateTutorAttendanceCodes)
+router.post('/regenerate-code/:id', requirePermission(Permission.PARENT_ASSIGN_TUTOR), regenerateTutorCode)
+
+// Padres/tutores agrupados por curso (Familias → Listado).
+router.get('/by-course',            requirePermission(Permission.PARENT_VIEW_ALL), getParentsByCourse)
+
 router.get('/:id',                        requirePermission(Permission.PARENT_VIEW_ALL), getParentById)
 router.get('/:id/students',               requirePermission(Permission.PARENT_VIEW_ALL), getParentStudents)
 
@@ -46,6 +61,8 @@ router.put('/:id',                        requirePermission(Permission.PARENT_CR
 router.patch('/:id/toggle',              requirePermission(Permission.PARENT_CREATE),   toggleParentStatus)
 router.delete('/:id',                    requirePermission(Permission.PARENT_CREATE),   deleteParent)
 router.post('/:id/generate-credentials', requirePermission(Permission.PARENT_CREATE),   generateParentCredentials)
+router.post('/:id/reset-password',       requirePermission(Permission.PARENT_CREATE),   resetTutorPassword)
+router.post('/:id/release-kardex',       requirePermission(Permission.PARENT_CREATE),   releaseTutorKardex)
 router.post('/import', requirePermission(Permission.PARENT_CREATE), upload.single('file'), importParents)
 
 // Vincular un padre YA EXISTENTE a un estudiante / cambiar tutor — esto sí lo

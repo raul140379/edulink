@@ -7,12 +7,57 @@ import { studentRepository } from '../repositories/student.repository'
 import { userRepository } from '../repositories/user.repository'
 import { delegateRepository } from '../repositories/delegate.repository'
 import { HttpError } from '../utils/http-error'
-import { generateUniqueEmail, generateParentPassword } from '../utils/account-generator'
+import { generateUniqueEmail, generateParentPassword, generateResetPassword } from '../utils/account-generator'
 import { getTenantContext } from '../lib/tenant-context'
 import {
   CreateParentInput, UpdateParentInput, UpdateMeInput,
   LinkStudentsInput, ChangeTutorInput, ChangeRelationInput,
 } from '../schemas/parent.schema'
+
+function makeInitials(firstName: string, lastName: string): string {
+  const parts = [...firstName.trim().split(' '), ...lastName.trim().split(' ')]
+  return parts.filter((p) => p.length > 0).slice(0, 3).map((p) => p[0].toUpperCase()).join('')
+}
+
+// Kardex de tutor — atributo propio del Parent (no del Student, campo distinto
+// y no relacionado). Se asigna una sola vez, de forma permanente, la primera
+// vez que se necesita (mostrarlo en Tesorería o generar el código QR).
+async function ensureTutorKardex(parent: { id: number; kardex: string | null }): Promise<string> {
+  if (parent.kardex) return parent.kardex
+
+  const existing = await parentRepository.findAllKardexValues()
+  const maxExistente = existing.reduce((max, p) => {
+    const n = parseInt(p.kardex || '', 10)
+    return !isNaN(n) && n > max ? n : max
+  }, 0)
+
+  let candidate = Math.max(1000, maxExistente + 1)
+  let clash = await parentRepository.findByKardex(String(candidate))
+  while (clash) {
+    candidate++
+    clash = await parentRepository.findByKardex(String(candidate))
+  }
+
+  await parentRepository.updateKardex(parent.id, String(candidate))
+  return String(candidate)
+}
+
+// Código QR = iniciales del tutor + gestión activa + kardex del tutor. Al ser
+// el kardex único por colegio, el código es determinístico — no hace falta
+// reintentar en bucle si choca (a diferencia del generador aleatorio
+// anterior), solo confirmar que no colisiona con OTRO tutor.
+async function buildAttendanceCode(parent: { id: number; firstName: string; lastName: string; kardex: string | null }): Promise<string> {
+  const kardex      = await ensureTutorKardex(parent)
+  const activeYear  = await parentRepository.findActiveAcademicYear()
+  if (!activeYear) throw new HttpError(404, 'No hay gestión académica activa')
+
+  const code  = `${makeInitials(parent.firstName, parent.lastName)}-${activeYear.year}-${kardex}`
+  const clash = await parentRepository.findByAttendanceCode(code)
+  if (clash && clash.id !== parent.id) {
+    throw new HttpError(409, `Ya existe un código idéntico (${code}) para otro tutor — revisá el kardex asignado`)
+  }
+  return code
+}
 
 async function createTutorUser(firstName: string, lastName: string, ci?: string | null, personalEmail?: string | null) {
   let accessEmail: string
@@ -78,11 +123,16 @@ export const parentService = {
   },
 
   async createParent(input: CreateParentInput) {
-    const { firstName, lastName, ci, phone, email, address, relationType, studentIds } = input
+    const { firstName, lastName, ci, phone, email, address, kardex, relationType, studentIds } = input
 
     if (ci) {
       const existingCI = await parentRepository.findByCI(ci)
       if (existingCI) throw new HttpError(409, `Ya existe un padre/tutor con el CI ${ci}`)
+    }
+
+    if (kardex) {
+      const existingKardex = await parentRepository.findByKardex(kardex)
+      if (existingKardex) throw new HttpError(409, `Ya existe un tutor con el kardex ${kardex}`)
     }
 
     if (studentIds && studentIds.length > 0) {
@@ -126,6 +176,7 @@ export const parentService = {
     const parent = await parentRepository.create({
       firstName, lastName,
       ci: ci || null, phone: phone || null, email: email || null, address: address || null,
+      kardex: kardex || null,
       userId: userId ?? undefined,
       schoolId: getTenantContext()?.schoolId ?? 0,
     })
@@ -148,11 +199,34 @@ export const parentService = {
     const existing = await parentRepository.findRaw(id)
     if (!existing) throw new HttpError(404, 'Padre/tutor no encontrado')
 
-    const { firstName, lastName, ci, phone, email, address } = input
+    // Mismo candado que createParent: un Delegado solo puede editar tutores de
+    // estudiantes de su propio curso.
+    const ctx = getTenantContext()
+    if (ctx?.role === Role.DELEGATE) {
+      const delegateParent = await delegateRepository.findParentByDelegateUserId(ctx.userId)
+      const myCourseId = delegateParent?.delegateCourse?.id
+      if (!myCourseId) throw new HttpError(400, 'No tenés un curso asignado como delegado')
+
+      const activeYear = await delegateRepository.findActiveAcademicYear()
+      if (!activeYear) throw new HttpError(404, 'No hay gestión académica activa')
+
+      const relations = await parentRepository.findStudentRelations(id)
+      const inMyCourse = relations.length > 0 && await prisma.studentAcademicAssignment.findFirst({
+        where: { studentId: { in: relations.map((r) => r.studentId) }, courseId: myCourseId, academicYearId: activeYear.id },
+      })
+      if (!inMyCourse) throw new HttpError(403, 'Solo podés editar tutores de estudiantes de tu propio curso')
+    }
+
+    const { firstName, lastName, ci, phone, email, address, kardex } = input
 
     if (ci && ci !== existing.ci) {
       const dup = await parentRepository.findByCI(ci)
       if (dup) throw new HttpError(409, `Ya existe un padre/tutor con el CI ${ci}`)
+    }
+
+    if (kardex && kardex !== existing.kardex) {
+      const dup = await parentRepository.findByKardex(kardex)
+      if (dup) throw new HttpError(409, `Ya existe un tutor con el kardex ${kardex}`)
     }
 
     const data: Prisma.ParentUpdateInput = {
@@ -162,9 +236,17 @@ export const parentService = {
       ...(phone     !== undefined ? { phone:   phone   || null } : {}),
       ...(email     !== undefined ? { email:   email   || null } : {}),
       ...(address   !== undefined ? { address: address || null } : {}),
+      ...(kardex    !== undefined ? { kardex:  kardex  || null } : {}),
     }
 
     return parentRepository.update(id, data)
+  },
+
+  async releaseTutorKardex(id: number) {
+    const parent = await parentRepository.findRaw(id)
+    if (!parent) throw new HttpError(404, 'Padre/tutor no encontrado')
+    await parentRepository.releaseKardex(id)
+    return { message: 'Kardex liberado correctamente' }
   },
 
   async toggleParentStatus(id: number) {
@@ -241,6 +323,18 @@ export const parentService = {
     await parentRepository.linkUser(id, result.user.id)
 
     return { accessEmail: result.accessEmail, defaultPassword: result.defaultPassword }
+  },
+
+  async resetTutorPassword(id: number) {
+    const parent = await parentRepository.findById(id)
+    if (!parent) throw new HttpError(404, 'Padre/tutor no encontrado')
+    if (!parent.userId) throw new HttpError(400, 'Este padre/tutor no tiene acceso al sistema')
+
+    const newPassword = generateResetPassword()
+    const hashed = await bcrypt.hash(newPassword, 10)
+    await userRepository.update(parent.userId, { password: hashed })
+
+    return { accessEmail: parent.user?.email, newPassword }
   },
 
   async changeTutor(studentId: number, input: ChangeTutorInput) {
@@ -394,5 +488,81 @@ export const parentService = {
     }
 
     return { created, skipped, errors, total: rows.length }
+  },
+
+  // ── Código/QR de asistencia (solo tutores) ────
+  async generateTutorAttendanceCodes() {
+    const tutors = await parentRepository.findTutorsWithoutCode()
+
+    let count = 0
+    for (const t of tutors) {
+      const code = await buildAttendanceCode(t)
+      await parentRepository.updateAttendanceCode(t.id, code)
+      count++
+    }
+
+    return { message: `Códigos generados: ${count} tutores`, count }
+  },
+
+  async regenerateTutorCode(id: number) {
+    const parent = await parentRepository.findWithFullDetail(id)
+    if (!parent) throw new HttpError(404, 'Padre/tutor no encontrado')
+    if (!parent.students.some((s) => s.isTutor)) throw new HttpError(400, 'Solo se puede generar un código de asistencia para el tutor designado')
+
+    const code = await buildAttendanceCode(parent)
+    await parentRepository.updateAttendanceCode(id, code)
+    return { message: 'Código regenerado', attendanceCode: code }
+  },
+
+  getTutorAttendanceCodes() {
+    return parentRepository.findAllTutorsWithCodes()
+  },
+
+  // Padres/tutores agrupados por curso — misma consulta de base para ambas
+  // listas (findAssignmentsWithTutorParents-equivalente para todos los
+  // cursos). "Tutores" sigue siendo una fila por tutor (filtrando isTutor).
+  // "Padres" ahora se agrupa por ESTUDIANTE (no por padre) — un estudiante con
+  // padre y madre queda en una sola fila con ambos, en vez de una fila por
+  // cada uno repitiendo el nombre del estudiante.
+  async getParentsGroupedByCourse() {
+    const activeYear = await parentRepository.findActiveAcademicYear()
+    if (!activeYear) throw new HttpError(404, 'No hay gestión académica activa')
+
+    const schoolId = getTenantContext()?.schoolId ?? 0
+    const courses = await parentRepository.findAllGroupedByCourse(schoolId, activeYear.id)
+
+    return courses.map((course) => {
+      const studentsMap = new Map<number, any>()
+      const tutoresMap  = new Map<number, any>()
+
+      for (const assignment of course.assignments) {
+        const student = assignment.student
+        const studentName = `${student.lastName} ${student.firstName}`
+
+        if (!studentsMap.has(student.id)) {
+          studentsMap.set(student.id, { studentId: student.id, studentName, parents: [] })
+        }
+
+        for (const ps of student.parents) {
+          const p = ps.parent
+          const entry = { ...p, relationType: ps.relationType, isTutor: ps.isTutor }
+          studentsMap.get(student.id).parents.push(entry)
+
+          if (ps.isTutor && !tutoresMap.has(p.id)) {
+            tutoresMap.set(p.id, { ...entry, studentName })
+          }
+        }
+      }
+
+      // Ordenado por apellido del estudiante (studentName ya viene armado como
+      // "Apellido Nombre") — no por el nombre del padre/tutor.
+      const byStudentName = (a: any, b: any) => a.studentName.localeCompare(b.studentName, 'es')
+
+      return {
+        course: { id: course.id, level: course.level, grade: course.grade, parallel: course.parallel, shift: course.shift },
+        padres: Array.from(studentsMap.values()).sort(byStudentName),
+        tutores: Array.from(tutoresMap.values()).sort(byStudentName),
+      }
+    })
   },
 }

@@ -4,7 +4,7 @@ import { delegateRepository } from '../repositories/delegate.repository'
 import { HttpError } from '../utils/http-error'
 import { getTenantContext } from '../lib/tenant-context'
 import {
-  CreateChargeInput, CreateBulkChargesInput, UpdateChargeInput, RegisterPaymentInput,
+  CreateChargeInput, CreateBulkChargesInput, UpdateChargeInput, RegisterPaymentInput, UpdatePaymentInput,
 } from '../schemas/treasury.schema'
 
 export const treasuryService = {
@@ -135,6 +135,11 @@ export const treasuryService = {
       throw new HttpError(400, `El monto excede el saldo pendiente de Bs. ${remaining.toFixed(2)}`)
     }
 
+    if (input.reference) {
+      const dup = await treasuryRepository.findPaymentByReference(input.reference)
+      if (dup) throw new HttpError(409, `Ya existe un pago registrado con el comprobante ${input.reference}`)
+    }
+
     const newPaidAmount = charge.paidAmount + input.amount
     const newStatus     = newPaidAmount >= charge.amount ? 'PAGADO' : 'PARCIAL'
 
@@ -153,6 +158,51 @@ export const treasuryService = {
     return {
       payment, newStatus, paidAmount: newPaidAmount,
       remaining: charge.amount - newPaidAmount,
+    }
+  },
+
+  // Corregir un pago ya registrado — a diferencia de registerPayment (que
+  // suma sobre paidAmount), acá hay que RECALCULAR desde cero: sumar todos
+  // los demás pagos del cargo (excluyendo el que se edita) más el monto
+  // nuevo, para no duplicar el monto original del pago editado.
+  async updatePayment(paymentId: number, input: UpdatePaymentInput) {
+    const payment = await treasuryRepository.findPaymentById(paymentId)
+    if (!payment) throw new HttpError(404, 'Pago no encontrado')
+    const charge = payment.charge
+    if (charge.status === 'ANULADO') throw new HttpError(400, 'No se puede editar un pago de un cargo anulado')
+
+    if (input.reference && input.reference !== payment.reference) {
+      const dup = await treasuryRepository.findPaymentByReference(input.reference)
+      if (dup) throw new HttpError(409, `Ya existe un pago registrado con el comprobante ${input.reference}`)
+    }
+
+    const newAmount = input.amount ?? payment.amount
+    const otherPaymentsTotal = charge.payments
+      .filter((p) => p.id !== paymentId)
+      .reduce((sum, p) => sum + p.amount, 0)
+    const recomputedPaidAmount = otherPaymentsTotal + newAmount
+
+    if (recomputedPaidAmount > charge.amount) {
+      throw new HttpError(400, `El monto excede el saldo del cargo (máximo Bs. ${(charge.amount - otherPaymentsTotal).toFixed(2)})`)
+    }
+
+    const newStatus = recomputedPaidAmount >= charge.amount
+      ? 'PAGADO'
+      : recomputedPaidAmount > 0 ? 'PARCIAL' : 'PENDIENTE'
+
+    const updated = await treasuryRepository.updatePayment(paymentId, {
+      ...(input.amount    !== undefined ? { amount: input.amount } : {}),
+      ...(input.method    !== undefined ? { method: input.method } : {}),
+      ...(input.reference !== undefined ? { reference: input.reference || null } : {}),
+      ...(input.note      !== undefined ? { note: input.note || null } : {}),
+      ...(input.date      !== undefined ? { date: new Date(input.date) } : {}),
+    })
+
+    await treasuryRepository.setChargePaid(charge.id, recomputedPaidAmount, newStatus)
+
+    return {
+      payment: updated, newStatus, paidAmount: recomputedPaidAmount,
+      remaining: charge.amount - recomputedPaidAmount,
     }
   },
 
@@ -204,7 +254,7 @@ export const treasuryService = {
       const hasDebt      = totalPending > 0
 
       return {
-        id: p.id, firstName: p.firstName, lastName: p.lastName, ci: p.ci, phone: p.phone,
+        id: p.id, firstName: p.firstName, lastName: p.lastName, ci: p.ci, phone: p.phone, kardex: p.kardex,
         students: p.students,
         summary: { totalDebt, totalPaid, totalPending, hasDebt, chargesCount: p.charges.length },
       }
@@ -245,16 +295,20 @@ export const treasuryService = {
           // duplica en base de datos, solo en esta vista agrupada.
           const hasSharedCharge = p.charges.some((c: any) => c.studentId == null)
           tutorsMap.set(p.id, {
-            id: p.id, firstName: p.firstName, lastName: p.lastName, ci: p.ci, phone: p.phone,
+            id: p.id, firstName: p.firstName, lastName: p.lastName, ci: p.ci, phone: p.phone, kardex: p.kardex,
             studentName: `${assignment.student.lastName} ${assignment.student.firstName}`,
-            summary: { totalDebt, totalPaid, totalPending, hasDebt: totalPending > 0, hasSharedCharge },
+            summary: { totalDebt, totalPaid, totalPending, hasDebt: totalPending > 0, hasSharedCharge, chargesCount: p.charges.length },
           })
         }
       }
 
+      // Ordenado por apellido del estudiante (studentName ya viene armado como
+      // "Apellido Nombre") — no por el nombre del tutor.
+      const tutores = Array.from(tutorsMap.values()).sort((a: any, b: any) => a.studentName.localeCompare(b.studentName, 'es'))
+
       return {
         course: { id: course.id, level: course.level, grade: course.grade, parallel: course.parallel, shift: course.shift },
-        tutores: Array.from(tutorsMap.values()),
+        tutores,
       }
     })
   },

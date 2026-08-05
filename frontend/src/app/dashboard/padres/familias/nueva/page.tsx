@@ -18,7 +18,7 @@ const RELATION_LABELS: Record<string, string> = {
 interface StudentHit { id: number; firstName: string; lastName: string }
 
 const emptyForm = {
-  firstName: '', lastName: '', ci: '', phone: '', email: '', address: '',
+  firstName: '', lastName: '', ci: '', phone: '', email: '', address: '', kardex: '',
   relationType: 'TUTOR_LEGAL',
 }
 
@@ -98,6 +98,7 @@ export default function NuevaFamiliaPage() {
         body: JSON.stringify({
           ...form,
           ci: form.ci || undefined, phone: form.phone || undefined, email: form.email || undefined, address: form.address || undefined,
+          kardex: form.kardex || undefined,
           studentIds: selectedStudents.map(s => s.id),
         }),
       })
@@ -136,6 +137,10 @@ export default function NuevaFamiliaPage() {
             <Input label="Teléfono" value={form.phone} onChange={e => setForm({ ...form, phone: e.target.value })} />
           </div>
           <Input label="Correo (opcional, para acceso propio)" type="email" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} />
+          <Input
+            label="N° Kardex (opcional)" placeholder="Si se deja vacío, se asigna automáticamente al generar su QR"
+            value={form.kardex} onChange={e => setForm({ ...form, kardex: e.target.value })}
+          />
 
           <Select label="Relación con el/los estudiante(s)" required value={form.relationType} onChange={e => setForm({ ...form, relationType: e.target.value })}>
             {Object.entries(RELATION_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}

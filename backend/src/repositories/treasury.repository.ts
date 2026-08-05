@@ -109,6 +109,18 @@ export const treasuryRepository = {
     return prisma.payment.create({ data: { ...data, schoolId: getTenantContext()?.schoolId ?? 0 } })
   },
 
+  findPaymentById(id: number) {
+    return prisma.payment.findUnique({ where: { id }, include: { charge: { include: { payments: true } } } })
+  },
+
+  findPaymentByReference(reference: string) {
+    return prisma.payment.findFirst({ where: { reference } })
+  },
+
+  updatePayment(id: number, data: { amount?: number; method?: PaymentMethod; reference?: string | null; note?: string | null; date?: Date }) {
+    return prisma.payment.update({ where: { id }, data })
+  },
+
   findChargesForSummary(where: Prisma.ChargeWhereInput) {
     return prisma.charge.findMany({ where, select: { amount: true, paidAmount: true, status: true, type: true } })
   },
@@ -154,7 +166,7 @@ export const treasuryRepository = {
                   include: {
                     parent: {
                       select: {
-                        id: true, firstName: true, lastName: true, ci: true, phone: true,
+                        id: true, firstName: true, lastName: true, ci: true, phone: true, kardex: true,
                         charges: {
                           where: { status: { not: 'ANULADO' }, academicYearId },
                           select: { id: true, amount: true, paidAmount: true, status: true, studentId: true },

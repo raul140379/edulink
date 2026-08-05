@@ -3,7 +3,7 @@ import { verifyToken, requirePermission, requireAnyPermission } from '../middlew
 import { validateBody } from '../middlewares/validate.middleware'
 import { Permission } from '../config/permissions'
 import {
-  createChargeSchema, createBulkChargesSchema, updateChargeSchema, registerPaymentSchema,
+  createChargeSchema, createBulkChargesSchema, updateChargeSchema, registerPaymentSchema, updatePaymentSchema,
 } from '../schemas/treasury.schema'
 import {
   getCharges,
@@ -14,6 +14,7 @@ import {
   updateCharge,
   cancelCharge,
   registerPayment,
+  updatePayment,
   getTreasurySummary,
   getParentsWithBalance,
   getTreasuryByCourse,
@@ -43,6 +44,7 @@ router.put('/:id',              requirePermission(Permission.CHARGE_CREATE), val
 router.patch('/:id/cancel',     requirePermission(Permission.CHARGE_CREATE), cancelCharge)
 
 // ── Pagos ────────────────────────────────────
-router.post('/:id/payments',    requirePermission(Permission.CHARGE_CREATE), validateBody(registerPaymentSchema), registerPayment)
+router.post('/:id/payments',           requirePermission(Permission.CHARGE_CREATE), validateBody(registerPaymentSchema), registerPayment)
+router.put('/payments/:paymentId',     requirePermission(Permission.CHARGE_CREATE), validateBody(updatePaymentSchema), updatePayment)
 
 export default router

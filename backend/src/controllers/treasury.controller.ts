@@ -110,6 +110,18 @@ export const registerPayment = async (req: AuthRequest, res: Response): Promise<
 }
 
 // ─────────────────────────────────────────────
+// PUT /api/treasury/payments/:paymentId
+// ─────────────────────────────────────────────
+export const updatePayment = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const result = await treasuryService.updatePayment(parseInt(req.params.paymentId), req.body)
+    res.json({ message: 'Pago actualizado correctamente', ...result })
+  } catch (error) {
+    handleControllerError(res, error)
+  }
+}
+
+// ─────────────────────────────────────────────
 // GET /api/treasury/summary
 // ─────────────────────────────────────────────
 export const getTreasurySummary = async (req: AuthRequest, res: Response): Promise<void> => {

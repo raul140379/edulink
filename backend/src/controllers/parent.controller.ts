@@ -182,6 +182,75 @@ export const getMyStudents = async (req: AuthRequest, res: Response): Promise<vo
 }
 
 // ─────────────────────────────────────────────
+// GET /api/parents/attendance-codes
+// ─────────────────────────────────────────────
+export const getTutorAttendanceCodes = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    res.json(await parentService.getTutorAttendanceCodes())
+  } catch (error) {
+    handleControllerError(res, error)
+  }
+}
+
+// ─────────────────────────────────────────────
+// POST /api/parents/generate-codes
+// ─────────────────────────────────────────────
+export const generateTutorAttendanceCodes = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    res.json(await parentService.generateTutorAttendanceCodes())
+  } catch (error) {
+    handleControllerError(res, error)
+  }
+}
+
+// ─────────────────────────────────────────────
+// POST /api/parents/regenerate-code/:id
+// ─────────────────────────────────────────────
+export const regenerateTutorCode = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    res.json(await parentService.regenerateTutorCode(parseInt(req.params.id)))
+  } catch (error) {
+    handleControllerError(res, error)
+  }
+}
+
+// ─────────────────────────────────────────────
+// POST /api/parents/:id/reset-password
+// ─────────────────────────────────────────────
+export const resetTutorPassword = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const result = await parentService.resetTutorPassword(parseInt(req.params.id))
+    res.json({ message: 'Contraseña reseteada correctamente', ...result })
+  } catch (error) {
+    handleControllerError(res, error)
+  }
+}
+
+// ─────────────────────────────────────────────
+// POST /api/parents/:id/release-kardex
+// ─────────────────────────────────────────────
+export const releaseTutorKardex = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const result = await parentService.releaseTutorKardex(parseInt(req.params.id))
+    res.json(result)
+  } catch (error) {
+    handleControllerError(res, error)
+  }
+}
+
+// ─────────────────────────────────────────────
+// GET /api/parents/by-course
+// ─────────────────────────────────────────────
+export const getParentsByCourse = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const byCourse = await parentService.getParentsGroupedByCourse()
+    res.json(byCourse)
+  } catch (error) {
+    handleControllerError(res, error)
+  }
+}
+
+// ─────────────────────────────────────────────
 // POST /api/parents/import
 // ─────────────────────────────────────────────
 export const importParents = async (req: AuthRequest, res: Response): Promise<void> => {

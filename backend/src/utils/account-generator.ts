@@ -25,6 +25,15 @@ export function generateParentPassword(lastName: string, ci?: string | null): st
   return `padre${normalizeLetters(lastName.split(' ')[0]).slice(0, 3)}${year}`
 }
 
+// Reseteo de contraseña — a diferencia de generateParentPassword (determinística
+// a partir de apellido/CI, siempre la misma), acá hace falta un valor nuevo cada
+// vez que se resetea, así que se usa un número aleatorio en vez del CI.
+export function generateResetPassword(): string {
+  const year = new Date().getFullYear()
+  const rand = Math.floor(1000 + Math.random() * 9000)
+  return `padre${rand}${year}`
+}
+
 // Usada al elevar a un Parent/tutor ya existente a un cargo de Junta Escolar
 // (segunda cuenta, mismo patrón que generateParentPassword pero con prefijo
 // "junta" para distinguirla a simple vista).

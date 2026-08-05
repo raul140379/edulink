@@ -1,5 +1,8 @@
+import { Role } from '@prisma/client'
 import { meetingRepository } from '../repositories/meeting.repository'
+import { juntaService } from './junta.service'
 import { HttpError } from '../utils/http-error'
+import { getTenantContext } from '../lib/tenant-context'
 import {
   CreateMeetingInput, CreateMeetingAsTeacherInput, UpdateMeetingInput, UpdateAttendanceInput, ChargeAbsencesInput,
 } from '../schemas/meeting.schema'
@@ -10,6 +13,15 @@ function collectTutorIds(assignments: { student: { parents: { parent: { id: numb
     for (const ps of a.student.parents) tutorIds.add(ps.parent.id)
   }
   return Array.from(tutorIds)
+}
+
+// Gestionar reuniones de un curso arbitrario (crear/tomar asistencia/multar/
+// eliminar) es exclusivo del Presidente cuando quien actúa es Junta Escolar —
+// igual candado que convocatoria.service.ts. No afecta a Profesor/Profesor
+// Tutor/Delegado, que gestionan su propio curso sin este candado.
+async function assertCanManage() {
+  const ctx = getTenantContext()
+  if (ctx?.role === Role.JUNTA_ESCOLAR) await juntaService.assertIsPresidente(ctx.userId)
 }
 
 export const meetingService = {
@@ -46,6 +58,7 @@ export const meetingService = {
   },
 
   async createMeetingAsTeacher(userId: number | undefined, input: CreateMeetingAsTeacherInput) {
+    await assertCanManage()
     const assignments = await meetingRepository.findAssignmentsForCourse(input.courseId)
     const parentIds = collectTutorIds(assignments)
     return meetingRepository.createMeeting({
@@ -58,16 +71,19 @@ export const meetingService = {
   },
 
   async updateMeeting(id: number, input: UpdateMeetingInput) {
+    await assertCanManage()
     return meetingRepository.updateMeeting(id, { title: input.title, date: new Date(input.date) })
   },
 
   async updateAttendance(meetingId: number, input: UpdateAttendanceInput) {
+    await assertCanManage()
     await Promise.all(
       input.attendances.map((a) => meetingRepository.updateAttendance(meetingId, a.parentId, a.present, a.note))
     )
   },
 
   async chargeAbsences(meetingId: number, input: ChargeAbsencesInput) {
+    await assertCanManage()
     const meeting = await meetingRepository.findMeetingWithAbsentAttendances(meetingId)
     if (!meeting) throw new HttpError(404, 'Reunión no encontrada')
 
@@ -88,6 +104,7 @@ export const meetingService = {
   },
 
   async deleteMeeting(id: number) {
+    await assertCanManage()
     await meetingRepository.deleteMeetingAttendances(id)
     await meetingRepository.deleteMeeting(id)
   },

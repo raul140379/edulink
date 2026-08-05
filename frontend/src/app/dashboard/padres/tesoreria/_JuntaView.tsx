@@ -18,6 +18,7 @@ interface ParentBalance {
   lastName:  string
   ci?:       string
   phone?:    string
+  kardex?:   string | null
   students:  { student: { id: number; firstName: string; lastName: string } }[]
   summary: {
     totalDebt:    number
@@ -48,8 +49,9 @@ interface CourseGroup {
   course: { id: number; level: string; grade: string; parallel: string; shift: string }
   tutores: {
     id: number; firstName: string; lastName: string; ci: string | null; phone: string | null
+    kardex: string | null
     studentName: string
-    summary: { totalDebt: number; totalPaid: number; totalPending: number; hasDebt: boolean; hasSharedCharge: boolean }
+    summary: { totalDebt: number; totalPaid: number; totalPending: number; hasDebt: boolean; hasSharedCharge: boolean; chargesCount: number }
   }[]
 }
 
@@ -66,9 +68,27 @@ export default function TesoreriaPage() {
 
   // Vista alternativa agrupada por curso — mismo dato de fondo (padres
   // tutores + sus cargos), reorganizado por curso en vez de listado plano.
-  const [viewMode, setViewMode] = useState<'tutor' | 'curso'>('tutor')
+  const [viewMode, setViewMode] = useState<'tutor' | 'curso'>('curso')
   const [byCourse, setByCourse] = useState<CourseGroup[]>([])
   const [loadingByCourse, setLoadingByCourse] = useState(false)
+  const [searchCurso, setSearchCurso] = useState('')
+  const [filterCurso, setFilterCurso] = useState('')
+
+  // Filtro 100% client-side — /api/treasury/by-course ya trae todo el dataset
+  // de una sola vez, mismo criterio que ya aplica el backend para "Por tutor".
+  const byCourseFiltered = byCourse.map(group => ({
+    ...group,
+    tutores: group.tutores.filter(t => {
+      const q = searchCurso.trim().toLowerCase()
+      const matchSearch = !q
+        || `${t.firstName} ${t.lastName}`.toLowerCase().includes(q)
+        || (t.ci || '').toLowerCase().includes(q)
+      const matchFilter = !filterCurso
+        || (filterCurso === 'CON_DEUDA' && t.summary.hasDebt)
+        || (filterCurso === 'AL_DIA' && !t.summary.hasDebt)
+      return matchSearch && matchFilter
+    }),
+  }))
 
   const fetchByCourse = async () => {
     const token = localStorage.getItem('token')
@@ -122,6 +142,9 @@ export default function TesoreriaPage() {
           <div className="font-medium text-brand-700">{p.lastName} {p.firstName}</div>
           {p.ci && <div className="text-[11px] text-neutral-500 mt-0.5">CI: {p.ci}</div>}
           {p.phone && <div className="text-[11px] text-neutral-500">{p.phone}</div>}
+          {p.kardex
+            ? <div className="text-[11px] text-neutral-500">Kardex: {p.kardex}</div>
+            : <div className="text-[11px] text-neutral-400 italic">Sin kardex</div>}
         </div>
       )
     },
@@ -254,11 +277,34 @@ export default function TesoreriaPage() {
         </>
       ) : (
         <div className="flex flex-col gap-4">
+          <Card className="flex gap-2.5 flex-wrap items-center">
+            <div className="relative flex-1 min-w-[200px]">
+              <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-info-500 pointer-events-none"/>
+              <Input
+                placeholder="Buscar tutor por nombre o CI..." value={searchCurso}
+                onChange={e => setSearchCurso(e.target.value)}
+                className="pl-9"
+              />
+            </div>
+            <div className="flex items-center gap-1.5">
+              <Filter size={14} className="text-neutral-500"/>
+              <Select value={filterCurso} onChange={e => setFilterCurso(e.target.value)} className="w-auto">
+                <option value="">Todos los tutores</option>
+                <option value="CON_DEUDA">Con deuda</option>
+                <option value="AL_DIA">Al día</option>
+              </Select>
+            </div>
+          </Card>
+
           {loadingByCourse ? (
             <div className="flex justify-center py-16"><p className="text-sm text-neutral-500">Cargando...</p></div>
           ) : byCourse.length === 0 ? (
             <Card className="text-center py-12 text-neutral-500">No hay gestión académica activa o no hay cursos con tutores.</Card>
-          ) : byCourse.map(({ course, tutores }) => (
+          ) : byCourseFiltered.every(g => g.tutores.length === 0) ? (
+            <Card className="text-center py-12 text-neutral-500">Ningún tutor coincide con la búsqueda/filtro.</Card>
+          ) : byCourseFiltered
+              .filter(g => g.tutores.length > 0 || (!searchCurso && !filterCurso))
+              .map(({ course, tutores }) => (
             <Card key={course.id} padded={false} className="overflow-hidden">
               <div className="flex items-center justify-between px-4.5 py-3 border-b border-neutral-100">
                 <span className="text-[13.5px] font-bold text-brand-700">
@@ -276,6 +322,9 @@ export default function TesoreriaPage() {
                         <div>
                           <div className="font-medium text-brand-700">{t.lastName} {t.firstName}</div>
                           <div className="text-[11px] text-neutral-500">{t.studentName}</div>
+                          {t.kardex
+                            ? <div className="text-[11px] text-neutral-500">Kardex: {t.kardex}</div>
+                            : <div className="text-[11px] text-neutral-400 italic">Sin kardex</div>}
                         </div>
                       ) },
                       { key: 'cargado', header: 'Cargado', render: (t: CourseGroup['tutores'][number]) => <span className="font-semibold text-[13px] text-brand-700">{fmt(t.summary.totalDebt)}</span> },
@@ -286,6 +335,16 @@ export default function TesoreriaPage() {
                           {t.summary.hasSharedCharge && <Badge tone="neutral" className="ml-1.5">Compartido entre cursos</Badge>}
                         </span>
                       ) },
+                      {
+                        key: 'estado', header: 'Estado', render: (t: CourseGroup['tutores'][number]) => t.summary.chargesCount === 0
+                          ? <Badge tone="neutral">Sin cargos</Badge>
+                          : t.summary.hasDebt ? <Badge tone="danger">Con deuda</Badge> : <Badge tone="success">Al día</Badge>
+                      },
+                      {
+                        key: 'accion', header: 'Acción', render: (t: CourseGroup['tutores'][number]) => (
+                          <Button size="sm" onClick={() => router.push(`/dashboard/padres/tesoreria/${t.id}`)}>Ver cuenta</Button>
+                        )
+                      },
                     ]}
                     rows={tutores}
                     rowKey={t => t.id}

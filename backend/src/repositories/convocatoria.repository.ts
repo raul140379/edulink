@@ -76,7 +76,7 @@ export const convocatoriaRepository = {
 
   findAllParentUserIds(schoolId: number) {
     return prisma.parent.findMany({
-      where: { schoolId, userId: { not: null } },
+      where: { schoolId, userId: { not: null }, students: { some: { isTutor: true } } },
       select: { userId: true },
     })
   },
@@ -93,5 +93,16 @@ export const convocatoriaRepository = {
     if (member?.parentId) return prisma.parent.findUnique({ where: { id: member.parentId } })
 
     return null
+  },
+
+  // Check-in por QR/código: convocatoria de hoy donde alguno de los userId
+  // posibles del tutor (login de padre y/o de delegado) está invitado.
+  // Lectura simple — el escaneo escribe vía updateAttendance de arriba, no
+  // pasa por convocatoriaService (así evita el candado de Presidente).
+  findOpenTodayForUser(userIds: number[], start: Date, end: Date) {
+    return prisma.convocatoriaAttendance.findFirst({
+      where: { userId: { in: userIds }, convocatoria: { isClosed: false, isCancelled: false, date: { gte: start, lt: end } } },
+      include: { convocatoria: true },
+    })
   },
 }

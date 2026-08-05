@@ -42,8 +42,11 @@ const menuGroups: MenuGroup[] = [
     items: [{ label: 'Asistencia Maestros', href: '/dashboard/padres/asistencia-maestros', icon: <ClipboardCheck size={15}/>, roles: ['JUNTA_ESCOLAR'] }],
   },
   {
-    label: 'Asistencia', icon: <ClipboardCheck size={15}/>, roles: ['DELEGATE'],
-    items: [{ label: 'Asistencia', href: '/dashboard/padres/asistencia', icon: <ClipboardCheck size={15}/>, roles: ['DELEGATE'] }],
+    label: 'Asistencia', icon: <ClipboardCheck size={15}/>, roles: ['DELEGATE', 'JUNTA_ESCOLAR'],
+    items: [
+      { label: 'Asistencia', href: '/dashboard/padres/asistencia', icon: <ClipboardCheck size={15}/>, roles: ['DELEGATE', 'JUNTA_ESCOLAR'] },
+      { label: 'Escanear QR', href: '/dashboard/padres/asistencia/escanear', icon: <ClipboardCheck size={15}/>, roles: ['JUNTA_ESCOLAR'] },
+    ],
   },
   {
     label: 'Nuevo Cargo', icon: <ClipboardList size={15}/>, roles: ['JUNTA_ESCOLAR', 'DELEGATE'],
@@ -57,6 +60,7 @@ const menuGroups: MenuGroup[] = [
       { label: 'Directorio',      href: '/dashboard/padres/junta',       icon: <UserCog size={15}/>, roles: ['JUNTA_ESCOLAR'] },
       { label: 'Designar cargo',  href: '/dashboard/padres/junta/nueva', icon: <Users size={15}/>,   roles: ['JUNTA_ESCOLAR'] },
       { label: 'Delegados',       href: '/dashboard/padres/delegados',   icon: <Users size={15}/>,   roles: ['JUNTA_ESCOLAR'] },
+      { label: 'Cuentas de Tutor', href: '/dashboard/padres/tutores',    icon: <Users size={15}/>,   roles: ['JUNTA_ESCOLAR'] },
     ],
   },
   {
