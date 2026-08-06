@@ -83,6 +83,7 @@ model School {
   classrooms              Classroom[]
   subjects                Subject[]
   charges                 Charge[]
+  mandatoryCharges        MandatoryCharge[]
   payments                Payment[]
   notifications           Notification[]
   meetings                Meeting[]
@@ -120,36 +121,36 @@ model SchoolSchedule {
 }
 
 model User {
-  id                Int             @id @default(autoincrement())
-  email             String          @unique
-  password          String
-  role              Role
-  isActive          Boolean         @default(true)
-  createdAt         DateTime        @default(now())
-  updatedAt         DateTime        @updatedAt
-  schoolId          Int?
-  districtId        Int?
-  nucleoId          Int?
-  createdByUserId   Int?
-  school            School?         @relation(fields: [schoolId], references: [id])
-  district          District?       @relation(fields: [districtId], references: [id])
-  nucleo            Nucleo?         @relation(fields: [nucleoId], references: [id])
-  createdBy         User?           @relation("UserCreatedBy", fields: [createdByUserId], references: [id])
-  createdUsers      User[]          @relation("UserCreatedBy")
-  juntaMember       JuntaMember?
-  gobiernoMember    GobiernoMember?
-  meetingsCreated   Meeting[]       @relation("MeetingCreator")
-  notificationsSent Notification[]  @relation("NotificationSender")
-  comunicados       Comunicado[]    @relation("ComunicadoAuthor")
-  parentDelegate    Parent?         @relation("ParentDelegate")
-  parent            Parent?         @relation("ParentUser")
-  director          ShiftDirector?
-  schoolDirector    Director?
-  staff             Staff?
-  student           Student?
-  teacherTutor      Teacher?        @relation("TeacherTutor")
-  teacher           Teacher?        @relation("TeacherUser")
-  poaActasCreated   PoaActa[]
+  id                      Int                      @id @default(autoincrement())
+  email                   String                   @unique
+  password                String
+  role                    Role
+  isActive                Boolean                  @default(true)
+  createdAt               DateTime                 @default(now())
+  updatedAt               DateTime                 @updatedAt
+  schoolId                Int?
+  districtId              Int?
+  nucleoId                Int?
+  createdByUserId         Int?
+  school                  School?                  @relation(fields: [schoolId], references: [id])
+  district                District?                @relation(fields: [districtId], references: [id])
+  nucleo                  Nucleo?                  @relation(fields: [nucleoId], references: [id])
+  createdBy               User?                    @relation("UserCreatedBy", fields: [createdByUserId], references: [id])
+  createdUsers            User[]                   @relation("UserCreatedBy")
+  juntaMember             JuntaMember?
+  gobiernoMember          GobiernoMember?
+  meetingsCreated         Meeting[]                @relation("MeetingCreator")
+  notificationsSent       Notification[]           @relation("NotificationSender")
+  comunicados             Comunicado[]             @relation("ComunicadoAuthor")
+  parentDelegate          Parent?                  @relation("ParentDelegate")
+  parent                  Parent?                  @relation("ParentUser")
+  director                ShiftDirector?
+  schoolDirector          Director?
+  staff                   Staff?
+  student                 Student?
+  teacherTutor            Teacher?                 @relation("TeacherTutor")
+  teacher                 Teacher?                 @relation("TeacherUser")
+  poaActasCreated         PoaActa[]
   convocatoriasCreated    Convocatoria[]           @relation("ConvocatoriaCreator")
   convocatoriaAttendances ConvocatoriaAttendance[]
 }
@@ -226,6 +227,7 @@ model AcademicYear {
   schoolId           Int
   school             School                      @relation(fields: [schoolId], references: [id])
   charges            Charge[]
+  mandatoryCharges   MandatoryCharge[]
   holidays           Holiday[]
   schedules          Schedule[]
   schedulePlans      SchedulePlan[]
@@ -261,29 +263,29 @@ model Holiday {
 }
 
 model Parent {
-  id             Int             @id @default(autoincrement())
-  firstName      String
-  lastName       String
-  ci             String?
-  phone          String?
-  address        String?
-  email          String?
-  createdAt      DateTime        @default(now())
-  updatedAt      DateTime        @updatedAt
-  userId         Int?            @unique
-  delegateUserId Int?            @unique
-  attendanceCode String?
-  kardex         String?
-  schoolId       Int
-  school         School          @relation(fields: [schoolId], references: [id])
-  attendances    Attendance[]
-  charges        Charge[]
-  delegateCourse Course?         @relation("CourseDelegate")
-  notifications  Notification[]
-  delegateUser   User?           @relation("ParentDelegate", fields: [delegateUserId], references: [id])
-  user           User?           @relation("ParentUser", fields: [userId], references: [id])
-  students       ParentStudent[]
-  payments       Payment[]
+  id               Int             @id @default(autoincrement())
+  firstName        String
+  lastName         String
+  ci               String?
+  phone            String?
+  address          String?
+  email            String?
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+  userId           Int?            @unique
+  delegateUserId   Int?            @unique
+  attendanceCode   String?
+  kardex           String?
+  schoolId         Int
+  school           School          @relation(fields: [schoolId], references: [id])
+  attendances      Attendance[]
+  charges          Charge[]
+  delegateCourse   Course?         @relation("CourseDelegate")
+  notifications    Notification[]
+  delegateUser     User?           @relation("ParentDelegate", fields: [delegateUserId], references: [id])
+  user             User?           @relation("ParentUser", fields: [userId], references: [id])
+  students         ParentStudent[]
+  payments         Payment[]
   juntaMemberships JuntaMember[]
 
   @@unique([ci, schoolId])
@@ -695,28 +697,53 @@ model Classroom {
 }
 
 model Charge {
+  id                Int              @id @default(autoincrement())
+  title             String
+  description       String?
+  amount            Float
+  paidAmount        Float            @default(0)
+  type              ChargeType
+  status            ChargeStatus     @default(PENDIENTE)
+  dueDate           DateTime?
+  createdAt         DateTime         @default(now())
+  parentId          Int
+  academicYearId    Int
+  studentId         Int?
+  target            ChargeTarget     @default(TUTOR)
+  tolerance         Boolean          @default(false)
+  toleranceNote     String?
+  updatedAt         DateTime         @updatedAt
+  schoolId          Int
+  // Si este cargo fue generado desde una plantilla de "cargo obligatorio",
+  // referencia a esa plantilla — permite saber quién ya lo tiene y no
+  // duplicarlo (ver MandatoryCharge).
+  mandatoryChargeId Int?
+  school            School           @relation(fields: [schoolId], references: [id])
+  academicYear      AcademicYear     @relation(fields: [academicYearId], references: [id])
+  parent            Parent           @relation(fields: [parentId], references: [id])
+  student           Student?         @relation(fields: [studentId], references: [id])
+  mandatoryCharge   MandatoryCharge? @relation(fields: [mandatoryChargeId], references: [id])
+  payments          Payment[]
+}
+
+// Plantilla de cargo obligatorio — al crearla se aplica de inmediato a todos
+// los tutores actuales que aún no la tengan, y automáticamente a todo tutor
+// nuevo que se registre mientras esté activa (ver parentService.createParent
+// y mandatoryChargeService). Siempre target=TUTOR (igual que el cargo masivo).
+model MandatoryCharge {
   id             Int          @id @default(autoincrement())
   title          String
   description    String?
   amount         Float
-  paidAmount     Float        @default(0)
   type           ChargeType
-  status         ChargeStatus @default(PENDIENTE)
   dueDate        DateTime?
+  isActive       Boolean      @default(true)
   createdAt      DateTime     @default(now())
-  parentId       Int
   academicYearId Int
-  studentId      Int?
-  target         ChargeTarget @default(TUTOR)
-  tolerance      Boolean      @default(false)
-  toleranceNote  String?
-  updatedAt      DateTime     @updatedAt
   schoolId       Int
   school         School       @relation(fields: [schoolId], references: [id])
   academicYear   AcademicYear @relation(fields: [academicYearId], references: [id])
-  parent         Parent       @relation(fields: [parentId], references: [id])
-  student        Student?     @relation(fields: [studentId], references: [id])
-  payments       Payment[]
+  charges        Charge[]
 }
 
 model Payment {

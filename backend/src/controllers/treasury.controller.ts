@@ -6,6 +6,17 @@ import { assertOwnParentAccount } from '../utils/ownership-guards'
 import { treasuryService } from '../services/treasury.service'
 
 // ─────────────────────────────────────────────
+// GET /api/treasury/payments
+// ─────────────────────────────────────────────
+export const getPaymentsHistory = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    res.json(await treasuryService.getPaymentsHistory())
+  } catch (error) {
+    handleControllerError(res, error)
+  }
+}
+
+// ─────────────────────────────────────────────
 // GET /api/treasury
 // ─────────────────────────────────────────────
 export const getCharges = async (req: AuthRequest, res: Response): Promise<void> => {

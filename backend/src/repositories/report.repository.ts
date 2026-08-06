@@ -53,6 +53,18 @@ export const reportRepository = {
     })
   },
 
+  // Reuniones de curso dentro de la gestión activa (Meeting no tiene FK a
+  // AcademicYear — se acota por rango de fecha de la gestión) + su asistencia.
+  findMeetingsInDateRange(start: Date, end: Date) {
+    return prisma.meeting.findMany({
+      where: { date: { gte: start, lte: end } },
+      include: {
+        course: { select: { id: true, level: true, grade: true, parallel: true, shift: true } },
+        attendances: { select: { present: true } },
+      },
+    })
+  },
+
   findMorosos(academicYearId: number) {
     return prisma.parent.findMany({
       where: { charges: { some: { academicYearId, status: { in: ['PENDIENTE', 'PARCIAL'] } } } },

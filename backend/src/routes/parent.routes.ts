@@ -22,6 +22,8 @@ import {
   releaseTutorKardex,
   getParentsByCourse,
   resetTutorPassword,
+  getRegisteredStatus,
+  regenerateParentEmail,
 } from '../controllers/parent.controller'
 import { verifyToken, requirePermission } from '../middlewares/auth.middleware'
 import { validateBody } from '../middlewares/validate.middleware'
@@ -49,6 +51,7 @@ router.post('/regenerate-code/:id', requirePermission(Permission.PARENT_ASSIGN_T
 
 // Padres/tutores agrupados por curso (Familias → Listado).
 router.get('/by-course',            requirePermission(Permission.PARENT_VIEW_ALL), getParentsByCourse)
+router.get('/registered-status',    requirePermission(Permission.PARENT_VIEW_ALL), getRegisteredStatus)
 
 router.get('/:id',                        requirePermission(Permission.PARENT_VIEW_ALL), getParentById)
 router.get('/:id/students',               requirePermission(Permission.PARENT_VIEW_ALL), getParentStudents)
@@ -62,6 +65,7 @@ router.patch('/:id/toggle',              requirePermission(Permission.PARENT_CRE
 router.delete('/:id',                    requirePermission(Permission.PARENT_CREATE),   deleteParent)
 router.post('/:id/generate-credentials', requirePermission(Permission.PARENT_CREATE),   generateParentCredentials)
 router.post('/:id/reset-password',       requirePermission(Permission.PARENT_CREATE),   resetTutorPassword)
+router.post('/:id/regenerate-email',     requirePermission(Permission.PARENT_CREATE),   regenerateParentEmail)
 router.post('/:id/release-kardex',       requirePermission(Permission.PARENT_CREATE),   releaseTutorKardex)
 router.post('/import', requirePermission(Permission.PARENT_CREATE), upload.single('file'), importParents)
 

@@ -43,20 +43,24 @@ export function generateJuntaPassword(lastName: string, ci?: string | null): str
   return `junta${normalizeLetters(lastName.split(' ')[0]).slice(0, 3)}${year}`
 }
 
-export async function generateUniqueEmail(firstName: string, lastName: string, domain?: string): Promise<string> {
+// excludeUserId: al REGENERAR el correo de una cuenta ya existente, esa misma
+// cuenta no debe contar como "duplicado" de sí misma (si no, regenerar un
+// correo que ya sigue el patrón institucional le agregaría un sufijo
+// numérico innecesario).
+export async function generateUniqueEmail(firstName: string, lastName: string, domain?: string, excludeUserId?: number): Promise<string> {
   const resolvedDomain = domain ?? await resolveEmailDomain()
   const first = normalizeEmailPart(firstName.split(' ')[0])
   const last  = normalizeEmailPart(lastName.split(' ')[0])
   const base  = `${first}.${last}${resolvedDomain}`
 
   const existing = await userRepository.findByEmail(base)
-  if (!existing) return base
+  if (!existing || existing.id === excludeUserId) return base
 
   let counter = 2
   while (true) {
     const candidate = `${first}.${last}${counter}${resolvedDomain}`
     const dup = await userRepository.findByEmail(candidate)
-    if (!dup) return candidate
+    if (!dup || dup.id === excludeUserId) return candidate
     counter++
   }
 }

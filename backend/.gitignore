@@ -3,6 +3,7 @@
 ~$*
 temp*.js
 backups/
+exports/
 *.dump
 *.sql
 !prisma/migrations/**/*.sql

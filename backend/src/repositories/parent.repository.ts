@@ -273,6 +273,28 @@ export const parentRepository = {
     return prisma.academicYear.findFirst({ where: { isActive: true } })
   },
 
+  // Todos los padres (cualquier relación) con la info mínima para calcular si
+  // tienen algún hijo matriculado en la gestión activa (Activo) o no
+  // (Inactivo) — ver parentService.getAllWithStatus.
+  findAllWithEnrollmentStatus(activeYearId: number) {
+    return prisma.parent.findMany({
+      include: {
+        user: { select: { id: true, email: true, isActive: true } },
+        students: {
+          include: {
+            student: {
+              select: {
+                id: true, firstName: true, lastName: true,
+                assignments: { where: { academicYearId: activeYearId }, select: { id: true } },
+              },
+            },
+          },
+        },
+      },
+      orderBy: [{ lastName: 'asc' }, { firstName: 'asc' }],
+    })
+  },
+
   // Padres/tutores agrupados por curso (Familias → Listado) — mismo shape que
   // treasuryRepository.findChargesGroupedByCourse, sin la parte de cargos.
   findAllGroupedByCourse(schoolId: number, academicYearId: number) {

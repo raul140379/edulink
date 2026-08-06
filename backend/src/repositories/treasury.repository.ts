@@ -147,6 +147,18 @@ export const treasuryRepository = {
     return prisma.parentStudent.findFirst({ where: { parentId, isTutor: true } })
   },
 
+  // Historial de pagos — lista plana de Payment (no anidada en la cuenta de
+  // un tutor), del más reciente al más antiguo.
+  findAllPayments() {
+    return prisma.payment.findMany({
+      include: {
+        parent: { select: { id: true, firstName: true, lastName: true, ci: true } },
+        charge: { select: { id: true, title: true, type: true } },
+      },
+      orderBy: { date: 'desc' },
+    })
+  },
+
   // Agrupa los cargos del colegio por curso, para la vista "Por curso" de
   // Tesorería — Course -> asignaciones del año activo -> estudiante -> padres
   // tutores -> sus cargos, en una sola consulta (evita el patrón N+1 que usa
@@ -169,7 +181,7 @@ export const treasuryRepository = {
                         id: true, firstName: true, lastName: true, ci: true, phone: true, kardex: true,
                         charges: {
                           where: { status: { not: 'ANULADO' }, academicYearId },
-                          select: { id: true, amount: true, paidAmount: true, status: true, studentId: true },
+                          select: { id: true, title: true, type: true, amount: true, paidAmount: true, status: true, studentId: true, dueDate: true },
                         },
                       },
                     },

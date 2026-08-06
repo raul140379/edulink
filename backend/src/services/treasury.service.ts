@@ -8,6 +8,10 @@ import {
 } from '../schemas/treasury.schema'
 
 export const treasuryService = {
+  getPaymentsHistory() {
+    return treasuryRepository.findAllPayments()
+  },
+
   listCharges(status?: string, type?: string, parentId?: string, academicYearId?: string) {
     const where: Prisma.ChargeWhereInput = {
       ...(status         ? { status: status as any } : {}),
@@ -278,6 +282,8 @@ export const treasuryService = {
 
     const courses = await treasuryRepository.findChargesGroupedByCourse(schoolId, yearId)
 
+    const now = new Date()
+
     return courses.map((course) => {
       // Un mismo tutor puede tener más de un hijo en el curso — se agrupa por
       // padre para no listarlo duplicado dentro del propio curso.
@@ -289,6 +295,11 @@ export const treasuryService = {
           const totalDebt    = p.charges.reduce((sum: number, c: any) => sum + c.amount, 0)
           const totalPaid    = p.charges.reduce((sum: number, c: any) => sum + c.paidAmount, 0)
           const totalPending = totalDebt - totalPaid
+          const hasDebt       = totalPending > 0
+          // Vencido = tiene al menos un cargo con saldo pendiente cuya fecha
+          // de vencimiento ya pasó — distinto de "deudor a tiempo".
+          const hasOverdue = p.charges.some((c: any) => c.dueDate && new Date(c.dueDate) < now && (c.amount - c.paidAmount) > 0)
+          const estado = hasOverdue ? 'VENCIDO' : hasDebt ? 'DEUDOR' : 'AL_DIA'
           // Un cargo TUTOR (sin studentId) no pertenece a un solo curso si el
           // padre tiene hijos en cursos distintos — se muestra en cada uno
           // donde tenga un hijo activo, marcado como compartido. No se
@@ -297,7 +308,9 @@ export const treasuryService = {
           tutorsMap.set(p.id, {
             id: p.id, firstName: p.firstName, lastName: p.lastName, ci: p.ci, phone: p.phone, kardex: p.kardex,
             studentName: `${assignment.student.lastName} ${assignment.student.firstName}`,
-            summary: { totalDebt, totalPaid, totalPending, hasDebt: totalPending > 0, hasSharedCharge, chargesCount: p.charges.length },
+            charges: p.charges,
+            estado,
+            summary: { totalDebt, totalPaid, totalPending, hasDebt, hasOverdue, hasSharedCharge, chargesCount: p.charges.length },
           })
         }
       }

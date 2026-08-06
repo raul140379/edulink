@@ -2,9 +2,9 @@
 
 import { useEffect, useRef, useState } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
-import Link from 'next/link'
-import Image from 'next/image'
-import { Menu, X, ChevronDown, Bell, UserCircle, Settings } from 'lucide-react'
+import AppHeader from './AppHeader'
+import ModuleNavigation from './ModuleNavigation'
+import Breadcrumb from '../ui/Breadcrumb'
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000'
 
@@ -144,6 +144,21 @@ export default function DashboardShell({
       .filter(i => pathname.startsWith(i.href + '/'))
       .sort((a, b) => b.href.length - a.href.length)[0]
 
+  // Grupo multi-ítem activo — determina qué segundo nivel (escritorio) se
+  // muestra fijo debajo del header. Los grupos de 1 solo ítem (isDirectLink)
+  // nunca tienen segundo nivel, ya son un link directo de Nivel 1.
+  const activeGroup = visibleGroups.find(g => g.items.length > 1 && g.items.some(i => i.href === activeItem?.href))
+
+  // En escritorio, el botón de un módulo con varias opciones navega directo a
+  // la primera — en mobile sigue abriendo/cerrando el acordeón de siempre.
+  const handleGroupClick = (group: MenuGroup) => {
+    if (typeof window !== 'undefined' && window.innerWidth <= 860) {
+      setOpenGroup(v => v === group.label ? null : group.label)
+    } else {
+      router.push(group.items[0].href)
+    }
+  }
+
   return (
     <div
       className="dashboard-root"
@@ -173,86 +188,20 @@ export default function DashboardShell({
         '--color-brand-100': `color-mix(in srgb, ${theme.primary} 10%, white)`,
       } as React.CSSProperties}
     >
-      <header className="topbar">
-        <div className="topbar-brand">
-          {logoSrc && (
-            <div className="brand-logo">
-              <Image src={logoSrc} alt="Logo" width={32} height={32} style={{ objectFit: 'contain', borderRadius: '50%' }} unoptimized/>
-            </div>
-          )}
-          <div className="brand-info">
-            <span className="brand-name">{brandName}</span>
-            <span className="brand-loc">{brandLoc}</span>
-          </div>
-        </div>
+      <AppHeader
+        brandName={brandName} brandLoc={brandLoc} logoSrc={logoSrc}
+        mobileOpen={mobileOpen} onToggleMobile={() => setMobileOpen(v => !v)}
+        notificationsHref={notificationsHref} hasUnread={hasUnread}
+        profileHref={profileHref} displayName={displayName} onLogout={handleLogout}
+      />
 
-        <button className="mobile-menu-btn" onClick={() => setMobileOpen(v => !v)}>
-          {mobileOpen ? <X size={20}/> : <Menu size={20}/>}
-        </button>
-
-        <div className="topbar-actions">
-          {notificationsHref && (
-            <Link href={notificationsHref} className="action-pill" title="Notificaciones">
-              <Bell size={17}/>
-              {hasUnread && <span className="notif-dot"/>}
-            </Link>
-          )}
-          <Link href={profileHref} className="action-pill" title="Mi perfil">
-            <UserCircle size={17}/>
-            <span className="action-label">{displayName}</span>
-          </Link>
-          <button className="action-pill logout" onClick={handleLogout} title="Cerrar sesión">
-            <Settings size={17}/>
-            <span className="action-label">Salir</span>
-          </button>
-        </div>
-      </header>
-
-      <nav className={`navbar ${mobileOpen ? 'mobile-open' : ''}`} ref={navRef}>
-        {visibleGroups.map(group => {
-          const isDirectLink = group.items.length === 1
-          const hasActive = group.items.some(i => i.href === activeItem?.href)
-
-          if (isDirectLink) {
-            const item = group.items[0]
-            return (
-              <Link key={group.label} href={item.href} className={`nav-top-item ${hasActive ? 'active' : ''}`}>
-                {group.icon} {group.label}
-              </Link>
-            )
-          }
-
-          return (
-            <div key={group.label} className="nav-dropdown-wrap">
-              <button
-                className={`nav-top-item ${hasActive ? 'active' : ''}`}
-                onClick={() => setOpenGroup(v => v === group.label ? null : group.label)}
-              >
-                {group.icon} {group.label} <ChevronDown size={13} className={openGroup === group.label ? 'chev-open' : ''}/>
-              </button>
-              {openGroup === group.label && (
-                <div className="nav-dropdown">
-                  {group.items.map(item => {
-                    const isActive = item.href === activeItem?.href
-                    return (
-                      <Link key={item.href} href={item.href} className={`dropdown-item ${isActive ? 'active' : ''}`}>
-                        {item.icon} {item.label}
-                      </Link>
-                    )
-                  })}
-                </div>
-              )}
-            </div>
-          )
-        })}
-      </nav>
+      <ModuleNavigation
+        visibleGroups={visibleGroups} activeItem={activeItem} activeGroup={activeGroup}
+        openGroup={openGroup} mobileOpen={mobileOpen} onGroupClick={handleGroupClick} navRef={navRef}
+      />
 
       {activeItem && (
-        <div className="breadcrumb">
-          <Link href={homeHref}>Inicio</Link>
-          <span className="crumb-sep">/</span>
-          <span className="crumb-current">{activeItem.label}</span>
-        </div>
+        <Breadcrumb items={[{ label: 'Inicio', href: homeHref }, { label: activeItem.label }]} />
       )}
 
       <main className="main-content">{children}</main>
@@ -277,7 +226,8 @@ export default function DashboardShell({
         .action-pill.logout:hover{background:rgba(231,76,60,.6)}
         .action-label{white-space:nowrap}
         .notif-dot{position:absolute;top:5px;right:6px;width:6px;height:6px;background:#F5C518;border-radius:50%;border:1.5px solid var(--dsh-primary)}
-        .navbar{background:var(--dsh-navbar);display:flex;flex-wrap:wrap;align-items:stretch;padding:0 16px;position:sticky;top:60px;z-index:150}
+        .nav-stack{position:sticky;top:60px;z-index:150}
+        .navbar{background:var(--dsh-navbar);display:flex;flex-wrap:wrap;align-items:stretch;padding:0 16px}
         .nav-top-item{display:flex;align-items:center;gap:6px;padding:11px 14px;font-size:13.5px;font-weight:600;color:rgba(255,255,255,.78);background:none;border:none;cursor:pointer;text-decoration:none;white-space:nowrap;border-bottom:2.5px solid transparent;transition:background .15s,color .15s}
         .nav-top-item:hover{color:#fff;background:var(--dsh-hover)}
         .nav-top-item.active{color:#fff;background:rgba(255,255,255,.14);border-bottom-color:var(--dsh-accent)}
@@ -287,11 +237,11 @@ export default function DashboardShell({
         .dropdown-item{display:flex;align-items:center;gap:9px;padding:9px 12px;font-size:13px;color:#333;text-decoration:none;background:none;border:none;width:100%;text-align:left;cursor:pointer;border-radius:6px;transition:background .15s,color .15s}
         .dropdown-item:hover{background:var(--dsh-hover);color:#fff}
         .dropdown-item.active{color:var(--dsh-primary);font-weight:600;background:#EEF2F8}
-        .breadcrumb{display:flex;align-items:center;gap:8px;padding:12px 24px 0;font-size:12.5px;color:#8B959C}
-        .breadcrumb a{color:#8B959C;text-decoration:none}
-        .breadcrumb a:hover{color:var(--dsh-primary)}
-        .crumb-sep{opacity:.6}
-        .crumb-current{color:var(--dsh-primary);font-weight:600}
+        .subnav{background:#fff;display:flex;flex-wrap:wrap;align-items:stretch;padding:4px 16px;gap:2px;box-shadow:0 4px 10px -6px rgba(0,0,0,.2)}
+        .subnav-item{display:flex;align-items:center;gap:8px;padding:8px 12px;font-size:13px;color:#333;text-decoration:none;border-radius:6px;transition:background .15s,color .15s;white-space:nowrap}
+        .subnav-item:hover{background:var(--dsh-hover);color:#fff}
+        .subnav-item.active{color:var(--dsh-primary);font-weight:600;background:#EEF2F8}
+        @media(min-width:861px){.chev-icon{display:none}}
         .main-content{flex:1;padding:20px 24px}
         .dsh-footer{padding:14px 24px;text-align:center;font-size:11.5px;color:#9AA6AC;border-top:1px solid #E1E7EA;background:#fff}
         @media(max-width:860px){
@@ -299,12 +249,12 @@ export default function DashboardShell({
           .action-label{display:none}
           .navbar{display:none;flex-direction:column;position:static}
           .navbar.mobile-open{display:flex}
+          .subnav{display:none}
           .nav-top-item{border-bottom:1px solid rgba(255,255,255,.1);border-radius:0}
           .nav-dropdown-wrap{width:100%}
           .nav-dropdown{position:static;box-shadow:none;border-radius:0;background:rgba(0,0,0,.15)}
           .dropdown-item{color:#fff}
           .dropdown-item:hover{background:rgba(255,255,255,.1)}
-          .breadcrumb{padding:12px 16px 0}
           .main-content{padding:16px}
         }
       `}</style>

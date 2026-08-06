@@ -21,6 +21,15 @@ export const getDelegatesReport = async (req: AuthRequest, res: Response): Promi
   }
 }
 
+// GET /api/reports/attendance
+export const getAttendanceReport = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    res.json(await reportService.getAttendanceReport())
+  } catch (error) {
+    handleControllerError(res, error)
+  }
+}
+
 // GET /api/reports/treasury
 export const getTreasuryReport = async (req: AuthRequest, res: Response): Promise<void> => {
   try {

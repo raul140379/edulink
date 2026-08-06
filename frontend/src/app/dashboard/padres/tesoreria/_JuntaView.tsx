@@ -2,12 +2,17 @@
 
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { DollarSign, Users, AlertCircle, CheckCircle, Search, Plus, TrendingUp, Filter, FileText, Upload } from 'lucide-react'
+import { DollarSign, Users, AlertCircle, CheckCircle, Plus, TrendingUp, FileText, Upload, RefreshCw } from 'lucide-react'
 import Card, { CardHeader, CardTitle } from '@/components/ui/Card'
 import Badge from '@/components/ui/Badge'
 import Button from '@/components/ui/Button'
 import Table, { Column } from '@/components/ui/Table'
-import { Input, Select, Textarea } from '@/components/ui/Input'
+import { Input, Textarea } from '@/components/ui/Input'
+import PageHeader from '@/components/ui/PageHeader'
+import Toolbar from '@/components/ui/Toolbar'
+import StatCard from '@/components/ui/StatCard'
+import EmptyState from '@/components/ui/EmptyState'
+import LoadingState from '@/components/ui/LoadingState'
 import { useToast } from '@/components/ui/ToastProvider'
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000'
@@ -179,36 +184,21 @@ export default function TesoreriaPage() {
 
   return (
     <div>
-      <div className="flex items-start justify-between gap-4 mb-6">
-        <div>
-          <h1 className="text-xl font-bold text-brand-700 mb-1">Tesorería</h1>
-          <p className="text-[13px] text-neutral-500">Gestión económica de padres y tutores legales</p>
-        </div>
-        {canEdit && (
+      <PageHeader
+        title="Tesorería" description="Gestión económica de padres y tutores legales"
+        action={canEdit && (
           <Button onClick={() => router.push('/dashboard/padres/cargos/nuevo')}>
             <Plus size={16}/> Nuevo cargo
           </Button>
         )}
-      </div>
+      />
 
       {summary && (
         <div className="grid gap-3 mb-4" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))' }}>
-          <Card className="flex items-center gap-3">
-            <div className="p-2.5 rounded-[10px] bg-brand-100 text-brand-700"><DollarSign size={20}/></div>
-            <div><div className="text-[11px] text-neutral-500 uppercase tracking-wide mb-0.5">Total cobrado</div><div className="text-lg font-bold text-brand-700">{fmt(summary.totalCharged)}</div></div>
-          </Card>
-          <Card className="flex items-center gap-3">
-            <div className="p-2.5 rounded-[10px] bg-success-100 text-success-700"><CheckCircle size={20}/></div>
-            <div><div className="text-[11px] text-neutral-500 uppercase tracking-wide mb-0.5">Total recaudado</div><div className="text-lg font-bold text-brand-700">{fmt(summary.totalCollected)}</div></div>
-          </Card>
-          <Card className="flex items-center gap-3">
-            <div className="p-2.5 rounded-[10px] bg-danger-100 text-danger-600"><AlertCircle size={20}/></div>
-            <div><div className="text-[11px] text-neutral-500 uppercase tracking-wide mb-0.5">Total pendiente</div><div className="text-lg font-bold text-brand-700">{fmt(summary.totalPending)}</div></div>
-          </Card>
-          <Card className="flex items-center gap-3">
-            <div className="p-2.5 rounded-[10px] bg-neutral-100 text-neutral-500"><Users size={20}/></div>
-            <div><div className="text-[11px] text-neutral-500 uppercase tracking-wide mb-0.5">Tutores con deuda</div><div className="text-lg font-bold text-brand-700">{deudores} de {parents.length}</div></div>
-          </Card>
+          <StatCard label="Total cobrado" value={fmt(summary.totalCharged)} icon={DollarSign} tone="brand" />
+          <StatCard label="Total recaudado" value={fmt(summary.totalCollected)} icon={CheckCircle} tone="success" />
+          <StatCard label="Total pendiente" value={fmt(summary.totalPending)} icon={AlertCircle} tone="danger" />
+          <StatCard label="Tutores con deuda" value={`${deudores} de ${parents.length}`} icon={Users} tone="neutral" />
         </div>
       )}
 
@@ -221,49 +211,30 @@ export default function TesoreriaPage() {
         </div>
       )}
 
-      <div className="flex gap-1 bg-neutral-100 rounded-lg p-1 w-fit mb-4">
-        <button
-          onClick={() => setViewMode('tutor')}
-          className={`px-3 py-1.5 rounded-md text-[12.5px] font-semibold transition-colors ${viewMode === 'tutor' ? 'bg-white text-brand-700 shadow-sm' : 'text-neutral-500'}`}
-        >
-          Por tutor
-        </button>
-        <button
-          onClick={() => setViewMode('curso')}
-          className={`px-3 py-1.5 rounded-md text-[12.5px] font-semibold transition-colors ${viewMode === 'curso' ? 'bg-white text-brand-700 shadow-sm' : 'text-neutral-500'}`}
-        >
-          Por curso
-        </button>
-      </div>
+      <Toolbar
+        className="mb-4"
+        views={{ items: [{ key: 'tutor', label: 'Por tutor' }, { key: 'curso', label: 'Por curso' }], active: viewMode, onChange: k => setViewMode(k as 'tutor' | 'curso') }}
+        search={viewMode === 'tutor'
+          ? { value: search, onChange: setSearch, onSubmit: fetchData, placeholder: 'Buscar tutor por nombre o CI...' }
+          : { value: searchCurso, onChange: setSearchCurso, placeholder: 'Buscar tutor por nombre o CI...' }
+        }
+        filters={[{
+          key: 'estado', label: 'Estado',
+          value: viewMode === 'tutor' ? filter : filterCurso,
+          onChange: v => viewMode === 'tutor' ? setFilter(v) : setFilterCurso(v),
+          placeholder: 'Todos los tutores',
+          options: [{ value: 'CON_DEUDA', label: 'Con deuda' }, { value: 'AL_DIA', label: 'Al día' }],
+        }]}
+        actions={[{ key: 'refresh', label: 'Actualizar', icon: RefreshCw, onClick: viewMode === 'tutor' ? fetchData : fetchByCourse }]}
+      />
 
       {viewMode === 'tutor' ? (
         <>
-          <Card className="flex gap-2.5 flex-wrap items-center mb-4">
-            <div className="relative flex-1 min-w-[200px]">
-              <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-info-500 pointer-events-none"/>
-              <Input
-                placeholder="Buscar tutor por nombre o CI..." value={search}
-                onChange={e => setSearch(e.target.value)}
-                onKeyDown={e => e.key === 'Enter' && fetchData()}
-                className="pl-9"
-              />
-            </div>
-            <div className="flex items-center gap-1.5">
-              <Filter size={14} className="text-neutral-500"/>
-              <Select value={filter} onChange={e => setFilter(e.target.value)} className="w-auto">
-                <option value="">Todos los tutores</option>
-                <option value="CON_DEUDA">Con deuda</option>
-                <option value="AL_DIA">Al día</option>
-              </Select>
-            </div>
-            <Button variant="secondary" onClick={fetchData}>Buscar</Button>
-          </Card>
-
           <Card padded={false} className="overflow-hidden">
             {loading ? (
-              <div className="flex justify-center py-16"><p className="text-sm text-neutral-500">Cargando...</p></div>
+              <LoadingState />
             ) : parents.length === 0 ? (
-              <div className="flex justify-center py-16"><p className="text-sm text-neutral-500">No se encontraron tutores</p></div>
+              <EmptyState icon={Users} message="No se encontraron tutores" />
             ) : (
               <div className="p-4">
                 <Table columns={columns} rows={parents} rowKey={p => p.id} />
@@ -277,27 +248,8 @@ export default function TesoreriaPage() {
         </>
       ) : (
         <div className="flex flex-col gap-4">
-          <Card className="flex gap-2.5 flex-wrap items-center">
-            <div className="relative flex-1 min-w-[200px]">
-              <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-info-500 pointer-events-none"/>
-              <Input
-                placeholder="Buscar tutor por nombre o CI..." value={searchCurso}
-                onChange={e => setSearchCurso(e.target.value)}
-                className="pl-9"
-              />
-            </div>
-            <div className="flex items-center gap-1.5">
-              <Filter size={14} className="text-neutral-500"/>
-              <Select value={filterCurso} onChange={e => setFilterCurso(e.target.value)} className="w-auto">
-                <option value="">Todos los tutores</option>
-                <option value="CON_DEUDA">Con deuda</option>
-                <option value="AL_DIA">Al día</option>
-              </Select>
-            </div>
-          </Card>
-
           {loadingByCourse ? (
-            <div className="flex justify-center py-16"><p className="text-sm text-neutral-500">Cargando...</p></div>
+            <Card><LoadingState /></Card>
           ) : byCourse.length === 0 ? (
             <Card className="text-center py-12 text-neutral-500">No hay gestión académica activa o no hay cursos con tutores.</Card>
           ) : byCourseFiltered.every(g => g.tutores.length === 0) ? (

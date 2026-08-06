@@ -4,6 +4,7 @@ import { validateBody } from '../middlewares/validate.middleware'
 import { Permission } from '../config/permissions'
 import {
   createChargeSchema, createBulkChargesSchema, updateChargeSchema, registerPaymentSchema, updatePaymentSchema,
+  createMandatoryChargeSchema,
 } from '../schemas/treasury.schema'
 import {
   getCharges,
@@ -18,7 +19,11 @@ import {
   getTreasurySummary,
   getParentsWithBalance,
   getTreasuryByCourse,
+  getPaymentsHistory,
 } from '../controllers/treasury.controller'
+import {
+  getMandatoryCharges, createMandatoryCharge, toggleMandatoryCharge, applyMandatoryChargeToMissing,
+} from '../controllers/mandatoryCharge.controller'
 
 const router = Router()
 
@@ -34,6 +39,13 @@ router.get('/summary',          requirePermission(Permission.CHARGE_VIEW_ALL), g
 router.get('/by-course',        requirePermission(Permission.CHARGE_VIEW_ALL), getTreasuryByCourse)
 router.get('/parents',          requirePermission(Permission.CHARGE_VIEW_ALL), getParentsWithBalance)
 router.get('/parents/:parentId/account', requireAnyPermission(Permission.CHARGE_VIEW_ALL, Permission.CHARGE_VIEW_OWN), getParentAccount)
+router.get('/payments',         requirePermission(Permission.CHARGE_VIEW_ALL), getPaymentsHistory)
+
+// ── Cargos obligatorios (plantillas) — ANTES que /:id genérico ──
+router.get('/mandatory-charges',                    requirePermission(Permission.CHARGE_VIEW_ALL), getMandatoryCharges)
+router.post('/mandatory-charges',                   requirePermission(Permission.CHARGE_CREATE), validateBody(createMandatoryChargeSchema), createMandatoryCharge)
+router.patch('/mandatory-charges/:id/toggle',       requirePermission(Permission.CHARGE_CREATE), toggleMandatoryCharge)
+router.post('/mandatory-charges/:id/apply-missing', requirePermission(Permission.CHARGE_CREATE), applyMandatoryChargeToMissing)
 
 // ── Cargos ───────────────────────────────────
 router.get('/',                 requirePermission(Permission.CHARGE_VIEW_ALL), getCharges)

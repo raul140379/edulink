@@ -10,6 +10,32 @@ export const reportService = {
     return reportRepository.findCoursesWithDelegateInfo()
   },
 
+  async getAttendanceReport() {
+    const activeYear = await reportRepository.findActiveAcademicYear()
+    if (!activeYear) throw new HttpError(404, 'No hay gestión académica activa')
+
+    const meetings = await reportRepository.findMeetingsInDateRange(activeYear.startDate, activeYear.endDate)
+
+    const byCourse = new Map<number, { course: any; totalMeetings: number; present: number; total: number }>()
+    for (const m of meetings) {
+      if (!byCourse.has(m.courseId)) {
+        byCourse.set(m.courseId, { course: m.course, totalMeetings: 0, present: 0, total: 0 })
+      }
+      const entry = byCourse.get(m.courseId)!
+      entry.totalMeetings++
+      entry.present += m.attendances.filter((a) => a.present).length
+      entry.total += m.attendances.length
+    }
+
+    return Array.from(byCourse.values()).map((e) => ({
+      course: e.course,
+      totalMeetings: e.totalMeetings,
+      totalPresent: e.present,
+      totalAttendances: e.total,
+      presentRate: e.total > 0 ? Math.round((e.present / e.total) * 100) : 0,
+    }))
+  },
+
   async getTreasuryReport(academicYearId?: number) {
     const activeYear = academicYearId
       ? await reportRepository.findAcademicYearById(academicYearId)

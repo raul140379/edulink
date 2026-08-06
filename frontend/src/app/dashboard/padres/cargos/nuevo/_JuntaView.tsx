@@ -6,6 +6,7 @@ import { ArrowLeft, Plus, Users } from 'lucide-react'
 import Card from '@/components/ui/Card'
 import Button from '@/components/ui/Button'
 import { Input, Select } from '@/components/ui/Input'
+import LoadingState from '@/components/ui/LoadingState'
 import { useToast } from '@/components/ui/ToastProvider'
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000'
@@ -209,7 +210,7 @@ export default function NuevoCargoPage() {
       </div>
 
       {loading ? (
-        <div className="flex justify-center py-16"><p className="text-sm text-neutral-500">Cargando...</p></div>
+        <LoadingState />
       ) : (
         <Card className="flex flex-col gap-4.5">
           <div className="flex bg-neutral-100 rounded-[10px] p-1 gap-1">

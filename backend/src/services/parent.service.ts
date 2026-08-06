@@ -6,6 +6,7 @@ import { parentRepository } from '../repositories/parent.repository'
 import { studentRepository } from '../repositories/student.repository'
 import { userRepository } from '../repositories/user.repository'
 import { delegateRepository } from '../repositories/delegate.repository'
+import { mandatoryChargeService } from './mandatoryCharge.service'
 import { HttpError } from '../utils/http-error'
 import { generateUniqueEmail, generateParentPassword, generateResetPassword } from '../utils/account-generator'
 import { getTenantContext } from '../lib/tenant-context'
@@ -59,15 +60,11 @@ async function buildAttendanceCode(parent: { id: number; firstName: string; last
   return code
 }
 
-async function createTutorUser(firstName: string, lastName: string, ci?: string | null, personalEmail?: string | null) {
-  let accessEmail: string
-  if (personalEmail && personalEmail.trim() !== '') {
-    const existing = await userRepository.findByEmail(personalEmail.trim())
-    if (existing) throw new HttpError(409, `El correo ${personalEmail} ya está en uso por otro usuario`)
-    accessEmail = personalEmail.trim()
-  } else {
-    accessEmail = await generateUniqueEmail(firstName, lastName)
-  }
+// El correo de acceso SIEMPRE sigue el patrón institucional
+// (primer_nombre.primer_apellido@dominio) — el correo personal del tutor
+// (si lo hay) se guarda aparte en Parent.email, nunca se usa como login.
+async function createTutorUser(firstName: string, lastName: string, ci?: string | null) {
+  const accessEmail = await generateUniqueEmail(firstName, lastName)
 
   const defaultPassword = generateParentPassword(lastName, ci)
   const hashed = await bcrypt.hash(defaultPassword, 10)
@@ -167,7 +164,7 @@ export const parentService = {
     let userId: number | undefined
 
     if (relationType === 'TUTOR_LEGAL') {
-      const result = await createTutorUser(firstName, lastName, ci, email)
+      const result = await createTutorUser(firstName, lastName, ci)
       userId = result.user.id
       accessEmail = result.accessEmail
       defaultPassword = result.defaultPassword
@@ -185,6 +182,12 @@ export const parentService = {
       for (const sid of studentIds) {
         await parentRepository.createRelationSimple(parent.id, sid, relationType, relationType === 'TUTOR_LEGAL')
       }
+    }
+
+    // Todo tutor nuevo recibe automáticamente los cargos obligatorios
+    // vigentes de la gestión activa (ver mandatoryCharge.service.ts).
+    if (relationType === 'TUTOR_LEGAL') {
+      await mandatoryChargeService.applyActiveTemplatesToTutor(parent.id)
     }
 
     const parentFull = await parentRepository.findWithFullDetail(parent.id)
@@ -319,10 +322,24 @@ export const parentService = {
     const isTutorLegal = parent.students.some((s) => s.relationType === 'TUTOR_LEGAL')
     if (!isTutorLegal) throw new HttpError(400, 'Solo se puede generar acceso para tutores legales')
 
-    const result = await createTutorUser(parent.firstName, parent.lastName, parent.ci, parent.email)
+    const result = await createTutorUser(parent.firstName, parent.lastName, parent.ci)
     await parentRepository.linkUser(id, result.user.id)
 
     return { accessEmail: result.accessEmail, defaultPassword: result.defaultPassword }
+  },
+
+  // Recalcula el correo de acceso al patrón institucional vigente con el
+  // nombre/apellido ACTUALES del tutor — para corregir cuentas viejas que
+  // quedaron con un correo personal como login (ver account-generator.ts).
+  async regenerateAccountEmail(id: number) {
+    const parent = await parentRepository.findById(id)
+    if (!parent) throw new HttpError(404, 'Padre/tutor no encontrado')
+    if (!parent.userId) throw new HttpError(400, 'Este padre/tutor no tiene una cuenta de acceso')
+
+    const newEmail = await generateUniqueEmail(parent.firstName, parent.lastName, undefined, parent.userId)
+    await userRepository.update(parent.userId, { email: newEmail })
+
+    return { email: newEmail }
   },
 
   async resetTutorPassword(id: number) {
@@ -352,7 +369,7 @@ export const parentService = {
 
     if (!rawTutor.userId) {
       try {
-        const result = await createTutorUser(rawTutor.firstName, rawTutor.lastName, rawTutor.ci, rawTutor.email)
+        const result = await createTutorUser(rawTutor.firstName, rawTutor.lastName, rawTutor.ci)
         await parentRepository.linkUser(input.newTutorId, result.user.id)
         accessEmail = result.accessEmail
         defaultPassword = result.defaultPassword
@@ -381,7 +398,7 @@ export const parentService = {
 
     if (input.isTutor && parent && !parent.userId) {
       try {
-        const result = await createTutorUser(parent.firstName, parent.lastName, parent.ci, parent.email)
+        const result = await createTutorUser(parent.firstName, parent.lastName, parent.ci)
         await parentRepository.linkUser(id, result.user.id)
         accessEmail = result.accessEmail
         defaultPassword = result.defaultPassword
@@ -516,6 +533,27 @@ export const parentService = {
 
   getTutorAttendanceCodes() {
     return parentRepository.findAllTutorsWithCodes()
+  },
+
+  // Todos los padres del colegio (cualquier relación) con estado
+  // Activo/Inactivo según tengan o no un hijo matriculado en la gestión
+  // activa — "matriculado" = tiene una StudentAcademicAssignment ese año, no
+  // el interruptor manual Student.isActive (que no distingue año).
+  async getAllWithStatus() {
+    const activeYear = await parentRepository.findActiveAcademicYear()
+    if (!activeYear) throw new HttpError(404, 'No hay gestión académica activa')
+
+    const parents = await parentRepository.findAllWithEnrollmentStatus(activeYear.id)
+
+    return parents.map((p) => ({
+      id: p.id, firstName: p.firstName, lastName: p.lastName, ci: p.ci, phone: p.phone,
+      user: p.user,
+      students: p.students.map((ps) => ({
+        relationType: ps.relationType, isTutor: ps.isTutor,
+        student: { id: ps.student.id, firstName: ps.student.firstName, lastName: ps.student.lastName },
+      })),
+      active: p.students.some((ps) => ps.student.assignments.length > 0),
+    }))
   },
 
   // Padres/tutores agrupados por curso — misma consulta de base para ambas

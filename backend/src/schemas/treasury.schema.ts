@@ -50,8 +50,18 @@ export const updatePaymentSchema = z.object({
   date:      z.string().optional(),
 })
 
-export type CreateChargeInput       = z.infer<typeof createChargeSchema>
-export type CreateBulkChargesInput  = z.infer<typeof createBulkChargesSchema>
-export type UpdateChargeInput       = z.infer<typeof updateChargeSchema>
-export type RegisterPaymentInput    = z.infer<typeof registerPaymentSchema>
-export type UpdatePaymentInput      = z.infer<typeof updatePaymentSchema>
+export const createMandatoryChargeSchema = z.object({
+  title:          z.string().min(1, 'El título es requerido'),
+  description:    z.string().optional(),
+  amount:         z.coerce.number().positive('El monto debe ser mayor a 0'),
+  type:           z.nativeEnum(ChargeType),
+  dueDate:        z.string().optional(),
+  academicYearId: z.coerce.number().int(),
+})
+
+export type CreateChargeInput           = z.infer<typeof createChargeSchema>
+export type CreateBulkChargesInput      = z.infer<typeof createBulkChargesSchema>
+export type UpdateChargeInput           = z.infer<typeof updateChargeSchema>
+export type RegisterPaymentInput        = z.infer<typeof registerPaymentSchema>
+export type UpdatePaymentInput          = z.infer<typeof updatePaymentSchema>
+export type CreateMandatoryChargeInput  = z.infer<typeof createMandatoryChargeSchema>

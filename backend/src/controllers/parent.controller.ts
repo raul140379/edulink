@@ -127,6 +127,18 @@ export const generateParentCredentials = async (req: AuthRequest, res: Response)
 }
 
 // ─────────────────────────────────────────────
+// POST /api/parents/:id/regenerate-email
+// ─────────────────────────────────────────────
+export const regenerateParentEmail = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const result = await parentService.regenerateAccountEmail(parseInt(req.params.id))
+    res.json({ message: 'Correo de acceso regenerado correctamente', ...result })
+  } catch (error) {
+    handleControllerError(res, error)
+  }
+}
+
+// ─────────────────────────────────────────────
 // PATCH /api/parents/student/:id/change-tutor
 // ─────────────────────────────────────────────
 export const changeTutor = async (req: AuthRequest, res: Response): Promise<void> => {
@@ -233,6 +245,17 @@ export const releaseTutorKardex = async (req: AuthRequest, res: Response): Promi
   try {
     const result = await parentService.releaseTutorKardex(parseInt(req.params.id))
     res.json(result)
+  } catch (error) {
+    handleControllerError(res, error)
+  }
+}
+
+// ─────────────────────────────────────────────
+// GET /api/parents/registered-status
+// ─────────────────────────────────────────────
+export const getRegisteredStatus = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    res.json(await parentService.getAllWithStatus())
   } catch (error) {
     handleControllerError(res, error)
   }
