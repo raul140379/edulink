@@ -13,12 +13,20 @@ import { useToast } from '@/components/ui/ToastProvider'
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000'
 
+interface SummaryBreakdown {
+  totalCharged:   number
+  totalCollected: number
+  totalPending:   number
+}
+
 interface Summary {
   totalCharged:   number
   totalCollected: number
   totalPending:   number
   byStatus: { PENDIENTE: number; PARCIAL: number; PAGADO: number }
   byType:   Record<string, { count: number; amount: number; collected: number }>
+  gestionActual:   SummaryBreakdown
+  deudaTrasladada: SummaryBreakdown
 }
 
 interface ParentBalance {
@@ -271,7 +279,15 @@ export default function JuntaDashboard() {
             </Card>
             <Card className="flex items-center gap-3">
               <div className="p-2.5 rounded-[10px] bg-danger-100 text-danger-600"><AlertCircle size={22} /></div>
-              <div><div className="text-[11px] text-neutral-500 uppercase tracking-wide mb-0.5">Pendiente</div><div className="text-lg font-bold text-brand-700">{fmt(summary?.totalPending || 0)}</div></div>
+              <div>
+                <div className="text-[11px] text-neutral-500 uppercase tracking-wide mb-0.5">Pendiente</div>
+                <div className="text-lg font-bold text-brand-700">{fmt(summary?.totalPending || 0)}</div>
+                {summary && (
+                  <div className="text-[10px] text-neutral-500 mt-0.5">
+                    Gestión: {fmt(summary.gestionActual.totalPending)} · Trasladada: {fmt(summary.deudaTrasladada.totalPending)}
+                  </div>
+                )}
+              </div>
             </Card>
             <Card className="flex items-center gap-3">
               <div className="p-2.5 rounded-[10px] bg-warning-100 text-[#8A6116]"><TrendingUp size={22} /></div>

@@ -8,6 +8,7 @@ import { userRepository } from '../repositories/user.repository'
 import { delegateRepository } from '../repositories/delegate.repository'
 import { mandatoryChargeService } from './mandatoryCharge.service'
 import { HttpError } from '../utils/http-error'
+import { assertDelegateOwnsParent } from '../utils/delegate-scope'
 import { generateUniqueEmail, generateParentPassword, generateResetPassword } from '../utils/account-generator'
 import { getTenantContext } from '../lib/tenant-context'
 import {
@@ -265,8 +266,10 @@ export const parentService = {
     const parent = await parentRepository.findWithStudentsCount(id)
     if (!parent) throw new HttpError(404, 'Padre/tutor no encontrado')
 
+    const relations = await parentRepository.findStudentRelations(id)
+    await assertDelegateOwnsParent(relations.map((r) => r.studentId), 'Solo podés eliminar tutores de estudiantes de tu propio curso')
+
     if (parent._count.students > 0) {
-      const relations = await parentRepository.findStudentRelations(id)
       for (const rel of relations) {
         if (!rel.isTutor) continue
         const otherTutors = await parentRepository.countOtherTutorsFor(rel.studentId, id)
@@ -526,6 +529,8 @@ export const parentService = {
     if (!parent) throw new HttpError(404, 'Padre/tutor no encontrado')
     if (!parent.students.some((s) => s.isTutor)) throw new HttpError(400, 'Solo se puede generar un código de asistencia para el tutor designado')
 
+    await assertDelegateOwnsParent(parent.students.map((s) => s.studentId), 'Solo podés generar el código de tutores de estudiantes de tu propio curso')
+
     const code = await buildAttendanceCode(parent)
     await parentRepository.updateAttendanceCode(id, code)
     return { message: 'Código regenerado', attendanceCode: code }
@@ -566,8 +571,19 @@ export const parentService = {
     const activeYear = await parentRepository.findActiveAcademicYear()
     if (!activeYear) throw new HttpError(404, 'No hay gestión académica activa')
 
-    const schoolId = getTenantContext()?.schoolId ?? 0
-    const courses = await parentRepository.findAllGroupedByCourse(schoolId, activeYear.id)
+    const ctx = getTenantContext()
+    const schoolId = ctx?.schoolId ?? 0
+
+    // DELEGATE solo ve su propio curso — sin esto traía TODOS los cursos del
+    // colegio (fuga confirmada en la pantalla "Familias").
+    let courseId: number | undefined
+    if (ctx?.role === Role.DELEGATE) {
+      const delegateParent = await delegateRepository.findParentByDelegateUserId(ctx.userId)
+      courseId = delegateParent?.delegateCourse?.id
+      if (!courseId) throw new HttpError(400, 'No tenés un curso asignado como delegado')
+    }
+
+    const courses = await parentRepository.findAllGroupedByCourse(schoolId, activeYear.id, courseId)
 
     return courses.map((course) => {
       const studentsMap = new Map<number, any>()

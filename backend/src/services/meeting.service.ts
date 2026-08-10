@@ -3,6 +3,7 @@ import { meetingRepository } from '../repositories/meeting.repository'
 import { juntaService } from './junta.service'
 import { HttpError } from '../utils/http-error'
 import { getTenantContext } from '../lib/tenant-context'
+import { assertDelegateOwnsCourse } from '../utils/delegate-scope'
 import {
   CreateMeetingInput, CreateMeetingAsTeacherInput, UpdateMeetingInput, UpdateAttendanceInput, ChargeAbsencesInput,
 } from '../schemas/meeting.schema'
@@ -18,7 +19,9 @@ function collectTutorIds(assignments: { student: { parents: { parent: { id: numb
 // Gestionar reuniones de un curso arbitrario (crear/tomar asistencia/multar/
 // eliminar) es exclusivo del Presidente cuando quien actúa es Junta Escolar —
 // igual candado que convocatoria.service.ts. No afecta a Profesor/Profesor
-// Tutor/Delegado, que gestionan su propio curso sin este candado.
+// Tutor, que gestionan su propio curso sin este candado — DELEGATE tiene su
+// propio candado de curso (assertDelegateOwnsCourse), aplicado por separado
+// en cada método de abajo que recibe un :id de reunión arbitrario.
 async function assertCanManage() {
   const ctx = getTenantContext()
   if (ctx?.role === Role.JUNTA_ESCOLAR) await juntaService.assertIsPresidente(ctx.userId)
@@ -72,11 +75,19 @@ export const meetingService = {
 
   async updateMeeting(id: number, input: UpdateMeetingInput) {
     await assertCanManage()
+    const meeting = await meetingRepository.findById(id)
+    if (!meeting) throw new HttpError(404, 'Reunión no encontrada')
+    await assertDelegateOwnsCourse(meeting.courseId, 'Solo podés editar reuniones de tu propio curso')
+
     return meetingRepository.updateMeeting(id, { title: input.title, date: new Date(input.date) })
   },
 
   async updateAttendance(meetingId: number, input: UpdateAttendanceInput) {
     await assertCanManage()
+    const meeting = await meetingRepository.findById(meetingId)
+    if (!meeting) throw new HttpError(404, 'Reunión no encontrada')
+    await assertDelegateOwnsCourse(meeting.courseId, 'Solo podés tomar asistencia de reuniones de tu propio curso')
+
     await Promise.all(
       input.attendances.map((a) => meetingRepository.updateAttendance(meetingId, a.parentId, a.present, a.note))
     )
@@ -86,6 +97,7 @@ export const meetingService = {
     await assertCanManage()
     const meeting = await meetingRepository.findMeetingWithAbsentAttendances(meetingId)
     if (!meeting) throw new HttpError(404, 'Reunión no encontrada')
+    await assertDelegateOwnsCourse(meeting.courseId, 'Solo podés multar ausentes de reuniones de tu propio curso')
 
     const absentes = meeting.attendances
     if (absentes.length === 0) return { message: 'No hay ausentes en esta reunión', charged: 0 }
@@ -105,6 +117,10 @@ export const meetingService = {
 
   async deleteMeeting(id: number) {
     await assertCanManage()
+    const meeting = await meetingRepository.findById(id)
+    if (!meeting) throw new HttpError(404, 'Reunión no encontrada')
+    await assertDelegateOwnsCourse(meeting.courseId, 'Solo podés eliminar reuniones de tu propio curso')
+
     await meetingRepository.deleteMeetingAttendances(id)
     await meetingRepository.deleteMeeting(id)
   },

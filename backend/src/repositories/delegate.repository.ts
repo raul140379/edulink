@@ -1,6 +1,28 @@
 import prisma from '../lib/prisma'
 
 export const delegateRepository = {
+  // Confirma si alguno de estos estudiantes está matriculado en `courseId`
+  // durante `academicYearId` — usado por assertDelegateOwnsParent para
+  // verificar que un tutor pertenece al curso del delegado que actúa.
+  findAssignmentInCourse(studentIds: number[], courseId: number, academicYearId: number) {
+    return prisma.studentAcademicAssignment.findFirst({
+      where: { studentId: { in: studentIds }, courseId, academicYearId },
+    })
+  },
+
+  // Todos los tutores (parentId, deduplicado) de los estudiantes matriculados
+  // en un curso — usado para acotar las lecturas agregadas de Tesorería
+  // (summary/parents/by-course) al curso propio de un DELEGATE.
+  async findTutorParentIdsForCourse(courseId: number, academicYearId: number): Promise<number[]> {
+    const assignments = await prisma.studentAcademicAssignment.findMany({
+      where: { courseId, academicYearId },
+      include: { student: { include: { parents: { where: { isTutor: true }, select: { parentId: true } } } } },
+    })
+    const ids = new Set<number>()
+    for (const a of assignments) for (const ps of a.student.parents) ids.add(ps.parentId)
+    return Array.from(ids)
+  },
+
   findAllCoursesWithDelegateInfo() {
     return prisma.course.findMany({
       include: {

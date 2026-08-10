@@ -297,9 +297,12 @@ export const parentRepository = {
 
   // Padres/tutores agrupados por curso (Familias → Listado) — mismo shape que
   // treasuryRepository.findChargesGroupedByCourse, sin la parte de cargos.
-  findAllGroupedByCourse(schoolId: number, academicYearId: number) {
+  // courseId opcional — lo usa DELEGATE para acotar el resultado a su propio
+  // curso (ver parentService.getParentsGroupedByCourse); sin él, trae todos
+  // los cursos del colegio (JUNTA_ESCOLAR y demás roles de alcance completo).
+  findAllGroupedByCourse(schoolId: number, academicYearId: number, courseId?: number) {
     return prisma.course.findMany({
-      where: { schoolId },
+      where: { schoolId, ...(courseId ? { id: courseId } : {}) },
       include: {
         assignments: {
           where: { academicYearId },

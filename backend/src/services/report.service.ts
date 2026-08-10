@@ -1,5 +1,6 @@
 import { reportRepository } from '../repositories/report.repository'
 import { HttpError } from '../utils/http-error'
+import { chargeBalance, aggregateChargeBalances } from '../utils/charge-balance'
 
 export const reportService = {
   getTeachersReport() {
@@ -45,9 +46,7 @@ export const reportService = {
 
     const charges = await reportRepository.findChargesForYear(activeYear.id)
 
-    const totalCharged = charges.reduce((s, c) => s + c.amount, 0)
-    const totalCollected = charges.reduce((s, c) => s + c.paidAmount, 0)
-    const totalPending = totalCharged - totalCollected
+    const { totalDebt: totalCharged, totalPaid: totalCollected, totalPending } = aggregateChargeBalances(charges)
 
     const byType = charges.reduce((acc, c) => {
       if (!acc[c.type]) acc[c.type] = { count: 0, charged: 0, collected: 0 }
@@ -72,9 +71,47 @@ export const reportService = {
       morosos: morosos.map((p) => ({
         id: p.id, firstName: p.firstName, lastName: p.lastName, ci: p.ci, phone: p.phone,
         student: p.students[0]?.student,
-        pending: p.charges.reduce((s, c) => s + (c.amount - c.paidAmount), 0),
+        pending: p.charges.reduce((s, c) => s + chargeBalance(c), 0),
         charges: p.charges.length,
       })),
+    }
+  },
+
+  // Auditoría histórica: qué cargos de una gestión ya cerrada no se pagaron y
+  // se trasladaron como Deuda Anterior, y en qué estado quedó ese traslado hoy
+  // (puede que el tutor ya lo haya pagado en la gestión siguiente). Sin
+  // academicYearId, usa la última gestión cerrada económicamente — no tiene
+  // sentido pedir esto de la gestión activa, todavía no se cerró.
+  async getCarriedDebtReport(academicYearId?: number) {
+    const sourceYear = academicYearId
+      ? await reportRepository.findAcademicYearById(academicYearId)
+      : await reportRepository.findLastClosedAcademicYear()
+
+    if (!sourceYear) throw new HttpError(404, 'No hay ninguna gestión cerrada económicamente')
+
+    const charges = await reportRepository.findCarriedChargesForYear(sourceYear.id)
+
+    const rows = charges.map((c) => {
+      const dest = c.carriedCharges[0]
+      return {
+        chargeId: c.id, title: c.title, type: c.type, amount: c.amount, paidAmount: c.paidAmount,
+        tutor: { id: c.parent.id, firstName: c.parent.firstName, lastName: c.parent.lastName, ci: c.parent.ci, kardex: c.parent.kardex },
+        student: c.parent.students[0]?.student ?? null,
+        destino: dest ? {
+          chargeId: dest.id, academicYearId: dest.academicYearId, year: dest.academicYear.year,
+          amount: dest.amount, paidAmount: dest.paidAmount, status: dest.status,
+        } : null,
+      }
+    })
+
+    const totalTrasladado   = rows.reduce((s, r) => s + chargeBalance(r), 0)
+    const totalYaResuelto   = rows.filter((r) => r.destino?.status === 'PAGADO').length
+    const totalAunPendiente = rows.length - totalYaResuelto
+
+    return {
+      sourceAcademicYear: { id: sourceYear.id, year: sourceYear.year },
+      totalCasos: rows.length, totalTrasladado, totalYaResuelto, totalAunPendiente,
+      rows,
     }
   },
 }

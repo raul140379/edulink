@@ -6,6 +6,8 @@ import { getTenantContext } from '../lib/tenant-context'
 import {
   CreateChargeInput, CreateBulkChargesInput, UpdateChargeInput, RegisterPaymentInput, UpdatePaymentInput,
 } from '../schemas/treasury.schema'
+import { chargeBalance, aggregateChargeBalances } from '../utils/charge-balance'
+import { assertDelegateOwnsParent, resolveDelegateCourseId } from '../utils/delegate-scope'
 
 export const treasuryService = {
   getPaymentsHistory() {
@@ -32,13 +34,12 @@ export const treasuryService = {
     const parent = await treasuryRepository.findParentForAccount(parentId)
     if (!parent) throw new HttpError(404, 'Padre/tutor no encontrado')
 
+    const studentIds = await treasuryRepository.findParentStudentIds(parentId)
+    await assertDelegateOwnsParent(studentIds, 'Solo podés ver la cuenta de tutores de estudiantes de tu propio curso')
+
     const charges = await treasuryRepository.findChargesByParent(parentId)
 
-    const totalDebt    = charges.reduce((sum, c) => sum + c.amount, 0)
-    const totalPaid    = charges.reduce((sum, c) => sum + c.paidAmount, 0)
-    const totalPending = totalDebt - totalPaid
-
-    return { parent, charges, summary: { totalDebt, totalPaid, totalPending } }
+    return { parent, charges, summary: aggregateChargeBalances(charges) }
   },
 
   async createCharge(input: CreateChargeInput) {
@@ -49,6 +50,9 @@ export const treasuryService = {
     // no tenga ese rol.
     const isTutor = await treasuryRepository.isParentTutor(input.parentId)
     if (!isTutor) throw new HttpError(400, 'Solo se puede generar un cargo al tutor designado del estudiante')
+
+    const studentIds = await treasuryRepository.findParentStudentIds(input.parentId)
+    await assertDelegateOwnsParent(studentIds, 'Solo podés generar cargos a tutores de estudiantes de tu propio curso')
 
     if (input.target === 'ESTUDIANTE' && input.studentId) {
       const student = await treasuryRepository.findStudentRaw(input.studentId)
@@ -82,6 +86,12 @@ export const treasuryService = {
         // quien no tenga ese rol.
         const isTutor = await treasuryRepository.isParentTutor(parentId)
         if (!isTutor) { errors.push(parentId); continue }
+
+        // Para DELEGATE: se salta (no rompe el lote) a cualquier tutor que no
+        // sea de su propio curso — mismo criterio que el cargo individual,
+        // pero sin abortar el resto del lote por un solo caso fuera de alcance.
+        const studentIds = await treasuryRepository.findParentStudentIds(parentId)
+        await assertDelegateOwnsParent(studentIds, 'fuera de curso')
 
         const charge = await treasuryRepository.createChargeRaw({
           title: input.title,
@@ -134,7 +144,10 @@ export const treasuryService = {
     if (charge.status === 'ANULADO') throw new HttpError(400, 'No se puede registrar pago en un cargo anulado')
     if (charge.status === 'PAGADO') throw new HttpError(400, 'Este cargo ya está completamente pagado')
 
-    const remaining = charge.amount - charge.paidAmount
+    const studentIds = await treasuryRepository.findParentStudentIds(charge.parentId)
+    await assertDelegateOwnsParent(studentIds, 'Solo podés registrar pagos de tutores de estudiantes de tu propio curso')
+
+    const remaining = chargeBalance(charge)
     if (input.amount > remaining) {
       throw new HttpError(400, `El monto excede el saldo pendiente de Bs. ${remaining.toFixed(2)}`)
     }
@@ -161,7 +174,7 @@ export const treasuryService = {
 
     return {
       payment, newStatus, paidAmount: newPaidAmount,
-      remaining: charge.amount - newPaidAmount,
+      remaining: chargeBalance({ amount: charge.amount, paidAmount: newPaidAmount }),
     }
   },
 
@@ -174,6 +187,9 @@ export const treasuryService = {
     if (!payment) throw new HttpError(404, 'Pago no encontrado')
     const charge = payment.charge
     if (charge.status === 'ANULADO') throw new HttpError(400, 'No se puede editar un pago de un cargo anulado')
+
+    const studentIds = await treasuryRepository.findParentStudentIds(charge.parentId)
+    await assertDelegateOwnsParent(studentIds, 'Solo podés editar pagos de tutores de estudiantes de tu propio curso')
 
     if (input.reference && input.reference !== payment.reference) {
       const dup = await treasuryRepository.findPaymentByReference(input.reference)
@@ -206,20 +222,46 @@ export const treasuryService = {
 
     return {
       payment: updated, newStatus, paidAmount: recomputedPaidAmount,
-      remaining: charge.amount - recomputedPaidAmount,
+      remaining: chargeBalance({ amount: charge.amount, paidAmount: recomputedPaidAmount }),
     }
   },
 
+  // Sin academicYearId explícito, se usa la gestión activa por defecto (mismo
+  // criterio que getTreasuryByCourse/getVerificationReportByCourse) — antes
+  // agregaba TODAS las gestiones juntas, inconsistente con el resto del
+  // sistema. Además del total combinado (se mantiene igual, para no romper
+  // nada que ya lo consuma), se desglosa en "gestión actual" (cargos
+  // normales) vs. "deuda trasladada" (type: DEUDA_ANTERIOR, cargos que
+  // vienen de un cierre económico de una gestión anterior) — identificador
+  // limpio, no requiere heurística.
   async getSummary(academicYearId?: string) {
+    let yearId = academicYearId ? parseInt(academicYearId) : undefined
+    if (!yearId) {
+      const activeYear = await delegateRepository.findActiveAcademicYear()
+      yearId = activeYear?.id
+    }
+    if (!yearId) throw new HttpError(404, 'No hay gestión académica activa')
+
+    // DELEGATE: acota el resumen a los tutores de su propio curso — antes
+    // agregaba los cargos de TODO el colegio (mismo permiso CHARGE_VIEW_ALL
+    // que JUNTA_ESCOLAR, sin distinción de alcance).
+    const delegateCourseId = await resolveDelegateCourseId()
+    const parentIdFilter = delegateCourseId
+      ? await delegateRepository.findTutorParentIdsForCourse(delegateCourseId, yearId)
+      : undefined
+
     const where: Prisma.ChargeWhereInput = {
-      status: { not: 'ANULADO' },
-      ...(academicYearId ? { academicYearId: parseInt(academicYearId) } : {}),
+      status: { not: 'ANULADO' }, academicYearId: yearId,
+      ...(parentIdFilter ? { parentId: { in: parentIdFilter } } : {}),
     }
     const charges = await treasuryRepository.findChargesForSummary(where)
 
-    const totalCharged   = charges.reduce((sum, c) => sum + c.amount, 0)
-    const totalCollected = charges.reduce((sum, c) => sum + c.paidAmount, 0)
-    const totalPending   = totalCharged - totalCollected
+    const { totalDebt: totalCharged, totalPaid: totalCollected, totalPending } = aggregateChargeBalances(charges)
+
+    const trasladada    = charges.filter((c) => c.type === 'DEUDA_ANTERIOR')
+    const gestionActual = charges.filter((c) => c.type !== 'DEUDA_ANTERIOR')
+    const deudaTrasladada = aggregateChargeBalances(trasladada)
+    const deudaGestionActual = aggregateChargeBalances(gestionActual)
 
     const byStatus = {
       PENDIENTE: charges.filter((c) => c.status === 'PENDIENTE').length,
@@ -235,11 +277,37 @@ export const treasuryService = {
       return acc
     }, {})
 
-    return { totalCharged, totalCollected, totalPending, byStatus, byType }
+    return {
+      totalCharged, totalCollected, totalPending, byStatus, byType,
+      gestionActual: {
+        totalCharged: deudaGestionActual.totalDebt, totalCollected: deudaGestionActual.totalPaid, totalPending: deudaGestionActual.totalPending,
+      },
+      deudaTrasladada: {
+        totalCharged: deudaTrasladada.totalDebt, totalCollected: deudaTrasladada.totalPaid, totalPending: deudaTrasladada.totalPending,
+      },
+    }
   },
 
+  // Mismo criterio de gestión activa por defecto que getSummary — no lleva
+  // desglose gestionActual/deudaTrasladada por tutor, eso solo se pidió para
+  // las vistas de resumen (getSummary), no para esta tabla.
   async getParentsWithBalance(academicYearId?: string, search?: string, status?: string) {
+    let yearId = academicYearId ? parseInt(academicYearId) : undefined
+    if (!yearId) {
+      const activeYear = await delegateRepository.findActiveAcademicYear()
+      yearId = activeYear?.id
+    }
+    if (!yearId) throw new HttpError(404, 'No hay gestión académica activa')
+
+    // DELEGATE: acota el listado a los tutores de su propio curso — mismo
+    // criterio que getSummary.
+    const delegateCourseId = await resolveDelegateCourseId()
+    const parentIdFilter = delegateCourseId
+      ? await delegateRepository.findTutorParentIdsForCourse(delegateCourseId, yearId)
+      : undefined
+
     const where: Prisma.ParentWhereInput = {
+      ...(parentIdFilter ? { id: { in: parentIdFilter } } : {}),
       ...(search ? {
         OR: [
           { firstName: { contains: search, mode: 'insensitive' as const } },
@@ -249,13 +317,11 @@ export const treasuryService = {
       } : {}),
     }
 
-    const parents = await treasuryRepository.findParentsWithCharges(where, academicYearId ? parseInt(academicYearId) : undefined)
+    const parents = await treasuryRepository.findParentsWithCharges(where, yearId)
 
     const result = parents.map((p) => {
-      const totalDebt    = p.charges.reduce((sum, c) => sum + c.amount, 0)
-      const totalPaid    = p.charges.reduce((sum, c) => sum + c.paidAmount, 0)
-      const totalPending = totalDebt - totalPaid
-      const hasDebt      = totalPending > 0
+      const { totalDebt, totalPaid, totalPending } = aggregateChargeBalances(p.charges)
+      const hasDebt = totalPending > 0
 
       return {
         id: p.id, firstName: p.firstName, lastName: p.lastName, ci: p.ci, phone: p.phone, kardex: p.kardex,
@@ -280,7 +346,10 @@ export const treasuryService = {
     }
     if (!yearId) throw new HttpError(404, 'No hay gestión académica activa')
 
-    const courses = await treasuryRepository.findChargesGroupedByCourse(schoolId, yearId)
+    // DELEGATE: acota a su propio curso — antes traía todos los cursos del
+    // colegio (mismo hallazgo que "Familias").
+    const delegateCourseId = await resolveDelegateCourseId()
+    const courses = await treasuryRepository.findChargesGroupedByCourse(schoolId, yearId, delegateCourseId)
 
     const now = new Date()
 
@@ -292,13 +361,11 @@ export const treasuryService = {
         for (const ps of assignment.student.parents) {
           const p = ps.parent
           if (tutorsMap.has(p.id)) continue
-          const totalDebt    = p.charges.reduce((sum: number, c: any) => sum + c.amount, 0)
-          const totalPaid    = p.charges.reduce((sum: number, c: any) => sum + c.paidAmount, 0)
-          const totalPending = totalDebt - totalPaid
+          const { totalDebt, totalPaid, totalPending } = aggregateChargeBalances(p.charges)
           const hasDebt       = totalPending > 0
           // Vencido = tiene al menos un cargo con saldo pendiente cuya fecha
           // de vencimiento ya pasó — distinto de "deudor a tiempo".
-          const hasOverdue = p.charges.some((c: any) => c.dueDate && new Date(c.dueDate) < now && (c.amount - c.paidAmount) > 0)
+          const hasOverdue = p.charges.some((c: any) => c.dueDate && new Date(c.dueDate) < now && chargeBalance(c) > 0)
           const estado = hasOverdue ? 'VENCIDO' : hasDebt ? 'DEUDOR' : 'AL_DIA'
           // Un cargo TUTOR (sin studentId) no pertenece a un solo curso si el
           // padre tiene hijos en cursos distintos — se muestra en cada uno
@@ -324,5 +391,106 @@ export const treasuryService = {
         tutores,
       }
     })
+  },
+
+  // Reporte de verificación por curso — una fila por estudiante (los hermanos
+  // no se dedupean, a diferencia de getTreasuryByCourse) para poder cruzar
+  // visualmente contra una planilla externa, curso por curso, tipo de aporte
+  // por tipo de aporte. Ver plan de reporte técnico de tesorería.
+  async getVerificationReportByCourse(academicYearId?: string, courseId?: string) {
+    const ctx = getTenantContext()
+    const schoolId = ctx?.schoolId ?? 0
+
+    let yearId = academicYearId ? parseInt(academicYearId) : undefined
+    if (!yearId) {
+      const activeYear = await delegateRepository.findActiveAcademicYear()
+      yearId = activeYear?.id
+    }
+    if (!yearId) throw new HttpError(404, 'No hay gestión académica activa')
+
+    // DELEGATE: fuerza su propio curso sin importar qué courseId se haya
+    // pedido en la query — este es el endpoint que originó el reporte inicial
+    // de "Verificación por Curso" mostrando todos los cursos del colegio.
+    const delegateCourseId = await resolveDelegateCourseId()
+    const effectiveCourseId = delegateCourseId ?? (courseId ? parseInt(courseId) : undefined)
+
+    const types = await treasuryRepository.findMandatoryChargesForYear(schoolId, yearId)
+    const courses = await treasuryRepository.findVerificationByCourse(schoolId, yearId, effectiveCourseId)
+
+    // Para el resumen global se cuenta por TUTOR único, no por fila de
+    // estudiante — un mismo cargo de aporte es por familia (target: TUTOR), así
+    // que dos hermanos no deben contarse dos veces en "cuántos tutores pagaron".
+    const summaryByType = new Map<number, { seenParentIds: Set<number>; pagadoCompleto: number; parcial: number; trasladado: number; noPagado: number }>()
+    for (const t of types) summaryByType.set(t.id, { seenParentIds: new Set(), pagadoCompleto: 0, parcial: 0, trasladado: 0, noPagado: 0 })
+
+    let totalStudents = 0
+
+    const courseRows = courses.map((course) => {
+      const students = course.assignments.map((assignment) => {
+        totalStudents++
+        const tutorLink = assignment.student.parents[0]
+        const tutor = tutorLink?.parent ?? null
+
+        const byType: Record<number, { chargeId?: number; estado: string; monto: number; pagado: number; pendiente: number; referencia?: string; destino?: { chargeId: number; year: number; status: string } }> = {}
+        for (const type of types) {
+          const charge = tutor?.charges.find((c) => c.mandatoryChargeId === type.id)
+          const entry = summaryByType.get(type.id)!
+          // N° de recibo — ya cargado por el import histórico, se muestra tal
+          // cual quedó registrado (varios pagos parciales -> varios recibos).
+          const referencia = charge?.payments.map((p) => p.reference).filter(Boolean).join(', ') || undefined
+
+          if (!charge) {
+            byType[type.id] = { estado: 'NO_CARGADO', monto: type.amount, pagado: 0, pendiente: type.amount }
+          } else if (charge.status === 'ANULADO') {
+            // Solo llega ANULADO acá si tiene carriedCharges (ver
+            // findVerificationByCourse) — se trasladó, no se "canceló".
+            const dest = charge.carriedCharges[0]
+            byType[type.id] = {
+              chargeId: charge.id, estado: 'TRASLADADO', monto: charge.amount, pagado: charge.paidAmount, pendiente: chargeBalance(charge), referencia,
+              destino: dest ? { chargeId: dest.id, year: dest.academicYear.year, status: dest.status } : undefined,
+            }
+          } else {
+            byType[type.id] = { chargeId: charge.id, estado: charge.status, monto: charge.amount, pagado: charge.paidAmount, pendiente: chargeBalance(charge), referencia }
+          }
+
+          // El conteo del resumen es por tutor único — si ya se contó a este
+          // tutor para este tipo (otro hermano en otro curso), no se repite.
+          if (tutor && !entry.seenParentIds.has(tutor.id)) {
+            entry.seenParentIds.add(tutor.id)
+            const estado = byType[type.id].estado
+            if (estado === 'PAGADO') entry.pagadoCompleto++
+            else if (estado === 'PARCIAL') entry.parcial++
+            else if (estado === 'TRASLADADO') entry.trasladado++
+            else entry.noPagado++
+          }
+        }
+
+        return {
+          student: { id: assignment.student.id, firstName: assignment.student.firstName, lastName: assignment.student.lastName, isActive: assignment.student.isActive },
+          tutor: tutor ? { id: tutor.id, firstName: tutor.firstName, lastName: tutor.lastName, ci: tutor.ci, kardex: tutor.kardex } : null,
+          byType,
+        }
+      }).sort((a, b) => `${a.student.lastName} ${a.student.firstName}`.localeCompare(`${b.student.lastName} ${b.student.firstName}`, 'es'))
+
+      return {
+        course: { id: course.id, level: course.level, grade: course.grade, parallel: course.parallel, shift: course.shift },
+        students,
+      }
+    })
+
+    const summary = types.map((t) => {
+      const entry = summaryByType.get(t.id)!
+      return {
+        mandatoryChargeId: t.id, title: t.title, type: t.type, amount: t.amount,
+        pagadoCompleto: entry.pagadoCompleto, parcial: entry.parcial, trasladado: entry.trasladado, noPagado: entry.noPagado,
+      }
+    })
+
+    // El frontend arma las columnas dinámicas por mandatoryChargeId — `types`
+    // trae `id` (el nombre real de la PK de MandatoryCharge), así que se
+    // renombra acá para la respuesta, igual que ya se hace en `summary`.
+    const typesForResponse = types.map((t) => ({ mandatoryChargeId: t.id, title: t.title, type: t.type, amount: t.amount }))
+
+    return { academicYearId: yearId, totalStudents, types: typesForResponse, summary, courses: courseRows }
   },
 }

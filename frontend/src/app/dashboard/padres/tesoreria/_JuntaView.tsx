@@ -34,6 +34,12 @@ interface ParentBalance {
   }
 }
 
+interface SummaryBreakdown {
+  totalCharged:   number
+  totalCollected: number
+  totalPending:   number
+}
+
 interface Summary {
   totalCharged:   number
   totalCollected: number
@@ -43,6 +49,8 @@ interface Summary {
     PARCIAL:   number
     PAGADO:    number
   }
+  gestionActual:   SummaryBreakdown
+  deudaTrasladada: SummaryBreakdown
 }
 
 const GRADE_LABELS: Record<string, string> = {
@@ -209,6 +217,44 @@ export default function TesoreriaPage() {
           <Badge tone="success"><CheckCircle size={13}/> {summary.byStatus.PAGADO} pagados</Badge>
           <Badge tone="neutral"><Users size={13}/> {sinCargos} sin cargos</Badge>
         </div>
+      )}
+
+      {summary && (
+        <Card className="mb-4">
+          <div className="text-[13px] font-bold text-brand-700 mb-3">Desglose por origen de la deuda — gestión activa</div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-[12.5px]">
+              <thead>
+                <tr className="text-left text-neutral-500">
+                  <th className="pb-2 font-medium"></th>
+                  <th className="pb-2 font-medium">Gestión actual</th>
+                  <th className="pb-2 font-medium">Deuda trasladada</th>
+                  <th className="pb-2 font-medium">Total</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr className="border-t border-neutral-100">
+                  <td className="py-2 font-medium text-brand-700">Cargado</td>
+                  <td className="py-2">{fmt(summary.gestionActual.totalCharged)}</td>
+                  <td className="py-2">{fmt(summary.deudaTrasladada.totalCharged)}</td>
+                  <td className="py-2 font-semibold">{fmt(summary.totalCharged)}</td>
+                </tr>
+                <tr className="border-t border-neutral-100">
+                  <td className="py-2 font-medium text-brand-700">Recaudado</td>
+                  <td className="py-2 text-success-700">{fmt(summary.gestionActual.totalCollected)}</td>
+                  <td className="py-2 text-success-700">{fmt(summary.deudaTrasladada.totalCollected)}</td>
+                  <td className="py-2 font-semibold text-success-700">{fmt(summary.totalCollected)}</td>
+                </tr>
+                <tr className="border-t border-neutral-100">
+                  <td className="py-2 font-medium text-brand-700">Pendiente</td>
+                  <td className="py-2 text-danger-600">{fmt(summary.gestionActual.totalPending)}</td>
+                  <td className="py-2 text-danger-600">{fmt(summary.deudaTrasladada.totalPending)}</td>
+                  <td className="py-2 font-semibold text-danger-600">{fmt(summary.totalPending)}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </Card>
       )}
 
       <Toolbar

@@ -54,6 +54,12 @@ export const meetingRepository = {
     })
   },
 
+  // Usado por updateMeeting/updateAttendance/deleteMeeting para resolver el
+  // courseId de la reunión antes de aplicar el candado de DELEGATE.
+  findById(id: number) {
+    return prisma.meeting.findUnique({ where: { id } })
+  },
+
   updateAttendance(meetingId: number, parentId: number, present: boolean, note?: string) {
     return prisma.attendance.updateMany({ where: { meetingId, parentId }, data: { present, note: note || null } })
   },
