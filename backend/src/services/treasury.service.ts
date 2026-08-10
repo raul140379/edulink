@@ -9,6 +9,20 @@ import {
 import { chargeBalance, aggregateChargeBalances } from '../utils/charge-balance'
 import { assertDelegateOwnsParent, resolveDelegateCourseId } from '../utils/delegate-scope'
 
+// JUNTA_NUCLEO/JUNTA_DISTRITO tienen permisos de Tesorería otorgados mas su
+// contexto no trae schoolId propio (operan a nivel núcleo/distrito) — sin
+// este chequeo explícito por rol, la lectura se filtraba igual con el resto
+// de su núcleo/distrito vía la rama genérica del motor de tenant-scoping
+// (pensada para otros modelos), y la escritura producía un schoolId inválido.
+// Chequeo por ROL (no por `schoolId == null`) a propósito: SUPER_ADMIN
+// también tiene schoolId null en la base, y no debe bloquearse acá.
+function assertHasOwnSchool() {
+  const ctx = getTenantContext()
+  if (ctx?.role === Role.JUNTA_NUCLEO || ctx?.role === Role.JUNTA_DISTRITO) {
+    throw new HttpError(400, 'Tu rol no tiene un colegio propio asociado — la Tesorería a nivel Núcleo/Distrito todavía no está disponible')
+  }
+}
+
 export const treasuryService = {
   getPaymentsHistory() {
     return treasuryRepository.findAllPayments()
@@ -31,6 +45,8 @@ export const treasuryService = {
   },
 
   async getParentAccount(parentId: number) {
+    assertHasOwnSchool()
+
     const parent = await treasuryRepository.findParentForAccount(parentId)
     if (!parent) throw new HttpError(404, 'Padre/tutor no encontrado')
 
@@ -56,16 +72,7 @@ export const treasuryService = {
   },
 
   async createCharge(input: CreateChargeInput) {
-    // JUNTA_NUCLEO/JUNTA_DISTRITO tienen CHARGE_CREATE otorgado, pero su
-    // contexto no trae schoolId propio (operan a nivel núcleo/distrito) — sin
-    // este chequeo, el fallback `?? 0` producía un 403 confuso del motor de
-    // tenant-scoping ("el colegio indicado no pertenece a tu distrito").
-    // La Tesorería a nivel Núcleo/Distrito todavía no está definida como
-    // dominio de negocio (ver roadmap), así que se rechaza explícitamente acá.
-    const ctx = getTenantContext()
-    if (ctx?.schoolId == null) {
-      throw new HttpError(400, 'Tu rol no tiene un colegio propio asociado — la Tesorería a nivel Núcleo/Distrito todavía no está disponible')
-    }
+    assertHasOwnSchool()
 
     const parent = await treasuryRepository.findParentRaw(input.parentId)
     if (!parent) throw new HttpError(404, 'Padre/tutor no encontrado')
@@ -95,7 +102,7 @@ export const treasuryService = {
       parentId: input.parentId,
       studentId: (input.target === 'ESTUDIANTE' && input.studentId) ? input.studentId : undefined,
       academicYearId: input.academicYearId,
-      schoolId: ctx.schoolId,
+      schoolId: getTenantContext()?.schoolId ?? 0,
     })
   },
 
@@ -103,12 +110,8 @@ export const treasuryService = {
     const created: any[] = []
     const errors: number[] = []
 
-    // Mismo chequeo que createCharge — ver comentario ahí.
-    const ctx = getTenantContext()
-    if (ctx?.schoolId == null) {
-      throw new HttpError(400, 'Tu rol no tiene un colegio propio asociado — la Tesorería a nivel Núcleo/Distrito todavía no está disponible')
-    }
-    const schoolId = ctx.schoolId
+    assertHasOwnSchool()
+    const schoolId = getTenantContext()?.schoolId ?? 0
 
     for (const parentId of input.parentIds) {
       try {
@@ -265,6 +268,8 @@ export const treasuryService = {
   // vienen de un cierre económico de una gestión anterior) — identificador
   // limpio, no requiere heurística.
   async getSummary(academicYearId?: string) {
+    assertHasOwnSchool()
+
     let yearId = academicYearId ? parseInt(academicYearId) : undefined
     if (!yearId) {
       const activeYear = await delegateRepository.findActiveAcademicYear()
@@ -322,6 +327,8 @@ export const treasuryService = {
   // desglose gestionActual/deudaTrasladada por tutor, eso solo se pidió para
   // las vistas de resumen (getSummary), no para esta tabla.
   async getParentsWithBalance(academicYearId?: string, search?: string, status?: string) {
+    assertHasOwnSchool()
+
     let yearId = academicYearId ? parseInt(academicYearId) : undefined
     if (!yearId) {
       const activeYear = await delegateRepository.findActiveAcademicYear()
@@ -428,6 +435,8 @@ export const treasuryService = {
   // visualmente contra una planilla externa, curso por curso, tipo de aporte
   // por tipo de aporte. Ver plan de reporte técnico de tesorería.
   async getVerificationReportByCourse(academicYearId?: string, courseId?: string) {
+    assertHasOwnSchool()
+
     const ctx = getTenantContext()
     const schoolId = ctx?.schoolId ?? 0
 
