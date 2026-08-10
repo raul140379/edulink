@@ -22,9 +22,20 @@ function collectTutorIds(assignments: { student: { parents: { parent: { id: numb
 // Tutor, que gestionan su propio curso sin este candado — DELEGATE tiene su
 // propio candado de curso (assertDelegateOwnsCourse), aplicado por separado
 // en cada método de abajo que recibe un :id de reunión arbitrario.
+//
+// JUNTA_NUCLEO/JUNTA_DISTRITO: Meeting está atado a un Course específico de
+// UNA sola UE (courseId es obligatorio en el modelo) — no existe hoy una
+// convocatoria de audiencia amplia a nivel núcleo/distrito (ni Meeting ni
+// Convocatoria lo soportan, ver auditoría del panel Junta Núcleo/Distrito).
+// Por eso gestionar cualquier Meeting existente es siempre "meterse en el
+// curso de una UE ajena", nunca una acción legítima de su propio nivel — se
+// rechaza explícito, mismo criterio ya aplicado en Tesorería.
 async function assertCanManage() {
   const ctx = getTenantContext()
   if (ctx?.role === Role.JUNTA_ESCOLAR) await juntaService.assertIsPresidente(ctx.userId)
+  if (ctx?.role === Role.JUNTA_NUCLEO || ctx?.role === Role.JUNTA_DISTRITO) {
+    throw new HttpError(403, 'Tu rol no gestiona reuniones de curso — eso es exclusivo de la Junta Escolar/Delegado de esa unidad educativa')
+  }
 }
 
 export const meetingService = {

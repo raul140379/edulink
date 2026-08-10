@@ -75,6 +75,23 @@ export const userService = {
       // Junta/Gobierno/Director Distrital: pertenece al mismo distrito de quien lo crea.
       resolvedDistrictId = ctx?.districtId ?? districtId
       resolvedNucleoId = undefined
+    } else if (schoolId != null && ctx) {
+      // Rol de alcance colegio (JUNTA_ESCOLAR, DIRECTOR, STUDENT_GOV, etc.):
+      // si quien crea es de alcance núcleo/distrito, el colegio destino tiene
+      // que pertenecer a su propio núcleo/distrito — mismo candado que ya
+      // existe en junta.service.ts:updateJuntaMember, pero acá faltaba en el
+      // alta (auditoría del panel Junta Núcleo/Distrito, hallazgo #3).
+      if (NUCLEO_WIDE_ROLES.has(ctx.role) && ctx.nucleoId != null) {
+        const school = await prisma.school.findUnique({ where: { id: schoolId }, select: { nucleoId: true } })
+        if (!school || school.nucleoId !== ctx.nucleoId) {
+          throw new HttpError(403, 'El colegio indicado no pertenece a tu núcleo')
+        }
+      } else if (DISTRICT_WIDE_ROLES.has(ctx.role) && ctx.districtId != null) {
+        const school = await prisma.school.findUnique({ where: { id: schoolId }, select: { districtId: true } })
+        if (!school || school.districtId !== ctx.districtId) {
+          throw new HttpError(403, 'El colegio indicado no pertenece a tu distrito')
+        }
+      }
     }
 
     const hashedPassword = await bcrypt.hash(password, 10)
