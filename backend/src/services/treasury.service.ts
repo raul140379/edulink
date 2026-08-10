@@ -43,6 +43,17 @@ export const treasuryService = {
   },
 
   async createCharge(input: CreateChargeInput) {
+    // JUNTA_NUCLEO/JUNTA_DISTRITO tienen CHARGE_CREATE otorgado, pero su
+    // contexto no trae schoolId propio (operan a nivel núcleo/distrito) — sin
+    // este chequeo, el fallback `?? 0` producía un 403 confuso del motor de
+    // tenant-scoping ("el colegio indicado no pertenece a tu distrito").
+    // La Tesorería a nivel Núcleo/Distrito todavía no está definida como
+    // dominio de negocio (ver roadmap), así que se rechaza explícitamente acá.
+    const ctx = getTenantContext()
+    if (ctx?.schoolId == null) {
+      throw new HttpError(400, 'Tu rol no tiene un colegio propio asociado — la Tesorería a nivel Núcleo/Distrito todavía no está disponible')
+    }
+
     const parent = await treasuryRepository.findParentRaw(input.parentId)
     if (!parent) throw new HttpError(404, 'Padre/tutor no encontrado')
 
@@ -71,7 +82,7 @@ export const treasuryService = {
       parentId: input.parentId,
       studentId: (input.target === 'ESTUDIANTE' && input.studentId) ? input.studentId : undefined,
       academicYearId: input.academicYearId,
-      schoolId: getTenantContext()?.schoolId ?? 0,
+      schoolId: ctx.schoolId,
     })
   },
 
@@ -79,7 +90,13 @@ export const treasuryService = {
     const created: any[] = []
     const errors: number[] = []
 
-    const schoolId = getTenantContext()?.schoolId ?? 0
+    // Mismo chequeo que createCharge — ver comentario ahí.
+    const ctx = getTenantContext()
+    if (ctx?.schoolId == null) {
+      throw new HttpError(400, 'Tu rol no tiene un colegio propio asociado — la Tesorería a nivel Núcleo/Distrito todavía no está disponible')
+    }
+    const schoolId = ctx.schoolId
+
     for (const parentId of input.parentIds) {
       try {
         // Todo cargo va al tutor designado — se salta (no rompe el lote) a
