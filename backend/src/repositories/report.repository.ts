@@ -65,6 +65,48 @@ export const reportRepository = {
     })
   },
 
+  findLastClosedAcademicYear() {
+    return prisma.academicYear.findFirst({ where: { economicClosedAt: { not: null } }, orderBy: { economicClosedAt: 'desc' } })
+  },
+
+  // Cargos de tutor de una gestión ya cerrada que se trasladaron como Deuda
+  // Anterior — ANULADO por sí solo no alcanza para distinguir "se trasladó" de
+  // "se canceló a mano" (mismo status para ambos casos); carriedCharges no
+  // vacío es la única señal confiable, vía el self-relation ChargeCarriedForward.
+  // Trae TODOS los hijos tutorados (no solo el primero) con su curso en la
+  // gestión de origen — necesario para agrupar por curso (ver
+  // reportService.getCarriedDebtReport): un tutor con hijos en cursos
+  // distintos debe poder aparecer bajo cada curso correspondiente.
+  findCarriedChargesForYear(academicYearId: number) {
+    return prisma.charge.findMany({
+      where: { academicYearId, status: 'ANULADO', carriedCharges: { some: {} } },
+      include: {
+        parent: {
+          select: {
+            id: true, firstName: true, lastName: true, ci: true, kardex: true,
+            students: {
+              where: { isTutor: true },
+              include: {
+                student: {
+                  select: {
+                    firstName: true, lastName: true,
+                    assignments: {
+                      where: { academicYearId },
+                      select: { course: { select: { id: true, level: true, grade: true, parallel: true, shift: true } } },
+                      take: 1,
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+        carriedCharges: { select: { id: true, amount: true, paidAmount: true, status: true, academicYearId: true, academicYear: { select: { year: true } } } },
+      },
+      orderBy: { parent: { lastName: 'asc' } },
+    })
+  },
+
   findMorosos(academicYearId: number) {
     return prisma.parent.findMany({
       where: { charges: { some: { academicYearId, status: { in: ['PENDIENTE', 'PARCIAL'] } } } },
