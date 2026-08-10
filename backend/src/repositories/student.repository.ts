@@ -6,7 +6,7 @@ const listInclude = {
   user: { select: { id: true, email: true, role: true, isActive: true } },
   parents: {
     include: {
-      parent: { select: { id: true, firstName: true, lastName: true, phone: true } },
+      parent: { select: { id: true, firstName: true, lastName: true, phone: true, kardex: true } },
     },
   },
   assignments: {
@@ -52,6 +52,21 @@ const basicSelect = {
 } satisfies Prisma.StudentSelect
 
 export const studentRepository = {
+  // Cursos donde este usuario da clase (TeacherSubjectCourse) o es tutor de
+  // curso (CourseTutor) — usado para acotar listStudents a TEACHER/
+  // TEACHER_TUTOR, que solo deben ver estudiantes de sus propios cursos.
+  async findTeacherCourseIds(userId: number | undefined): Promise<number[]> {
+    const teacher = await prisma.teacher.findFirst({
+      where: { OR: [{ userId }, { tutorUserId: userId }] },
+      include: { tutorCourse: { select: { courseId: true } }, assignments: { select: { courseId: true } } },
+    })
+    if (!teacher) return []
+
+    const ids = new Set<number>(teacher.assignments.map((a) => a.courseId))
+    if (teacher.tutorCourse) ids.add(teacher.tutorCourse.courseId)
+    return Array.from(ids)
+  },
+
   findMany(where: Prisma.StudentWhereInput) {
     return prisma.student.findMany({
       where,

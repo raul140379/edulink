@@ -34,7 +34,7 @@ function calcTotal(saber: number | null, hacer: number | null, ser: number | nul
 }
 
 export const studentService = {
-  listStudents(search?: string, isActive?: string) {
+  async listStudents(search?: string, isActive?: string) {
     const searchWords = search ? search.split(' ').filter((w) => w.trim().length > 0) : []
 
     const where: Prisma.StudentWhereInput = {
@@ -52,6 +52,18 @@ export const studentService = {
     // Junta de Núcleo/Distrito solo tiene STUDENT_VIEW_BASIC (no STUDENT_VIEW_ALL) —
     // ve nombre/colegio/padre/dirección, nunca notas/asistencia/kardex.
     if (studentService.isBasicViewOnly()) return studentRepository.findManyBasic(where)
+
+    // TEACHER/TEACHER_TUTOR: STUDENT_VIEW_ALL acá significa "todos los
+    // estudiantes de SUS cursos", no de todo el colegio — antes no había
+    // ningún filtro y devolvía el colegio entero (mismo patrón de fuga que
+    // DELEGATE, ver auditoría de seguridad).
+    const ctx = getTenantContext()
+    if (ctx?.role === Role.TEACHER || ctx?.role === Role.TEACHER_TUTOR) {
+      const courseIds = await studentRepository.findTeacherCourseIds(ctx.userId)
+      if (courseIds.length === 0) return []
+      where.assignments = { some: { courseId: { in: courseIds } } }
+    }
+
     return studentRepository.findMany(where)
   },
 
@@ -63,6 +75,16 @@ export const studentService = {
     }
     const student = await studentRepository.findById(id)
     if (!student) throw new HttpError(404, 'Estudiante no encontrado')
+
+    // Mismo candado que listStudents — un TEACHER/TEACHER_TUTOR solo puede
+    // ver el detalle de estudiantes de sus propios cursos.
+    const ctx = getTenantContext()
+    if (ctx?.role === Role.TEACHER || ctx?.role === Role.TEACHER_TUTOR) {
+      const courseIds = await studentRepository.findTeacherCourseIds(ctx.userId)
+      const inMyCourse = student.assignments.some((a) => courseIds.includes(a.courseId))
+      if (!inMyCourse) throw new HttpError(403, 'Solo podés ver estudiantes de tus propios cursos')
+    }
+
     return student
   },
 

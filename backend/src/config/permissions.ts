@@ -28,11 +28,12 @@ export enum Permission {
   USER_EDIT_OWN      = 'user:edit:own',
 
   // Estudiantes
-  STUDENT_CREATE     = 'student:create',
-  STUDENT_VIEW_ALL   = 'student:view:all',
-  STUDENT_VIEW_BASIC = 'student:view:basic',   // Vista reducida (nombre, colegio, padre, dirección) — Junta de Núcleo/Distrito
-  STUDENT_VIEW_OWN   = 'student:view:own',
-  STUDENT_VERIFY     = 'student:verify',       // Solo portero
+  STUDENT_CREATE        = 'student:create',
+  STUDENT_VIEW_ALL      = 'student:view:all',
+  STUDENT_VIEW_BASIC    = 'student:view:basic',   // Vista reducida (nombre, colegio, padre, dirección) — Junta de Núcleo/Distrito
+  STUDENT_VIEW_OWN      = 'student:view:own',
+  STUDENT_VERIFY        = 'student:verify',       // Solo portero
+  STUDENT_TOGGLE_STATUS = 'student:toggle-status', // Activar/desactivar (ej. "retirado") sin crear/editar/borrar — Junta Escolar, desde Verificación por Curso
 
   // Maestros
   TEACHER_CREATE     = 'teacher:create',
@@ -81,6 +82,7 @@ export enum Permission {
   CHARGE_CREATE      = 'charge:create',
   CHARGE_VIEW_ALL    = 'charge:view:all',
   CHARGE_VIEW_OWN    = 'charge:view:own',      // Padre ve sus propios cobros
+  TREASURY_CLOSE_PERIOD = 'treasury:close-period', // Cerrar/reabrir económicamente una gestión — solo Junta Escolar
 
   // Notificaciones
   NOTIFICATION_SEND  = 'notification:send',
@@ -142,7 +144,9 @@ export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
     Permission.GRADE_VIEW_ALL,
     Permission.ATTENDANCE_VIEW,
     Permission.SCHEDULE_VIEW_ALL,
-    Permission.CHARGE_VIEW_ALL,
+    // Sin CHARGE_VIEW_ALL a propósito: la Tesorería de cada Junta Escolar es
+    // exclusiva de esa UE — el Director Distrital nunca debe verla, ni
+    // siquiera de solo lectura (ver invariante de Tesorería en CLAUDE.md).
     Permission.NOTIFICATION_SEND,
     Permission.NOTIFICATION_VIEW,
     Permission.REPORT_VIEW,
@@ -305,6 +309,10 @@ export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
   // Ver maestros, estudiantes y padres (representa al colectivo de padres de familia)
   Permission.TEACHER_VIEW_ALL,
   Permission.STUDENT_VIEW_ALL,
+  // Marcar retirado/reactivar un estudiante desde Verificación por Curso —
+  // angosto a propósito, no incluye crear/editar/borrar (eso sigue siendo de
+  // Dirección/Regente/Secretaría vía STUDENT_CREATE).
+  Permission.STUDENT_TOGGLE_STATUS,
   Permission.PARENT_CREATE,
   Permission.PARENT_ASSIGN_TUTOR,
   Permission.PARENT_VIEW_ALL,
@@ -315,6 +323,10 @@ export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
   Permission.ENROLLMENT_VIEW,
   Permission.CHARGE_CREATE,
   Permission.CHARGE_VIEW_ALL,
+  // Cerrar/reabrir económicamente una gestión (traslado de deuda pendiente a la
+  // gestión activa) — exclusivo de Junta Escolar, independiente del cierre
+  // académico (ACADEMIC_TRIMESTER_CLOSE, que es solo de Director).
+  Permission.TREASURY_CLOSE_PERIOD,
   Permission.NOTIFICATION_SEND,
   Permission.NOTIFICATION_VIEW,
   Permission.COMUNICADO_CREATE,
@@ -386,8 +398,10 @@ export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
     Permission.USER_CREATE,      // Designa el Gobierno Estudiantil de cada colegio de su núcleo
     Permission.SCHOOL_VIEW_ALL,
     Permission.STUDENT_VIEW_ALL,
-    Permission.CHARGE_CREATE,
-    Permission.CHARGE_VIEW_ALL,
+    // Sin CHARGE_CREATE/CHARGE_VIEW_ALL: la Tesorería es exclusividad total de
+    // la Junta de Padres en sus 3 niveles — Gobierno Estudiantil nunca tiene
+    // acceso a ninguna de las tres áreas de Tesorería, ni para crear ni para
+    // ver (ver invariante de Tesorería en CLAUDE.md).
     Permission.MEETING_CREATE,
     Permission.MEETING_VIEW,
     Permission.NOTIFICATION_SEND,
@@ -402,8 +416,7 @@ export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
     Permission.USER_CREATE,      // Designa Gobierno de Núcleo y Gobierno Estudiantil de colegio
     Permission.SCHOOL_VIEW_ALL,
     Permission.STUDENT_VIEW_ALL,
-    Permission.CHARGE_CREATE,
-    Permission.CHARGE_VIEW_ALL,
+    // Sin CHARGE_CREATE/CHARGE_VIEW_ALL — ver GOBIERNO_NUCLEO arriba.
     Permission.MEETING_CREATE,
     Permission.MEETING_VIEW,
     Permission.NOTIFICATION_SEND,
@@ -443,8 +456,9 @@ export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
     Permission.NOTIFICATION_SEND,
     Permission.COMUNICADO_CREATE,
     Permission.COMUNICADO_VIEW,
-    Permission.CHARGE_CREATE,
-    Permission.CHARGE_VIEW_ALL,
+    // Sin CHARGE_CREATE/CHARGE_VIEW_ALL — ver GOBIERNO_NUCLEO arriba (mismo
+    // invariante: Tesorería es exclusiva de Junta de Padres, ningún nivel de
+    // Gobierno Estudiantil tiene acceso).
     Permission.MEETING_CREATE,
     Permission.MEETING_VIEW,
   ],

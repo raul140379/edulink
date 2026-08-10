@@ -1,4 +1,4 @@
-import { Prisma } from '@prisma/client'
+import { Prisma, Role } from '@prisma/client'
 import { treasuryRepository } from '../repositories/treasury.repository'
 import { delegateRepository } from '../repositories/delegate.repository'
 import { HttpError } from '../utils/http-error'
@@ -38,6 +38,19 @@ export const treasuryService = {
     await assertDelegateOwnsParent(studentIds, 'Solo podés ver la cuenta de tutores de estudiantes de tu propio curso')
 
     const charges = await treasuryRepository.findChargesByParent(parentId)
+
+    // DIRECTOR/REGENTE/SECRETARY: solo un estado simple (al día / con deuda),
+    // nunca el detalle de cargos/pagos/recibos — la administración de esos
+    // datos es exclusiva de Junta Escolar; para más detalle deben coordinar
+    // con ella directamente.
+    const ctx = getTenantContext()
+    if (ctx?.role === Role.DIRECTOR || ctx?.role === Role.REGENTE || ctx?.role === Role.SECRETARY) {
+      const { totalPending } = aggregateChargeBalances(charges)
+      return {
+        parent: { id: parent.id, firstName: parent.firstName, lastName: parent.lastName },
+        estado: totalPending > 0 ? 'CON_DEUDA' as const : 'AL_DIA' as const,
+      }
+    }
 
     return { parent, charges, summary: aggregateChargeBalances(charges) }
   },
