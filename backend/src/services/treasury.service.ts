@@ -25,6 +25,7 @@ function assertHasOwnSchool() {
 
 export const treasuryService = {
   getPaymentsHistory() {
+    assertHasOwnSchool()
     return treasuryRepository.findAllPayments()
   },
 
