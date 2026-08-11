@@ -290,7 +290,7 @@ export const treasuryRepository = {
                             ],
                           },
                           select: {
-                            id: true, mandatoryChargeId: true, amount: true, paidAmount: true, status: true,
+                            id: true, mandatoryChargeId: true, amount: true, paidAmount: true, status: true, pendingVerificationNote: true,
                             carriedCharges: { select: { id: true, status: true, academicYear: { select: { year: true } } } },
                             payments: { select: { reference: true }, orderBy: { date: 'asc' } },
                           },

@@ -471,13 +471,16 @@ export const treasuryService = {
         const tutorLink = assignment.student.parents[0]
         const tutor = tutorLink?.parent ?? null
 
-        const byType: Record<number, { chargeId?: number; estado: string; monto: number; pagado: number; pendiente: number; referencia?: string; destino?: { chargeId: number; year: number; status: string } }> = {}
+        const byType: Record<number, { chargeId?: number; estado: string; monto: number; pagado: number; pendiente: number; referencia?: string; pendingVerificationNote?: string; destino?: { chargeId: number; year: number; status: string } }> = {}
         for (const type of types) {
           const charge = tutor?.charges.find((c) => c.mandatoryChargeId === type.id)
           const entry = summaryByType.get(type.id)!
           // N° de recibo — ya cargado por el import histórico, se muestra tal
           // cual quedó registrado (varios pagos parciales -> varios recibos).
           const referencia = charge?.payments.map((p) => p.reference).filter(Boolean).join(', ') || undefined
+          // Import CSV con "recibo" tipo TRANF/banca móvil: cargo PENDIENTE
+          // pero con nota — se distingue de un "no pagó" normal en pantalla.
+          const pendingVerificationNote = charge?.pendingVerificationNote || undefined
 
           if (!charge) {
             byType[type.id] = { estado: 'NO_CARGADO', monto: type.amount, pagado: 0, pendiente: type.amount }
@@ -490,7 +493,7 @@ export const treasuryService = {
               destino: dest ? { chargeId: dest.id, year: dest.academicYear.year, status: dest.status } : undefined,
             }
           } else {
-            byType[type.id] = { chargeId: charge.id, estado: charge.status, monto: charge.amount, pagado: charge.paidAmount, pendiente: chargeBalance(charge), referencia }
+            byType[type.id] = { chargeId: charge.id, estado: charge.status, monto: charge.amount, pagado: charge.paidAmount, pendiente: chargeBalance(charge), referencia, pendingVerificationNote }
           }
 
           // El conteo del resumen es por tutor único — si ya se contó a este

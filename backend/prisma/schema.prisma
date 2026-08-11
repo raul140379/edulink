@@ -100,6 +100,7 @@ model School {
   studentAchievements     StudentAchievement[]
   studentTrimesterBonuses StudentTrimesterBonus[]
   convocatorias           Convocatoria[]
+  parentKardexHistory     ParentKardexHistory[]
 }
 
 model SchoolSchedule {
@@ -153,6 +154,7 @@ model User {
   poaActasCreated         PoaActa[]
   convocatoriasCreated    Convocatoria[]           @relation("ConvocatoriaCreator")
   convocatoriaAttendances ConvocatoriaAttendance[]
+  academicYearsClosed     AcademicYear[]           @relation("AcademicYearEconomicClosedBy")
 }
 
 model JuntaMember {
@@ -225,6 +227,12 @@ model AcademicYear {
   isActive           Boolean                     @default(false)
   createdAt          DateTime                    @default(now())
   schoolId           Int
+  // Cierre económico (Junta Escolar) — independiente de isActive, que
+  // controla el ciclo académico y lo maneja Dirección. Null = todavía
+  // abierta económicamente.
+  economicClosedAt   DateTime?
+  economicClosedById Int?
+  economicClosedBy   User?                       @relation("AcademicYearEconomicClosedBy", fields: [economicClosedById], references: [id])
   school             School                      @relation(fields: [schoolId], references: [id])
   charges            Charge[]
   mandatoryCharges   MandatoryCharge[]
@@ -234,8 +242,27 @@ model AcademicYear {
   assignments        StudentAcademicAssignment[]
   studentAttendances StudentAttendance[]
   trimesters         Trimester[]
+  parentKardexHistory ParentKardexHistory[]
 
   @@unique([year, schoolId])
+}
+
+// Kardex histórico de un tutor por gestión — aditivo, no reemplaza
+// Parent.kardex (el vigente). Sirve para dejar constancia consultable de
+// qué kardex tenía un tutor en una gestión cerrada (ej. import histórico).
+model ParentKardexHistory {
+  id             Int          @id @default(autoincrement())
+  parentId       Int
+  academicYearId Int
+  kardex         String
+  schoolId       Int
+  createdAt      DateTime     @default(now())
+  parent         Parent       @relation(fields: [parentId], references: [id])
+  academicYear   AcademicYear @relation(fields: [academicYearId], references: [id])
+  school         School       @relation(fields: [schoolId], references: [id])
+
+  @@unique([parentId, academicYearId])
+  @@unique([kardex, academicYearId, schoolId])
 }
 
 model Trimester {
@@ -287,6 +314,7 @@ model Parent {
   students         ParentStudent[]
   payments         Payment[]
   juntaMemberships JuntaMember[]
+  kardexHistory    ParentKardexHistory[]
 
   @@unique([ci, schoolId])
   @@unique([email, schoolId])
@@ -712,17 +740,29 @@ model Charge {
   target            ChargeTarget     @default(TUTOR)
   tolerance         Boolean          @default(false)
   toleranceNote     String?
+  // Import CSV por curso: "recibo" con texto tipo TRANF/banca móvil (transferencia
+  // sin número confirmado) — el cargo queda PENDIENTE (no cuenta como recaudado),
+  // pero esta nota lo distingue de un "no pagó" normal en Verificación por Curso.
+  // No-null ES el flag (sin booleano aparte); se limpia sola al corregir el cargo
+  // con un pago real (ver correctHistoricalCharge).
+  pendingVerificationNote String?
   updatedAt         DateTime         @updatedAt
   schoolId          Int
   // Si este cargo fue generado desde una plantilla de "cargo obligatorio",
   // referencia a esa plantilla — permite saber quién ya lo tiene y no
   // duplicarlo (ver MandatoryCharge).
   mandatoryChargeId Int?
+  // Si este cargo nació de un traslado de deuda (cierre económico de una
+  // gestión anterior), referencia al cargo origen — trazabilidad real y
+  // consultable, no solo una nota de texto.
+  sourceChargeId    Int?
   school            School           @relation(fields: [schoolId], references: [id])
   academicYear      AcademicYear     @relation(fields: [academicYearId], references: [id])
   parent            Parent           @relation(fields: [parentId], references: [id])
   student           Student?         @relation(fields: [studentId], references: [id])
   mandatoryCharge   MandatoryCharge? @relation(fields: [mandatoryChargeId], references: [id])
+  sourceCharge      Charge?          @relation("ChargeCarriedForward", fields: [sourceChargeId], references: [id])
+  carriedCharges    Charge[]         @relation("ChargeCarriedForward")
   payments          Payment[]
 }
 
@@ -1123,6 +1163,7 @@ enum ChargeType {
   MULTA_REUNION
   ACTIVIDAD
   MATERIAL_ESCOLAR
+  AUTORIZADO
   OTRO
 }
 
