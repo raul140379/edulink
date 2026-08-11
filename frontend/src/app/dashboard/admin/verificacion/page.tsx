@@ -15,6 +15,7 @@ interface Student {
   isActive:  boolean
   parents: {
     relationType: string
+    isTutor: boolean
     parent: { firstName: string; lastName: string; ci?: string; phone?: string }
   }[]
   assignments: {
@@ -207,10 +208,10 @@ export default function VerificacionPage() {
               ) : (
                 <div className="parents-list">
                   {selected.parents.map((ps, i) => (
-                    <div key={i} className={`parent-item ${ps.relationType === 'TUTOR_LEGAL' ? 'tutor' : ''}`}>
+                    <div key={i} className={`parent-item ${ps.isTutor ? 'tutor' : ''}`}>
                       <div className="parent-rel">
-                        <span className="rel-tag" style={{ color: ps.relationType === 'TUTOR_LEGAL' ? '#712B13' : '#0A5A45' }}>
-                          {ps.relationType === 'TUTOR_LEGAL' ? '🔑 ' : ''}{REL_LABELS[ps.relationType]}
+                        <span className="rel-tag" style={{ color: ps.isTutor ? '#712B13' : '#0A5A45' }}>
+                          {ps.isTutor ? '🔑 ' : ''}{REL_LABELS[ps.relationType]}
                         </span>
                       </div>
                       <div className="parent-name">{ps.parent.lastName} {ps.parent.firstName}</div>

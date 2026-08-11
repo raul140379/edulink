@@ -222,12 +222,12 @@ export default function StudentDetailPage() {
           ) : (
             <div className="parents-grid">
               {student.parents.map((ps, i) => (
-                <div key={i} className={`parent-card ${ps.relationType === 'TUTOR_LEGAL' ? 'tutor' : ''}`}>
+                <div key={i} className={`parent-card ${ps.isTutor ? 'tutor' : ''}`}>
                   <div className="parent-top">
                     <span className="rel-badge" style={{ background: REL_COLORS[ps.relationType]+'18', color: REL_COLORS[ps.relationType] }}>
                       {REL_LABELS[ps.relationType]}
                     </span>
-                    {ps.relationType === 'TUTOR_LEGAL' && <span className="tutor-icon">🔑 Tutor Legal</span>}
+                    {ps.isTutor && <span className="tutor-icon">🔑 Tutor Legal</span>}
                   </div>
                   <div className="parent-name">{ps.parent.lastName} {ps.parent.firstName}</div>
                   <div className="parent-info">

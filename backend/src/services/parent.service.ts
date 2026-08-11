@@ -279,15 +279,28 @@ export const parentService = {
       }
     }
 
-    await parentRepository.deleteRelations(id)
-
-    if (parent.userId) {
-      const savedUserId = parent.userId
-      await parentRepository.unlinkUser(id)
-      await userRepository.delete(savedUserId)
+    // Antes de tocar nada: un tutor con historial financiero (Charge/Payment/
+    // ParentKardexHistory) no se puede borrar sin perder trazabilidad real de
+    // pagos — se rechaza explícito acá, en vez de dejar que el DELETE final
+    // choque contra la restricción de clave foránea y devuelva un 500
+    // genérico sin explicación (bug encontrado 11-ago: el registro de un
+    // tutor real con pagos reales no se borra nunca por este camino).
+    const financial = await parentRepository.countFinancialRecords(id)
+    if (financial.charges > 0 || financial.payments > 0 || financial.kardexHistory > 0) {
+      throw new HttpError(409, 'Este tutor tiene historial financiero (cargos, pagos o kardex histórico) — no se puede eliminar directamente. Contactá soporte si necesitás reasignar o depurar sus datos.')
     }
 
-    await parentRepository.delete(id)
+    // Atómico: si cualquier paso falla, no debe quedar un borrado a medias
+    // (antes, un fallo en el DELETE final del Parent podía dejar ya
+    // eliminadas sus relaciones ParentStudent, aunque el Parent sobreviviera).
+    await prisma.$transaction(async (tx) => {
+      await parentRepository.deleteRelations(tx, id)
+      if (parent.userId) {
+        await parentRepository.unlinkUser(tx, id)
+        await userRepository.deleteTx(tx, parent.userId)
+      }
+      await parentRepository.delete(tx, id)
+    })
   },
 
   async linkStudents(id: number, input: LinkStudentsInput) {
@@ -322,7 +335,7 @@ export const parentService = {
     if (!parent) throw new HttpError(404, 'Padre/tutor no encontrado')
     if (parent.userId) throw new HttpError(400, 'Este padre/tutor ya tiene acceso al sistema')
 
-    const isTutorLegal = parent.students.some((s) => s.relationType === 'TUTOR_LEGAL')
+    const isTutorLegal = parent.students.some((s) => s.isTutor)
     if (!isTutorLegal) throw new HttpError(400, 'Solo se puede generar acceso para tutores legales')
 
     const result = await createTutorUser(parent.firstName, parent.lastName, parent.ci)
@@ -364,8 +377,11 @@ export const parentService = {
     const link = await parentRepository.findRelation(input.newTutorId, studentId)
     if (!link) throw new HttpError(400, 'El nuevo tutor no está vinculado a este estudiante')
 
-    await parentRepository.clearTutorForStudent(studentId)
-    await parentRepository.updateRelation(input.newTutorId, studentId, { relationType: 'TUTOR_LEGAL', isTutor: true })
+    await parentRepository.clearTutorFlagForStudent(studentId)
+    // Sin forzar relationType — sigue siendo "Padre"/"Madre"/etc., lo único
+    // que cambia al promoverlo es isTutor (mismo principio que el lado que
+    // se desplaza, ver clearTutorFlagForStudent).
+    await parentRepository.updateRelation(input.newTutorId, studentId, { isTutor: true })
 
     let accessEmail: string | undefined
     let defaultPassword: string | undefined
@@ -603,7 +619,7 @@ export const parentService = {
           studentsMap.get(student.id).parents.push(entry)
 
           if (ps.isTutor && !tutoresMap.has(p.id)) {
-            tutoresMap.set(p.id, { ...entry, studentName })
+            tutoresMap.set(p.id, { ...entry, studentId: student.id, studentName })
           }
         }
       }

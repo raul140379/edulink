@@ -1,6 +1,8 @@
 import { Prisma, Role } from '@prisma/client'
 import prisma from '../lib/prisma'
 
+type TxClient = Parameters<Parameters<typeof prisma.$transaction>[0]>[0]
+
 // Roles de gestión/administración visibles para un DIRECTOR_DISTRITAL, además de
 // los usuarios que él mismo haya creado (ver `managementOrCreatedBy` abajo).
 const MANAGEMENT_ROLES: Role[] = [Role.DIRECTOR, Role.REGENTE, Role.SECRETARY, Role.DIRECTOR_DISTRITAL]
@@ -142,6 +144,13 @@ export const userRepository = {
 
   delete(id: number) {
     return prisma.user.delete({ where: { id } })
+  },
+
+  // Variante para usarse dentro de una transacción existente (ver
+  // parentService.deleteParent) — deja `delete` intacto para los demás
+  // llamadores (student/teacher/user service) que no la necesitan.
+  deleteTx(tx: TxClient, id: number) {
+    return tx.user.delete({ where: { id } })
   },
 
   findJuntaParents() {

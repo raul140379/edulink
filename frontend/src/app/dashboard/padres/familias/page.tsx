@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import QRCode from 'qrcode'
-import { UserPlus, Search, Pencil, RefreshCw, Download, XCircle } from 'lucide-react'
+import { UserPlus, UserMinus, ArrowLeftRight, Search, Pencil, RefreshCw, Download, XCircle, Trash2 } from 'lucide-react'
 import Card from '@/components/ui/Card'
 import Badge from '@/components/ui/Badge'
 import Button from '@/components/ui/Button'
@@ -37,7 +37,14 @@ interface ParentInfo {
   user: { id: number; email: string; isActive: boolean } | null
 }
 
-interface TutorInfo extends ParentInfo { studentName: string }
+interface TutorInfo extends ParentInfo { studentId: number; studentName: string }
+
+// "Todos los tutores": listado PLANO (una fila por tutor, sin agrupar por
+// curso), con todos sus estudiantes tutelados juntos — a diferencia de
+// "Tutores por curso" donde el mismo tutor aparece una vez por cada curso.
+interface FlatTutor extends ParentInfo {
+  students: { relationType: string; isTutor: boolean; student: { id: number; firstName: string; lastName: string } }[]
+}
 
 // "Padres por curso" se agrupa por ESTUDIANTE (no por padre) — un estudiante
 // con padre y madre queda en una sola fila con ambos, en vez de una fila por
@@ -64,10 +71,13 @@ export default function FamiliasPage() {
   const toast   = useToast()
   const confirm = useConfirm()
 
-  const [viewMode, setViewMode] = useState<'padres' | 'tutores'>('tutores')
+  const [viewMode, setViewMode] = useState<'padres' | 'tutores' | 'todos'>('tutores')
   const [byCourse, setByCourse] = useState<CourseGroup[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
+
+  const [allTutors, setAllTutors] = useState<FlatTutor[]>([])
+  const [loadingAllTutors, setLoadingAllTutors] = useState(true)
 
   const [editingRow, setEditingRow] = useState<ParentInfo | null>(null)
   const [editForm, setEditForm] = useState(emptyEditForm)
@@ -87,6 +97,18 @@ export default function FamiliasPage() {
   }
 
   useEffect(fetchByCourse, [])
+
+  const fetchAllTutors = () => {
+    setLoadingAllTutors(true)
+    fetch(`${API_URL}/api/parents?isTutor=true`, { headers: auth() })
+      .then(r => r.ok ? r.json() : [])
+      .then(setAllTutors)
+      .catch(() => toast('Error de conexión', 'error'))
+      .finally(() => setLoadingAllTutors(false))
+  }
+
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { if (viewMode === 'todos') fetchAllTutors() }, [viewMode])
 
   const q = search.trim().toLowerCase()
   const matchesSearch = (m: ParentInfo) =>
@@ -111,6 +133,111 @@ export default function FamiliasPage() {
     setError('')
   }
 
+  const [deletingId, setDeletingId] = useState<number | null>(null)
+  const [regenerating, setRegenerating] = useState(false)
+
+  const handleRegenerateEmail = async () => {
+    if (!editingRow) return
+    if (!await confirm(`¿Regenerar el correo de acceso institucional de ${editingRow.firstName} ${editingRow.lastName}? El correo con el que inicia sesión hoy dejará de funcionar.`, { danger: true })) return
+    setRegenerating(true)
+    try {
+      const res  = await fetch(`${API_URL}/api/parents/${editingRow.id}/regenerate-email`, { method: 'POST', headers: auth() })
+      const data = await res.json()
+      if (!res.ok) { toast(data.message, 'error'); return }
+      toast(`Nuevo correo de acceso: ${data.email}`, 'success')
+      setEditingRow(r => r && r.user ? { ...r, user: { ...r.user, email: data.email } } : r)
+      fetchByCourse()
+      if (viewMode === 'todos') fetchAllTutors()
+    } catch { toast('Error de conexión', 'error') }
+    finally { setRegenerating(false) }
+  }
+
+  // Solo para el caso de un duplicado creado por error (ej. registro manual
+  // repetido) — borra el Parent por completo (relaciones, cuenta de acceso si
+  // tiene, y el registro). El backend ya bloquea el borrado si dejaría a un
+  // estudiante sin ningún tutor legal.
+  const handleDelete = async (row: ParentInfo) => {
+    if (!await confirm(
+      `¿Eliminar definitivamente a ${row.lastName} ${row.firstName}? Usá esto solo si es un registro duplicado por error — se borra su cuenta de acceso (si tiene) y todos sus vínculos. No se puede deshacer.`,
+      { danger: true }
+    )) return
+    setDeletingId(row.id)
+    try {
+      const res  = await fetch(`${API_URL}/api/parents/${row.id}`, { method: 'DELETE', headers: auth() })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) { toast(data.message || 'No se pudo eliminar', 'error'); return }
+      toast('Registro eliminado', 'success')
+      fetchByCourse()
+      if (viewMode === 'todos') fetchAllTutors()
+    } catch { toast('Error de conexión', 'error') }
+    finally { setDeletingId(null) }
+  }
+
+  // Quita SOLO el vínculo con un estudiante puntual — a diferencia de
+  // "Eliminar" no toca la cuenta del tutor ni sus otros vínculos. Pensado
+  // para el caso común: dos tutores cargados por error para el mismo
+  // estudiante, y hay que sacar uno sin borrar a la persona. El backend ya
+  // rechaza si dejaría al estudiante sin ningún tutor legal.
+  const [unlinkingKey, setUnlinkingKey] = useState<string | null>(null)
+  const handleUnlink = async (parentId: number, studentId: number, studentLabel: string) => {
+    if (!await confirm(`¿Desvincular a este tutor de ${studentLabel}? Su cuenta y sus otros vínculos no se ven afectados.`, { danger: true, confirmLabel: 'Desvincular' })) return
+    const key = `${parentId}-${studentId}`
+    setUnlinkingKey(key)
+    try {
+      const res  = await fetch(`${API_URL}/api/parents/${parentId}/unlink/${studentId}`, { method: 'DELETE', headers: auth() })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) { toast(data.message || 'No se pudo desvincular', 'error'); return }
+      toast('Vínculo eliminado', 'success')
+      fetchByCourse()
+      if (viewMode === 'todos') fetchAllTutors()
+    } catch { toast('Error de conexión', 'error') }
+    finally { setUnlinkingKey(null) }
+  }
+
+  // Todos los demás padres/tutores ya vinculados a ese estudiante — se busca
+  // en "byCourse" (siempre cargado, independiente de qué vista esté activa)
+  // porque ahí "padres" ya trae, por estudiante, la lista completa. Sirve
+  // para decidir si tiene sentido ofrecer "Cambiar tutor" (necesita a alguien
+  // más ya vinculado para promoverlo) — si el estudiante solo tiene UN padre
+  // registrado, no hay a quién cambiar y esa acción no se muestra.
+  const findParentsForStudent = (studentId: number): ParentInfo[] => {
+    for (const g of byCourse) {
+      const sg = g.padres.find(p => p.studentId === studentId)
+      if (sg) return sg.parents
+    }
+    return []
+  }
+
+  // Cambiar tutor — promueve a OTRO padre/tutor ya vinculado a ser el tutor
+  // legal, en un solo paso (a diferencia de Desvincular + Vincular por
+  // separado). Requiere que el candidato ya esté vinculado al estudiante —
+  // mismo candado que ya tiene el backend.
+  const [changingTutorFor, setChangingTutorFor] = useState<{ studentId: number; label: string; candidates: ParentInfo[] } | null>(null)
+  const [changingTutor, setChangingTutor] = useState(false)
+
+  const openChangeTutor = (studentId: number, currentTutorId: number, studentLabel: string) => {
+    const candidates = findParentsForStudent(studentId).filter(p => p.id !== currentTutorId)
+    setChangingTutorFor({ studentId, label: studentLabel, candidates })
+  }
+
+  const handleChangeTutor = async (newTutorId: number) => {
+    if (!changingTutorFor) return
+    setChangingTutor(true)
+    try {
+      const res  = await fetch(`${API_URL}/api/parents/student/${changingTutorFor.studentId}/change-tutor`, {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json', ...auth() },
+        body: JSON.stringify({ newTutorId }),
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) { toast(data.message || 'No se pudo cambiar el tutor', 'error'); return }
+      toast(data.note ? `${data.message} — ${data.note}` : data.message, 'success')
+      setChangingTutorFor(null)
+      fetchByCourse()
+      if (viewMode === 'todos') fetchAllTutors()
+    } catch { toast('Error de conexión', 'error') }
+    finally { setChangingTutor(false) }
+  }
+
   const handleSaveEdit = async () => {
     if (!editingRow) return
     if (!editForm.firstName || !editForm.lastName) { setError('Nombre y apellido son requeridos'); return }
@@ -126,6 +253,7 @@ export default function FamiliasPage() {
       toast('Tutor/padre actualizado correctamente', 'success')
       setEditingRow(null)
       fetchByCourse()
+      if (viewMode === 'todos') fetchAllTutors()
     } catch { setError('Error de conexión') }
     finally { setSaving(false) }
   }
@@ -233,6 +361,9 @@ export default function FamiliasPage() {
                 ? <Badge tone={p.user.isActive ? 'success' : 'danger'}>{p.user.isActive ? 'Activo' : 'Inactivo'}</Badge>
                 : <span className="text-[11px] text-neutral-400 italic">Sin cuenta</span>}
               <Button size="sm" variant="secondary" onClick={() => openEdit(p)}><Pencil size={11}/> Editar</Button>
+              <Button size="sm" variant="secondary" className="text-danger-600" onClick={() => handleDelete(p)} loading={deletingId === p.id}>
+                <Trash2 size={11}/> Eliminar
+              </Button>
             </div>
           </div>
         ))}
@@ -267,6 +398,78 @@ export default function FamiliasPage() {
         <Button size="sm" onClick={() => handleRegenerateCode(r)}>
           <RefreshCw size={11}/> {r.attendanceCode ? 'Regenerar' : 'Generar'}
         </Button>
+        <Button
+          size="sm" variant="secondary" onClick={() => handleUnlink(r.id, r.studentId, r.studentName)}
+          loading={unlinkingKey === `${r.id}-${r.studentId}`}
+        >
+          <UserMinus size={11}/> Desvincular
+        </Button>
+        {findParentsForStudent(r.studentId).some(p => p.id !== r.id) && (
+          <Button size="sm" variant="secondary" onClick={() => openChangeTutor(r.studentId, r.id, r.studentName)}>
+            <ArrowLeftRight size={11}/> Cambiar tutor
+          </Button>
+        )}
+        <Button size="sm" variant="secondary" className="text-danger-600" onClick={() => handleDelete(r)} loading={deletingId === r.id}>
+          <Trash2 size={11}/> Eliminar
+        </Button>
+      </div>
+    ) },
+  ]
+
+  // "Todos los tutores": una fila por tutor (sin repetir por curso), con
+  // todos sus estudiantes tutelados juntos en una sola columna.
+  const allTutorsFiltered = allTutors.filter(matchesSearch)
+  const allTutorsColumns: Column<FlatTutor>[] = [
+    { key: 'tutor', header: 'Tutor', render: t => (
+      <div>
+        <div className="font-medium text-brand-700">{t.lastName} {t.firstName}</div>
+        {t.ci && <div className="text-[11px] text-neutral-500">CI {t.ci}</div>}
+      </div>
+    ) },
+    { key: 'estudiantes', header: 'Estudiantes tutelados', render: t => {
+      const tutored = t.students.filter(s => s.isTutor)
+      return tutored.length === 0
+        ? <span className="text-[11px] text-neutral-400 italic">—</span>
+        : (
+          <div className="flex flex-col gap-0.5">
+            {tutored.map((s, i) => (
+              <div key={i} className="flex items-center gap-1.5">
+                <span className="text-[12px] text-neutral-600">{s.student.lastName} {s.student.firstName}</span>
+                {findParentsForStudent(s.student.id).some(p => p.id !== t.id) && (
+                  <button
+                    title="Cambiar tutor" onClick={() => openChangeTutor(s.student.id, t.id, `${s.student.lastName} ${s.student.firstName}`)}
+                    className="text-neutral-400 hover:text-neutral-600"
+                  >
+                    <ArrowLeftRight size={11}/>
+                  </button>
+                )}
+                <button
+                  title="Desvincular" onClick={() => handleUnlink(t.id, s.student.id, `${s.student.lastName} ${s.student.firstName}`)}
+                  disabled={unlinkingKey === `${t.id}-${s.student.id}`}
+                  className="text-neutral-400 hover:text-neutral-600 text-[13px] leading-none px-0.5 disabled:opacity-40"
+                >
+                  ×
+                </button>
+              </div>
+            ))}
+          </div>
+        )
+    } },
+    { key: 'kardex', header: 'Kardex', render: t => t.kardex
+      ? <span className="font-mono text-[12.5px] font-bold text-brand-700">{t.kardex}</span>
+      : <span className="text-[11px] text-danger-600">Sin kardex</span>
+    },
+    { key: 'telefono', header: 'Teléfono', render: t => <span className="text-[12.5px] text-neutral-500">{t.phone || '—'}</span> },
+    { key: 'cuenta', header: 'Cuenta', render: t => t.user
+      ? <Badge tone={t.user.isActive ? 'success' : 'danger'}>{t.user.isActive ? 'Activa' : 'Inactiva'}</Badge>
+      : <span className="text-[11px] text-neutral-400 italic">Sin cuenta</span>
+    },
+    { key: 'accion', header: 'Acción', render: t => (
+      <div className="flex gap-1.5 flex-wrap">
+        <Button size="sm" variant="secondary" onClick={() => openEdit(t)}><Pencil size={12}/> Editar</Button>
+        <Button size="sm" variant="secondary" className="text-danger-600" onClick={() => handleDelete(t)} loading={deletingId === t.id}>
+          <Trash2 size={11}/> Eliminar
+        </Button>
       </div>
     ) },
   ]
@@ -297,6 +500,12 @@ export default function FamiliasPage() {
           >
             Tutores por curso
           </button>
+          <button
+            onClick={() => setViewMode('todos')}
+            className={`px-3 py-1.5 rounded-md text-[12.5px] font-semibold transition-colors ${viewMode === 'todos' ? 'bg-white text-brand-700 shadow-sm' : 'text-neutral-500'}`}
+          >
+            Todos los tutores
+          </button>
         </div>
         <div className="flex gap-2 flex-1 min-w-[220px]">
           <div className="relative flex-1">
@@ -313,7 +522,21 @@ export default function FamiliasPage() {
 
       <div className="grid gap-4" style={viewMode === 'tutores' ? { gridTemplateColumns: '1fr 300px' } : undefined}>
         <div className="flex flex-col gap-3">
-          {loading ? (
+          {viewMode === 'todos' ? (
+            <Card padded={false} className="overflow-hidden">
+              {loadingAllTutors ? (
+                <div className="flex justify-center py-16"><p className="text-sm text-neutral-500">Cargando...</p></div>
+              ) : allTutorsFiltered.length === 0 ? (
+                <div className="flex flex-col items-center gap-3 py-16 text-neutral-500">
+                  <p className="text-[13px]">{search ? 'Nadie coincide con la búsqueda.' : 'No se encontraron tutores'}</p>
+                </div>
+              ) : (
+                <div className="p-4">
+                  <Table columns={allTutorsColumns} rows={allTutorsFiltered} rowKey={t => t.id} />
+                </div>
+              )}
+            </Card>
+          ) : loading ? (
             <Card className="text-center py-12 text-neutral-500">Cargando...</Card>
           ) : byCourseFiltered.every(g => (viewMode === 'padres' ? g.padres : g.tutores).length === 0) ? (
             <Card className="text-center py-12 text-neutral-500">
@@ -412,14 +635,45 @@ export default function FamiliasPage() {
             <Input label="CI" value={editForm.ci} onChange={e => setEditForm({ ...editForm, ci: e.target.value })} />
             <Input label="Teléfono" value={editForm.phone} onChange={e => setEditForm({ ...editForm, phone: e.target.value })} />
           </div>
-          <Input
-            label="Correo de acceso al sistema" disabled
-            value={editingRow?.user?.email || 'Sin cuenta de acceso'}
-            onChange={() => {}}
-          />
           <Input label="Correo personal (opcional)" type="email" value={editForm.email} onChange={e => setEditForm({ ...editForm, email: e.target.value })} />
           <Input label="Dirección" value={editForm.address} onChange={e => setEditForm({ ...editForm, address: e.target.value })} />
           <Input label="N° Kardex" value={editForm.kardex} onChange={e => setEditForm({ ...editForm, kardex: e.target.value })} />
+
+          <div className="border-t border-neutral-100 pt-3 flex flex-col gap-2">
+            <span className="text-[11px] font-semibold text-neutral-500 uppercase tracking-wide">Correo de acceso al sistema</span>
+            {editingRow?.user ? (
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-[13px] font-mono text-brand-700 bg-neutral-100 border border-neutral-300 rounded-lg px-3 py-2 break-all">{editingRow.user.email}</span>
+                <Button size="sm" variant="secondary" onClick={handleRegenerateEmail} loading={regenerating}>
+                  <RefreshCw size={12}/> Regenerar correo institucional
+                </Button>
+              </div>
+            ) : (
+              <span className="text-[12px] text-neutral-500 italic">Sin cuenta de acceso</span>
+            )}
+          </div>
+        </div>
+      </Modal>
+
+      <Modal
+        open={!!changingTutorFor} onClose={() => setChangingTutorFor(null)}
+        title={changingTutorFor ? `Cambiar tutor legal — ${changingTutorFor.label}` : 'Cambiar tutor legal'}
+      >
+        <div className="flex flex-col gap-2">
+          <p className="text-[12.5px] text-neutral-500 mb-1">
+            Elegí a quién promover como tutor legal. El tutor actual deja de serlo, pero sigue vinculado como antes.
+          </p>
+          {changingTutorFor?.candidates.map(p => (
+            <div key={p.id} className="flex items-center justify-between gap-2 px-3 py-2 rounded-lg border border-neutral-200">
+              <div>
+                <div className="text-[13px] font-medium text-brand-700">{p.lastName} {p.firstName}</div>
+                <div className="text-[11px] text-neutral-500">
+                  {RELATION_LABELS[p.relationType] || p.relationType}{p.ci ? ` · CI ${p.ci}` : ''}
+                </div>
+              </div>
+              <Button size="sm" onClick={() => handleChangeTutor(p.id)} loading={changingTutor}>Hacer tutor legal</Button>
+            </div>
+          ))}
         </div>
       </Modal>
     </div>

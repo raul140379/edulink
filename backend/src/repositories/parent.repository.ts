@@ -2,6 +2,12 @@ import { Prisma, RelationType } from '@prisma/client'
 import prisma from '../lib/prisma'
 import { getTenantContext } from '../lib/tenant-context'
 
+// El cliente extendido de lib/prisma (tenant-scoping) no es asignable al tipo
+// genérico Prisma.TransactionClient de @prisma/client — se infiere el tipo
+// real del callback de $transaction en vez de importarlo, mismo truco que ya
+// usa academicClosure.repository.ts.
+type TxClient = Parameters<Parameters<typeof prisma.$transaction>[0]>[0]
+
 export const parentRepository = {
   findMany(where: Prisma.ParentWhereInput) {
     return prisma.parent.findMany({
@@ -118,16 +124,34 @@ export const parentRepository = {
     return prisma.parentStudent.count({ where: { studentId, isTutor: true, NOT: { parentId: excludeParentId } } })
   },
 
-  deleteRelations(parentId: number) {
-    return prisma.parentStudent.deleteMany({ where: { parentId } })
+  // Cuántos registros de historial financiero real (no solo el vínculo
+  // ParentStudent) tiene este tutor — deleteParent lo consulta ANTES de
+  // borrar nada; si hay algo acá, el borrado se rechaza explícito en vez de
+  // chocar a mitad de camino contra la restricción de clave foránea.
+  async countFinancialRecords(parentId: number) {
+    const [charges, payments, kardexHistory] = await Promise.all([
+      prisma.charge.count({ where: { parentId } }),
+      prisma.payment.count({ where: { parentId } }),
+      prisma.parentKardexHistory.count({ where: { parentId } }),
+    ])
+    return { charges, payments, kardexHistory }
   },
 
-  async unlinkUser(id: number) {
-    await prisma.$executeRaw`UPDATE "Parent" SET "userId" = NULL WHERE id = ${id}`
+  // Estos 3 métodos solo se usan dentro de la transacción de deleteParent —
+  // reciben el `tx` explícito a propósito, para que un fallo a mitad de
+  // camino (ej. el DELETE final del Parent) revierta también los pasos
+  // anteriores (ParentStudent, desvinculación de User) en vez de dejar un
+  // borrado parcial, que es justo el bug que se corrigió acá.
+  deleteRelations(tx: TxClient, parentId: number) {
+    return tx.parentStudent.deleteMany({ where: { parentId } })
   },
 
-  delete(id: number) {
-    return prisma.parent.delete({ where: { id } })
+  async unlinkUser(tx: TxClient, id: number) {
+    await tx.$executeRaw`UPDATE "Parent" SET "userId" = NULL WHERE id = ${id}`
+  },
+
+  delete(tx: TxClient, id: number) {
+    return tx.parent.delete({ where: { id } })
   },
 
   findRelation(parentId: number, studentId: number) {
@@ -153,10 +177,14 @@ export const parentRepository = {
     return prisma.parentStudent.update({ where: { parentId_studentId: { parentId, studentId } }, data })
   },
 
-  clearTutorForStudent(studentId: number) {
+  // Usado por changeTutor al desplazar al tutor legal actual — a diferencia
+  // de clearAnyTutorForStudent, NO toca relationType: sigue siendo la madre/
+  // el padre/etc. que ya era, solo deja de ser el tutor legal operativo.
+  // "OTRO" queda reservado para el caso real de alguien sin parentesco.
+  clearTutorFlagForStudent(studentId: number) {
     return prisma.parentStudent.updateMany({
-      where: { studentId, relationType: 'TUTOR_LEGAL' },
-      data:  { relationType: 'OTRO', isTutor: false },
+      where: { studentId, isTutor: true },
+      data:  { isTutor: false },
     })
   },
 
