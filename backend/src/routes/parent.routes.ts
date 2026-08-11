@@ -25,7 +25,7 @@ import {
   getRegisteredStatus,
   regenerateParentEmail,
 } from '../controllers/parent.controller'
-import { verifyToken, requirePermission } from '../middlewares/auth.middleware'
+import { verifyToken, requirePermission, restoreTenantContext } from '../middlewares/auth.middleware'
 import { validateBody } from '../middlewares/validate.middleware'
 import {
   createParentSchema, updateParentSchema, updateMeSchema,
@@ -67,7 +67,7 @@ router.post('/:id/generate-credentials', requirePermission(Permission.PARENT_CRE
 router.post('/:id/reset-password',       requirePermission(Permission.PARENT_CREATE),   resetTutorPassword)
 router.post('/:id/regenerate-email',     requirePermission(Permission.PARENT_CREATE),   regenerateParentEmail)
 router.post('/:id/release-kardex',       requirePermission(Permission.PARENT_CREATE),   releaseTutorKardex)
-router.post('/import', requirePermission(Permission.PARENT_CREATE), upload.single('file'), importParents)
+router.post('/import', requirePermission(Permission.PARENT_CREATE), upload.single('file'), restoreTenantContext, importParents)
 
 // Vincular un padre YA EXISTENTE a un estudiante / cambiar tutor — esto sí lo
 // conserva el administrador del colegio (matrícula, cambio de gestión), además

@@ -1,6 +1,6 @@
 import { Router } from 'express'
 import multer from 'multer'
-import { verifyToken, requirePermission } from '../middlewares/auth.middleware'
+import { verifyToken, requirePermission, restoreTenantContext } from '../middlewares/auth.middleware'
 import { validateBody } from '../middlewares/validate.middleware'
 import { Permission } from '../config/permissions'
 import { createSchoolSchema, updateSchoolSchema, assignDirectorSchema } from '../schemas/school.schema'
@@ -16,6 +16,6 @@ router.get('/:id',   requirePermission(Permission.SCHOOL_VIEW_ALL), getSchoolByI
 router.post('/',     requirePermission(Permission.SCHOOL_CREATE), validateBody(createSchoolSchema), createSchool)
 router.put('/:id',   requirePermission(Permission.SCHOOL_CREATE), validateBody(updateSchoolSchema), updateSchool)
 router.post('/:id/director', requirePermission(Permission.USER_CREATE), validateBody(assignDirectorSchema), assignDirector)
-router.post('/import', requirePermission(Permission.SCHOOL_CREATE), upload.single('file'), importSchools)
+router.post('/import', requirePermission(Permission.SCHOOL_CREATE), upload.single('file'), restoreTenantContext, importSchools)
 
 export default router

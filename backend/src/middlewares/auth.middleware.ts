@@ -53,6 +53,38 @@ export const verifyToken = (
 }
 
 // ─────────────────────────────────────────────
+// MIDDLEWARE: Re-establecer el contexto de tenant después de multer
+// ─────────────────────────────────────────────
+// El parseo de multipart/form-data de multer (busboy, basado en streams) no
+// preserva el AsyncLocalStorage que arma verifyToken — getTenantContext()
+// devuelve undefined en cualquier ruta que use upload.single/array después
+// de ese punto, y la extensión de tenant-scoping en lib/prisma.ts trata
+// "sin contexto" como "sin alcance" (lee/escribe sin filtrar por colegio).
+// req.userId/userRole/userSchoolId/etc. sí sobreviven (son propiedades
+// simples ya asignadas sobre el objeto req, no dependen de AsyncLocalStorage)
+// — este middleware reconstruye el contexto a partir de esos campos. Va
+// SIEMPRE después de upload.single/array y antes del controller, en toda
+// ruta que reciba un archivo.
+export const restoreTenantContext = (
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction
+): void => {
+  if (!req.userId || !req.userRole) {
+    res.status(401).json({ message: 'No autenticado' })
+    return
+  }
+
+  runWithTenantContext(
+    {
+      userId: req.userId, role: req.userRole,
+      schoolId: req.userSchoolId ?? null, districtId: req.userDistrictId ?? null, nucleoId: req.userNucleoId ?? null,
+    },
+    next,
+  )
+}
+
+// ─────────────────────────────────────────────
 // MIDDLEWARE: Verificar permiso específico
 // ─────────────────────────────────────────────
 export const requirePermission = (permission: Permission) => {

@@ -25,7 +25,7 @@ import {
   getMyAchievements,
   deliverTask,
 } from '../controllers/student.controller'
-import { verifyToken, requirePermission, requireAnyPermission } from '../middlewares/auth.middleware'
+import { verifyToken, requirePermission, requireAnyPermission, restoreTenantContext } from '../middlewares/auth.middleware'
 import { validateBody } from '../middlewares/validate.middleware'
 import { createStudentSchema, updateStudentSchema, enrollSchema, autoEvaluacionSchema } from '../schemas/student.schema'
 import { Permission } from '../config/permissions'
@@ -60,8 +60,8 @@ router.patch('/:id/toggle',                  requireAnyPermission(Permission.STU
 router.post('/:id/enroll',                   requirePermission(Permission.ENROLLMENT_CREATE), validateBody(enrollSchema), enrollStudent)
 router.delete('/:id',                        requirePermission(Permission.STUDENT_CREATE),    deleteStudent)
 router.post('/:id/generate-credentials',     requirePermission(Permission.STUDENT_CREATE),    generateCredentials)
-router.post('/import',                       requirePermission(Permission.STUDENT_CREATE), upload.single('file'), importStudents)
-router.post('/import-tutors',                requirePermission(Permission.STUDENT_CREATE), upload.single('file'), importTutors)
+router.post('/import',                       requirePermission(Permission.STUDENT_CREATE), upload.single('file'), restoreTenantContext, importStudents)
+router.post('/import-tutors',                requirePermission(Permission.STUDENT_CREATE), upload.single('file'), restoreTenantContext, importTutors)
 router.get('/by-course/:courseId',           requirePermission(Permission.STUDENT_VIEW_ALL),  getStudentsByCourse)
 router.put('/:id/enroll',                    requirePermission(Permission.ENROLLMENT_CREATE), changeEnrollment)
 router.delete('/:id/enroll',                  requirePermission(Permission.STUDENT_CREATE), cancelEnrollment)
