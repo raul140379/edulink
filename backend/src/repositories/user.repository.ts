@@ -146,6 +146,36 @@ export const userRepository = {
     return prisma.user.delete({ where: { id } })
   },
 
+  // Cuánta "actividad" real tiene esta cuenta más allá de ser el login de un
+  // Parent/Student/Teacher/etc. (eso ya lo maneja detachRelations) — acciones
+  // donde este User es el ACTOR: asistencia registrada, notificaciones/
+  // reuniones/convocatorias/comunicados creados, un cierre económico que
+  // firmó, u otras cuentas que dio de alta. Si hay algo acá, borrar el User
+  // choca contra una restricción de clave foránea — se consulta ANTES de
+  // intentar el DELETE para rechazar con un mensaje claro en vez de un 500
+  // genérico (mismo criterio que countFinancialRecords en parent.repository).
+  async countActivityRecords(userId: number) {
+    const [
+      convocatoriaAttendance, notificationsSent, meetingsCreated,
+      convocatoriasCreated, comunicadosAuthored, poaActasCreated,
+      yearsClosedEconomically, usersCreated,
+    ] = await Promise.all([
+      prisma.convocatoriaAttendance.count({ where: { userId } }),
+      prisma.notification.count({ where: { sentById: userId } }),
+      prisma.meeting.count({ where: { createdById: userId } }),
+      prisma.convocatoria.count({ where: { createdById: userId } }),
+      prisma.comunicado.count({ where: { authorId: userId } }),
+      prisma.poaActa.count({ where: { createdByUserId: userId } }),
+      prisma.academicYear.count({ where: { economicClosedById: userId } }),
+      prisma.user.count({ where: { createdByUserId: userId } }),
+    ])
+    return {
+      convocatoriaAttendance, notificationsSent, meetingsCreated,
+      convocatoriasCreated, comunicadosAuthored, poaActasCreated,
+      yearsClosedEconomically, usersCreated,
+    }
+  },
+
   // Variante para usarse dentro de una transacción existente (ver
   // parentService.deleteParent) — deja `delete` intacto para los demás
   // llamadores (student/teacher/user service) que no la necesitan.

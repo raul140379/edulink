@@ -290,6 +290,20 @@ export const parentService = {
       throw new HttpError(409, 'Este tutor tiene historial financiero (cargos, pagos o kardex histórico) — no se puede eliminar directamente. Contactá soporte si necesitás reasignar o depurar sus datos.')
     }
 
+    // Mismo criterio, un nivel más abajo: si la cuenta del tutor participó en
+    // algo del sistema (asistencia a convocatoria, notificación/reunión/
+    // convocatoria/comunicado que envió o creó, un cierre económico que
+    // firmó, u otras cuentas que dio de alta), borrar el User choca contra
+    // una restricción de clave foránea propia — se rechaza acá con el mismo
+    // tipo de mensaje claro en vez de un 500 (encontrado 12-ago con un
+    // fixture que tenía asistencia de prueba registrada).
+    if (parent.userId) {
+      const activity = await userRepository.countActivityRecords(parent.userId)
+      if (Object.values(activity).some((n) => n > 0)) {
+        throw new HttpError(409, 'La cuenta de este tutor participó en otras acciones del sistema (asistencia, notificaciones, reuniones, convocatorias o comunicados) — no se puede eliminar directamente. Contactá soporte si necesitás depurar esos datos primero.')
+      }
+    }
+
     // Atómico: si cualquier paso falla, no debe quedar un borrado a medias
     // (antes, un fallo en el DELETE final del Parent podía dejar ya
     // eliminadas sus relaciones ParentStudent, aunque el Parent sobreviviera).
