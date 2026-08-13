@@ -101,6 +101,7 @@ model School {
   studentTrimesterBonuses StudentTrimesterBonus[]
   convocatorias           Convocatoria[]
   parentKardexHistory     ParentKardexHistory[]
+  refunds                 Refund[]
 }
 
 model SchoolSchedule {
@@ -155,6 +156,7 @@ model User {
   convocatoriasCreated    Convocatoria[]           @relation("ConvocatoriaCreator")
   convocatoriaAttendances ConvocatoriaAttendance[]
   academicYearsClosed     AcademicYear[]           @relation("AcademicYearEconomicClosedBy")
+  refundsHandled          Refund[]
 }
 
 model JuntaMember {
@@ -764,6 +766,29 @@ model Charge {
   sourceCharge      Charge?          @relation("ChargeCarriedForward", fields: [sourceChargeId], references: [id])
   carriedCharges    Charge[]         @relation("ChargeCarriedForward")
   payments          Payment[]
+  refunds           Refund[]
+}
+
+// Devolución interna de un pago duplicado (ej. el tutor pagó dos veces por
+// error, con dos recibos distintos) — puramente informativa/aditiva: NUNCA
+// toca Charge.status ni Charge.paidAmount, el cargo se queda PAGADO tal cual
+// (el dinero sí se recibió, solo que después se devolvió una parte o el
+// total). No se ata a un Payment puntual porque el segundo pago duplicado
+// muchas veces ni siquiera generó su propio Payment en el sistema
+// (registerPayment ya rechaza un pago nuevo sobre un cargo PAGADO) — la
+// devolución es sobre el CARGO, no sobre una fila de pago específica.
+model Refund {
+  id          Int      @id @default(autoincrement())
+  amount      Float
+  date        DateTime @default(now())
+  reason      String
+  chargeId    Int
+  charge      Charge   @relation(fields: [chargeId], references: [id])
+  handledById Int?
+  handledBy   User?    @relation(fields: [handledById], references: [id])
+  schoolId    Int
+  school      School   @relation(fields: [schoolId], references: [id])
+  createdAt   DateTime @default(now())
 }
 
 // Plantilla de cargo obligatorio — al crearla se aplica de inmediato a todos

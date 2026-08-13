@@ -41,7 +41,7 @@ interface Charge {
 
 interface Account {
   parent: {
-    id: number; firstName: string; lastName: string; ci?: string; phone?: string
+    id: number; firstName: string; lastName: string; ci?: string; phone?: string; kardex?: string | null
     students: { relationType: string; student: { id: number; firstName: string; lastName: string } }[]
   }
   charges: Charge[]
@@ -177,6 +177,10 @@ export default function TutorAccountPage() {
           <div>
             <h1 className="text-xl font-extrabold text-brand-700 mb-1">{parent.lastName} {parent.firstName}</h1>
             <div className="flex gap-3 text-xs text-neutral-500 mb-1.5">
+              {parent.kardex
+                ? <span>Kardex {parent.kardex}</span>
+                : <span className="text-danger-600">Sin kardex</span>
+              }
               {parent.ci    && <span>CI: {parent.ci}</span>}
               {parent.phone && <span>📱 {parent.phone}</span>}
             </div>

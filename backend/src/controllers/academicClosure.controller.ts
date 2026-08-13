@@ -123,3 +123,15 @@ export const applyCourseImport = async (req: AuthRequest, res: Response): Promis
     handleControllerError(res, error)
   }
 }
+
+// ─────────────────────────────────────────────
+// POST /api/treasury/:id/refund
+// ─────────────────────────────────────────────
+export const registerRefund = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const result = await academicClosureService.registerRefund(parseInt(req.params.id), req.body)
+    res.status(201).json({ message: 'Devolución registrada correctamente', ...result })
+  } catch (error) {
+    handleControllerError(res, error)
+  }
+}

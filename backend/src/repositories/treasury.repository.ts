@@ -41,7 +41,7 @@ export const treasuryRepository = {
     return prisma.parent.findUnique({
       where: { id: parentId },
       select: {
-        id: true, firstName: true, lastName: true, ci: true, phone: true,
+        id: true, firstName: true, lastName: true, ci: true, phone: true, kardex: true,
         students: { include: { student: { select: { id: true, firstName: true, lastName: true } } } },
       },
     })
@@ -145,6 +145,20 @@ export const treasuryRepository = {
     return prisma.payment.update({ where: { id }, data })
   },
 
+  // Base para registrar una devolución — trae el cargo con sus devoluciones
+  // ya registradas, para validar el monto disponible (paidAmount menos lo ya
+  // devuelto) antes de crear una nueva.
+  findChargeWithRefunds(id: number) {
+    return prisma.charge.findUnique({
+      where: { id },
+      include: { refunds: { orderBy: { date: 'desc' } } },
+    })
+  },
+
+  createRefund(data: { amount: number; date: Date; reason: string; chargeId: number; handledById: number | null; schoolId: number }) {
+    return prisma.refund.create({ data })
+  },
+
   findChargesForSummary(where: Prisma.ChargeWhereInput) {
     return prisma.charge.findMany({ where, select: { amount: true, paidAmount: true, status: true, type: true } })
   },
@@ -198,6 +212,7 @@ export const treasuryRepository = {
             id: true, title: true, type: true, target: true,
             academicYear: { select: { year: true } },
             student: { select: { firstName: true, lastName: true } },
+            refunds: { select: { amount: true, reason: true, date: true } },
           },
         },
       },
@@ -293,6 +308,7 @@ export const treasuryRepository = {
                             id: true, mandatoryChargeId: true, amount: true, paidAmount: true, status: true, pendingVerificationNote: true,
                             carriedCharges: { select: { id: true, status: true, academicYear: { select: { year: true } } } },
                             payments: { select: { reference: true }, orderBy: { date: 'asc' } },
+                            refunds: { select: { amount: true, reason: true, date: true } },
                           },
                         },
                       },

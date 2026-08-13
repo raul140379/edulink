@@ -34,6 +34,7 @@ export const DIRECT_SCHOOL_SCOPED_MODELS = new Set([
   'StudentTrimesterBonus',
   'Director',
   'Convocatoria',
+  'Refund',
 ])
 
 /**

@@ -471,7 +471,7 @@ export const treasuryService = {
         const tutorLink = assignment.student.parents[0]
         const tutor = tutorLink?.parent ?? null
 
-        const byType: Record<number, { chargeId?: number; estado: string; monto: number; pagado: number; pendiente: number; referencia?: string; pendingVerificationNote?: string; destino?: { chargeId: number; year: number; status: string } }> = {}
+        const byType: Record<number, { chargeId?: number; estado: string; monto: number; pagado: number; pendiente: number; referencia?: string; pendingVerificationNote?: string; refunded?: number; refundReason?: string; destino?: { chargeId: number; year: number; status: string } }> = {}
         for (const type of types) {
           const charge = tutor?.charges.find((c) => c.mandatoryChargeId === type.id)
           const entry = summaryByType.get(type.id)!
@@ -481,6 +481,10 @@ export const treasuryService = {
           // Import CSV con "recibo" tipo TRANF/banca móvil: cargo PENDIENTE
           // pero con nota — se distingue de un "no pagó" normal en pantalla.
           const pendingVerificationNote = charge?.pendingVerificationNote || undefined
+          // Devolución interna (pago duplicado) — informativa, no cambia
+          // estado/paidAmount del cargo (ver Refund).
+          const refunded = charge?.refunds.length ? charge.refunds.reduce((s, r) => s + r.amount, 0) : undefined
+          const refundReason = charge?.refunds.length ? charge.refunds.map((r) => r.reason).join('; ') : undefined
 
           if (!charge) {
             byType[type.id] = { estado: 'NO_CARGADO', monto: type.amount, pagado: 0, pendiente: type.amount }
@@ -493,7 +497,7 @@ export const treasuryService = {
               destino: dest ? { chargeId: dest.id, year: dest.academicYear.year, status: dest.status } : undefined,
             }
           } else {
-            byType[type.id] = { chargeId: charge.id, estado: charge.status, monto: charge.amount, pagado: charge.paidAmount, pendiente: chargeBalance(charge), referencia, pendingVerificationNote }
+            byType[type.id] = { chargeId: charge.id, estado: charge.status, monto: charge.amount, pagado: charge.paidAmount, pendiente: chargeBalance(charge), referencia, pendingVerificationNote, refunded, refundReason }
           }
 
           // El conteo del resumen es por tutor único — si ya se contó a este

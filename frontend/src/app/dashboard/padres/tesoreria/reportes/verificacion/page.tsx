@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { ArrowLeft, RefreshCw, ClipboardCheck, ArrowRightLeft, Pencil, Send, CheckCircle2, UserPlus, Search, Upload, FileSpreadsheet } from 'lucide-react'
+import { ArrowLeft, RefreshCw, ClipboardCheck, ArrowRightLeft, Pencil, Send, CheckCircle2, UserPlus, Search, Upload, FileSpreadsheet, RotateCcw } from 'lucide-react'
 import Card from '@/components/ui/Card'
 import Badge from '@/components/ui/Badge'
 import Button from '@/components/ui/Button'
@@ -50,6 +50,7 @@ interface AporteType { mandatoryChargeId: number; title: string; type: string; a
 interface AporteEstado {
   chargeId?: number; estado: string; monto: number; pagado: number; pendiente: number; referencia?: string
   pendingVerificationNote?: string
+  refunded?: number; refundReason?: string
   destino?: { chargeId: number; year: number; status: string }
 }
 
@@ -115,6 +116,13 @@ export default function VerificacionPorCursoPage() {
   const [editing, setEditing] = useState<CellContext | null>(null)
   const [editForm, setEditForm] = useState({ amount: '', paid: false, paidAmount: '', date: '', reference: '' })
   const [saving, setSaving] = useState(false)
+
+  // Registrar devolución (pago duplicado) — modal. Guarda también el estado
+  // actual de la celda para poder mergear refunded/refundReason al confirmar
+  // sin tener que recargar toda la tabla.
+  const [refunding, setRefunding] = useState<(CellContext & { current: AporteEstado }) | null>(null)
+  const [refundForm, setRefundForm] = useState({ amount: '', reason: '', date: '' })
+  const [refundSaving, setRefundSaving] = useState(false)
 
   // Trasladar a 2026 (cargo existente o "Sin registrar") — por celda, para
   // deshabilitar solo el botón que está en curso
@@ -267,6 +275,40 @@ export default function VerificacionPorCursoPage() {
       setEditing(null)
     } catch { toast('Error de conexión', 'error') }
     finally { setSaving(false) }
+  }
+
+  const openRefund = (ctx: CellContext, current: AporteEstado) => {
+    setRefunding({ ...ctx, current })
+    setRefundForm({ amount: '', reason: '', date: '' })
+  }
+
+  const handleSaveRefund = async () => {
+    if (!refunding || !refunding.chargeId) return
+    if (!refundForm.amount || !refundForm.reason.trim()) {
+      toast('Monto y motivo son requeridos', 'error'); return
+    }
+    setRefundSaving(true)
+    try {
+      const res = await fetch(`${API_URL}/api/treasury/${refunding.chargeId}/refund`, {
+        method: 'POST', headers: authJson(),
+        body: JSON.stringify({
+          amount: parseFloat(refundForm.amount), reason: refundForm.reason.trim(),
+          date: refundForm.date || undefined,
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok) { toast(data.message, 'error'); return }
+      patchCell(refunding, {
+        ...refunding.current,
+        refunded: data.totalRefunded,
+        refundReason: refunding.current.refundReason
+          ? `${refunding.current.refundReason}; ${refundForm.reason.trim()}`
+          : refundForm.reason.trim(),
+      })
+      toast('Devolución registrada correctamente', 'success')
+      setRefunding(null)
+    } catch { toast('Error de conexión', 'error') }
+    finally { setRefundSaving(false) }
   }
 
   const cellKey = (ctx: { courseId: number; studentId: number; mandatoryChargeId: number }) =>
@@ -577,7 +619,12 @@ export default function VerificacionPorCursoPage() {
             )}
             <span className="text-[11px] text-neutral-500">{fmt(e.pagado)} / {fmt(e.monto)}</span>
             {e.referencia && <span className="text-[10.5px] text-neutral-400">Recibo {e.referencia}</span>}
-            {e.pendingVerificationNote && <span className="text-[10.5px] text-info-600">{e.pendingVerificationNote}</span>}
+            {e.pendingVerificationNote && <span className="text-[10.5px] text-info-500">{e.pendingVerificationNote}</span>}
+            {!!e.refunded && (
+              <span className="text-[10.5px] text-warning-500" title={e.refundReason}>
+                🔙 {fmt(e.refunded)} devuelto{e.refundReason ? ` — ${e.refundReason}` : ''}
+              </span>
+            )}
             {e.destino && e.destino.status === 'PAGADO' ? (
               <span className="flex items-center gap-1 text-[10.5px] text-success-700 font-semibold">
                 <CheckCircle2 size={11}/> Resuelto en {e.destino.year}
@@ -590,6 +637,11 @@ export default function VerificacionPorCursoPage() {
             {(e.estado === 'PAGADO' || e.estado === 'PARCIAL' || e.estado === 'TRASLADADO' || (e.estado === 'PENDIENTE' && e.chargeId)) && (
               <button onClick={() => openEdit(ctx, e)} className="flex items-center gap-1 text-[10.5px] text-brand-700 hover:underline mt-0.5">
                 <Pencil size={10}/> Editar
+              </button>
+            )}
+            {(e.estado === 'PAGADO' || e.estado === 'PARCIAL') && (
+              <button onClick={() => openRefund(ctx, e)} className="flex items-center gap-1 text-[10.5px] text-neutral-500 hover:underline">
+                <RotateCcw size={10}/> Registrar devolución
               </button>
             )}
             {e.estado === 'PENDIENTE' && isSelectedYearClosed && (
@@ -757,6 +809,42 @@ export default function VerificacionPorCursoPage() {
       </Modal>
 
       <Modal
+        open={!!refunding} onClose={() => setRefunding(null)}
+        title="Registrar devolución"
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setRefunding(null)}>Cancelar</Button>
+            <Button onClick={handleSaveRefund} loading={refundSaving}>Registrar</Button>
+          </>
+        }
+      >
+        {refunding && (
+          <div className="flex flex-col gap-3">
+            <div className="bg-neutral-100 border border-neutral-200 rounded-lg p-3 text-[12px] text-neutral-600">
+              Este cargo se queda <strong>{ESTADO_LABELS[refunding.current.estado] || refunding.current.estado}</strong>, con {fmt(refunding.current.pagado)} pagados — la devolución es solo un registro informativo, no cambia el estado del cargo.
+              {!!refunding.current.refunded && (
+                <div className="mt-1">Ya se devolvió {fmt(refunding.current.refunded)} antes sobre este mismo cargo.</div>
+              )}
+            </div>
+            <Input
+              label="Monto devuelto (Bs.)" type="number" step="0.01" min="0" required
+              value={refundForm.amount} onChange={e => setRefundForm({ ...refundForm, amount: e.target.value })}
+            />
+            <Input
+              label="Fecha de la devolución" type="date"
+              value={refundForm.date} onChange={e => setRefundForm({ ...refundForm, date: e.target.value })}
+              hint="Dejalo vacío para usar la fecha de hoy"
+            />
+            <Input
+              label="Motivo" required
+              placeholder='Ej. "Pago duplicado, recibo 82627 ya cubría el mismo aporte"'
+              value={refundForm.reason} onChange={e => setRefundForm({ ...refundForm, reason: e.target.value })}
+            />
+          </div>
+        )}
+      </Modal>
+
+      <Modal
         open={!!linkingTutorFor} onClose={() => setLinkingTutorFor(null)}
         title={linkingTutorFor ? `Vincular tutor — ${linkingTutorFor.label}` : 'Vincular tutor'}
       >
@@ -901,7 +989,7 @@ export default function VerificacionPorCursoPage() {
                           <div className="text-[11px] text-neutral-500 truncate">
                             Tutor: {r.tutor}{r.amount != null ? ` · ${fmt(r.amount)}${r.paid ? ' (pagado)' : ''}` : ''}
                           </div>
-                          {r.pendingVerification && <div className="text-[11px] text-info-600 mt-0.5">🏦 {r.note}</div>}
+                          {r.pendingVerification && <div className="text-[11px] text-info-500 mt-0.5">🏦 {r.note}</div>}
                           {r.reason && <div className="text-[11px] text-neutral-400 mt-0.5">{r.reason}</div>}
                         </>
                       )}

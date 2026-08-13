@@ -6,7 +6,7 @@ import { mandatoryChargeRepository } from '../repositories/mandatoryCharge.repos
 import { parentRepository } from '../repositories/parent.repository'
 import { HttpError } from '../utils/http-error'
 import { getTenantContext } from '../lib/tenant-context'
-import { HistoricalCorrectionInput, CreateAndCarryForwardInput } from '../schemas/treasury.schema'
+import { HistoricalCorrectionInput, CreateAndCarryForwardInput, RegisterRefundInput } from '../schemas/treasury.schema'
 
 // Validación compartida entre createHistoricalCharge y createAndCarryForwardCharge
 // — ambas parten del mismo "no existe ningún Charge todavía, hay que crearlo
@@ -537,5 +537,32 @@ export const academicClosureService = {
 
       return { charge }
     })
+  },
+
+  // Devolución interna de un pago duplicado (ej. dos recibos por el mismo
+  // aporte) — puramente aditiva, nunca toca Charge.status ni
+  // Charge.paidAmount. El monto disponible es paidAmount menos lo ya
+  // devuelto antes (puede haber más de una devolución sobre el mismo cargo).
+  async registerRefund(chargeId: number, input: RegisterRefundInput) {
+    const charge = await treasuryRepository.findChargeWithRefunds(chargeId)
+    if (!charge) throw new HttpError(404, 'Cargo no encontrado')
+
+    const alreadyRefunded = charge.refunds.reduce((sum, r) => sum + r.amount, 0)
+    const available = charge.paidAmount - alreadyRefunded
+    if (input.amount > available) {
+      throw new HttpError(400,
+        `No se puede devolver Bs. ${input.amount.toFixed(2)}, el cargo solo tiene Bs. ${charge.paidAmount.toFixed(2)} pagado` +
+        (alreadyRefunded > 0 ? `, de los cuales Bs. ${alreadyRefunded.toFixed(2)} ya fueron devueltos anteriormente` : '') +
+        ` (disponible: Bs. ${available.toFixed(2)})`)
+    }
+
+    const ctx = getTenantContext()
+    const refund = await treasuryRepository.createRefund({
+      amount: input.amount, reason: input.reason,
+      date: input.date ? new Date(input.date) : new Date(),
+      chargeId, handledById: ctx?.userId ?? null, schoolId: charge.schoolId,
+    })
+
+    return { refund, totalRefunded: alreadyRefunded + input.amount }
   },
 }

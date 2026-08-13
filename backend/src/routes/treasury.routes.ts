@@ -6,6 +6,7 @@ import { Permission } from '../config/permissions'
 import {
   createChargeSchema, createBulkChargesSchema, updateChargeSchema, registerPaymentSchema, updatePaymentSchema,
   createMandatoryChargeSchema, updateMandatoryChargeSchema, historicalCorrectionSchema, createAndCarryForwardSchema,
+  registerRefundSchema,
 } from '../schemas/treasury.schema'
 import {
   getCharges,
@@ -30,7 +31,7 @@ import {
 import {
   getAcademicYearsClosureStatus, closeEconomicPeriod, reopenEconomicPeriod,
   correctHistoricalCharge, carryForwardSingleCharge, createAndCarryForwardCharge, createHistoricalCharge,
-  previewCourseImport, applyCourseImport,
+  previewCourseImport, applyCourseImport, registerRefund,
 } from '../controllers/academicClosure.controller'
 
 const router = Router()
@@ -54,6 +55,7 @@ router.put('/:id/historical-correction',    requirePermission(Permission.TREASUR
 router.post('/:id/carry-forward',           requirePermission(Permission.TREASURY_CLOSE_PERIOD), carryForwardSingleCharge)
 router.post('/create-and-carry-forward',    requirePermission(Permission.TREASURY_CLOSE_PERIOD), validateBody(createAndCarryForwardSchema), createAndCarryForwardCharge)
 router.post('/create-historical-charge',    requirePermission(Permission.TREASURY_CLOSE_PERIOD), validateBody(createAndCarryForwardSchema), createHistoricalCharge)
+router.post('/:id/refund',                  requirePermission(Permission.TREASURY_CLOSE_PERIOD), validateBody(registerRefundSchema), registerRefund)
 
 // ── Import CSV de aportes por curso (gestión activa) — mismo permiso, crea
 // cargos históricos igual que las acciones de arriba. Preview es solo

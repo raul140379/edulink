@@ -24,8 +24,22 @@ const METHOD_LABELS: Record<string, string> = {
 
 interface Payment {
   id: number; amount: number; method: string; reference?: string; date: string
-  parent: { id: number; firstName: string; lastName: string; ci?: string }
-  charge: { id: number; title: string; type: string }
+  parent: {
+    id: number; firstName: string; lastName: string; ci?: string
+    students: { student: { firstName: string; lastName: string } }[]
+  }
+  charge: {
+    id: number; title: string; type: string; target: string
+    academicYear: { year: number }
+    student: { firstName: string; lastName: string } | null
+    refunds: { amount: number; reason: string; date: string }[]
+  }
+}
+
+const studentNames = (p: Payment) => {
+  if (p.charge.student) return `${p.charge.student.lastName} ${p.charge.student.firstName}`
+  if (p.parent.students.length > 0) return p.parent.students.map(s => `${s.student.lastName} ${s.student.firstName}`).join(', ')
+  return '—'
 }
 
 const fmt     = (n: number) => `Bs. ${n.toFixed(2)}`
@@ -57,7 +71,8 @@ export default function HistorialPage() {
 
   const search = filters.search.trim().toLowerCase()
   const filtered = useMemo(() => !search ? payments : payments.filter(p =>
-    `${p.parent.firstName} ${p.parent.lastName} ${p.parent.ci || ''} ${p.charge.title}`.toLowerCase().includes(search),
+    `${p.parent.firstName} ${p.parent.lastName} ${p.parent.ci || ''} ${p.charge.title} ${p.reference || ''} ${studentNames(p)}`
+      .toLowerCase().includes(search),
   ), [payments, search])
 
   const pageCount = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE))
@@ -71,13 +86,27 @@ export default function HistorialPage() {
         {p.parent.ci && <div className="text-[11px] text-neutral-500">CI {p.parent.ci}</div>}
       </div>
     ) },
+    { key: 'estudiante', header: 'Estudiante(s)', render: p => <span className="text-[12.5px] text-neutral-600">{studentNames(p)}</span> },
     { key: 'cargo', header: 'Cargo', render: p => <span className="text-[12.5px]">{p.charge.title}</span> },
+    { key: 'gestion', header: 'Gestión', render: p => <span className="text-[12px] text-neutral-500">{p.charge.academicYear.year}</span> },
     { key: 'monto', header: 'Monto', render: p => <span className="font-semibold text-success-700">{fmt(p.amount)}</span> },
     { key: 'metodo', header: 'Método', render: p => <Badge tone="brand">{METHOD_LABELS[p.method] || p.method}</Badge> },
-    { key: 'comprobante', header: 'Comprobante', render: p => p.reference
-      ? <span className="text-[12px] font-mono text-neutral-700">{p.reference}</span>
-      : <span className="text-[11px] text-neutral-400 italic">—</span>
-    },
+    { key: 'comprobante', header: 'Comprobante', render: p => (
+      <div className="flex flex-col gap-0.5">
+        {p.reference
+          ? <span className="text-[12px] font-mono text-neutral-700">{p.reference}</span>
+          : <span className="text-[11px] text-neutral-400 italic">—</span>
+        }
+        {p.charge.refunds.length > 0 && (
+          <span
+            className="text-[10.5px] text-warning-500"
+            title={p.charge.refunds.map(r => `${fmt(r.amount)} — ${r.reason}`).join('; ')}
+          >
+            🔙 Devuelto
+          </span>
+        )}
+      </div>
+    ) },
     { key: 'accion', header: 'Acción', render: p => (
       <Button size="sm" variant="secondary" onClick={() => router.push(`/dashboard/padres/tesoreria/${p.parent.id}`)}>Ver cuenta</Button>
     ) },
@@ -89,7 +118,7 @@ export default function HistorialPage() {
 
       <Toolbar
         className="mb-4"
-        search={{ value: filters.search, onChange: v => { update({ search: v }); setPage(1) }, placeholder: 'Buscar tutor o cargo...' }}
+        search={{ value: filters.search, onChange: v => { update({ search: v }); setPage(1) }, placeholder: 'Buscar por N° de recibo, tutor, estudiante o cargo...' }}
         actions={[{ key: 'refresh', label: 'Actualizar', icon: RefreshCw, onClick: fetchPayments }]}
       />
 
@@ -97,7 +126,10 @@ export default function HistorialPage() {
         {loading ? (
           <LoadingState />
         ) : filtered.length === 0 ? (
-          <EmptyState icon={Clock} message="Todavía no hay pagos registrados" />
+          <EmptyState
+            icon={Clock}
+            message={search ? `No se encontró ningún pago que coincida con "${filters.search.trim()}"` : 'Todavía no hay pagos registrados'}
+          />
         ) : (
           <div className="p-4">
             <Table columns={columns} rows={pageRows} rowKey={p => p.id} />
