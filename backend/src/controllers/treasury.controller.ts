@@ -170,3 +170,18 @@ export const getTreasuryByCourse = async (req: AuthRequest, res: Response): Prom
     handleControllerError(res, error)
   }
 }
+
+// ─────────────────────────────────────────────
+// GET /api/treasury/verification-by-course
+// ─────────────────────────────────────────────
+export const getVerificationReportByCourse = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const { academicYearId, courseId } = req.query
+    const report = await treasuryService.getVerificationReportByCourse(
+      academicYearId as string | undefined, courseId as string | undefined
+    )
+    res.json(report)
+  } catch (error) {
+    handleControllerError(res, error)
+  }
+}

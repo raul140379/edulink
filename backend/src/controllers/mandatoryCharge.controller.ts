@@ -27,6 +27,18 @@ export const createMandatoryCharge = async (req: AuthRequest, res: Response): Pr
 }
 
 // ─────────────────────────────────────────────
+// PUT /api/treasury/mandatory-charges/:id
+// ─────────────────────────────────────────────
+export const updateMandatoryCharge = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const mandatoryCharge = await mandatoryChargeService.update(parseInt(req.params.id), req.body)
+    res.json({ message: 'Cargo obligatorio actualizado correctamente', mandatoryCharge })
+  } catch (error) {
+    handleControllerError(res, error)
+  }
+}
+
+// ─────────────────────────────────────────────
 // PATCH /api/treasury/mandatory-charges/:id/toggle
 // ─────────────────────────────────────────────
 export const toggleMandatoryCharge = async (req: AuthRequest, res: Response): Promise<void> => {
@@ -45,6 +57,19 @@ export const applyMandatoryChargeToMissing = async (req: AuthRequest, res: Respo
   try {
     const result = await mandatoryChargeService.applyToMissing(parseInt(req.params.id))
     res.json({ message: result.appliedCount > 0 ? `Se aplicó el cargo a ${result.appliedCount} tutor(es) que no lo tenían` : 'Ningún tutor tenía este cargo pendiente', ...result })
+  } catch (error) {
+    handleControllerError(res, error)
+  }
+}
+
+// ─────────────────────────────────────────────
+// DELETE /api/treasury/mandatory-charges/:id
+// ─────────────────────────────────────────────
+export const deleteMandatoryCharge = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const force  = req.query.force === 'true'
+    const result = await mandatoryChargeService.remove(parseInt(req.params.id), force)
+    res.json({ message: `Plantilla eliminada junto con ${result.chargesDeleted} cargo(s) generado(s)`, ...result })
   } catch (error) {
     handleControllerError(res, error)
   }

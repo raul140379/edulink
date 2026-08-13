@@ -1,7 +1,7 @@
 import { mandatoryChargeRepository } from '../repositories/mandatoryCharge.repository'
 import { HttpError } from '../utils/http-error'
 import { getTenantContext } from '../lib/tenant-context'
-import { CreateMandatoryChargeInput } from '../schemas/treasury.schema'
+import { CreateMandatoryChargeInput, UpdateMandatoryChargeInput } from '../schemas/treasury.schema'
 
 export const mandatoryChargeService = {
   list() {
@@ -29,10 +29,44 @@ export const mandatoryChargeService = {
     return { mandatoryCharge, appliedCount: applied.appliedCount }
   },
 
+  // Edita solo la plantilla (título/monto/tipo/vencimiento/descripción) — no
+  // toca retroactivamente los cargos ya generados a partir de ella, esos
+  // quedan con el valor que tenían al crearse (mismo criterio que
+  // treasuryService.updateCharge sobre un cargo individual).
+  async update(id: number, input: UpdateMandatoryChargeInput) {
+    const existing = await mandatoryChargeRepository.findById(id)
+    if (!existing) throw new HttpError(404, 'Cargo obligatorio no encontrado')
+
+    return mandatoryChargeRepository.update(id, {
+      ...(input.title       !== undefined ? { title: input.title } : {}),
+      ...(input.description !== undefined ? { description: input.description || null } : {}),
+      ...(input.amount      !== undefined ? { amount: input.amount } : {}),
+      ...(input.type        !== undefined ? { type: input.type } : {}),
+      ...(input.dueDate     !== undefined ? { dueDate: input.dueDate ? new Date(input.dueDate) : null } : {}),
+    })
+  },
+
   async toggle(id: number) {
     const existing = await mandatoryChargeRepository.findById(id)
     if (!existing) throw new HttpError(404, 'Cargo obligatorio no encontrado')
     return mandatoryChargeRepository.toggle(id, !existing.isActive)
+  },
+
+  // Borrado permanente de la plantilla y de todo cargo que generó — para el
+  // caso de una plantilla creada por error (ej. mal-etiquetada bajo la
+  // gestión equivocada) que nunca debió existir. Si algún cargo generado ya
+  // tiene un pago real registrado, se avisa explícitamente en vez de borrarlo
+  // en silencio — quien confirma decide si de verdad quiere perder ese pago.
+  async remove(id: number, confirmDespiteExistingPayments = false) {
+    const existing = await mandatoryChargeRepository.findById(id)
+    if (!existing) throw new HttpError(404, 'Cargo obligatorio no encontrado')
+
+    const withPayments = await mandatoryChargeRepository.countChargesWithPayments(id)
+    if (withPayments > 0 && !confirmDespiteExistingPayments) {
+      throw new HttpError(409, `${withPayments} de los cargos generados ya tienen un pago registrado — confirmá de nuevo si igual querés borrar todo, incluidos esos pagos`)
+    }
+
+    return mandatoryChargeRepository.deleteWithCharges(id)
   },
 
   // Busca tutores del colegio sin este cargo y se lo crea — el botón único

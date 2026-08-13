@@ -25,6 +25,10 @@ export const mandatoryChargeRepository = {
     return prisma.mandatoryCharge.update({ where: { id }, data: { isActive } })
   },
 
+  update(id: number, data: Partial<{ title: string; description: string | null; amount: number; type: any; dueDate: Date | null }>) {
+    return prisma.mandatoryCharge.update({ where: { id }, data })
+  },
+
   findActiveForYear(schoolId: number, academicYearId: number) {
     return prisma.mandatoryCharge.findMany({ where: { schoolId, academicYearId, isActive: true } })
   },
@@ -47,6 +51,24 @@ export const mandatoryChargeRepository = {
   createChargesForParents(mandatoryChargeId: number, parentIds: number[], data: { title: string; amount: number; type: any; dueDate: Date | null; academicYearId: number; schoolId: number }) {
     return prisma.charge.createMany({
       data: parentIds.map((parentId) => ({ ...data, parentId, mandatoryChargeId, target: 'TUTOR' as const })),
+    })
+  },
+
+  countChargesWithPayments(mandatoryChargeId: number) {
+    return prisma.charge.count({ where: { mandatoryChargeId, payments: { some: {} } } })
+  },
+
+  // Borra la plantilla Y todo lo que generó — a diferencia de toggle
+  // (desactivar), esto es permanente: se usa para el caso de una plantilla
+  // creada por error que nunca debió aplicarse (ver "Aporte BTH 2025"
+  // mal-etiquetada bajo la gestión equivocada). Primero los Payment de esos
+  // Charge (si hubiera), después los Charge, después la plantilla.
+  async deleteWithCharges(mandatoryChargeId: number) {
+    return prisma.$transaction(async (tx) => {
+      await tx.payment.deleteMany({ where: { charge: { mandatoryChargeId } } })
+      const { count } = await tx.charge.deleteMany({ where: { mandatoryChargeId } })
+      await tx.mandatoryCharge.delete({ where: { id: mandatoryChargeId } })
+      return { chargesDeleted: count }
     })
   },
 }
