@@ -37,7 +37,7 @@ export const teacherAttendanceService = {
 
     const attendance = existing
       ? await teacherAttendanceRepository.updateCheckIn(existing.id, today, status)
-      : await teacherAttendanceRepository.create(teacher.id, today, today, status)
+      : await teacherAttendanceRepository.create(teacher.id, today, today, status, teacher.schoolId)
 
     return { message: isRetraso ? 'Entrada registrada con retraso' : 'Entrada registrada correctamente', attendance, isNew: !existing }
   },
@@ -146,7 +146,7 @@ export const teacherAttendanceService = {
 
     if (absentTeachers.length === 0) return { message: 'Todos los maestros ya tienen registro hoy', marked: 0 }
 
-    await teacherAttendanceRepository.createManyAbsent(absentTeachers.map((t) => t.id), today)
+    await teacherAttendanceRepository.createManyAbsent(absentTeachers.map((t) => ({ id: t.id, schoolId: t.schoolId })), today)
     return { message: `${absentTeachers.length} maestros marcados como ausentes`, marked: absentTeachers.length }
   },
 
@@ -166,7 +166,7 @@ export const teacherAttendanceService = {
 
     const attendance = existing
       ? await teacherAttendanceRepository.updateCheckIn(existing.id, today, status)
-      : await teacherAttendanceRepository.create(teacher.id, today, today, status)
+      : await teacherAttendanceRepository.create(teacher.id, today, today, status, teacher.schoolId)
 
     return {
       message: `✅ ${teacher.lastName} ${teacher.firstName} — ${isRetraso ? 'Entrada con retraso' : 'Entrada registrada'} a las ${fmtTime(today.toISOString())}`,

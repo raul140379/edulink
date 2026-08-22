@@ -1,5 +1,4 @@
 import prisma from '../lib/prisma'
-import { getTenantContext } from '../lib/tenant-context'
 
 export const teacherAttendanceRepository = {
   findTeacherByUserId(userId: number | undefined) {
@@ -13,7 +12,7 @@ export const teacherAttendanceRepository = {
   findTeacherByAttendanceCode(code: string) {
     return prisma.teacher.findFirst({
       where: { attendanceCode: code },
-      select: { id: true, firstName: true, lastName: true, entryTime: true, toleranceMin: true },
+      select: { id: true, firstName: true, lastName: true, entryTime: true, toleranceMin: true, schoolId: true },
     })
   },
 
@@ -21,8 +20,8 @@ export const teacherAttendanceRepository = {
     return prisma.teacherAttendance.findFirst({ where: { teacherId, date: { gte: start, lte: end } } })
   },
 
-  create(teacherId: number, date: Date, checkIn: Date, status: string) {
-    return prisma.teacherAttendance.create({ data: { teacherId, date, checkIn, status: status as any, schoolId: getTenantContext()?.schoolId ?? 0 } })
+  create(teacherId: number, date: Date, checkIn: Date, status: string, schoolId: number) {
+    return prisma.teacherAttendance.create({ data: { teacherId, date, checkIn, status: status as any, schoolId } })
   },
 
   updateCheckIn(id: number, checkIn: Date, status: string) {
@@ -65,10 +64,9 @@ export const teacherAttendanceRepository = {
     return prisma.teacherAttendance.findMany({ where: { date: { gte: start, lte: end } }, select: { teacherId: true } })
   },
 
-  createManyAbsent(teacherIds: number[], date: Date) {
-    const schoolId = getTenantContext()?.schoolId ?? 0
+  createManyAbsent(teachers: { id: number; schoolId: number }[], date: Date) {
     return prisma.teacherAttendance.createMany({
-      data: teacherIds.map((teacherId) => ({ teacherId, date, status: 'AUSENTE' as any, schoolId })),
+      data: teachers.map((t) => ({ teacherId: t.id, date, status: 'AUSENTE' as any, schoolId: t.schoolId })),
       skipDuplicates: true,
     })
   },
