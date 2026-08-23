@@ -1,4 +1,5 @@
 import prisma from '../lib/prisma'
+import { Pagination, paginationArgs } from '../utils/pagination'
 
 export const reportRepository = {
   findActiveTeachersWithAssignments() {
@@ -107,7 +108,7 @@ export const reportRepository = {
     })
   },
 
-  findMorosos(academicYearId: number) {
+  findMorosos(academicYearId: number, pagination?: Pagination) {
     return prisma.parent.findMany({
       where: { charges: { some: { academicYearId, status: { in: ['PENDIENTE', 'PARCIAL'] } } } },
       include: {
@@ -115,6 +116,7 @@ export const reportRepository = {
         students: { where: { isTutor: true }, include: { student: { select: { firstName: true, lastName: true } } }, take: 1 },
       },
       orderBy: [{ lastName: 'asc' }],
+      ...paginationArgs(pagination),
     })
   },
 }

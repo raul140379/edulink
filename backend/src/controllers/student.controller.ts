@@ -2,14 +2,18 @@ import { Response } from 'express'
 import { AuthRequest } from '../middlewares/auth.middleware'
 import { handleControllerError } from '../utils/http-error'
 import { studentService } from '../services/student.service'
+import { parsePagination } from '../utils/pagination'
 
 // ─────────────────────────────────────────────
 // GET /api/students
 // ─────────────────────────────────────────────
 export const getStudents = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    const { search, isActive } = req.query
-    const students = await studentService.listStudents(search as string | undefined, isActive as string | undefined)
+    const { search, isActive, page, pageSize } = req.query
+    const students = await studentService.listStudents(
+      search as string | undefined, isActive as string | undefined,
+      parsePagination(page as string | undefined, pageSize as string | undefined)
+    )
     res.json(students)
   } catch (error) {
     handleControllerError(res, error)

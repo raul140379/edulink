@@ -13,6 +13,7 @@ import { normalizeLetters, generateUniqueEmail, generateParentPassword } from '.
 import {
   CreateStudentInput, UpdateStudentInput, EnrollInput, AutoEvaluacionInput,
 } from '../schemas/student.schema'
+import { Pagination } from '../utils/pagination'
 
 const BTH_GRADES = ['TERCERO', 'CUARTO', 'QUINTO', 'SEXTO']
 
@@ -34,7 +35,7 @@ function calcTotal(saber: number | null, hacer: number | null, ser: number | nul
 }
 
 export const studentService = {
-  async listStudents(search?: string, isActive?: string) {
+  async listStudents(search?: string, isActive?: string, pagination?: Pagination) {
     const searchWords = search ? search.split(' ').filter((w) => w.trim().length > 0) : []
 
     const where: Prisma.StudentWhereInput = {
@@ -51,7 +52,7 @@ export const studentService = {
 
     // Junta de Núcleo/Distrito solo tiene STUDENT_VIEW_BASIC (no STUDENT_VIEW_ALL) —
     // ve nombre/colegio/padre/dirección, nunca notas/asistencia/kardex.
-    if (studentService.isBasicViewOnly()) return studentRepository.findManyBasic(where)
+    if (studentService.isBasicViewOnly()) return studentRepository.findManyBasic(where, pagination)
 
     // TEACHER/TEACHER_TUTOR: STUDENT_VIEW_ALL acá significa "todos los
     // estudiantes de SUS cursos", no de todo el colegio — antes no había
@@ -64,7 +65,7 @@ export const studentService = {
       where.assignments = { some: { courseId: { in: courseIds } } }
     }
 
-    return studentRepository.findMany(where)
+    return studentRepository.findMany(where, pagination)
   },
 
   async getStudentById(id: number) {

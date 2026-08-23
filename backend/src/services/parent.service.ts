@@ -15,6 +15,7 @@ import {
   CreateParentInput, UpdateParentInput, UpdateMeInput,
   LinkStudentsInput, ChangeTutorInput, ChangeRelationInput,
 } from '../schemas/parent.schema'
+import { Pagination } from '../utils/pagination'
 
 function makeInitials(firstName: string, lastName: string): string {
   const parts = [...firstName.trim().split(' '), ...lastName.trim().split(' ')]
@@ -80,9 +81,15 @@ async function createTutorUser(firstName: string, lastName: string, ci?: string 
 }
 
 export const parentService = {
-  listParents(search?: string, isActive?: string, isTutor?: string) {
-    const where: Prisma.ParentWhereInput = {
-      ...(search ? {
+  listParents(search?: string, isActive?: string, isTutor?: string, pagination?: Pagination) {
+    // AND de condiciones en vez de spread plano — search ya usa su propio OR,
+    // así que un segundo OR (el de isActive) al mismo nivel lo pisaría en vez
+    // de combinarse. Antes isActive se aplicaba con un .filter() de JS después
+    // de traer TODO — movido acá para que la paginación cuente bien.
+    const conditions: Prisma.ParentWhereInput[] = []
+
+    if (search) {
+      conditions.push({
         OR: [
           { firstName: { contains: search, mode: 'insensitive' as const } },
           { lastName:  { contains: search, mode: 'insensitive' as const } },
@@ -97,17 +104,19 @@ export const parentService = {
             { firstName: { contains: search.split(' ')[1] || '', mode: 'insensitive' as const } },
           ]},
         ],
-      } : {}),
-      ...(isTutor === 'true'         ? { students: { some: { isTutor: true } } } : {}),
-      ...(isTutor === 'SIN_VINCULAR' ? { students: { none: {} } }                : {}),
-      ...(isTutor === 'NO_TUTOR'     ? { AND: [{ students: { some: {} } }, { students: { none: { isTutor: true } } }] } : {}),
+      })
     }
+    if (isTutor === 'true')         conditions.push({ students: { some: { isTutor: true } } })
+    if (isTutor === 'SIN_VINCULAR') conditions.push({ students: { none: {} } })
+    if (isTutor === 'NO_TUTOR')     conditions.push({ AND: [{ students: { some: {} } }, { students: { none: { isTutor: true } } }] })
+    // Mismo criterio que el .filter() original: sin user o con user.isActive
+    // false cuenta como "inactivo" (p.user?.isActive ?? false).
+    if (isActive === 'true')  conditions.push({ user: { isActive: true } })
+    if (isActive === 'false') conditions.push({ OR: [{ userId: null }, { user: { isActive: false } }] })
 
-    return parentRepository.findMany(where).then((parents) =>
-      isActive !== undefined
-        ? parents.filter((p) => (p.user?.isActive ?? false) === (isActive === 'true'))
-        : parents
-    )
+    const where: Prisma.ParentWhereInput = conditions.length > 0 ? { AND: conditions } : {}
+
+    return parentRepository.findMany(where, pagination)
   },
 
   async getParentById(id: number) {
@@ -566,19 +575,19 @@ export const parentService = {
     return { message: 'Código regenerado', attendanceCode: code }
   },
 
-  getTutorAttendanceCodes() {
-    return parentRepository.findAllTutorsWithCodes()
+  getTutorAttendanceCodes(pagination?: Pagination) {
+    return parentRepository.findAllTutorsWithCodes(pagination)
   },
 
   // Todos los padres del colegio (cualquier relación) con estado
   // Activo/Inactivo según tengan o no un hijo matriculado en la gestión
   // activa — "matriculado" = tiene una StudentAcademicAssignment ese año, no
   // el interruptor manual Student.isActive (que no distingue año).
-  async getAllWithStatus() {
+  async getAllWithStatus(pagination?: Pagination) {
     const activeYear = await parentRepository.findActiveAcademicYear()
     if (!activeYear) throw new HttpError(404, 'No hay gestión académica activa')
 
-    const parents = await parentRepository.findAllWithEnrollmentStatus(activeYear.id)
+    const parents = await parentRepository.findAllWithEnrollmentStatus(activeYear.id, pagination)
 
     return parents.map((p) => ({
       id: p.id, firstName: p.firstName, lastName: p.lastName, ci: p.ci, phone: p.phone,

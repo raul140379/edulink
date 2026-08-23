@@ -1,0 +1,518 @@
+# Proyecto: EduLink
+
+## Descripción
+EduLink es un sistema web integral para la gestión administrativa y académica de un **distrito educativo completo**: desde el Director Distrital y los directores de cada unidad educativa, hasta docentes, personal administrativo, portería, padres de familia y estudiantes. Cubre matriculación, gestión académica (cursos, materias, notas, asistencia), tesorería de la Junta de Padres, comunicación institucional, control de acceso en portería mediante biometría/QR, y la representación completa de la Junta de Padres de Familia y el Gobierno Estudiantil en los tres niveles de la estructura educativa boliviana: **Distrito → Núcleo → Unidad Educativa**.
+
+El nombre original del proyecto era "SGJE" cuando era exclusivo para U.E. Naciones Unidas (El Torno, Santa Cruz). Desde ahí evolucionó a EduLink, el sistema distrital completo actual. Hoy opera en producción para esa UE, con arquitectura preparada para escalar a un distrito real (multi-núcleo, multi-colegio) sin reprogramación — solo configuración.
+
+## Stack tecnológico
+
+**Backend**
+- Runtime/lenguaje: Node.js + Express + TypeScript
+- ORM: Prisma 6.7.0 (**fijo, no subir a v7**)
+- Base de datos: PostgreSQL — una instancia por distrito desplegado
+- Auth: JWT (expiración 8h, incluye el alcance del usuario — colegio/núcleo/distrito — en el token) + bcrypt
+- Otros: `xlsx` (import masivo desde Excel), `multer` (upload de archivos), `jsPDF` (reportes PDF), `html5-qrcode` (lectura de QR)
+
+**Frontend**
+- Framework: Next.js 16 (App Router) + React 19
+- Lenguaje: TypeScript en todo el código
+- Estilos: Tailwind CSS v4 — sistema de diseño compartido (botones, tablas, modales, tarjetas, notificaciones)
+- Paneles independientes por rol bajo `/dashboard/<rol>` (admin, planteldocente, padres, estudiantes, portero) — no una app monolítica. Cada uno con su propio menú y tema de color, pero reutilizando el mismo `DashboardShell`.
+- Portal público sin autenticación: comunicados, directorio de UEs, directorio de autoridades electas
+
+**Infraestructura / despliegue**
+- Backend en Railway (API + PostgreSQL)
+- Frontend en Vercel
+- Dominio propio vía Cloudflare (`radosoft.tecnologia.bo` y subdominios)
+- Despliegue continuo: cada cambio integrado al repo se publica automáticamente
+
+## Arquitectura
+
+**Cliente-servidor de 3 capas + motor de tenant-scoping transversal:**
+
+```
+Cliente web (Next.js, paneles por rol)
+  ↓ HTTPS / JSON
+API REST (Express)
+  Rutas → Middlewares (auth, permisos) → Controladores → Servicios → Repositorios
+  ↓
+Motor de tenant-scoping (extensión de Prisma, backend/src/lib/prisma.ts)
+  Inyecta y valida automáticamente el alcance (colegio/núcleo/distrito)
+  ↓ SQL
+PostgreSQL
+```
+
+Cada capa tiene responsabilidad única: rutas solo declaran endpoints + middlewares; controladores traducen HTTP ↔ funciones de servicio; servicios concentran toda la lógica de negocio; repositorios son la única capa que habla con Prisma. Este orden evita que la lógica de negocio se disperse.
+
+### Multi-tenancy y aislamiento de datos
+
+El desafío central: garantizar que cada actor (Director Distrital, director de colegio, juntas de distrito/núcleo/colegio, familias) vea únicamente los datos de su propio alcance, sin repetir esa lógica en cada uno de los +40 módulos.
+
+**Contexto de tenant:** en cada request autenticado, `verifyToken` decodifica el JWT y construye `{ userId, role, schoolId, districtId, nucleoId }`, propagado con `AsyncLocalStorage` — no se pasa manualmente entre funciones.
+
+**Dos clasificaciones de modelos:**
+- **Alcance directo** (`DIRECT_SCHOOL_SCOPED_MODELS` en `scoped-models.ts`): Charge, Payment, notas, asistencia, tareas, horarios, etc. — todos con `schoolId` obligatorio. La extensión inyecta el filtro `WHERE` automáticamente en toda lectura, y valida/fuerza el `schoolId` en cada create/upsert.
+- **Alcance de tenant** (3 modelos): `User`, `JuntaMember`, `GobiernoMember` — llevan `schoolId`/`nucleoId`/`districtId` opcionales y mutuamente excluyentes, según en qué nivel vive la cuenta.
+
+**Excepción de diseño — `Comunicado`:** no es "una fila que pertenece a un tenant" sino un mensaje que se difunde hacia abajo en la jerarquía. Su filtrado se resuelve a mano en el servicio, no en la extensión genérica.
+
+**Regla de oro:** si un modelo nuevo maneja datos de un colegio específico, agregarlo a `DIRECT_SCHOOL_SCOPED_MODELS` desde el día uno — no depender de filtrado manual disperso en repositorios (`MandatoryCharge` quedó fuera de la lista por construirse antes de que el patrón estuviera consolidado; es deuda técnica menor pendiente).
+
+### Invariante de aislamiento — nunca se cruza una Unidad Educativa
+
+**Cada Unidad Educativa es completamente independiente.** Ningún actor que opera *dentro* de una UE (Padre, Estudiante, Docente, **Director**, Regente/Secretaría, Junta Escolar, Delegado, Staff/Portero) puede ver, editar, ni cruzarse con datos de **otra** UE — esto incluye explícitamente al `DIRECTOR` de una UE: un director de U.E. Naciones Unidas nunca debe ver ni administrar nada de U.E. La Santa Cruz, y viceversa, pese a ser el rol de mayor autoridad dentro de su propia UE. Ejemplo concreto: un padre de U.E. Naciones Unidas nunca debe aparecer, ni poder verse, desde U.E. La Santa Cruz, y viceversa.
+
+Los niveles superiores SÍ agregan dentro de su propio alcance, pero nunca más allá:
+- **Junta/Gobierno de Núcleo** ve padres, estudiantes y maestros de **todas las UE de su propio núcleo** — nunca de otro núcleo ni de otro distrito.
+- **Junta/Gobierno/Director Distrital** ve dentro de **todo su propio distrito** — nunca de otro distrito.
+
+Este invariante ya está protegido en el modelo por el `schoolId` obligatorio en los modelos de alcance directo + la extensión de tenant-scoping. **Pendiente de verificar explícitamente** (ver Pendientes / Roadmap) que ningún endpoint construido "rápido" para un actor de UE haya heredado el mismo patrón de fuga que se encontró en DELEGATE a nivel de curso (permiso compartido sin filtro adicional).
+
+**Única excepción al invariante — `DIRECTOR_DISTRITAL`:** es el único rol que puede ver **todas las UE del distrito**, pero **solo la parte académica** (notas, asistencia, matrícula), **y únicamente en modo lectura** — puede ver, nunca crear/editar/eliminar datos académicos de una UE que no sea la propia. Sus acciones de escritura reales se limitan a sus propias funciones administrativas (designar directores, designar Junta/Gobierno de Distrito), no a procesar el contenido académico interno de cada UE. **Nunca debe tener acceso a Tesorería de ninguna UE**, ni siquiera de solo lectura — el dinero de cada Junta Escolar es exclusivo de esa UE, sin excepción, ni para el Distrital de Educación. Cualquier endpoint de Tesorería debe rechazar explícitamente a `DIRECTOR_DISTRITAL`, no solo omitir otorgarle el permiso por descuido.
+
+### Invariante general — cada nivel gestiona SOLO lo suyo (aplica a Junta y a Gobierno Estudiantil por igual)
+
+El mismo patrón de aislamiento no es exclusivo de Tesorería — aplica a **toda función** que gestionen Junta de Padres y Gobierno Estudiantil en cualquiera de sus 3 niveles (UE / Núcleo / Distrito):
+
+- Cada nivel tiene su **propia área de gestión** (comunicados, reuniones, miembros, tesorería) — separada de la de los demás niveles.
+- **Nunca hay visibilidad cruzada entre niveles**: ni hacia arriba (UE viendo Núcleo/Distrito), ni hacia abajo (Distrito viendo el detalle interno de una UE específica), ni entre pares del mismo nivel (un núcleo viendo otro núcleo del mismo distrito).
+- Esto aplica **igual para Junta que para Gobierno Estudiantil en cuanto al aislamiento por nivel** — son dos ramas paralelas, cada una con el mismo patrón de "cada nivel ve/gestiona solo lo suyo". **No son simétricas en autonomía:** Junta es un órgano completamente independiente (no depende de nadie); Gobierno Estudiantil opera bajo supervisión del Director/Junta Escolar de su nivel, pero sus decisiones son autónomas y no pueden vetarse salvo violación de normas internas/municipales (ver sección "Reglas de negocio por actor").
+
+**Ejemplo concreto con Tesorería** (el caso ya detallado abajo): `JUNTA_ESCOLAR` de una UE nunca ve la Tesorería de su Núcleo/Distrito, ni viceversa. El mismo principio debe aplicar cuando se construya cualquier funcionalidad de Gobierno Estudiantil a nivel Núcleo/Distrito (comunicados propios, gestión de miembros propia, etc.) — nunca cruzando hacia el detalle interno de una UE específica ni hacia otro núcleo/distrito.
+
+**Nota de diseño para verificar en la auditoría (ver Pendientes / Roadmap):** este principio de "áreas estancas por nivel" debe aplicarse consistentemente a medida que se construyan las funcionalidades pendientes de Gobierno Estudiantil (CRUD de miembros, ver sección de Roadmap) — no asumir que basta con copiar el patrón de Junta sin revisar que el aislamiento por nivel también se replique.
+
+### Invariante de Tesorería — cada nivel tiene su propia área, aislada de las demás
+
+Tesorería no es un solo espacio compartido — **cada nivel de la jerarquía de padres tiene su propia área de tesorería independiente**, con sus propios cargos y fondos, sin relación con la de otro nivel:
+
+- **Tesorería de UE** (`JUNTA_ESCOLAR`/`DELEGATE`) — los cargos y fondos de esa Junta Escolar específica.
+- **Tesorería de Núcleo** (`JUNTA_NUCLEO`) — sus propios cargos/fondos a nivel núcleo, cuando se construya (hoy bloqueada como "en construcción").
+- **Tesorería de Distrito** (`JUNTA_DISTRITO`) — sus propios cargos/fondos a nivel distrito, cuando se construya.
+
+**Regla de acceso:** cada rol ve **únicamente el área de tesorería de su propio nivel** — nunca la de un nivel distinto, ni hacia arriba ni hacia abajo. `JUNTA_NUCLEO` no ve la Tesorería de ninguna UE de su núcleo, ni `JUNTA_DISTRITO` ve la de ningún núcleo o UE de su distrito. Tampoco al revés: `JUNTA_ESCOLAR` no ve la Tesorería de su Núcleo/Distrito. Tres áreas completamente estancas, no una jerarquía de visibilidad creciente.
+
+Además, dentro de cada área:
+- **`PARENT`** ve solo su propia deuda (nunca la de otro tutor, ni siquiera dentro de la misma UE).
+- **`JUNTA_ESCOLAR`/`DELEGATE`** administran (Junta ve todo su nivel; Delegado solo su curso).
+- **Excepción confirmada (10-ago):** `DIRECTOR`/`REGENTE`/`SECRETARY` de una UE **sí pueden ver Tesorería en modo solo lectura, únicamente de su propia UE** — decisión de diseño consciente, útil para su gestión. Incluye el **resumen general** (estado agregado de cobros/pendientes) y, para un padre específico, **solo un estado simple: "al día" o "con deuda pendiente"** — no el detalle completo de cargos/pagos/recibos de ese padre. Para cualquier detalle más allá del estado simple, Director debe coordinar directamente con Junta Escolar (quien sí administra Tesorería completa). Nunca pueden crear/editar/eliminar cargos ni pagos, en ningún caso.
+- **Ningún otro rol** (Docentes, Staff, `DIRECTOR_DISTRITAL`, Gobierno Estudiantil en cualquier nivel) tiene acceso a ninguna de las tres áreas de Tesorería, ni de solo lectura.
+
+Este invariante debe verificarse en la misma auditoría que la de aislamiento entre UE (ver Pendientes / Roadmap) — cualquier permiso de Tesorería que cruce entre niveles o áreas, o que se salga de esta lista de excepciones, es un hallazgo tan grave como los ya encontrados en DELEGATE.
+
+### Jerarquía organizacional
+
+```
+DISTRITO EDUCATIVO
+  Director Distrital · Junta de Distrito · Gob. Estudiantil Distrito
+    │
+NÚCLEO ESCOLAR
+  Junta de Núcleo · Gob. Estudiantil Núcleo
+    │
+UNIDAD EDUCATIVA
+  Director/Regente/Secretaría · Junta Escolar · Gob. Estudiantil (colegio)
+```
+
+**Jerarquía de designación de cuentas** (quién nombra a quién):
+- Director Distrital designa Director de cada UE + Junta/Gobierno Estudiantil de Distrito
+- Junta de Distrito designa Junta de Núcleo + Junta Escolar de cada colegio
+- Gobierno Estudiantil de Distrito designa Gobierno de Núcleo + de cada colegio
+
+Cada nivel puede, dentro de su propio alcance: convocar reuniones, publicar comunicados, y gestionar tesorería. **Estado real (ago-2026): la Tesorería de Núcleo/Distrito está bloqueada intencionalmente en el frontend** ("en construcción") — el permiso ya existe (`CHARGE_CREATE`/`CHARGE_VIEW_ALL` otorgados a `JUNTA_NUCLEO`/`JUNTA_DISTRITO`), pero el modelo `Charge` solo soporta `schoolId` (no `nucleoId`/`districtId`), y el dominio de negocio de "qué significa un cargo de núcleo" aún no está definido.
+
+**Respaldo legal de cobros:** `PoaActa` registra el acta de aprobación del Plan Operativo Anual — respaldo legal exigido por el Director Distrital para que una Junta cobre cuotas. Es una constancia global por `{schoolId, academicYear}` (informativa, no bloquea la creación de cobros), **no una relación cargo-por-cargo** — decisión de diseño consciente, documentada en el propio código.
+
+## Reglas de negocio por actor educativo
+
+Contexto real boliviano (para entender el diseño, no todo se modela en EduLink): la jerarquía completa es Ministerio → Departamental → Distrital → Núcleo → UE. **EduLink modela hasta Distrito como techo** — el nivel Departamental (Junta Departamental, Gobierno Estudiantil Departamental) existe en la realidad pero no se construye en el sistema por ahora.
+
+### 1. Estudiantes
+- Obligación principal: asistir a clase, presentar trabajos, rendir exámenes, obtener calificación final (aprueba/reprueba el curso).
+- Se organizan en **Gobierno Estudiantil** (Presidente, Tesorero, Vice, Srta. Deporte, Srta. Académico), elegido voluntariamente por los propios estudiantes.
+- 3 niveles: UE → Núcleo → Distrito, cada uno con su propio representante.
+- **Autonomía real:** el Gobierno Estudiantil opera bajo supervisión del Director y la Junta Escolar, pero sus decisiones son autónomas y deben respetarse — **el Director NO puede vetar** una decisión del Gobierno Estudiantil, salvo que viole normas internas o municipales.
+- La designación en el sistema (registro) es solo un "visto bueno" de lo que los estudiantes ya decidieron por elección — no es que la autoridad elige, solo formaliza/registra. Idealmente lo hace el Distrital de Educación (máxima autoridad educativa del distrito), aunque puede hacerlo otro actor si es necesario.
+
+### 2. Docentes
+- Obligación principal: impartir enseñanza según horario asignado — tareas, evaluaciones, avance de temas.
+- **Cada docente es independiente de los demás** (no hay jerarquía entre pares).
+- **Dependen de la parte administrativa, nunca de los padres/Junta.**
+- Designación real: viene de nivel departamental/nacional (docentes como servidores públicos). En el sistema, el **Distrital de Educación registra y asigna a qué UE va cada docente**; el **Director organiza internamente** (qué curso/materia/horario) según la necesidad de su UE — esto ya está cubierto por `TeacherSubjectCourse`/`Schedule`.
+
+### 3. Padres de Familia / Junta
+- Labor principal: apoyar a sus hijos en sus estudios.
+- Se organizan igual que los estudiantes: **Junta Escolar (UE) → Junta de Núcleo → Junta de Distrito**.
+- **Es un órgano independiente — no depende de nadie** (a diferencia de Gobierno Estudiantil, que sí está bajo supervisión del Director/Junta Escolar).
+- **Jerarquía de pertenencia:** cada padre pertenece a la Junta Escolar de la UE donde tiene un hijo matriculado (base raíz); la Junta Escolar coordina con Junta de Núcleo y Junta de Distrito. Para ser miembro de una directiva se requiere tener hijo(s) matriculado(s) en el alcance correspondiente (UE para Junta Escolar, Núcleo para Junta de Núcleo, cualquier UE del distrito para Junta de Distrito).
+- **Flujo técnico de designación (importante):** al designar un miembro de Junta de Núcleo/Distrito, la autoridad que designa (ej. Distrital) **NO crea una persona nueva** — debe **seleccionar un registro de `Parent` ya existente** en la base de datos, y el sistema debe **validar** que ese padre tenga efectivamente un hijo matriculado (o sea tutor de un estudiante vía `ParentStudent`) en alguna UE dentro del alcance correspondiente (cualquier UE del distrito para Junta de Distrito, cualquier UE del núcleo para Junta de Núcleo) antes de aceptar la designación. Mismo criterio aplica para Gobierno Estudiantil, seleccionando un `Student` existente en vez de un `Parent`.
+- **Exclusividad económica:** los padres aportan voluntariamente para mejoras de la UE (infraestructura, material académico) — por eso la parte económica es exclusividad total de ellos. **Ningún otro actor puede tomar decisiones sobre Tesorería** (ver invariantes de Tesorería más abajo).
+- **Límite claro de alcance académico:** ninguna Junta Escolar puede gestionar (crear/editar) datos de estudiantes — solo puede **visualizar algunos datos**, según su rol. La parte académica es **exclusividad de la parte administrativa** (Director/Docentes), nunca de Junta.
+
+### 4. Parte administrativa (Director, Regente, Secretaría, Staff)
+- Depende del Distrital de Educación: el Distrital asigna Director a cada UE, asigna Docentes a cada UE, y es responsable de cualquier miembro administrativo.
+- El Director, una vez asignado, organiza su propia UE según necesidad (dentro de su alcance — ver invariante de aislamiento entre UE).
+
+### 5. Portero / Regente (control de acceso)
+- Función exclusiva: **control de ingreso a la Unidad Educativa** — registra el ingreso/salida de **todas las personas** que entran (docentes, personal administrativo, estudiantes, y visitantes), no solo estudiantes. Ya cubierto por el módulo `gate` (`GateRecord` con `type` distinguiendo teacher/staff/student/visitante, `BiometricTemplate`, QR/lector USB).
+
+## Roles y permisos
+
+18 roles, más de 40 permisos granulares (`student:view:all`, `charge:create`, `comunicado:create`, etc.), verificados por middleware en cada endpoint.
+
+| Rol | Nivel | Descripción |
+|---|---|---|
+| SUPER_ADMIN | Sistema | Acceso total, sin restricción de tenant |
+| DIRECTOR_DISTRITAL | Distrito | Designa directores y Junta/Gobierno de Distrito (sus propias funciones). **Ve** lo académico de todas las UE (notas/asistencia/matrícula) **en modo solo lectura** — nunca procesa/edita datos internos de una UE ajena. **Nunca Tesorería de ninguna UE** |
+| JUNTA_DISTRITO | Distrito | Representa a los padres del distrito; designa Junta de Núcleo y Escolar |
+| GOBIERNO_DISTRITO | Distrito | Representa al estudiantado del distrito |
+| JUNTA_NUCLEO | Núcleo | Representa a los padres de los colegios de su núcleo |
+| GOBIERNO_NUCLEO | Núcleo | Representa al estudiantado de los colegios de su núcleo |
+| DIRECTOR | Colegio | Matriculación, cursos, personal, reportes. **Tesorería: solo lectura de su propia UE** (nunca crea/edita) |
+| REGENTE / SECRETARY | Colegio | Apoyo administrativo y académico |
+| TEACHER / TEACHER_TUTOR | Colegio | Notas, asistencia, tareas |
+| JUNTA_ESCOLAR | Colegio | Tesorería, delegados, comunicados |
+| DELEGATE | Colegio | Padre delegado — **debe estar limitado a su propio curso** (ver Notas de trabajo — auditoría de seguridad en curso) |
+| PARENT | Colegio | Ve información de sus propios hijos |
+| STUDENT | Colegio | Ve su propia información académica |
+| STUDENT_GOV | Colegio | Gobierno Estudiantil del colegio |
+| STAFF / PORTERO | Colegio | Verificación de identidad, ingreso/salida |
+
+**Regla de oro:** la asignación de un rol nuevo está sujeta a la jerarquía de designación — validar siempre en el servicio de creación de usuarios que quien asigna tenga autoridad sobre el rol/nivel que está otorgando.
+
+## Estructura del backend (patrón fijo por módulo)
+
+```
+backend/
+├── src/
+│   ├── config/
+│   │   └── permissions.ts
+│   ├── lib/
+│   │   └── prisma.ts              (motor de tenant-scoping)
+│   ├── middlewares/
+│   ├── controllers/
+│   ├── services/
+│   ├── repositories/
+│   ├── schemas/
+│   ├── routes/
+│   ├── scripts/                    (imports, backfills — corren FUERA del contexto de tenant, sin la extensión de Prisma)
+│   └── utils/                      (funciones puras compartidas, ej. charge-balance.ts)
+├── prisma/
+│   └── schema.prisma
+└── main.ts
+```
+
+Cada módulo sigue: `routes.ts` → middlewares → `<modulo>.controller.ts` → `<modulo>.service.ts` → `<modulo>.repository.ts`, más `schemas/` para validación.
+
+30 módulos de rutas agrupados por dominio: identidad y acceso (auth, users, district, nucleo, schools, junta, gobierno), académico (academic, courses, students, teachers, parents, subjects, schedule, planificacion, classroom), evaluación (nota, task, teacherAttendance, studentAttendance), **tesorería** (treasury, delegate, poa-acta), comunicación (notification, comunicado, meeting), portería (gate), reportes/admin (report, admin), portal público (public — sin auth).
+
+## Módulos construidos y su funcionalidad
+
+| Módulo | Estado | Funcionalidad principal |
+|---|---|---|
+| **Auth / Usuarios** | ✅ Completo | Login JWT, jerarquía de designación de cuentas, reseteo masivo de credenciales por rol |
+| **Distrito / Núcleo / Colegios** | ✅ Completo (datos), 🟡 UI parcial | Modelo territorial completo; corrección de 16 núcleos cruzados con Plan de Ordenamiento Territorial; asignación de director por colegio; asistente de configuración de 5 pasos para poner en marcha un distrito nuevo |
+| **Junta de Padres (3 niveles)** | 🟡 UI completa, Tesorería Núcleo/Distrito bloqueada | Núcleos+colegios, gestión de Junta, perfil propio, cascada de designación — todo construido en `/padres/junta` (Directorio, CRUD completo). **Tesorería a nivel Núcleo/Distrito explícitamente bloqueada** ("en construcción") — el permiso ya existe, el modelo de negocio no |
+| **Gobierno Estudiantil (3 niveles)** | 🔴 Muy atrás respecto a Junta | Backend soporta listar/editar (`GET /`, `PUT /:id` en `gobierno.routes.ts`, gateados por `GOBIERNO_MANAGE`) — pero **no existe pantalla de gestión/listado de miembros en ningún nivel**. `GOBIERNO_NUCLEO` solo tiene "Inicio" + "Comunicados" (vista); `GOBIERNO_DISTRITO` solo agrega "Designar Gobierno" (alta, sin poder ver/editar/reasignar después). Tampoco existe `estudiantes/nucleos/` (sí existe `padres/nucleos/`). Es deuda de frontend, no de backend — la capacidad ya está en la API |
+| **Matrícula / Académico** | ✅ Completo | Cursos por nivel/grado/paralelo/turno, `StudentAcademicAssignment` (matrícula por año), materias por Campo del Saber, `TeacherSubjectCourse` |
+| **Horarios** | ✅ Completo | Generación de horario con algoritmo de dos fases (Fisher-Yates shuffle, base 60–90%), asignación de aulas, `SchedulePlan` para prototipos A/B antes de promover a horario oficial |
+| **Evaluación (Notas/Tareas)** | ✅ Completo | 4 dimensiones (Ser/Saber/Hacer/Decidir) por materia/curso/trimestre, `Task`/`TaskSubmission` |
+| **Asistencia (académica)** | ✅ Completo | Asistencia de estudiantes y docentes por día/curso |
+| **Portero / Control de acceso** | ✅ Completo | QR (`html5-qrcode`), lector USB, códigos formato `INITIALS-NNNN`, `GateRecord`, `BiometricTemplate`, banner de cuenta regresiva a cierre de portal |
+| **Panel Docente** | ✅ Completo + rediseño motivacional | Notas, asistencia, tareas, horario; rediseño de UX (clases de hoy, trabajos pendientes de revisar) — **no es gamificación real** (sin XP/niveles/rachas), a diferencia del panel Estudiante |
+| **Panel Estudiante** | ✅ Completo + gamificación real | Materias, notas, tareas, horario, comunicados; XP/nivel/racha/insignias confirmado real (`_gamification/`, `GamificationContext`), mensajes en lenguaje juvenil urbano boliviano |
+| **Panel Padres/Tutor (PARENT puro)** | ✅ Completo | Notas, horario, calificaciones, maestros, tesorería propia, comunicados — de sus propios hijos. (Designación de juntas subordinadas es capacidad de JUNTA_NUCLEO/JUNTA_DISTRITO, ver fila "Junta de Padres") |
+| **Tesorería (Junta Escolar, nivel Colegio)** | ✅ Completo, detalle en `tesoreria-respaldo.md` | Cargos/pagos, carryover automático y manual entre gestiones, backfill histórico 2025, Verificación por Curso, Deuda Trasladada, desglose gestión actual/trasladada. **Auditoría de seguridad DELEGATE en curso** (ver Pendientes / Roadmap) |
+| **Delegado de curso** | ✅ Auditoría de seguridad cerrada (10-ago) | Gestión de cobros/reuniones de su propio curso — 13 hallazgos originales + `updatePayment` (encontrado en el camino), todos corregidos con `assertDelegateOwnsParent`/`assertDelegateOwnsCourse` (`delegate-scope.ts`), probados contra API real, sin regresión en `JUNTA_ESCOLAR` |
+| **Convocatoria + multa automática** | ✅ Completo (reciente, 01-ago) | Vincula asistencia a asambleas con generación automática de `Charge` — puente entre gobernanza y tesorería |
+| **Registro de padres autoservicio** | ✅ Completo (reciente) | Vía Junta/Delegado, asistencia por curso con QR/check-in de tutores |
+| **Attendance Check-in** | ✅ Completo | Módulo propio (`attendance-checkin.routes.ts`, separado de `gate` y `meeting`) — escaneo de código de tutor en portería/puerta, marca presente en la convocatoria/reunión activa del día. Opera sobre el tutor escaneado, no sobre un ID arbitrario — no hereda los problemas de alcance de DELEGATE |
+| **Comunicación (Notification/Meeting/Comunicado)** | ✅ Completo | Notificación puntual a padre, reunión que convoca a un curso con asistencia, comunicado como broadcast por Distrito/Núcleo/Colegio |
+| **Reportes** | 🟡 Parcial (alcance verificado) | 5 endpoints en `/api/reports`, todos consumidos sin roto: Maestros (docentes + asignaciones), Delegados (curso→delegado→tutor→conteo), Asistencia-de-reuniones (% por curso, **no** es asistencia diaria de estudiantes — módulo distinto), Tesorería y Deuda Trasladada (ver módulo Tesorería). **No existe** reporte de calificaciones, matrícula/inscripciones, ni asistencia diaria agregada |
+| **Portal público** | ✅ Completo | Comunicados, directorio de UEs, directorio de autoridades electas — sin autenticación |
+| **PoaActa** | ✅ Completo (por diseño, alcance limitado) | Constancia global de acta aprobada por colegio/gestión — informativa, no vinculada cargo-por-cargo |
+| **Sistema de Gestión Comercial** (proyecto RadoSoft separado, no EduLink) | 🟡 Bloque 1 completo | Ver proyecto aparte — no confundir con EduLink |
+
+**Leyenda:** ✅ Completo y probado · 🟡 Parcial / con huecos conocidos · 🔴 Con problema activo sin resolver
+
+## Modelo de datos base
+
+41 modelos, 27 enumeraciones, organizados por dominio. Los más relevantes para trabajo activo:
+
+```
+Organización territorial:  District → Nucleo → School (School = ancla de aislamiento, schoolId)
+Identidad:                 User ←1:1(opcional)→ Parent | Student | Teacher | Staff | JuntaMember | GobiernoMember
+Familias:                  Parent ←→(ParentStudent, N:M)→ Student
+Académico:                 AcademicYear → Trimester; Course; StudentAcademicAssignment (matrícula por año)
+Tesorería:                 Charge (parentId, studentId opcional, academicYearId, sourceChargeId self-relation
+                            para carryover) ← Payment (múltiples pagos parciales por Charge)
+                            PoaActa (constancia global, NO vinculada cargo-por-cargo)
+Comunicación:               Notification (puntual, a un padre) · Meeting (convoca a un curso, registra
+                            Attendance) · Comunicado (broadcast por Distrito/Núcleo/Colegio)
+```
+
+**Enumeraciones clave:** `Role` (18 valores), `Subsistema` (Regular / Alternativa y Especial / Superior de Formación Profesional), `SchoolType` (Fiscal/Convenio/Privada), `JuntaRole` (Presidente, Vicepresidente, Secretaria, Tesorero, Vocal — reutilizado para Junta de Padres y Gobierno Estudiantil en los 3 niveles).
+
+## Convenciones y lecciones aprendidas
+
+- **Prisma fijo en 6.7.0** — no subir a v7.
+- En Express, rutas específicas ANTES que rutas paramétricas `/:id`.
+- **Nunca reutilizar un endpoint existente si el cambio debilitaría protecciones del flujo diario** (ej. no relajar los guards de `updateCharge`/`registerPayment` para casos de corrección histórica — crear un endpoint nuevo dedicado en su lugar).
+- **El histórico nunca se pierde**: preferir "crear registro histórico + trasladar" sobre "crear dato nuevo sin origen", para mantener trazabilidad completa (patrón `sourceChargeId`).
+- **Todo cambio destructivo o masivo se investiga primero en modo diagnóstico/dry-run** antes de ejecutar — nunca borrar/migrar en el mismo paso que se detecta el problema.
+- **Preferencia de Raul:** regeneración completa de archivos sobre parches/diffs parciales; explicaciones de trade-offs antes de decisiones arquitectónicas; confirmación explícita antes de cualquier paso que toque datos reales.
+- Scripts en `scripts/` corren fuera de un request HTTP — **no tienen contexto de tenant**, por lo que el filtrado por `schoolId` ahí debe hacerse explícito a mano, no asumir que la extensión de Prisma los protege.
+
+## Pendientes / Roadmap (priorizado, agosto 2026)
+
+### 🔴 Prioridad 1 — Seguridad de datos ✅ COMPLETA (10-ago-2026)
+
+**Resumen de la sesión de seguridad (7 commits, 21 hallazgos corregidos y probados contra API real):**
+1. `a8f6096` — Auditoría DELEGATE completa (13 hallazgos) + Track 1 Tesorería
+2. `90fd0b7` — Mensaje claro para JUNTA_NUCLEO/JUNTA_DISTRITO en escritura de Tesorería
+3. `ef13e94` — 4 fugas de aislamiento entre UE (DIRECTOR_DISTRITAL, Gobierno Estudiantil, TEACHER, DIRECTOR/REGENTE/SECRETARY)
+4. `3dbfed1` — Bloqueo simétrico de lectura Núcleo/Distrito + fix bug SUPER_ADMIN
+5. `513b6bb` — `import`/`import-tutors` sin protección, abierto a cualquier usuario logueado
+6. Meeting: `JUNTA_NUCLEO`/`JUNTA_DISTRITO` no pueden gestionar reuniones de curso ajenas dentro de su alcance
+7. `createJuntaMember`/`createGobiernoMember`: validación de alcance faltante en creación (existía en edición)
+
+Los 7 puntos originales del roadmap de seguridad quedan cerrados. Próxima prioridad: Tesorería en curso (BTH 2026, buscador de recibos, import CSV) o Gobierno Estudiantil.
+1. ✅ **Corregir alcance de DELEGATE** — CERRADO 10-ago-2026. 13 hallazgos originales + `updatePayment` (encontrado en el camino, no estaba en la lista original). Helpers reutilizables en `backend/src/utils/delegate-scope.ts` (`assertDelegateOwnsParent`, `assertDelegateOwnsCourse`). Los 4 bloques (Familias 🔴, Tesorería escritura 🟠, Tesorería lectura 🟠, Asistencia 🟠) probados contra la API real, sin regresión en `JUNTA_ESCOLAR`.
+2. ✅ Verificado (10-ago): sin evidencia de uso indebido en `registerPayment` (0 pagos por DELEGATE) ni Meeting (0 reuniones creadas por DELEGATE). **Riesgo residual real sin poder auditarse**: `Charge` sin campo de autoría, `deleteParent` sin soft-delete, `regenerateTutorCode` sin historial — ver ítem 17.1 (auditoría/trazabilidad) para la mejora pendiente.
+3. ✅ Fix menor cerrado (10-ago): `createCharge`/`createBulkCharges` ahora rechazan con 400 y mensaje claro ("Tesorería a nivel Núcleo/Distrito todavía no está disponible") en vez del 403 confuso. Probado con `JUNTA_NUCLEO` real, sin regresión en `JUNTA_ESCOLAR`.
+4. ✅ **Aislamiento entre UE — CERRADO 10-ago.** 4 hallazgos, todos corregidos y probados:
+    - `DIRECTOR_DISTRITAL` tenía `CHARGE_VIEW_ALL` (violaba el invariante) → permiso removido.
+    - Gobierno Estudiantil (`GOBIERNO_NUCLEO`, `GOBIERNO_DISTRITO`, `STUDENT_GOV`) tenía `CHARGE_CREATE`+`CHARGE_VIEW_ALL` (el más grave, incluía escritura) → ambos permisos removidos de los 3 roles.
+    - `TEACHER`/`TEACHER_TUTOR` sin filtro real de curso en `listStudents`/`getStudentById` (mismo patrón que DELEGATE) → filtrado por curso real vía `findTeacherCourseIds` (`TeacherSubjectCourse` + `CourseTutor`).
+    - `DIRECTOR`/`REGENTE`/`SECRETARY` con `CHARGE_VIEW_ALL` → **confirmado como diseño válido**, pero acotado: solo resumen general + estado simple (`AL_DIA`/`CON_DEUDA`) de un padre específico en su propia UE, nunca el detalle completo de cargos/pagos. Ver invariante de Tesorería actualizado arriba.
+5. ✅ **Aislamiento de Tesorería por nivel — CERRADO 10-ago.** Hallazgo más grave de la sesión: `JUNTA_NUCLEO`/`JUNTA_DISTRITO` podían **leer** (no solo escribir) la Tesorería completa de cualquier UE de su alcance — resumen agregado, listado de tutores, y **detalle individual con números de recibo** — porque el motor genérico de tenant-scoping (`NUCLEO_WIDE_ROLES`/`DISTRICT_WIDE_ROLES`) aplicaba a `Charge` sin excepción. Corregido con `assertHasOwnSchool()` (chequeo explícito por rol, no por `schoolId == null`) en `getSummary`, `getParentsWithBalance`, `getParentAccount`, `getVerificationReportByCourse`. **Bonus:** de paso se corrigió un bug colateral del fix anterior de `createCharge`/`createBulkCharges` que bloqueaba accidentalmente a `SUPER_ADMIN` (sus usuarios reales tienen `schoolId: null`, igual que Núcleo/Distrito) — ahora usa el mismo helper por rol explícito. Todo probado contra la API real, sin regresión en `JUNTA_ESCOLAR`.
+6. ✅ **Aislamiento general por nivel — CERRADO 10-ago.** Auditoría del panel Junta Núcleo/Distrito, 3 hallazgos:
+    - **Comunicados** → sin bugs, el mejor implementado de los 4 revisados (aislamiento correcto por distrito/núcleo/colegio, `assertOwnedByScope` bloquea edición/eliminación ajena).
+    - **Meeting (gestión, no lectura)** → 🔴 bug real: `JUNTA_NUCLEO`/`JUNTA_DISTRITO` podían editar/eliminar/tomar asistencia/multar reuniones de un curso específico dentro de su alcance (intromisión, no jerarquía legítima — mismo criterio que Tesorería). Corregido: `assertCanManage()` extendido para rechazar explícitamente a ambos roles en los 5 métodos afectados. Probado sin regresión en `JUNTA_ESCOLAR`.
+    - **createJuntaMember/createGobiernoMember** → 🔴 bug más grave de los 4: `JUNTA_NUCLEO` podía designar un `JUNTA_ESCOLAR` en **cualquier colegio del sistema**, de cualquier núcleo/distrito — la validación de alcance existía en `updateJuntaMember` pero nunca se replicó en el create. Corregido en `createUser`, probado de punta a punta con datos ficticios.
+    - Aclaración importante resuelta en el camino: existe un caso legítimo real (Junta de Distrito/Núcleo convocando una asamblea de audiencia amplia) que **no se ve afectado** por estos fixes — se confirmó que el sistema no tiene hoy ninguna vía funcional para eso (`Meeting.courseId` obligatorio, `Convocatoria.schoolId` obligatorio + permiso solo de `JUNTA_ESCOLAR`, `Comunicado` sin filtro de audiencia por rol) — anotado como funcionalidad futura, no bug (ver "Fuera de alcance por ahora").
+7. ✅ **Junta/Delegado sin escritura académica — CERRADO 10-ago.** Confirmado correcto en los 6 módulos revisados (Student CRUD/matrícula, Nota, Task, StudentAcademicAssignment, AcademicYear/Trimestre) — ninguno acepta escritura desde `JUNTA_ESCOLAR`/`DELEGATE`. `STUDENT_TOGGLE_STATUS` de `JUNTA_ESCOLAR` es angosto a propósito (solo activo/retirado, ya documentado).
+7.1. 🔴 **Hallazgo colateral, más grave — CERRADO 10-ago:** `POST /api/students/import` e `/import-tutors` no tenían **ningún** permiso — accesibles para cualquier usuario logueado (`PARENT`, `STUDENT`, cualquiera), no específico de Junta/Delegado. Permitía crear estudiantes/asignar tutores en bloque vía Excel sin ningún control de rol. Corregido: `requirePermission(Permission.STUDENT_CREATE)` agregado a ambas rutas, probado (403 para rol sin permiso, 200 sin cambio para rol con `STUDENT_CREATE`).
+
+### 🟡 Prioridad 2 — Funcionalidad de Tesorería en curso
+8. ✅ Cerrado sin acción (10-ago): el "Aporte BTH 2026" mal asignado no existía en la base — Raul ya lo había eliminado manualmente antes de esta verificación. Confirmado: no existe ningún `Charge`/`MandatoryCharge` así en el sistema; lo único con "BTH" en 2026 es `Deuda Anterior — Aporte BTH 2025` (84 registros, traslado legítimo del cierre económico), sin relación con este pendiente. No confundir con "Cuota Inicial de Inscripción" 2026 (425 cargos reales, 145 pagados) — esos NO se tocan.
+9. ✅ Cerrado (10-ago): el buscador ya existía en la pantalla Historial — cumple los 3 requisitos (búsqueda por recibo, detalle completo, "no encontrado" claro). Hallazgo colateral corregido de paso: `getPaymentsHistory` no tenía el candado `assertHasOwnSchool()` que sí se aplicó a los otros 4 endpoints de lectura en el punto 5 — `JUNTA_NUCLEO`/`JUNTA_DISTRITO` veían el historial de pagos de todo su núcleo/distrito. Corregido con el mismo patrón, probado contra API real.
+10. ✅ Cerrado (10-ago): agrupado por curso implementado (101 casos reales, no los 57 originales — la base creció durante la sesión). Manejo del caso "tutor con hijos en cursos distintos" (16 de 101 casos, 16%): se muestra bajo cada curso correspondiente con etiqueta "🔗 Compartido con hermano/a en {curso}", sin duplicar en los totales generales. **Pendiente: Raul debe probarlo en pantalla** — Claude Code solo verificó por API/tipos, no lo vio renderizado.
+11. 🟡 Import CSV por curso — implementado y verificado por API/tipos (10-ago). Botón "Importar" por bloque de curso en Verificación por Curso, preview obligatorio, dedupe por tutor, validación de curso/tutor. **2 bugs colaterales corregidos**: (a) pérdida de contexto de tenant en las 6 rutas con multer (`AsyncLocalStorage` no sobrevivía el parsing de `multer 2.x` — afectaba `/students/import`, `/students/import-tutors`, `/parents/import`, `/schools/import`, `/district/logo`, `/poa-acta`; corregido con middleware que reconstruye el contexto desde `req.userId/userRole/userSchoolId`; **producción verificada sin filas `schoolId: 0`**, no se vio afectada); (b) mangling UTF-8 en el parseo de CSV. **Pendiente: Raul debe probarlo en pantalla antes de commitear** — Claude Code solo verificó por API/DB, nunca lo vio renderizado. Limitación conocida: el CSV no puede representar un pago parcial real contra el monto completo (solo "monto reducido pagado" o "monto completo sin pagar") — para esos casos, importar como no pagado y corregir después con "Editar".
+12. 🟡 Cuota Inicial 2026 de Elsa Tito Cabrera — **decisión tomada (10-ago): queda registrada como NO PAGADA/pendiente**, sin asumir nada sin respaldo. Se le va a pedir al padre/tutor el comprobante físico; una vez presentado, se registra el pago usando "Editar" (Verificación por Curso). No requiere ninguna acción de Claude Code hasta que el respaldo se presente.
+
+### 🔵 Prioridad 4 — Gobierno Estudiantil: CRUD completo (deuda de frontend, backend parcial)
+
+Backend confirmado: `GET /` y `PUT /:id` en `gobierno.routes.ts` (gateados por `GOBIERNO_MANAGE`). **Falta confirmar si existen `POST` (crear/designar más allá del alta inicial de Distrito) y `DELETE`/reasignación** — verificar antes de construir frontend, para no descubrirlo a mitad de camino.
+
+12.1. 🔴 **Verificar el flujo real de designación de Junta ya construido** — el informe técnico original decía que el módulo `junta` "crea, en una sola transacción, tanto la cuenta de usuario como el registro de miembro de junta directiva", lo cual suena a que podría estar **creando una persona nueva** en vez de **seleccionar un `Parent` ya existente** en la base con validación de que tenga hijo/sea tutor en el alcance correspondiente (ver regla de negocio en "Reglas de negocio por actor → Padres"). Confirmar cuál de los dos comportamientos tiene hoy — si crea nuevo sin validar contra `ParentStudent`, es un hallazgo que corregir antes de construir lo mismo para Gobierno Estudiantil (para no replicar el mismo error).
+
+Espejo exacto de lo que ya existe y funciona para Junta de Padres (`/padres/junta`, `/padres/nucleos`):
+
+13. ⏳ **Backend — completar CRUD si falta:**
+    - [ ] Confirmar/crear `POST /api/gobierno` (designar miembro nuevo en cualquier nivel, no solo alta inicial de Distrito)
+    - [ ] Confirmar/crear `DELETE /api/gobierno/:id` o mecanismo de reasignación (remover a alguien del cargo)
+    - [ ] Validar que la jerarquía de designación se respete igual que en Junta (Distrito designa Núcleo/Colegio, etc.)
+
+14. ⏳ **Frontend — Directorio de Gobierno Estudiantil** (espejo de `/padres/junta`):
+    - [ ] Pantalla de listado de miembros actuales por nivel (hoy `GOBIERNO_NUCLEO` solo tiene "Inicio"+"Comunicados", sin listado)
+    - [ ] Ver detalle de un miembro (cargo, gestión, datos personales)
+    - [ ] Editar un miembro existente (usando el `PUT /:id` que ya existe)
+    - [ ] Designar/dar de baja un miembro (una vez confirmado el backend en el punto 11)
+    - [ ] Aplicar a los 3 niveles: Colegio, Núcleo, Distrito (hoy Distrito solo tiene el formulario de alta, sin gestión posterior)
+
+15. ⏳ **Frontend — Estructura territorial para Gobierno:**
+    - [ ] Crear `estudiantes/nucleos/` (espejo de `padres/nucleos/` que ya existe) — vista de núcleos y colegios para navegar y designar
+
+16. ⏳ **Consistencia de permisos:**
+    - [ ] Confirmar que `GOBIERNO_MANAGE` distingue correctamente el nivel de quien opera (un `GOBIERNO_NUCLEO` no debería poder gestionar miembros de otro núcleo ni de Distrito) — aplicar la misma lógica de tenant-scoping que ya protege Junta
+    - [ ] **Nota de diseño — autonomía sin veto:** cuando se construyan pantallas de Director/Junta Escolar relacionadas con Gobierno Estudiantil (ej. aprobar actividades, ver decisiones), no incluir ningún mecanismo técnico de "veto" o bloqueo sobre decisiones ya tomadas por Gobierno Estudiantil — solo pueden supervisar, nunca anular, salvo que una decisión viole explícitamente una norma (fuera del alcance del sistema decidir eso automáticamente)
+
+### 🟢 Prioridad 3 — Deuda técnica de arquitectura (no urgente, aprovechar ventana de bajo riesgo)
+17. Agregar `MandatoryCharge` a `DIRECT_SCHOOL_SCOPED_MODELS` (hoy depende 100% de filtrado manual, por construirse antes de que el patrón estuviera consolidado).
+17.1. **Auditoría/trazabilidad de acciones destructivas** — hallazgo de la verificación retroactiva del bug de DELEGATE (10-ago): `Charge` no tiene campo de autoría (`createdByUserId`), `deleteParent` no tiene soft-delete ni tabla de auditoría, `regenerateTutorCode` sobrescribe sin historial. Riesgo residual real: no hay forma de confirmar retroactivamente si alguna de estas acciones ya se usó indebidamente antes de corregir el candado de DELEGATE. Agregar como mínimo: soft-delete (o tabla `AuditLog`) para `Parent`/`Student`/`Charge`, con `actorUserId` + `action` + `timestamp`, antes de que el volumen de datos reales crezca.
+18. Definir el dominio de negocio de "Tesorería a nivel Núcleo/Distrito" antes de destrabar esa UI (qué significa un cargo de núcleo, cómo se reparte entre colegios, quién lo cobra).
+18.1. **`findActiveAcademicYear` y `getAllWithStatus` sin `select` explícito** — hallazgo del incidente de producción del 22-ago-2026 (ver Notas de trabajo): ambas funciones hacen `prisma.academicYear.findFirst()` sin `select`, por lo que Prisma pide TODAS las columnas del modelo tal como está en el `schema.prisma` desplegado — si ese schema ya tiene una columna que la migración correspondiente todavía no aplicó en producción, la lectura completa revienta con `P2022`, aunque la columna nueva no tenga nada que ver con lo que la función necesita. Agregar `select` explícito con solo los campos usados en ambos lugares, para que dejen de depender de que el schema completo esté siempre sincronizado con la DB real.
+
+### 🟢 Rendimiento y escala — preparación para nivel municipal (auditoría + corrección 22-ago-2026)
+
+Contexto: EduLink hoy opera 1 sola UE (cientos de familias); el objetivo es poder escalar a un municipio completo (~16,000 estudiantes, ~33,500 padres/tutores, ~1,500 maestros/administrativos, +1,000 estudiantes netos/año). Auditoría completa de infraestructura/consultas/índices + corrección de los 4 hallazgos de Prioridad 1-2, **probada contra el clon local, sin aplicar todavía a producción real**:
+
+22. ✅ **RESUELTO (contra el clon) — 18 índices agregados** (`schoolId`/`parentId`/`studentId`/`academicYearId` en `Charge`, `Student`, `Parent`, `ParentStudent`, `User`, `Payment`, `Notification`, `Nota`, `StudentAttendance`, `StudentAcademicAssignment`, `TeacherAttendance` — ninguno tenía índice propio antes, solo cobertura parcial vía `@@unique` compuestos con esos campos en posición secundaria, inútil para filtrar por sí solos). Migración `20260823024340_add_performance_indexes`, 100% aditiva (`CREATE INDEX`), aplicada en local + clon, verificada con `EXPLAIN ANALYZE` (Postgres ya usa el índice nuevo). **Pendiente aplicar a producción real** — se junta con el despliegue de código de los ítems 24/25 para un solo reinicio del servicio.
+23. ✅ **RESUELTO (comportamiento probado contra el clon) — `connection_limit=10`** para el `DATABASE_URL` de producción (Postgres real: `max_connections=100`; el valor deja margen para ~8 instancias del backend antes de necesitar tocarlo de nuevo). Probado con 20 queries concurrentes contra un pool de 10: 0 errores, encola en vez de fallar (dos oleadas de ~1s cada una). **Pendiente aplicar la variable en producción real** — junto con el despliegue de código de 24/25, mismo motivo que el ítem 22.
+24. ✅ **RESUELTO (contra el clon) — paginación opt-in en 7 endpoints** (`GET /api/students`, `GET /api/parents`, `GET /api/parents/attendance-codes`, `GET /api/parents/registered-status`, `GET /api/treasury`, `GET /api/reports/treasury` [el array `morosos`], y el listado básico de estudiantes) vía `page`/`pageSize` query params opcionales. **Diseño clave: "lista pero no activa"** — sin esos parámetros, comportamiento 100% idéntico al actual (mismo array plano, mismo total, sin límite), porque hoy el frontend real ya muestra 638 estudiantes/935 padres/347 tutores sin paginar en la única UE real — activar un límite por default hubiera sido una regresión silenciosa, no una mejora. La capacidad de pedir páginas queda lista en el backend, pero **no reduce ninguna carga real hasta que el frontend la use** — ver ítem 24.1. De paso, se corrigió un bug de correctitud en el listado general de padres (`parent.repository.ts`, `listParents`): el filtro `isActive` se aplicaba con `.filter()` de JavaScript *después* de traer la página completa, lo que hubiera dado páginas con conteos inconsistentes — movido a la cláusula `where` de Prisma, verificado contra SQL directo (935 activos / 0 inactivos / 0 sin cuenta, coincide exacto). **Excluidos de este plan a propósito** (paginar rompería su lógica real, no es una mejora): `report.repository.ts` `findChargesForYear`/`findCarriedChargesForYear` (fuentes de agregación/agrupamiento en memoria sobre el set completo) y las 3 de `credentials.repository.ts` (operaciones de reseteo masivo que necesitan procesar todo el conjunto, no una página) — mismo criterio que llevó a excluir también `findTutorsWithoutCode` (operación de fondo que asigna código a *todos* los tutores sin código; paginar solo procesaría la primera página en silencio).
+24.1. ⏳ **Pendiente — actualizar las pantallas de frontend que consumen los 7 endpoints de 24 para que pidan páginas.** Sin este paso, la protección real contra el crecimiento a escala municipal no se activa — el backend ya soporta paginación, pero mientras el frontend nunca mande `page`/`pageSize`, sigue trayendo todo de una vez, igual que hoy. Es el siguiente paso lógico después de este plan, no incluido en él.
+25. ✅ **RESUELTO (contra el clon, incluido el camino de `DELEGATE`) — N+1 de `treasury.service.ts` `createBulkCharges`.** Antes: 3 queries secuenciales por cada `parentId` del lote (chequeo de tutor, estudiantes vinculados, insert) — un lote de 500 tutores eran 1,500 round-trips a la DB en una sola request. Ahora: 2-4 queries totales sin importar el tamaño del lote — 1 query batch para validar tutoría de todo el lote (`findTutorParentIds`), reutiliza `delegateRepository.findTutorParentIdsForCourse` (ya existía) para resolver el alcance de `DELEGATE` una sola vez en vez de por cada padre, e inserta todo con `createMany` en un solo `INSERT`. Probado contra el clon con datos reales (5 tutores + 2 no-tutores → `created:5, errors:2` exacto) y con el camino de `DELEGATE` real (3 tutores del curso propio + 1 tutor de otro curso + 1 no-tutor → `created:3, errors:2`, solo entraron los del curso correcto) — limpiado sin rastro después de cada prueba.
+26. ⏳ **PgBouncer — investigado, queda en evaluación, no activado.** Railway lo ofrece nativo desde junio-2026 (dashboard del Postgres → Connection Pooling → Add PgBouncer, un clic, migra automáticamente las variables de conexión de los servicios del proyecto al endpoint pooled, escalable de 1 a 6 réplicas). Es la respuesta natural para cuando hagan falta más de las ~8 instancias que ya cubre el `connection_limit=10` del ítem 23 — no antes.
+27. ⏳ **Decisiones de licenciamiento pendientes, de negocio/legal, no técnicas** (auditoría de licencias 22-ago-2026):
+    - **Definir los términos de licencia propia de EduLink** (archivo `LICENSE`, o equivalente) antes de licenciar el sistema a otros municipios — confirmado que hoy **no existe ningún archivo `LICENSE` ni campo `license` en ningún `package.json` del proyecto** (`license-checker` marca el propio proyecto como `UNLICENSED`/`UNKNOWN`). Sin esto, no hay marco legal formal para definir bajo qué términos un tercero podría usar/modificar/redistribuir el código.
+    - **Decidir si vale la pena eliminar las dependencias con copyleft débil** (LGPL-3.0/MPL-2.0, todas transitivas, ninguna declarada directamente: `sharp` vía `next`, `lightningcss` vía Tailwind, `axe-core` vía `eslint-config-next` [solo dev, nunca llega a producción], `dompurify` vía `jspdf` [licencia dual, se puede elegir Apache-2.0 sin cambiar de paquete]) — el riesgo técnico real es bajo/nulo (ninguna se modifica, solo se usan tal cual), pero podría valer la pena por política contractual si algún municipio exige cero copyleft en el contrato de licenciamiento. **No hay GPL/AGPL fuerte en ningún lado del árbol**, directo ni transitivo.
+
+### ⚪ Despliegue a producción — plan de migración en curso (10-ago)
+
+**Descubrimiento clave:** producción NO está vacía — ya tiene datos reales de U.E. Naciones Unidas (schoolId 1) de un import de mayo-junio 2026, más otras 82 UE del distrito (no tocar). Es la MISMA gente que en local (match 93-95% por RUDE/CI), así que la migración es una **reconciliación con remapeo de IDs**, no un import limpio ni un reemplazo completo.
+
+**Orden de trabajo decidido:** terminar primero los pendientes locales (import CSV, recibo Elsa, prueba en pantalla) para migrar una sola vez con los datos en su versión final — no migrar y luego repetir. La Fase 1 (mapeo, solo lectura) ya se adelantó en paralelo por no tener riesgo ni dependencia.
+
+19. ✅ Fase 1 del plan de migración (mapeo de IDs local↔producción) — completa, guardada en scratchpad (`phase1-id-mapping.json`, no versionado). Resultado: Estudiantes 602/647 match exacto RUDE + 35 match por nombre con RUDE-typo + 10 sin match. Padres 778/937 match exacto CI + 127 match indirecto (vía estudiante vinculado) + 32 sin match.
+19.1. ✅ **RESUELTO** — `Student` id 964 "Prueba Estudiante" y `Parent` id 1193 "Padre DePrueba Curso" confirmados eliminados de local (verificado 22-ago-2026, ninguno de los dos existe ya en `edulink_dev`).
+19.2. ✅ **RESUELTO (22-ago-2026) — verificación física/SIE de los 5 RUDE-typo restantes.** Nota importante: al re-generar el mapeo (ver Notas de trabajo, sesión 22-ago) resultó que de los 35 casos originales, solo 5 seguían con RUDE distinto entre local y producción — los otros 30 ya no son comparables (ver hallazgo aparte, 19.2.2, sin relación con estos 5). Los 5 restantes se verificaron uno por uno contra documento físico/SIE — **en los 5, gana el RUDE de LOCAL, producción tiene el dígito mal**:
+  | Estudiante | RUDE correcto (= local) | RUDE incorrecto (producción) |
+  |---|---|---|
+  | Luis Gerardo Gonzales Mojica | `419800712016018` | `419800212016018` |
+  | Carlos Denilson Lopez Zambrana | `419800712016045` | `419800212016045` |
+  | Angel Neimar Poiqui Farel | `419800312016068` | `419800212016068` |
+  | Leonides Alberto Carballo Ortiz | `819814432016070` | `819714432016070` |
+  | Keily Michelly Carrillo Leiva | `4198002120158785` | `4198002120158780` |
+
+  Origen del RUDE correcto: ya habían sido corregidos en local el 8-ago-2026 por `backend/src/scripts/sync-students-2026.js` (Paso 0 del plan `piped-weaving-wadler.md`), cruzando contra la matrícula oficial 2026 del Ministerio (`ministerio-2026.json`, SIE código `41980023`) — el 22-ago se confirmó además contra el documento físico, doble verificación.
+
+19.2.1. ⏳ **Ajuste a Fase 3 (actualizar registros existentes) para estos 5 casos específicos** — el matching automático por RUDE exacto de la Fase 3 NO va a encontrarlos (el RUDE de producción está mal, no coincide con ningún local). Regla especial: resolver estos 5 por **nombre** (ya identificados uno a uno arriba, por `id` local/producción — ver detalle completo en Notas de trabajo, sesión 22-ago) y, al migrar, **actualizar el campo `rude` de producción con el valor de local** para esos 5 `Student.id` puntuales — nunca dejar el RUDE viejo de producción activo después de la migración.
+
+19.2.2. ✅ **RESUELTO (22-ago-2026) — 31 estudiantes con `rude: NULL` en local, origen distinto al de 19.2.** Investigado el 22-ago: NO tiene relación con `sync-students-2026.js` ni con el 8-ago (esa pista quedó cerrada, ver 19.2 arriba). Los 31 registros (30 con `createdAt` de mayo-2026, estudiantes reales pre-existentes) tienen su `rude` vaciado con `updatedAt` en una ventana de ~40 minutos el **21-jun-2026 (19:28–20:06 UTC)**. Se descartaron dos candidatos como causa: el commit `b3b110c` de esa misma tarde ("anular inscripción de estudiante") solo borra `StudentAcademicAssignment`, nunca toca `Student.rude`; `delete-duplicate-students.ts` tampoco vacía el RUDE del registro que conserva al deduplicar. Candidato sin confirmar y sin resolver más allá de este punto: `migrarEstudiantes.ts` (upsert `source→target` que sobrescribe el objeto completo, incluido `rude`) — no hay log ni commit que lo confirme con certeza, pero no bloquea la decisión de negocio (ver 19.2.3). Raul verificó los 31 a mano contra su planilla física — decisión completa en **19.2.3**.
+
+19.2.3. ✅ **RESUELTO (22-ago-2026) — decisión de negocio para los 31 de 19.2.2, verificados por Raul contra planilla física.** Los 31 se dividen en 3 grupos:
+  - **"Grupo C" (26 estudiantes)** — confirmado: NO continuaron en la gestión 2026 (consistente con lo ya observado: `isActive: false`, sin `StudentAcademicAssignment` 2026, ninguno aparece en `ministerio-2026.json`). **No migran como estudiantes activos.** Excepción explícita: si alguno tiene historial financiero real de 2025 (`Charge`/`Payment`), ese historial SÍ debe migrar igual — el `Student` en sí queda tratado como inactivo en producción, pero no se pierde el rastro de cargos/pagos ya hechos.
+  - **4 con tutor placeholder** (`Student.id` 567, 572, 601, 623 — vinculados a un `Parent` con nombre "SIN NOMBRE PACO" o "NREG/NOMBRE PEREZ", datos de origen incompletos desde el import original) — **excluidos de la Fase 4 hasta investigación aparte**, no se tratan igual que el Grupo C ni se migran todavía en ningún sentido.
+  - **`Student.id` 982 (Anabel Perez Perez)** — caso especial por tener `createdAt` de 9-ago (no 21-jun, como el resto) — **confirmado por Raul: ya no está en la unidad educativa**. Mismo tratamiento que el Grupo C (no migra como activa), pese al origen distinto.
+
+  **Resumen**: 26 (Grupo C) + 1 (982) = **27 no continúan, mismo tratamiento** (inactivo en producción, historial financiero si existe sí migra) · **4 excluidos** de la Fase 4 por datos incompletos, pendientes de investigación aparte. Los 31 quedan completamente resueltos — no bloquean más la Fase 2/3.
+
+19.3. 🟡 **EN CURSO (22-ago-2026) — regenerado: son 45 padres sin match, no 32** (mismo fenómeno que 19.2 — los datos cambiaron desde el mapeo original; ver Notas de trabajo, sesión 22-ago). De los 45, **11 ya fueron verificados por Raul contra su planilla física original** (nombre/CI/kardex de la madre, sin nombre de estudiante) — **los 11 quedan completamente resueltos y cerrados**:
+  - **6 vinculados y aplicados contra el clon**, invariante "un solo `isTutor: true`" verificado en los 6: `JULIO FERNANDO VARGAS VARGAS` → Samir Said Vargas Condori, `JUAN ROCHA LIMON` → Gerardo Jese Rocha Guzman, `BERNO FLORES SERRUTO` → Luciana Nicol Flores Martinez, `FERNANDO CABELLO VALLEJO` → Fernanda Cabello Ortiz, `WILSON CABRERA CALLEJAS` → Wilson Cabrera Cruz (curso 4°B→5°C confirmado real, no error — verificado en SIE), `MARGARITA AVARIPA CRUZ` → Benjamin Hurtado Avaripa (vía esposo Darwin Donicio Hurtado Chavez, este caso ya estaba bien en producción, sin acción). En 4 de los 6 (todos menos Berno y Margarita) la madre tampoco estaba vinculada en producción — se agregó también, mismo patrón, ver 19.4.
+  - **4 sin ninguna acción, casos cerrados por motivo real, no por falta de dato**: `SEVERINO MIRANDA MAMANI`, `WILSON ARAUZ RODRIGUEZ`, `ANIVAL VIDAL CABALLERO` (la madre existe, CI coincide, pero no tiene ningún estudiante vinculado — nada que enlazar hasta que el estudiante exista en el sistema) y `FERNADO SILES HURTADO` (el estudiante vinculado a esa tutora ya se graduó en la gestión anterior y no está inscrito en 2026 — no requiere ningún vínculo activo en la migración).
+  - **1 movido a Fase 4** (no es un caso de reconciliación): `WINDER VIZA CHOQUE` → su hija `Luani Viza Apaza` (`Student.id` 975 local) no tiene RUDE y no existe en producción — es una de las 8 altas nuevas genuinas ya identificadas en 19.2.2, no algo que se pueda vincular con Parent/Student ya existentes. Cuando llegue Fase 4, el estudiante se crea y se vincula a Winder desde el origen, sin paso de reconciliación aparte.
+  - Quedan **34 de los 45 sin revisar todavía** (Raul reserva ese trabajo para cuando tenga tiempo con calma).
+
+19.3.1. 🟢 **Hallazgo de calidad de datos, NO bloqueante, para investigar a futuro** — el CI `6336530` (asociado originalmente a "Maiber Pessoa Garcia", tutora legal sin parentesco de un estudiante ya graduado, caso Fernado Siles Hurtado en 19.3) pertenece hoy en el sistema a una familia completamente distinta ("Jesika Bonilla Galviz" / hijo "Jhon Dealer Pereira Bonilla"). Dos personas distintas asociadas al mismo CI en algún punto del historial — no se investiga ni se resuelve ahora porque ese CI no se usa para nada en la migración actual, pero queda anotado como deuda técnica de calidad de datos (ver también 17.1, auditoría/trazabilidad).
+
+19.4. ✅ **Clon local levantado y probado (22-ago-2026)** — PostgreSQL 18 aislado (mismo binario instalado en 18.1, puerto 5544, `edulink_clon`, credenciales en scratchpad de sesión), dump de hoy restaurado + las mismas 4 migraciones aplicadas para igualar el estado real de producción. **2 hallazgos reales durante la primera prueba de escritura, ambos corregidos antes de escribir cualquier dato de negocio**:
+  - **Bug de infraestructura del clon**: las secuencias de autoincremento no se sincronizaron tras el `pg_restore` (`P2002` al primer intento de `create()`) — corregido con un `setval()` genérico contra el `MAX(id)` real de cada tabla del clon, antes de cualquier escritura. Sin este fix, cualquier `create()` posterior del script de Fase 2/3 hubiera fallado de la misma forma.
+  - **3 estudiantes quedaban sin ningún tutor legal en producción**: al vincular a los padres (Rocha Guzman, Vargas Condori, Cabello Ortiz) se detectó que sus madres — que sí existen como `Parent` en producción con el mismo `id` que en local — **nunca estaban vinculadas a esos hijos allá**, a diferencia de local donde sí lo están (`TUTOR_LEGAL`, `isTutor: true`). Corregido replicando exacto el vínculo de local en el clon. Verificado el invariante "un solo `isTutor: true` por estudiante" en los 4 casos completos (los 3 + Berno/Luciana, que sí estaba bien desde el principio).
+  - **Primer resultado real del script de Fase 2/3 contra el clon**: 4 vínculos padre↔hijo creados (casos 2, 3, 5, 7) + 3 vínculos madre↔hijo agregados de más (el hallazgo) — los 7 verificados leyendo de vuelta desde el clon después de escribir. **Después extendido a 6 padres (sumando el caso 8) y aplicado también contra producción real — ver 19.7.**
+19.5. ⏳ Regla no negociable para la Fase 3 (actualizar registros existentes): tocar SOLO campos de reconciliación (kardex, vínculo de tutor, nombre, isActive, datos académicos) — NUNCA `password`/`email`/campos de autenticación de `User` en producción, son cuentas reales en uso.
+19.6. ✅ **RESUELTO** — dump fresco de producción generado el 22-ago-2026 (`railway_export_20260822_084233.dump`, verificado con `pg_restore -l`, ver sesión 22-ago en Notas de trabajo) — reemplaza al de más de un mes.
+
+19.7. ✅ **PRIMER LOTE REAL DE MIGRACIÓN APLICADO A PRODUCCIÓN (22-ago-2026, noche) — CERRADO.** Dry-run contra producción real coincidió exacto con lo validado en el clon (0 sorpresas, 0 cambios manuales detectados desde el dump de la mañana). Aplicado y verificado desde cero:
+  - **6 `Student.isActive` corregidos** (local prevalece, respaldado por matrícula oficial del Ministerio).
+  - **5 `Student.rude` corregidos** (los RUDE-typo de 19.2, verificados contra físico/SIE).
+  - **9 `ParentStudent` creados** (5 padre + 4 madre) para los 6 casos de padres confirmados (2, 3, 5, 7, 8, 11 de 19.3) — invariante "un solo `isTutor: true` por estudiante" verificado en los 6 estudiantes afectados.
+  - Grupos 3 y 4: confirmado sin ninguna escritura necesaria, tal como se esperaba.
+  - **🔴 Incidente encontrado y resuelto en el camino — ver detalle completo en Notas de trabajo, sesión 22-ago (noche): secuencias de autoincremento desincronizadas en 17 tablas de producción**, bug preexistente (no causado por esta sesión) que probablemente afectaba a usuarios reales ahora mismo antes del fix. Corregido con `setval()` en las 17, verificado con una prueba real de `POST /api/students` contra producción (limpiada sin rastro después).
+  - `prisma migrate status` confirmado sano después de todo lo anterior.
+  - **Pendiente para un segundo lote**: los 34 de los 45 padres sin match que Raul todavía no revisó (fuera de alcance de este primer lote a propósito).
+
+20. Probar en pantalla real (navegador) todo lo construido en las últimas semanas — ninguno de los cambios de esta sesión fue probado visualmente por Claude Code, solo por API + base de datos.
+21. Revisar checklist completo de `docs/reporte-pre-produccion-tesoreria-2025.md`.
+
+### Fuera de alcance por ahora (posible v2)
+- Reportes de calificaciones, matrícula/inscripciones, asistencia diaria agregada (hoy solo existen Maestros, Delegados, Asistencia-de-reuniones)
+- Consolidación financiera hacia arriba (Núcleo/Distrito viendo tesorería agregada de sus colegios) — depende del punto 18
+- **Convocatoria de audiencia amplia para Junta de Núcleo/Distrito** (hallazgo 10-ago, durante auditoría del punto 6): ni `Comunicado` (sin campo de audiencia por rol dentro de un nivel — solo "maestros", solo "directores"), ni `Meeting` (`courseId` obligatorio, no soporta convocatoria sin curso), ni `Convocatoria` (`schoolId` obligatorio + permiso solo otorgado a `JUNTA_ESCOLAR`) permiten hoy que Núcleo/Distrito convoque una asamblea/aviso amplio (ej. "todos los padres del distrito", "solo maestros"). Es una necesidad real de negocio confirmada, no urgente, pero a diseñar cuando se aborde Tesorería/gobernanza de Núcleo/Distrito en general.
+- **"Cambiar tutor" con persona sin relación previa** (11-ago): hoy "Cambiar tutor" solo permite elegir entre las personas YA vinculadas al estudiante (ej. madre/padre). Regla de negocio confirmada: en la realidad, cualquier persona registrada — incluso alguien que ya es tutor de OTRO estudiante sin ningún parentesco — puede convertirse en tutor de un estudiante distinto (`relationType: 'OTRO'` es justamente para esto: tutor sin parentesco, no "el que dejó de ser tutor legal"). Ampliar "Cambiar tutor" para permitir vincular a alguien sin relación previa (buscar cualquier `Parent` del sistema, no solo los ya conectados a ese estudiante) queda para una iteración futura.
+
+## Notas de trabajo (prácticas generales)
+
+- **Módulo de Tesorería**: documentado en detalle aparte (`tesoreria-respaldo.md`).
+- **Ventana de bajo riesgo activa**: el sistema tiene pocos datos reales en juego (1 sola UE operando). Mientras dure esta ventana, corregir cualquier problema estructural de raíz (no parchear), aunque implique tocar código o datos ya cargados — antes de que haya múltiples UEs/familias reales donde el costo de corrección estructural sea mucho mayor. Ver "Pendientes / Roadmap" arriba para el estado actual priorizado.
+- Avanzar módulo por módulo; revisar el schema antes de generar código; probar contra datos reales (no solo `tsc --noEmit`) antes de dar por cerrado un cambio; commits por unidad de trabajo terminada.
+
+### Sesión 11-ago-2026 — "Cambiar tutor" y "Desvincular tutor" (completo, pusheado)
+
+- **"Cambiar tutor" — bug de fondo corregido, 5 lugares:**
+  1. `changeTutor` usaba `clearTutorForStudent` (filtraba por `relationType: 'TUTOR_LEGAL'` exacto) en vez de por `isTutor: true` — dejaba a dos personas con `isTutor: true` simultáneamente si el desplazado tenía `relationType` distinto (ej. "MADRE"). Corregido con `clearTutorFlagForStudent` (método nuevo dedicado, no toca `relationType`); `clearTutorForStudent` (el viejo, buggy) eliminado del código.
+  2. El tutor promovido se forzaba a `relationType: 'TUTOR_LEGAL'`, perdiendo su etiqueta real ("Padre"/"Madre") — corregido, ahora conserva su `relationType` real, solo cambia `isTutor`.
+  3. `generateCredentials` usaba `relationType === 'TUTOR_LEGAL'` como condición en vez de `isTutor` — corregido, mismo patrón.
+  4-5. `admin/verificacion/page.tsx` y `admin/estudiantes/[id]/page.tsx` mostraban el ícono "🔑 Tutor Legal" comparando `relationType` en vez de `isTutor` — corregidos (mismo patrón que ya usaba bien `admin/padres/page.tsx`).
+  Búsqueda completa en el repo confirmó que no quedan más casos del mismo bug (11 usos restantes de `relationType` son legítimos — intención inicial al crear un vínculo, no proxy de estado actual).
+  **Regla de negocio confirmada:** `relationType` (Madre/Padre/Otro) describe quién es la persona — nunca cambia por su estado de tutor legal. `isTutor` es el único campo operativo para "es tutor legal actual". `ParentStudent` nunca se elimina al cambiar de tutor, solo se actualiza `isTutor`. "Otro" es exclusivamente para tutores sin parentesco (no para "el que dejó de ser tutor").
+- **"Desvincular tutor" — construido:** acción de bajo riesgo (elimina solo el `ParentStudent` de un vínculo puntual, sin tocar la cuenta/historial del tutor), separada de "Eliminar" (destructivo, borra al tutor completo). Backend ya existía (`DELETE /api/parents/:id/unlink/:studentId`). Agregado en "Padres por curso" y "Tutores por curso" (este último requirió exponer `studentId` real en `/api/parents/by-course`, antes solo tenía `studentName`). "Todos los tutores" queda sin este botón por decisión explícita.
+- **Pendiente:** Raul probar en pantalla, luego commit.
+- **Fixture "Padre DePrueba Curso" (Parent 1193) limpiado por completo** — estaba causando un tutor duplicado real en Said Casiano Coronado Vargas (443) + un Charge huérfano de Cuota Inicial 2026 duplicando el aporte real de la familia (la tutora real, Sheila Vargas Tito, ya tenía su propio Charge correcto). Encontrado y corregido en el camino: `deleteParent` chocaba con actividad de usuario (`ConvocatoriaAttendance`) sin mensaje claro — mismo patrón que el candado de historial financiero, ahora también cubierto. Confirmado sin rastro en Parent/User/ParentStudent/Charge/ConvocatoriaAttendance.
+- **4 commits de la sesión, todos probados en pantalla y pusheados a `main`** (`b903e62..0ab008b`): fix multer/AsyncLocalStorage, Tesorería (cierre económico + import CSV), Familias (Desvincular/Cambiar tutor + fixes), deleteParent (candado de actividad de usuario).
+
+### Sesión 11-ago-2026 (continuación) — Registro de pago duplicado / devolución interna
+
+**Caso de negocio:** cuando un tutor paga el mismo aporte dos veces por error (dos recibos distintos para el mismo cargo), el segundo recibo es rechazado por el import CSV (dedupe correcto — el Charge es por tutor, no se duplica). Pero la familia sí pagó dos veces en la realidad, y recibe una devolución interna — Raul quería que quedara documentado en el sistema, no solo de palabra.
+
+- **Modelo nuevo `Refund`** (no una nota en `Charge`): `amount`, `date`, `reason`, `chargeId`, `handledById` (poblado con el usuario real — a diferencia de la columna muerta preexistente `Payment.receivedById`, que se detectó de paso y no se tocó). Atado a `Charge`, no a un `Payment` específico, porque el segundo recibo real generalmente ni siquiera llegó a crear un `Payment` (`registerPayment` ya rechaza pagos sobre un cargo `PAGADO`).
+- **`Charge.status`/`paidAmount` nunca se tocan** — la devolución es 100% aditiva/informativa, verificado en cada paso de la prueba real.
+- **Validación de monto**: rechaza si la devolución excede `paidAmount` menos devoluciones previas, con mensaje explícito incluyendo los números.
+- **Permiso**: mismo candado que "Editar"/"Trasladar" (`TREASURY_CLOSE_PERIOD`).
+- **Backend completo y probado** contra un cargo real (rechazo por exceso, devolución parcial, devolución exacta del resto) — limpiado sin rastro.
+- **Expuesto en 2 pantallas**: Verificación por Curso (badge secundario "🔙 Bs. X devuelto — {motivo}" bajo el cargo, botón "Registrar devolución" junto a "Editar"), Historial (indicador "🔙 Devuelto" junto al pago original).
+- **Pendiente:** frontend (backend ya dio luz verde), luego prueba visual + commit.
+
+### Sesión 13-ago-2026 — Refund completo, kardex visible, build roto resuelto
+
+- **"Registrar devolución" (Refund) — completo y confirmado en pantalla con caso real** (kardex 215, Chumacero Mamani Veronica, Bs. 145 devuelto por pago duplicado — recibo 1117386 quedó registrado, 1117182 se devolvió). Verificación por Curso muestra el badge con el motivo completo, estado sigue "Pagado" intacto. Historial muestra el indicador "🔙 Devuelto" junto al comprobante. De paso se corrigió un bug de estilo (`text-info-600` no existe en el sistema de diseño, el badge "🏦 Pendiente verificar" se renderizaba sin color).
+- **Kardex visible en la pantalla de cuenta del tutor** (`/dashboard/padres/tesoreria/[parentId]`) — antes solo mostraba CI y teléfono. Agregado solo al lado completo (Junta Escolar), sin tocar la respuesta reducida de `DIRECTOR`/`REGENTE`/`SECRETARY` (mantiene el invariante de Tesorería ya definido). Confirmado en pantalla con caso real.
+
+**🔴 Incidente resuelto: `main` estuvo con el build roto ~2 días.** El commit `71c3c31` (Tesorería, sesión del 11-ago) quedó incompleto — al armar el commit manualmente con `git add <lista>`, se clasificaron mal 5 archivos (`treasury.schema.ts`, `treasury.controller.ts`, `mandatoryCharge.controller/service/repository.ts`) como "no relacionados", cuando en realidad el código sí commiteado los necesitaba. La falla fue de método (nunca se verificó el commit de forma aislada antes de pushear), no del código en sí — `tsc --noEmit` siempre se corrió contra el disco completo, que sí tenía todo. Resuelto en 2 commits separados y pusheados:
+  - `2644f42` — hotfix con los 5 archivos faltantes, **verificado de forma aislada** (`git stash` del resto del working tree antes de probar) antes de commitear — la práctica que faltó la primera vez.
+  - `e138e8e` — Refund + kardex (el trabajo de esta sesión).
+  
+  **Lección de proceso para adelante:** antes de commitear manualmente con `git add <lista>` (no `git add .`), verificar `tsc --noEmit` sobre el estado aislado que va a quedar commiteado (vía `git stash` del resto), no solo sobre el disco completo — el disco completo puede compilar bien aunque el commit específico quede incompleto.
+
+### Sesión 22-ago-2026 — Incidente resuelto: 500 en producción por desfase de migraciones
+
+**Síntoma:** `/dashboard/padres/reportes/asistencia` devolvía 500 en producción.
+
+**Causa raíz confirmada por logs reales de Railway** (`P2022`, `PrismaClientKnownRequestError`): la columna `AcademicYear.economicClosedAt` no existía en la DB de producción — el código de la sesión del 11-ago (`71c3c31`, cierre económico) ya estaba desplegado, pero sus 4 migraciones (`20260808170818`…`20260812151409`) nunca se habían aplicado con `prisma migrate deploy` en producción. El mismo error tumbaba de paso un endpoint no relacionado (`getRegisteredStatus`), porque cualquier lectura sin `select` de `AcademicYear` revienta si el schema desplegado tiene una columna que la DB real todavía no tiene (ver ítem 18.1 de deuda técnica).
+
+**Resuelto en producción, sin pérdida de datos:**
+1. Instalado cliente de PostgreSQL 18 local (`winget install PostgreSQL.PostgreSQL.17`, coincide con la versión de prod 18.4) — Railway no ofrece backup nativo en el plan actual (solo Pro).
+2. Dump fresco vía proxy público (`pg_dump -Fc`), verificado con `pg_restore -l` (561 objetos, sin errores) antes de tocar nada.
+3. `prisma migrate deploy` contra producción (proxy público) — las 4 migraciones aplicadas sin error, todas aditivas (`ADD COLUMN`/`CREATE TABLE`, ninguna destructiva).
+4. Verificado end-to-end contra la API real de producción (token de diagnóstico de corta duración, firmado con el `JWT_SECRET` real, sin pertenecer a ningún usuario real — `verifyToken` no hace lookup a DB, confía en el payload del JWT): `/api/reports/attendance` y `/api/parents/registered-status` devuelven 200 con datos reales. Se revisó también que Tesorería (`/treasury/academic-years`, `/treasury/summary`) y el módulo Refund no se rompieron — summary en cero es esperado (dato ya documentado: prod quedó en cero tras limpiar cargos de prueba).
+
+**Pendiente de arquitectura anotado, sin tocar todavía** (ver ítem 18.1): agregar `select` explícito en `findActiveAcademicYear`/`getAllWithStatus` para que no dependan de que el schema completo esté siempre sincronizado con la DB real — si no se corrige, cualquier columna nueva futura en `AcademicYear` va a romper estas dos lecturas otra vez hasta correr la migración en producción.
+
+### Sesión 22-ago-2026 (continuación) — Fase 1 regenerada + investigación forense de RUDE (ver ítems 19.2/19.2.1/19.2.2)
+
+- **`phase1-id-mapping.json` (Fase 1 original) irrecuperable** — confirmado con búsqueda exhaustiva (repo, todas las sesiones de scratchpad del proyecto, Documentos/Desktop/Downloads, unidad D:): era un archivo de scratchpad de sesión, efímero, ya limpiado por el sistema. No se inventó ningún dato — se regeneró desde cero, en modo solo lectura, comparando `Student` local (`edulink_dev`) vs. producción (proxy público) por RUDE exacto + similitud de nombre (Levenshtein, no solo igualdad exacta).
+- **Resultado de la regeneración: 602 match exacto (igual que el original), pero solo 5 RUDE-typo (no 35) y 39 sin match (no 10).** La diferencia no es un bug del script — es que los datos cambiaron desde el mapeo original. Investigación forense de por qué:
+  - **Los 5 RUDE-typo restantes — CERRADO, ver 19.2.** Explicados con rastro completo: `backend/src/scripts/sync-students-2026.js` (guardado 8-ago 23:52 UTC, corrido ~6 min después) trae un diccionario `RUDE_CORRECTIONS` hardcodeado con exactamente estos 5 pares, comentado como "verificado a mano contra la matrícula oficial... confirmado con el usuario antes de aplicar" — el plan de esa sesión (`C:\Users\Raul\.claude\plans\piped-weaving-wadler.md`, Paso 0) confirma el contexto. Fuente de la corrección: `ministerio-2026.json`, la matrícula oficial 2026 del Ministerio (SIE código `41980023`), no una comparación contra producción. El 22-ago se verificaron los 5 contra documento físico — local gana en los 5 (detalle en 19.2).
+  - **Los 39 "sin match" son dos cosas distintas, no una sola categoría** — 8 son altas nuevas genuinas (`createdAt`≈`updatedAt`, 9-ago-2026, consistente con "altas reales" ya documentado). Los otros 31 tienen `createdAt` de mayo-2026 (estudiantes reales pre-existentes) pero `rude: null` con `updatedAt` del **21-jun-2026, 19:28–20:06 UTC** — un evento completamente distinto, sin relación con el 8-ago. **Investigación no concluyente pero con candidatos descartados**: no fue el commit `b3b110c` de esa misma tarde (`cancelEnrollment` solo borra `StudentAcademicAssignment`, nunca toca `rude` — coincidencia de horario, no causa), no fue `delete-duplicate-students.ts` (nunca vacía el RUDE del registro que conserva al deduplicar). Candidato sin confirmar: `migrarEstudiantes.ts` corrido con un `SOURCE_DATABASE_URL` desactualizado (hace upsert de objeto completo, sobrescribiría `rude` con lo que tuviera esa fuente) — sin log que lo confirme. Ninguno de una muestra de 6 de los 31 nombres aparece en `ministerio-2026.json` — a diferencia de los 5 de 19.2, no hay de dónde recuperar el RUDE correcto con la misma confianza. Queda anotado en 19.2.2 como pendiente de decisión de Raul, explícitamente separado de 19.2 para no mezclar los dos hallazgos.
+- **Regla de proceso confirmada en el camino**: ante una discrepancia entre lo que dice memoria/documentación y lo que muestran los datos en vivo, investigar la causa raíz con evidencia (timestamps, git log, contenido real de scripts) antes de presentar cualquier lista como definitiva — no reportar "35 casos" cuando la realidad son 5, ni asumir sin evidencia a qué proceso corresponde una modificación en la base.
+
+### Sesión 22-ago-2026 (noche) — Clon local + primer lote real de migración a producción + 🔴 incidente de secuencias
+
+**Clon local levantado y usado como red de seguridad real, tal como se planeó**: Postgres 18 aislado (puerto 5544, `edulink_clon`), dump del mismo día + las 4 migraciones de la mañana aplicadas. Ahí se validó de punta a punta, con dry-run primero y aplicación después, todo el alcance de este lote: Grupos 1-4 de estudiantes (ver 19.2/19.2.2) + 6 de los 11 padres verificados por Raul contra planilla física (ver 19.3) — incluyendo un hallazgo real en el camino (3, luego 4, estudiantes que quedaban sin ningún tutor legal en producción porque la madre nunca había sido vinculada ahí, aunque sí lo estaba en local — corregido replicando el vínculo de local).
+
+**Antes de tocar producción real, mismo protocolo que a la mañana**: dump fresco (`railway_export_20260822_214117.dump`, verificado con `pg_restore -l`), chequeo de que nadie tocó producción manualmente desde el dump anterior (cero filas modificadas), y un dry-run final contra producción real que coincidió **exacto, sin ninguna diferencia**, con lo ya validado en el clon.
+
+**🔴 Incidente encontrado durante el `--apply` real — CERRADO.** Al intentar crear el primer `ParentStudent` en producción: `P2002 — Unique constraint failed on (id)`. Investigado de inmediato: **las secuencias de autoincremento de Postgres estaban desincronizadas en 17 tablas de producción** (`ParentStudent` en `2` con `MAX(id)=2507`; `Parent` en `1` con `MAX(id)=1192`; `Student` en `1` con `MAX(id)=960`; y 14 tablas más — lista completa verificada antes del fix). **No fue causado por esta sesión ni por la migración** — es un bug preexistente, probablemente heredado de cargas masivas anteriores del proyecto que insertaron filas con `id` explícito (necesario para que los IDs coincidan entre local y producción, patrón que esta misma migración depende de que exista) sin nunca avanzar la secuencia de Postgres, que solo avanza con `nextval()`. El clon había heredado exactamente el mismo problema al restaurar el dump de producción — lo que en el clon parecía "un artefacto del `pg_restore`" (ver 19.4) en realidad ya estaba roto en el origen.
+
+**Gravedad real, no solo un bloqueo de nuestra migración**: con `Student` en secuencia `1` y 960 filas reales, cualquier intento real de `POST /api/students` (o cualquier otra de las 17 tablas) en producción — de cualquiera de las 83 UE del distrito, no solo U.E. Naciones Unidas — probablemente ya estaba fallando con el mismo `P2002` antes de este fix, sin relación con nuestra migración.
+
+**Resuelto**: mismo `setval()` genérico contra el `MAX(id)` real de cada tabla, ya probado antes en el clon — no toca ningún dato, solo corrige el contador interno de Postgres. Verificado en las 17 (`last_value = MAX(id)`, `is_called = true` en las 17). **Confirmado con una prueba real de extremo a extremo**: `POST /api/students` contra la API real de producción (token de diagnóstico de corta duración, no ligado a ningún usuario real, rol `DIRECTOR`) creó un estudiante desechable con `id: 961` — exactamente `MAX(id)+1`, confirmando que el problema real (no solo el de la migración) quedó resuelto. Limpiado sin rastro (`Student` + `User` que se autogenera con el registro) inmediatamente después.
+
+**Con las secuencias corregidas, se reintentaron y completaron los 9 `ParentStudent`** (5 padre + 4 madre) — verificados desde cero, invariante "un solo `isTutor: true`" confirmado en los 6 estudiantes. Los 6 `isActive` y 5 `rude` de Grupo 1/2 (que no dependían de secuencias, son `UPDATE`) ya se habían aplicado correctamente antes del incidente. `prisma migrate status` confirmado sano al final. Detalle completo del alcance aplicado en 19.7.
+
+**Pendiente para investigar más adelante, no bloqueante**: confirmar con certeza qué script(s) históricos causaron el desfase de secuencias (candidato más probable: los imports de mayo-2026 que preservaron IDs explícitos), y considerar agregar un paso de `setval()` de rutina después de cualquier import futuro con IDs explícitos, para que esto no vuelva a pasar en silencio.
+
+### Sesión 22-ago-2026 (continuación) — Auditoría de rendimiento para escala municipal + auditoría de licencias
+
+**Rendimiento**: auditoría completa a pedido de Raul, de cara a escalar de 1 UE a un municipio completo (~16,000 estudiantes, ~33,500 padres/tutores, ~1,500 maestros/administrativos). Hallazgos concretos con archivo:línea y números reales — cero índices explícitos en todo `schema.prisma` (solo `@@unique`, que no cubre filtros por un solo campo), 125 `findMany()` en `repositories/` sin paginación (25 de 32 archivos sin ninguna), `connection_limit` ausente del `DATABASE_URL` de producción real, y N+1 reales confirmados en Tesorería/Convocatoria/Cierre económico. Cálculo de capacidad con los números reales de producción (`max_connections=100`, sin pooler, sin límite de pool) — el sistema empieza a agotar conexiones entre 10-15 instancias del backend corriendo a la vez, mucho antes de lo necesario para 33,500 usuarios reales.
+
+**Plan de corrección aprobado y ejecutado en 4 pasos, cada uno probado contra el clon antes del siguiente, con confirmación explícita entre pasos** (ver ítems 22-26 del Roadmap para el detalle técnico completo de cada uno): índices (18, migración aditiva, `EXPLAIN ANALYZE` confirma que Postgres ya los usa) → `connection_limit=10` (comportamiento de cola probado con 20 queries concurrentes contra un pool de 10, cero errores) → paginación opt-in en 7 endpoints (diseño "lista pero no activa" a propósito, para no romper al frontend actual que hoy muestra todo sin límite — 3 endpoints quedaron excluidos a propósito por romper agregación/operaciones de fondo si se paginaran) → N+1 de `createBulkCharges` (de 3N queries a 2-4 totales, probado con datos reales incluido el camino de `DELEGATE`). **Nada de esto se aplicó a producción real todavía** — los índices y el `connection_limit` quedan pendientes de un solo despliegue conjunto (la migración de índices + el env var + el código de paginación/N+1), para no reiniciar el servicio más de una vez.
+
+**Hallazgo colateral corregido en el camino**: el listado general de padres (`parent.repository.ts` `findMany`, usado por `listParents`) filtraba `isActive` con `.filter()` de JavaScript después de traer todo — hubiera dado páginas con conteos inconsistentes al activar la paginación. Movido a la cláusula `where`, verificado contra una consulta SQL directa (no solo contra sí mismo).
+
+**Licencias**: auditoría completa con `license-checker` sobre los 155 (backend) + 519 (frontend) paquetes, incluyendo transitivos. **Sin GPL/AGPL en ningún lado.** 4 paquetes con copyleft débil (LGPL/MPL), todos transitivos y de bajo riesgo real (`sharp` vía `next`, `lightningcss` vía Tailwind, `axe-core` solo dev, `dompurify` con licencia dual Apache-2.0 disponible). El hallazgo real no fue de dependencias — **el propio código de EduLink no tiene ningún archivo `LICENSE`**, algo a resolver (decisión de negocio, no técnica) antes de licenciar el sistema a otros municipios. Ambos temas (LICENSE propio + postura sobre el copyleft débil transitivo) quedan anotados como pendientes en el ítem 27 del Roadmap.
+
+---
+
+## 🔖 CIERRE DE SESIÓN 22-ago-2026 — estado exacto para retomar mañana
+
+**PENDIENTE INMEDIATO:**
+1. ⏳ **Desplegar a producción el trabajo de rendimiento de hoy** (ítems 22-25: índices + `connection_limit=10` + paginación opt-in de 7 endpoints + fix N+1 de `createBulkCharges`) — probado contra el clon, listo para un solo despliegue conjunto (implica un reinicio del servicio). Nada de esto toca producción todavía.
+
+**MIGRACIÓN A PRODUCCIÓN (en curso, ver 19.3):**
+2. ⏳ **34 de los 45 padres originales, sin revisar todavía** — los otros 11 ya están cerrados: `2, 3, 5, 7, 8, 11` vinculados y aplicados a producción real; `4, 6, 9, 10` sin acción (hijo no cargado o ya graduado, casos cerrados por motivo real); `1` (Winder Viza Choque / Luani Viza Apaza) movido a Fase 4, no es un caso de reconciliación. Raul reserva esta revisión para cuando tenga tiempo con calma — no bloquea nada de lo demás.
+3. ⏳ Cuando estén los 34, arman el segundo lote (mismo protocolo: dry-run contra el clon → confirmación → aplicar a producción real).
+
+**Ya cerrado hoy, sin nada pendiente** — Grupos 1-5 de estudiantes (19.7) aplicados y verificados en producción real; incidente de secuencias en 17 tablas de producción, resuelto y verificado con prueba real de extremo a extremo; bug del kiosco de asistencia de maestros, desplegado y verificado en producción; auditoría de rendimiento y de licencias, completas (ver ítems 22-27 para el detalle técnico de cada hallazgo).
+
+**Otros pendientes de fondo, sin urgencia, ya anotados en el Roadmap** — no hace falta releer todo el historial, solo estos ítems: **24.1** (actualizar frontend para pedir páginas — sin esto la paginación no reduce carga real), **26** (evaluar PgBouncer cuando haga falta más de ~8 instancias), **27** (LICENSE propio + postura sobre copyleft débil, decisión de negocio), **17.1** (auditoría/trazabilidad de acciones destructivas), **18** (dominio de negocio de Tesorería Núcleo/Distrito).

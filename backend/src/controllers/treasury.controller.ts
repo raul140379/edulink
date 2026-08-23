@@ -4,6 +4,7 @@ import { handleControllerError } from '../utils/http-error'
 import { hasPermission, Permission } from '../config/permissions'
 import { assertOwnParentAccount } from '../utils/ownership-guards'
 import { treasuryService } from '../services/treasury.service'
+import { parsePagination } from '../utils/pagination'
 
 // ─────────────────────────────────────────────
 // GET /api/treasury/payments
@@ -21,10 +22,11 @@ export const getPaymentsHistory = async (req: AuthRequest, res: Response): Promi
 // ─────────────────────────────────────────────
 export const getCharges = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    const { status, type, parentId, academicYearId } = req.query
+    const { status, type, parentId, academicYearId, page, pageSize } = req.query
     const charges = await treasuryService.listCharges(
       status as string | undefined, type as string | undefined,
-      parentId as string | undefined, academicYearId as string | undefined
+      parentId as string | undefined, academicYearId as string | undefined,
+      parsePagination(page as string | undefined, pageSize as string | undefined)
     )
     res.json(charges)
   } catch (error) {

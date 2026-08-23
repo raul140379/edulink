@@ -8,6 +8,7 @@ import {
 } from '../schemas/treasury.schema'
 import { chargeBalance, aggregateChargeBalances } from '../utils/charge-balance'
 import { assertDelegateOwnsParent, resolveDelegateCourseId } from '../utils/delegate-scope'
+import { Pagination } from '../utils/pagination'
 
 // JUNTA_NUCLEO/JUNTA_DISTRITO tienen permisos de Tesorería otorgados mas su
 // contexto no trae schoolId propio (operan a nivel núcleo/distrito) — sin
@@ -29,14 +30,14 @@ export const treasuryService = {
     return treasuryRepository.findAllPayments()
   },
 
-  listCharges(status?: string, type?: string, parentId?: string, academicYearId?: string) {
+  listCharges(status?: string, type?: string, parentId?: string, academicYearId?: string, pagination?: Pagination) {
     const where: Prisma.ChargeWhereInput = {
       ...(status         ? { status: status as any } : {}),
       ...(type           ? { type: type as any } : {}),
       ...(parentId       ? { parentId: parseInt(parentId) } : {}),
       ...(academicYearId ? { academicYearId: parseInt(academicYearId) } : {}),
     }
-    return treasuryRepository.findCharges(where)
+    return treasuryRepository.findCharges(where, pagination)
   },
 
   async getChargeById(id: number) {
@@ -107,44 +108,53 @@ export const treasuryService = {
     })
   },
 
+  // Antes: 3 queries por parentId del lote (tutor, estudiantes, insert),
+  // secuenciales — un lote de 500 tutores eran 1500 round-trips a la DB.
+  // Ahora: 2-3 queries totales sin importar el tamaño del lote.
   async createBulkCharges(input: CreateBulkChargesInput) {
-    const created: any[] = []
-    const errors: number[] = []
-
     assertHasOwnSchool()
     const schoolId = getTenantContext()?.schoolId ?? 0
+    const ctx = getTenantContext()
 
-    for (const parentId of input.parentIds) {
-      try {
-        // Todo cargo va al tutor designado — se salta (no rompe el lote) a
-        // quien no tenga ese rol.
-        const isTutor = await treasuryRepository.isParentTutor(parentId)
-        if (!isTutor) { errors.push(parentId); continue }
+    // 1) Quiénes del lote son tutores — una sola consulta.
+    const tutorParentIds = await treasuryRepository.findTutorParentIds(input.parentIds)
+    const tutorSet = new Set(tutorParentIds)
+    const errors: number[] = input.parentIds.filter((id) => !tutorSet.has(id))
 
-        // Para DELEGATE: se salta (no rompe el lote) a cualquier tutor que no
-        // sea de su propio curso — mismo criterio que el cargo individual,
-        // pero sin abortar el resto del lote por un solo caso fuera de alcance.
-        const studentIds = await treasuryRepository.findParentStudentIds(parentId)
-        await assertDelegateOwnsParent(studentIds, 'fuera de curso')
+    // 2) Alcance de DELEGATE resuelto UNA vez para todo el lote (antes se
+    // resolvía el mismo curso/gestión activa una vez por cada parentId).
+    // Mismo criterio que assertDelegateOwnsParent: no-op para cualquier otro rol.
+    let allowedParentIds = tutorParentIds
+    if (ctx?.role === Role.DELEGATE) {
+      const delegateParent = await delegateRepository.findParentByDelegateUserId(ctx.userId)
+      const myCourseId = delegateParent?.delegateCourse?.id
+      if (!myCourseId) throw new HttpError(400, 'No tenés un curso asignado como delegado')
+      const activeYear = await delegateRepository.findActiveAcademicYear()
+      if (!activeYear) throw new HttpError(404, 'No hay gestión académica activa')
 
-        const charge = await treasuryRepository.createChargeRaw({
-          title: input.title,
-          description: input.description || null,
-          amount: input.amount,
-          type: input.type,
-          target: 'TUTOR',
-          dueDate: input.dueDate ? new Date(input.dueDate) : null,
-          parentId,
-          academicYearId: input.academicYearId,
-          schoolId,
-        })
-        created.push(charge)
-      } catch {
-        errors.push(parentId)
-      }
+      const myTutorParentIds = new Set(await delegateRepository.findTutorParentIdsForCourse(myCourseId, activeYear.id))
+      allowedParentIds = tutorParentIds.filter((id) => myTutorParentIds.has(id))
+      for (const id of tutorParentIds) if (!myTutorParentIds.has(id)) errors.push(id)
     }
 
-    return { created: created.length, errors: errors.length }
+    // 3) Insert masivo de los cargos ya validados.
+    let createdCount = 0
+    if (allowedParentIds.length > 0) {
+      const result = await treasuryRepository.createManyChargesRaw(allowedParentIds.map((parentId) => ({
+        title: input.title,
+        description: input.description || null,
+        amount: input.amount,
+        type: input.type,
+        target: 'TUTOR',
+        dueDate: input.dueDate ? new Date(input.dueDate) : null,
+        parentId,
+        academicYearId: input.academicYearId,
+        schoolId,
+      })))
+      createdCount = result.count
+    }
+
+    return { created: createdCount, errors: errors.length }
   },
 
   async updateCharge(id: number, input: UpdateChargeInput) {

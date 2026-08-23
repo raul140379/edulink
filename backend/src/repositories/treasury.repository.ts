@@ -1,9 +1,10 @@
 import { Prisma, ChargeStatus, PaymentMethod } from '@prisma/client'
 import prisma from '../lib/prisma'
 import { getTenantContext } from '../lib/tenant-context'
+import { Pagination, paginationArgs } from '../utils/pagination'
 
 export const treasuryRepository = {
-  findCharges(where: Prisma.ChargeWhereInput) {
+  findCharges(where: Prisma.ChargeWhereInput, pagination?: Pagination) {
     return prisma.charge.findMany({
       where,
       include: {
@@ -14,6 +15,7 @@ export const treasuryRepository = {
         _count:       { select: { payments: true } },
       },
       orderBy: { createdAt: 'desc' },
+      ...paginationArgs(pagination),
     })
   },
 
@@ -183,6 +185,23 @@ export const treasuryRepository = {
 
   isParentTutor(parentId: number) {
     return prisma.parentStudent.findFirst({ where: { parentId, isTutor: true } })
+  },
+
+  // Version en lote de isParentTutor — una sola consulta para todo el
+  // lote en vez de una por parentId (ver createBulkCharges).
+  async findTutorParentIds(parentIds: number[]): Promise<number[]> {
+    const rows = await prisma.parentStudent.findMany({
+      where: { parentId: { in: parentIds }, isTutor: true },
+      select: { parentId: true },
+      distinct: ['parentId'],
+    })
+    return rows.map((r) => r.parentId)
+  },
+
+  // Insert masivo — createBulkCharges ya valida tutoria/alcance de DELEGATE
+  // antes de llamar acá, así que esto solo inserta lo ya aprobado.
+  createManyChargesRaw(data: Prisma.ChargeUncheckedCreateInput[]) {
+    return prisma.charge.createMany({ data })
   },
 
   // Estudiantes vinculados a un tutor — usado por assertDelegateOwnsParent

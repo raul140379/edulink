@@ -157,6 +157,8 @@ model User {
   convocatoriaAttendances ConvocatoriaAttendance[]
   academicYearsClosed     AcademicYear[]           @relation("AcademicYearEconomicClosedBy")
   refundsHandled          Refund[]
+
+  @@index([schoolId])
 }
 
 model JuntaMember {
@@ -222,28 +224,28 @@ model ShiftDirector {
 }
 
 model AcademicYear {
-  id                 Int                         @id @default(autoincrement())
-  year               Int
-  startDate          DateTime
-  endDate            DateTime
-  isActive           Boolean                     @default(false)
-  createdAt          DateTime                    @default(now())
-  schoolId           Int
+  id                  Int                         @id @default(autoincrement())
+  year                Int
+  startDate           DateTime
+  endDate             DateTime
+  isActive            Boolean                     @default(false)
+  createdAt           DateTime                    @default(now())
+  schoolId            Int
   // Cierre económico (Junta Escolar) — independiente de isActive, que
   // controla el ciclo académico y lo maneja Dirección. Null = todavía
   // abierta económicamente.
-  economicClosedAt   DateTime?
-  economicClosedById Int?
-  economicClosedBy   User?                       @relation("AcademicYearEconomicClosedBy", fields: [economicClosedById], references: [id])
-  school             School                      @relation(fields: [schoolId], references: [id])
-  charges            Charge[]
-  mandatoryCharges   MandatoryCharge[]
-  holidays           Holiday[]
-  schedules          Schedule[]
-  schedulePlans      SchedulePlan[]
-  assignments        StudentAcademicAssignment[]
-  studentAttendances StudentAttendance[]
-  trimesters         Trimester[]
+  economicClosedAt    DateTime?
+  economicClosedById  Int?
+  economicClosedBy    User?                       @relation("AcademicYearEconomicClosedBy", fields: [economicClosedById], references: [id])
+  school              School                      @relation(fields: [schoolId], references: [id])
+  charges             Charge[]
+  mandatoryCharges    MandatoryCharge[]
+  holidays            Holiday[]
+  schedules           Schedule[]
+  schedulePlans       SchedulePlan[]
+  assignments         StudentAcademicAssignment[]
+  studentAttendances  StudentAttendance[]
+  trimesters          Trimester[]
   parentKardexHistory ParentKardexHistory[]
 
   @@unique([year, schoolId])
@@ -292,27 +294,27 @@ model Holiday {
 }
 
 model Parent {
-  id               Int             @id @default(autoincrement())
+  id               Int                   @id @default(autoincrement())
   firstName        String
   lastName         String
   ci               String?
   phone            String?
   address          String?
   email            String?
-  createdAt        DateTime        @default(now())
-  updatedAt        DateTime        @updatedAt
-  userId           Int?            @unique
-  delegateUserId   Int?            @unique
+  createdAt        DateTime              @default(now())
+  updatedAt        DateTime              @updatedAt
+  userId           Int?                  @unique
+  delegateUserId   Int?                  @unique
   attendanceCode   String?
   kardex           String?
   schoolId         Int
-  school           School          @relation(fields: [schoolId], references: [id])
+  school           School                @relation(fields: [schoolId], references: [id])
   attendances      Attendance[]
   charges          Charge[]
-  delegateCourse   Course?         @relation("CourseDelegate")
+  delegateCourse   Course?               @relation("CourseDelegate")
   notifications    Notification[]
-  delegateUser     User?           @relation("ParentDelegate", fields: [delegateUserId], references: [id])
-  user             User?           @relation("ParentUser", fields: [userId], references: [id])
+  delegateUser     User?                 @relation("ParentDelegate", fields: [delegateUserId], references: [id])
+  user             User?                 @relation("ParentUser", fields: [userId], references: [id])
   students         ParentStudent[]
   payments         Payment[]
   juntaMemberships JuntaMember[]
@@ -322,6 +324,7 @@ model Parent {
   @@unique([email, schoolId])
   @@unique([attendanceCode, schoolId])
   @@unique([kardex, schoolId])
+  @@index([schoolId])
 }
 
 model Student {
@@ -357,6 +360,7 @@ model Student {
   @@unique([ci, schoolId])
   @@unique([rude, schoolId])
   @@unique([email, schoolId])
+  @@index([schoolId])
 }
 
 model ParentStudent {
@@ -369,6 +373,7 @@ model ParentStudent {
   student      Student      @relation(fields: [studentId], references: [id])
 
   @@unique([parentId, studentId])
+  @@index([studentId])
 }
 
 model Teacher {
@@ -434,6 +439,7 @@ model TeacherAttendance {
   teacher   Teacher          @relation(fields: [teacherId], references: [id])
 
   @@unique([teacherId, date])
+  @@index([schoolId])
 }
 
 model Staff {
@@ -666,6 +672,7 @@ model StudentAcademicAssignment {
   student        Student       @relation(fields: [studentId], references: [id])
 
   @@unique([studentId, academicYearId, educationType])
+  @@index([academicYearId])
 }
 
 model Schedule {
@@ -727,46 +734,51 @@ model Classroom {
 }
 
 model Charge {
-  id                Int              @id @default(autoincrement())
-  title             String
-  description       String?
-  amount            Float
-  paidAmount        Float            @default(0)
-  type              ChargeType
-  status            ChargeStatus     @default(PENDIENTE)
-  dueDate           DateTime?
-  createdAt         DateTime         @default(now())
-  parentId          Int
-  academicYearId    Int
-  studentId         Int?
-  target            ChargeTarget     @default(TUTOR)
-  tolerance         Boolean          @default(false)
-  toleranceNote     String?
+  id                      Int              @id @default(autoincrement())
+  title                   String
+  description             String?
+  amount                  Float
+  paidAmount              Float            @default(0)
+  type                    ChargeType
+  status                  ChargeStatus     @default(PENDIENTE)
+  dueDate                 DateTime?
+  createdAt               DateTime         @default(now())
+  parentId                Int
+  academicYearId          Int
+  studentId               Int?
+  target                  ChargeTarget     @default(TUTOR)
+  tolerance               Boolean          @default(false)
+  toleranceNote           String?
   // Import CSV por curso: "recibo" con texto tipo TRANF/banca móvil (transferencia
   // sin número confirmado) — el cargo queda PENDIENTE (no cuenta como recaudado),
   // pero esta nota lo distingue de un "no pagó" normal en Verificación por Curso.
   // No-null ES el flag (sin booleano aparte); se limpia sola al corregir el cargo
   // con un pago real (ver correctHistoricalCharge).
   pendingVerificationNote String?
-  updatedAt         DateTime         @updatedAt
-  schoolId          Int
+  updatedAt               DateTime         @updatedAt
+  schoolId                Int
   // Si este cargo fue generado desde una plantilla de "cargo obligatorio",
   // referencia a esa plantilla — permite saber quién ya lo tiene y no
   // duplicarlo (ver MandatoryCharge).
-  mandatoryChargeId Int?
+  mandatoryChargeId       Int?
   // Si este cargo nació de un traslado de deuda (cierre económico de una
   // gestión anterior), referencia al cargo origen — trazabilidad real y
   // consultable, no solo una nota de texto.
-  sourceChargeId    Int?
-  school            School           @relation(fields: [schoolId], references: [id])
-  academicYear      AcademicYear     @relation(fields: [academicYearId], references: [id])
-  parent            Parent           @relation(fields: [parentId], references: [id])
-  student           Student?         @relation(fields: [studentId], references: [id])
-  mandatoryCharge   MandatoryCharge? @relation(fields: [mandatoryChargeId], references: [id])
-  sourceCharge      Charge?          @relation("ChargeCarriedForward", fields: [sourceChargeId], references: [id])
-  carriedCharges    Charge[]         @relation("ChargeCarriedForward")
-  payments          Payment[]
-  refunds           Refund[]
+  sourceChargeId          Int?
+  school                  School           @relation(fields: [schoolId], references: [id])
+  academicYear            AcademicYear     @relation(fields: [academicYearId], references: [id])
+  parent                  Parent           @relation(fields: [parentId], references: [id])
+  student                 Student?         @relation(fields: [studentId], references: [id])
+  mandatoryCharge         MandatoryCharge? @relation(fields: [mandatoryChargeId], references: [id])
+  sourceCharge            Charge?          @relation("ChargeCarriedForward", fields: [sourceChargeId], references: [id])
+  carriedCharges          Charge[]         @relation("ChargeCarriedForward")
+  payments                Payment[]
+  refunds                 Refund[]
+
+  @@index([schoolId])
+  @@index([parentId])
+  @@index([academicYearId])
+  @@index([studentId])
 }
 
 // Devolución interna de un pago duplicado (ej. el tutor pagó dos veces por
@@ -828,6 +840,8 @@ model Payment {
   parent       Parent        @relation(fields: [parentId], references: [id])
 
   @@unique([reference, schoolId])
+  @@index([parentId])
+  @@index([schoolId])
 }
 
 model Notification {
@@ -843,6 +857,9 @@ model Notification {
   school    School           @relation(fields: [schoolId], references: [id])
   parent    Parent           @relation(fields: [parentId], references: [id])
   sentBy    User             @relation("NotificationSender", fields: [sentById], references: [id])
+
+  @@index([parentId])
+  @@index([schoolId])
 }
 
 model Meeting {
@@ -953,6 +970,8 @@ model Nota {
   items          NotaItem[]
 
   @@unique([studentId, subjectId, courseId, trimesterId])
+  @@index([studentId])
+  @@index([schoolId])
 }
 
 model NotaItem {
@@ -1010,6 +1029,8 @@ model StudentAttendance {
   teacher        Teacher                 @relation(fields: [teacherId], references: [id])
 
   @@unique([studentId, courseId, date])
+  @@index([studentId])
+  @@index([schoolId])
 }
 
 model BiometricTemplate {

@@ -1,6 +1,7 @@
 import { Prisma, RelationType } from '@prisma/client'
 import prisma from '../lib/prisma'
 import { getTenantContext } from '../lib/tenant-context'
+import { Pagination, paginationArgs } from '../utils/pagination'
 
 // El cliente extendido de lib/prisma (tenant-scoping) no es asignable al tipo
 // genérico Prisma.TransactionClient de @prisma/client — se infiere el tipo
@@ -9,7 +10,7 @@ import { getTenantContext } from '../lib/tenant-context'
 type TxClient = Parameters<Parameters<typeof prisma.$transaction>[0]>[0]
 
 export const parentRepository = {
-  findMany(where: Prisma.ParentWhereInput) {
+  findMany(where: Prisma.ParentWhereInput, pagination?: Pagination) {
     return prisma.parent.findMany({
       where,
       include: {
@@ -24,6 +25,7 @@ export const parentRepository = {
         _count: { select: { students: true } },
       },
       orderBy: [{ lastName: 'asc' }, { firstName: 'asc' }],
+      ...paginationArgs(pagination),
     })
   },
 
@@ -269,11 +271,12 @@ export const parentRepository = {
     return prisma.parent.update({ where: { id }, data: { attendanceCode: code } })
   },
 
-  findAllTutorsWithCodes() {
+  findAllTutorsWithCodes(pagination?: Pagination) {
     return prisma.parent.findMany({
       where: { students: { some: { isTutor: true } } },
       select: { id: true, firstName: true, lastName: true, ci: true, attendanceCode: true, kardex: true },
       orderBy: [{ lastName: 'asc' }, { firstName: 'asc' }],
+      ...paginationArgs(pagination),
     })
   },
 
@@ -304,7 +307,7 @@ export const parentRepository = {
   // Todos los padres (cualquier relación) con la info mínima para calcular si
   // tienen algún hijo matriculado en la gestión activa (Activo) o no
   // (Inactivo) — ver parentService.getAllWithStatus.
-  findAllWithEnrollmentStatus(activeYearId: number) {
+  findAllWithEnrollmentStatus(activeYearId: number, pagination?: Pagination) {
     return prisma.parent.findMany({
       include: {
         user: { select: { id: true, email: true, isActive: true } },
@@ -320,6 +323,7 @@ export const parentRepository = {
         },
       },
       orderBy: [{ lastName: 'asc' }, { firstName: 'asc' }],
+      ...paginationArgs(pagination),
     })
   },
 

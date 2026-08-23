@@ -1,6 +1,7 @@
 import { reportRepository } from '../repositories/report.repository'
 import { HttpError } from '../utils/http-error'
 import { chargeBalance, aggregateChargeBalances } from '../utils/charge-balance'
+import { Pagination } from '../utils/pagination'
 
 export const reportService = {
   getTeachersReport() {
@@ -37,7 +38,7 @@ export const reportService = {
     }))
   },
 
-  async getTreasuryReport(academicYearId?: number) {
+  async getTreasuryReport(academicYearId?: number, pagination?: Pagination) {
     const activeYear = academicYearId
       ? await reportRepository.findAcademicYearById(academicYearId)
       : await reportRepository.findActiveAcademicYear()
@@ -61,7 +62,7 @@ export const reportService = {
       return acc
     }, {} as Record<string, number>)
 
-    const morosos = await reportRepository.findMorosos(activeYear.id)
+    const morosos = await reportRepository.findMorosos(activeYear.id, pagination)
 
     return {
       academicYear: activeYear,

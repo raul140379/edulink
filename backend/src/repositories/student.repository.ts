@@ -1,6 +1,7 @@
 import { Prisma, Gender, EducationType } from '@prisma/client'
 import prisma from '../lib/prisma'
 import { getTenantContext } from '../lib/tenant-context'
+import { Pagination, paginationArgs } from '../utils/pagination'
 
 const listInclude = {
   user: { select: { id: true, email: true, role: true, isActive: true } },
@@ -67,19 +68,21 @@ export const studentRepository = {
     return Array.from(ids)
   },
 
-  findMany(where: Prisma.StudentWhereInput) {
+  findMany(where: Prisma.StudentWhereInput, pagination?: Pagination) {
     return prisma.student.findMany({
       where,
       include: listInclude,
       orderBy: [{ lastName: 'asc' }, { firstName: 'asc' }],
+      ...paginationArgs(pagination),
     })
   },
 
-  findManyBasic(where: Prisma.StudentWhereInput) {
+  findManyBasic(where: Prisma.StudentWhereInput, pagination?: Pagination) {
     return prisma.student.findMany({
       where,
       select: basicSelect,
       orderBy: [{ lastName: 'asc' }, { firstName: 'asc' }],
+      ...paginationArgs(pagination),
     })
   },
 

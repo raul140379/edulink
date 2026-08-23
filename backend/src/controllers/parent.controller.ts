@@ -2,15 +2,17 @@ import { Response } from 'express'
 import { AuthRequest } from '../middlewares/auth.middleware'
 import { handleControllerError } from '../utils/http-error'
 import { parentService } from '../services/parent.service'
+import { parsePagination } from '../utils/pagination'
 
 // ─────────────────────────────────────────────
 // GET /api/parents
 // ─────────────────────────────────────────────
 export const getParents = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    const { search, isActive, isTutor } = req.query
+    const { search, isActive, isTutor, page, pageSize } = req.query
     const parents = await parentService.listParents(
-      search as string | undefined, isActive as string | undefined, isTutor as string | undefined
+      search as string | undefined, isActive as string | undefined, isTutor as string | undefined,
+      parsePagination(page as string | undefined, pageSize as string | undefined)
     )
     res.json(parents)
   } catch (error) {
@@ -198,7 +200,8 @@ export const getMyStudents = async (req: AuthRequest, res: Response): Promise<vo
 // ─────────────────────────────────────────────
 export const getTutorAttendanceCodes = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    res.json(await parentService.getTutorAttendanceCodes())
+    const { page, pageSize } = req.query
+    res.json(await parentService.getTutorAttendanceCodes(parsePagination(page as string | undefined, pageSize as string | undefined)))
   } catch (error) {
     handleControllerError(res, error)
   }
@@ -255,7 +258,8 @@ export const releaseTutorKardex = async (req: AuthRequest, res: Response): Promi
 // ─────────────────────────────────────────────
 export const getRegisteredStatus = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    res.json(await parentService.getAllWithStatus())
+    const { page, pageSize } = req.query
+    res.json(await parentService.getAllWithStatus(parsePagination(page as string | undefined, pageSize as string | undefined)))
   } catch (error) {
     handleControllerError(res, error)
   }
