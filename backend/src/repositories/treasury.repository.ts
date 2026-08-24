@@ -56,6 +56,7 @@ export const treasuryRepository = {
         student:      { select: { id: true, firstName: true, lastName: true } },
         academicYear: { select: { year: true } },
         payments:     { orderBy: { date: 'desc' } },
+        refunds:      { select: { amount: true, reason: true, date: true }, orderBy: { date: 'desc' } },
       },
       orderBy: { createdAt: 'desc' },
     })

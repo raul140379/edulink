@@ -37,6 +37,7 @@ interface Charge {
   student?:    { id: number; firstName: string; lastName: string }
   academicYear: { year: number }
   payments:    Payment[]
+  refunds:     { amount: number; reason: string; date: string }[]
 }
 
 interface Account {
@@ -83,6 +84,17 @@ const STATUS_LABEL: Record<string, string> = {
 
 const fmt     = (n: number) => `Bs. ${n.toFixed(2)}`
 const fmtDate = (d: string) => new Date(d).toLocaleDateString('es-BO', { day: '2-digit', month: 'short', year: 'numeric' })
+
+const RefundBadge = ({ refunds }: { refunds: Charge['refunds'] }) => {
+  if (refunds.length === 0) return null
+  const total  = refunds.reduce((s, r) => s + r.amount, 0)
+  const reason = refunds.map(r => r.reason).join('; ')
+  return (
+    <span className="text-[10.5px] text-warning-500" title={refunds.map(r => `${fmt(r.amount)} — ${r.reason}`).join('; ')}>
+      🔙 {fmt(total)} devuelto — {reason}
+    </span>
+  )
+}
 
 export default function TutorAccountPage() {
   const params = useParams()
@@ -256,6 +268,7 @@ export default function TutorAccountPage() {
                       ))}
                     </div>
                   )}
+                  <RefundBadge refunds={c.refunds} />
                 </div>
                 <div className="flex flex-col items-end gap-2 min-w-[140px]">
                   <div className="flex flex-col items-end gap-0.5">
@@ -308,6 +321,7 @@ export default function TutorAccountPage() {
                       ))}
                     </div>
                   )}
+                  <RefundBadge refunds={c.refunds} />
                 </div>
                 <div className="text-base font-bold text-success-700">{fmt(c.amount)}</div>
               </div>
