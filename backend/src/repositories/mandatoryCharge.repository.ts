@@ -33,14 +33,17 @@ export const mandatoryChargeRepository = {
     return prisma.mandatoryCharge.findMany({ where: { schoolId, academicYearId, isActive: true } })
   },
 
-  // Tutores del colegio (cualquier relación isTutor:true) que TODAVÍA no
-  // tienen un Charge generado desde esta plantilla — la base tanto de
-  // "aplicar a faltantes" como de la aplicación automática a un tutor nuevo.
-  findTutorsMissingCharge(schoolId: number, mandatoryChargeId: number, onlyParentId?: number) {
+  // Tutores del colegio (isTutor:true de un estudiante con matrícula activa
+  // en la gestión de la plantilla) que TODAVÍA no tienen un Charge generado
+  // desde esta plantilla — la base tanto de "aplicar a faltantes" como de la
+  // aplicación automática a un tutor nuevo. El chequeo de matrícula evita
+  // generar el cargo a un tutor cuyo único hijo ya no está inscrito ese año
+  // (ej. casos "Grupo C" — ver CLAUDE.md 19.2.3).
+  findTutorsMissingCharge(schoolId: number, mandatoryChargeId: number, academicYearId: number, onlyParentId?: number) {
     return prisma.parent.findMany({
       where: {
         schoolId,
-        students: { some: { isTutor: true } },
+        students: { some: { isTutor: true, student: { assignments: { some: { academicYearId } } } } },
         charges: { none: { mandatoryChargeId } },
         ...(onlyParentId ? { id: onlyParentId } : {}),
       },

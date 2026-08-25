@@ -75,7 +75,7 @@ export const mandatoryChargeService = {
     const template = await mandatoryChargeRepository.findById(mandatoryChargeId)
     if (!template) throw new HttpError(404, 'Cargo obligatorio no encontrado')
 
-    const missing = await mandatoryChargeRepository.findTutorsMissingCharge(template.schoolId, mandatoryChargeId)
+    const missing = await mandatoryChargeRepository.findTutorsMissingCharge(template.schoolId, mandatoryChargeId, template.academicYearId)
     if (missing.length === 0) return { appliedCount: 0 }
 
     await mandatoryChargeRepository.createChargesForParents(
@@ -98,7 +98,7 @@ export const mandatoryChargeService = {
 
     const templates = await mandatoryChargeRepository.findActiveForYear(schoolId, activeYear.id)
     for (const template of templates) {
-      const missing = await mandatoryChargeRepository.findTutorsMissingCharge(schoolId, template.id, parentId)
+      const missing = await mandatoryChargeRepository.findTutorsMissingCharge(schoolId, template.id, template.academicYearId, parentId)
       if (missing.length === 0) continue
       await mandatoryChargeRepository.createChargesForParents(
         template.id, [parentId],
