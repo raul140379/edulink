@@ -1,7 +1,8 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { Download, DollarSign, AlertCircle } from 'lucide-react'
+import { useRouter } from 'next/navigation'
+import { Download, DollarSign, AlertCircle, ClipboardCheck, ArrowRightLeft } from 'lucide-react'
 import Card from '@/components/ui/Card'
 import Table, { Column } from '@/components/ui/Table'
 import PageHeader from '@/components/ui/PageHeader'
@@ -25,6 +26,7 @@ const fmt = (n: number) => `Bs. ${n.toFixed(2)}`
 // Reportes, para vivir como página propia (enlazada tanto desde
 // Tesorería → Reportes Financieros como desde Reportes → Tesorería).
 export default function ReportesFinancierosPage() {
+  const router   = useRouter()
   const toast    = useToast()
   const district = useDistrictConfig()
   const [treasury, setTreasury] = useState<any>(null)
@@ -131,6 +133,8 @@ export default function ReportesFinancierosPage() {
       <Toolbar
         className="mb-4"
         actions={[
+          { key: 'verificacion', label: 'Verificación por Curso', icon: ClipboardCheck, variant: 'secondary', onClick: () => router.push('/dashboard/padres/tesoreria/reportes/verificacion') },
+          { key: 'traslados', label: 'Deuda Trasladada', icon: ArrowRightLeft, variant: 'secondary', onClick: () => router.push('/dashboard/padres/tesoreria/reportes/traslados') },
           { key: 'pdf', label: 'PDF', icon: Download, variant: 'danger', onClick: exportPDF },
           { key: 'excel', label: 'Excel', icon: Download, variant: 'secondary', onClick: exportExcel },
         ]}
