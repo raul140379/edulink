@@ -40,8 +40,16 @@ export const reportRepository = {
     return prisma.academicYear.findUnique({ where: { id } })
   },
 
+  // select explícito (no todo el modelo): getAttendanceReport usa
+  // startDate/endDate, getTreasuryReport usa id/year (y year llega tal cual
+  // al frontend) — así esta lectura no depende de que el schema desplegado
+  // esté 100% sincronizado con la DB real (ver CLAUDE.md 18.1, incidente
+  // 22-ago-2026, P2022 por una columna nueva sin migrar en producción).
   findActiveAcademicYear() {
-    return prisma.academicYear.findFirst({ where: { isActive: true } })
+    return prisma.academicYear.findFirst({
+      where: { isActive: true },
+      select: { id: true, year: true, startDate: true, endDate: true },
+    })
   },
 
   findChargesForYear(academicYearId: number) {

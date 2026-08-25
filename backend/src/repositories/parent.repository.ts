@@ -300,8 +300,16 @@ export const parentRepository = {
     return prisma.parent.findMany({ where: { kardex: { not: null } }, select: { kardex: true } })
   },
 
+  // select explícito (no todo el modelo): los 3 usos en parent.service.ts
+  // (buildAttendanceCode, getAllWithStatus, getParentsGroupedByCourse) solo
+  // leen id/year — así esta lectura no depende de que el schema desplegado
+  // esté 100% sincronizado con la DB real (ver CLAUDE.md 18.1, incidente
+  // 22-ago-2026, P2022 por una columna nueva sin migrar en producción).
   findActiveAcademicYear() {
-    return prisma.academicYear.findFirst({ where: { isActive: true } })
+    return prisma.academicYear.findFirst({
+      where: { isActive: true },
+      select: { id: true, year: true },
+    })
   },
 
   // Todos los padres (cualquier relación) con la info mínima para calcular si
