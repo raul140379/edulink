@@ -5,6 +5,7 @@ import { UserCheck } from 'lucide-react'
 import Card from '@/components/ui/Card'
 import Badge from '@/components/ui/Badge'
 import Table, { Column } from '@/components/ui/Table'
+import Toolbar from '@/components/ui/Toolbar'
 import { useToast } from '@/components/ui/ToastProvider'
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000'
@@ -26,6 +27,7 @@ export default function PadresRegistradosPage() {
   const [parents, setParents] = useState<ParentStatus[]>([])
   const [loading, setLoading] = useState(true)
   const [filter, setFilter]   = useState<'todos' | 'activo' | 'inactivo'>('todos')
+  const [search, setSearch]   = useState('')
 
   useEffect(() => {
     const token = localStorage.getItem('token')
@@ -40,7 +42,14 @@ export default function PadresRegistradosPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  const filtered = parents.filter(p => filter === 'todos' ? true : filter === 'activo' ? p.active : !p.active)
+  const bySearch = search.trim()
+    ? parents.filter(p => {
+        const q = search.trim().toLowerCase()
+        const name = `${p.firstName} ${p.lastName}`.toLowerCase()
+        return name.includes(q) || (p.ci || '').toLowerCase().includes(q)
+      })
+    : parents
+  const filtered = bySearch.filter(p => filter === 'todos' ? true : filter === 'activo' ? p.active : !p.active)
   const totalActivos = parents.filter(p => p.active).length
 
   const columns: Column<ParentStatus>[] = [
@@ -79,6 +88,11 @@ export default function PadresRegistradosPage() {
         <Card className="!border-success-500/40"><div className="text-[11px] text-neutral-500 uppercase tracking-wide mb-1.5">Activos</div><div className="text-lg font-bold text-success-700">{totalActivos}</div></Card>
         <Card className="!border-danger-500/40"><div className="text-[11px] text-neutral-500 uppercase tracking-wide mb-1.5">Inactivos</div><div className="text-lg font-bold text-danger-600">{parents.length - totalActivos}</div></Card>
       </div>
+
+      <Toolbar
+        className="mb-4"
+        search={{ value: search, onChange: setSearch, placeholder: 'Buscar por nombre o CI...' }}
+      />
 
       <div className="flex gap-2 mb-4">
         {(['todos', 'activo', 'inactivo'] as const).map(f => (

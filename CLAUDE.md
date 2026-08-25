@@ -455,7 +455,7 @@ Contexto: EduLink hoy opera 1 sola UE (cientos de familias); el objetivo es pode
     10. Login/navegación general — confirmado funcionando en todo el recorrido.
 
     **Con esto, toda la migración local→producción (estudiantes, padres, rendimiento, tesorería) queda verificada visualmente además de por API/DB — no solo cerrada en la base de datos.**
-20.1. 🟢 **Hallazgo de usabilidad, NO bloqueante, encontrado durante la validación del ítem 20** — la pantalla "Padres registrados" no tiene buscador por nombre/CI, a diferencia del Dashboard de Tesorería que sí lo tiene. Con cientos de padres reales ya en producción, hace lento encontrar a alguien específico. Mejora futura, sin urgencia.
+20.1. ✅ **RESUELTO (25-ago-2026) — buscador agregado a "Padres registrados".** Mismo componente `Toolbar` del sistema de diseño compartido que ya usa Tesorería (prop `search`) — filtro 100% cliente por nombre completo o CI, combinable con el filtro Activo/Inactivo existente, sin tocar backend (la pantalla ya trae todos los padres en una sola llamada). Probado en pantalla local antes de desplegar.
 21. Revisar checklist completo de `docs/reporte-pre-produccion-tesoreria-2025.md`.
 
 ### Fuera de alcance por ahora (posible v2)
