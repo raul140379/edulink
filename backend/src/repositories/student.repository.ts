@@ -3,6 +3,8 @@ import prisma from '../lib/prisma'
 import { getTenantContext } from '../lib/tenant-context'
 import { Pagination, paginationArgs } from '../utils/pagination'
 
+type TxClient = Parameters<Parameters<typeof prisma.$transaction>[0]>[0]
+
 const listInclude = {
   user: { select: { id: true, email: true, role: true, isActive: true } },
   parents: {
@@ -165,19 +167,31 @@ export const studentRepository = {
     })
   },
 
-  async deleteRelatedRecords(studentId: number) {
-    await prisma.taskSubmission.deleteMany({ where: { studentId } })
-    await prisma.nota.deleteMany({ where: { studentId } })
-    await prisma.charge.deleteMany({ where: { studentId } })
-    await prisma.parentStudent.deleteMany({ where: { studentId } })
+  // Un estudiante con Charge propio no se borra sin perder trazabilidad real
+  // de dinero — mismo criterio que parentRepository.countFinancialRecords
+  // usa para deleteParent (ver CLAUDE.md 17.1). Ningún Charge real usa
+  // studentId hoy (todos son target:TUTOR), pero el guard cierra la
+  // inconsistencia igual, para cuando eso cambie.
+  countFinancialRecords(studentId: number) {
+    return prisma.charge.count({ where: { studentId } })
   },
 
-  async unlinkUser(id: number) {
-    await prisma.$executeRaw`UPDATE "Student" SET "userId" = NULL WHERE id = ${id}`
+  // `tx` explícito (no abren su propia transacción) para que el service
+  // pueda loguear el AuditLog en la misma transacción que el borrado —
+  // mismo patrón que parent.service.ts usa para deleteParent.
+  async deleteRelatedRecordsTx(tx: TxClient, studentId: number) {
+    await tx.taskSubmission.deleteMany({ where: { studentId } })
+    await tx.nota.deleteMany({ where: { studentId } })
+    await tx.charge.deleteMany({ where: { studentId } })
+    await tx.parentStudent.deleteMany({ where: { studentId } })
   },
 
-  delete(id: number) {
-    return prisma.student.delete({ where: { id } })
+  async unlinkUserTx(tx: TxClient, id: number) {
+    await tx.$executeRaw`UPDATE "Student" SET "userId" = NULL WHERE id = ${id}`
+  },
+
+  deleteTx(tx: TxClient, id: number) {
+    return tx.student.delete({ where: { id } })
   },
 
   // ── Inscripciones ────────────────────────────

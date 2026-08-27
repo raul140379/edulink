@@ -6,6 +6,7 @@ import { parentRepository } from '../repositories/parent.repository'
 import { studentRepository } from '../repositories/student.repository'
 import { userRepository } from '../repositories/user.repository'
 import { delegateRepository } from '../repositories/delegate.repository'
+import { auditLogRepository } from '../repositories/auditLog.repository'
 import { mandatoryChargeService } from './mandatoryCharge.service'
 import { HttpError } from '../utils/http-error'
 import { assertDelegateOwnsParent } from '../utils/delegate-scope'
@@ -316,6 +317,7 @@ export const parentService = {
     // Atómico: si cualquier paso falla, no debe quedar un borrado a medias
     // (antes, un fallo en el DELETE final del Parent podía dejar ya
     // eliminadas sus relaciones ParentStudent, aunque el Parent sobreviviera).
+    const ctx = getTenantContext()
     await prisma.$transaction(async (tx) => {
       await parentRepository.deleteRelations(tx, id)
       if (parent.userId) {
@@ -323,6 +325,11 @@ export const parentService = {
         await userRepository.deleteTx(tx, parent.userId)
       }
       await parentRepository.delete(tx, id)
+      await auditLogRepository.create({
+        action: 'DELETE', entityType: 'Parent', entityId: id,
+        before: { firstName: parent.firstName, lastName: parent.lastName, ci: parent.ci, kardex: parent.kardex, email: parent.email, phone: parent.phone },
+        actorUserId: ctx?.userId ?? null, schoolId: parent.schoolId,
+      }, tx)
     })
   },
 
@@ -572,6 +579,11 @@ export const parentService = {
 
     const code = await buildAttendanceCode(parent)
     await parentRepository.updateAttendanceCode(id, code)
+    await auditLogRepository.create({
+      action: 'OVERWRITE', entityType: 'Parent', entityId: id,
+      before: { attendanceCode: parent.attendanceCode }, after: { attendanceCode: code },
+      actorUserId: getTenantContext()?.userId ?? null, schoolId: parent.schoolId,
+    })
     return { message: 'Código regenerado', attendanceCode: code }
   },
 

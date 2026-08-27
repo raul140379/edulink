@@ -1,10 +1,12 @@
 import bcrypt from 'bcryptjs'
 import * as XLSX from 'xlsx'
 import { Prisma, Role } from '@prisma/client'
+import prisma from '../lib/prisma'
 import { studentRepository } from '../repositories/student.repository'
 import { userRepository } from '../repositories/user.repository'
 import { parentRepository } from '../repositories/parent.repository'
 import { taskRepository } from '../repositories/task.repository'
+import { auditLogRepository } from '../repositories/auditLog.repository'
 import { gamificationService } from './gamification.service'
 import { HttpError } from '../utils/http-error'
 import { getTenantContext } from '../lib/tenant-context'
@@ -180,15 +182,34 @@ export const studentService = {
       throw new HttpError(400, `No se puede eliminar porque tiene ${student._count.assignments} inscripción(es). Desactívalo en su lugar.`)
     }
 
-    await studentRepository.deleteRelatedRecords(id)
-
-    if (student.userId) {
-      const savedUserId = student.userId
-      await studentRepository.unlinkUser(id)
-      await userRepository.delete(savedUserId)
+    // Mismo criterio que parentRepository.countFinancialRecords usa para
+    // deleteParent — un estudiante con Charge propio no se borra sin perder
+    // trazabilidad real de dinero (ver CLAUDE.md 17.1).
+    const chargeCount = await studentRepository.countFinancialRecords(id)
+    if (chargeCount > 0) {
+      throw new HttpError(409, 'Este estudiante tiene cargos de tesorería asociados — no se puede eliminar directamente. Contactá soporte si necesitás depurar esos datos primero.')
     }
 
-    await studentRepository.delete(id)
+    // Atómico: si cualquier paso falla, no debe quedar un borrado a medias —
+    // mismo criterio que deleteParent (antes esta función no estaba en
+    // transacción, ver CLAUDE.md 17.1).
+    const ctx = getTenantContext()
+    await prisma.$transaction(async (tx) => {
+      await studentRepository.deleteRelatedRecordsTx(tx, id)
+
+      if (student.userId) {
+        const savedUserId = student.userId
+        await studentRepository.unlinkUserTx(tx, id)
+        await userRepository.deleteTx(tx, savedUserId)
+      }
+
+      await studentRepository.deleteTx(tx, id)
+      await auditLogRepository.create({
+        action: 'DELETE', entityType: 'Student', entityId: id,
+        before: { firstName: student.firstName, lastName: student.lastName, rude: student.rude, ci: student.ci },
+        actorUserId: ctx?.userId ?? null, schoolId: student.schoolId,
+      }, tx)
+    })
   },
 
   async generateCredentials(id: number) {

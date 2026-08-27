@@ -1,4 +1,6 @@
+import prisma from '../lib/prisma'
 import { mandatoryChargeRepository } from '../repositories/mandatoryCharge.repository'
+import { auditLogRepository } from '../repositories/auditLog.repository'
 import { HttpError } from '../utils/http-error'
 import { getTenantContext } from '../lib/tenant-context'
 import { CreateMandatoryChargeInput, UpdateMandatoryChargeInput } from '../schemas/treasury.schema'
@@ -66,7 +68,22 @@ export const mandatoryChargeService = {
       throw new HttpError(409, `${withPayments} de los cargos generados ya tienen un pago registrado — confirmá de nuevo si igual querés borrar todo, incluidos esos pagos`)
     }
 
-    return mandatoryChargeRepository.deleteWithCharges(id)
+    // Foto de todo lo que se va a perder ANTES de borrar — es la única forma
+    // de poder reconstruirlo después (ver CLAUDE.md 17.1).
+    const snapshot = await mandatoryChargeRepository.findSnapshotForDelete(id)
+    const ctx = getTenantContext()
+
+    return prisma.$transaction(async (tx) => {
+      await mandatoryChargeRepository.deletePaymentsTx(tx, id)
+      const { count } = await mandatoryChargeRepository.deleteChargesTx(tx, id)
+      await mandatoryChargeRepository.deleteTemplateTx(tx, id)
+      await auditLogRepository.create({
+        action: 'DELETE', entityType: 'MandatoryCharge', entityId: id,
+        before: snapshot ?? undefined,
+        actorUserId: ctx?.userId ?? null, schoolId: existing.schoolId,
+      }, tx)
+      return { chargesDeleted: count }
+    })
   },
 
   // Busca tutores del colegio sin este cargo y se lo crea — el botón único
