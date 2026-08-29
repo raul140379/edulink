@@ -8,15 +8,29 @@ function startOfDay(d: Date) { const s = new Date(d); s.setHours(0, 0, 0, 0); re
 function endOfDay(d: Date) { const e = new Date(d); e.setHours(23, 59, 59, 999); return e }
 function parseTime(t: string) { const [h, m] = t.split(':').map(Number); return h * 60 + m }
 
+// El contenedor de producción no tiene TZ configurada (Node corre en UTC,
+// confirmado 29-ago-2026: el servidor calculaba ~4h adelantado de la hora
+// real de Bolivia) — todas las comparaciones contra horas de reloj
+// (startTime/exitTime/tolerancia/ventana del portal) deben convertir a hora
+// de Bolivia explícitamente (UTC-4 fijo, el país no usa horario de verano)
+// en vez de usar getHours()/getMinutes() del proceso, que reflejan la hora
+// del servidor, no la del colegio.
+const BOLIVIA_UTC_OFFSET_MIN = -4 * 60
+function nowMinutesBolivia(now: Date): number {
+  const utcMin = now.getUTCHours() * 60 + now.getUTCMinutes()
+  return ((utcMin + BOLIVIA_UTC_OFFSET_MIN) % 1440 + 1440) % 1440
+}
+
 // Horario fijo del módulo de portería (abierto para registrar entradas/
 // salidas), independiente del horario real de turnos (SchoolSchedule.
 // startTime/exitTime, que sigue usándose tal cual para generar el horario de
 // clases y para el aviso de "turno por finalizar" de maestros) — a pedido de
-// Raul, 29-ago-2026: dejar el reloj de asistencia abierto de 7:00 a 23:00.
+// Raul, 29-ago-2026: dejar el reloj de asistencia abierto de 7:00 a 23:00
+// (hora de Bolivia).
 const GATE_OPEN_MIN  = 7 * 60
 const GATE_CLOSE_MIN = 23 * 60
 function isGateClosedNow(now: Date): boolean {
-  const nowMin = now.getHours() * 60 + now.getMinutes()
+  const nowMin = nowMinutesBolivia(now)
   return nowMin < GATE_OPEN_MIN || nowMin > GATE_CLOSE_MIN
 }
 
@@ -89,7 +103,7 @@ export const gateService = {
     if (!schedule) throw new HttpError(404, 'No hay horario activo')
 
     const exitMin = parseTime(schedule.exitTime)
-    const nowMin = now.getHours() * 60 + now.getMinutes()
+    const nowMin = nowMinutesBolivia(now)
     const diffToExit = exitMin - nowMin
     const windowOpen = diffToExit >= 0 && diffToExit <= 30
     const isClosed = isGateClosedNow(now)
@@ -173,7 +187,7 @@ export const gateService = {
       const schedule = await gateRepository.findActiveSchoolSchedule()
       if (schedule) {
         const exitMin = parseTime(schedule.exitTime)
-        const nowMin = now.getHours() * 60 + now.getMinutes()
+        const nowMin = nowMinutesBolivia(now)
         if (nowMin > exitMin) throw new HttpError(400, 'El turno ya finalizó. No se puede registrar entrada.')
       }
 
@@ -202,7 +216,7 @@ export const gateService = {
       const now = new Date()
       const schedule = await gateRepository.findActiveSchoolSchedule()
       const startMin = schedule ? parseTime(schedule.startTime) : 8 * 60
-      const nowMin = now.getHours() * 60 + now.getMinutes()
+      const nowMin = nowMinutesBolivia(now)
       const tolerance = teacher.toleranceMin ?? 10
       const isRetraso = nowMin > startMin + tolerance
 
