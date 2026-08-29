@@ -9,10 +9,12 @@ import PageHeader from '@/components/ui/PageHeader'
 import Toolbar from '@/components/ui/Toolbar'
 import StatCard from '@/components/ui/StatCard'
 import LoadingState from '@/components/ui/LoadingState'
+import Pagination from '@/components/ui/Pagination'
 import { useToast } from '@/components/ui/ToastProvider'
 import { useDistrictConfig } from '@/hooks/useDistrictConfig'
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000'
+const PAGE_SIZE = 30
 
 const TYPE_LABELS: Record<string, string> = {
   CUOTA_INICIAL: 'Cuota Inicial', DEUDA_ANTERIOR: 'Deuda Anterior',
@@ -30,23 +32,51 @@ export default function ReportesFinancierosPage() {
   const toast    = useToast()
   const district = useDistrictConfig()
   const [treasury, setTreasury] = useState<any>(null)
-  const [loading,  setLoading]  = useState(true)
+  const [loading,  setLoading]  = useState(true)      // solo la carga inicial (gestiona toda la pantalla)
+  const [morososLoading, setMorososLoading] = useState(false) // solo la tabla de morosos, entre páginas
+  const [page,     setPage]     = useState(1)
+  const [total,    setTotal]    = useState(0)
+
+  // Refetch completo del endpoint en cada cambio de página de morosos — el
+  // resumen/por-tipo no cambian con la paginación (se recalculan igual sobre
+  // el set completo), pero el "spinner" solo cubre la tabla de morosos, no
+  // las stat cards ni Por tipo de cargo, para no hacerlas parpadear.
+  const fetchTreasury = async (targetPage = page) => {
+    const isInitial = !treasury
+    if (isInitial) setLoading(true); else setMorososLoading(true)
+    const token = localStorage.getItem('token')
+    try {
+      const r = await fetch(`${API_URL}/api/reports/treasury?page=${targetPage}&pageSize=${PAGE_SIZE}`, { headers: { Authorization: `Bearer ${token}` } })
+      const data = await r.json()
+      if (!r.ok) { toast(data.message, 'error'); return }
+      setTreasury(data)
+      setPage(targetPage)
+      setTotal(data.morosos?.total ?? 0)
+    } catch { toast('Error de conexión', 'error') }
+    finally { if (isInitial) setLoading(false); else setMorososLoading(false) }
+  }
 
   useEffect(() => {
-    const token = localStorage.getItem('token')
-    fetch(`${API_URL}/api/reports/treasury`, { headers: { Authorization: `Bearer ${token}` } })
-      .then(async r => {
-        const data = await r.json()
-        if (!r.ok) { toast(data.message, 'error'); return }
-        setTreasury(data)
-      })
-      .catch(() => toast('Error de conexión', 'error'))
-      .finally(() => setLoading(false))
+    fetchTreasury(1)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  // PDF/Excel exportan la lista COMPLETA de morosos, no solo la página en
+  // pantalla — piden aparte al backend sin page/pageSize (comportamiento
+  // opt-in: sin esos params, la respuesta vuelve a ser el array plano de
+  // siempre), para no truncar el reporte a los 30 de la página actual.
+  const fetchAllMorosos = async (): Promise<any[]> => {
+    const token = localStorage.getItem('token')
+    const yearParam = treasury?.academicYear?.id ? `?academicYearId=${treasury.academicYear.id}` : ''
+    const r = await fetch(`${API_URL}/api/reports/treasury${yearParam}`, { headers: { Authorization: `Bearer ${token}` } })
+    const data = await r.json()
+    if (!r.ok) { toast(data.message, 'error'); return [] }
+    return Array.isArray(data.morosos) ? data.morosos : []
+  }
+
   const exportPDF = async () => {
     if (!treasury) return
+    const morosos = await fetchAllMorosos()
     const { default: jsPDF } = await import('jspdf')
     const { default: autoTable } = await import('jspdf-autotable')
 
@@ -72,7 +102,7 @@ export default function ReportesFinancierosPage() {
     autoTable(doc, {
       startY: finalY + 6,
       head: [['#', 'Tutor', 'CI', 'Teléfono', 'Estudiante', 'Pendiente']],
-      body: treasury.morosos.map((m: any, i: number) => [
+      body: morosos.map((m: any, i: number) => [
         i + 1, `${m.lastName} ${m.firstName}`, m.ci || '—', m.phone || '—',
         m.student ? `${m.student.lastName} ${m.student.firstName}` : '—', fmt(m.pending),
       ]),
@@ -82,6 +112,7 @@ export default function ReportesFinancierosPage() {
 
   const exportExcel = async () => {
     if (!treasury) return
+    const morosos = await fetchAllMorosos()
     const XLSX = await import('xlsx')
     const wsData = [
       [`Reporte Económico — Gestión ${treasury.academicYear.year}`],
@@ -98,7 +129,7 @@ export default function ReportesFinancierosPage() {
       [],
       ['TUTORES CON DEUDA PENDIENTE'],
       ['#', 'Apellidos', 'Nombres', 'CI', 'Teléfono', 'Estudiante', 'Pendiente'],
-      ...treasury.morosos.map((m: any, i: number) => [
+      ...morosos.map((m: any, i: number) => [
         i + 1, m.lastName, m.firstName, m.ci || '', m.phone || '',
         m.student ? `${m.student.lastName} ${m.student.firstName}` : '', m.pending,
       ]),
@@ -117,8 +148,10 @@ export default function ReportesFinancierosPage() {
     { key: 'pendiente', header: 'Pendiente', render: ([, data]) => <span className="text-danger-600 font-medium">{fmt(data.charged - data.collected)}</span> },
   ]
 
+  const morososData: any[] = treasury?.morosos?.data ?? []
+
   const morososColumns: Column<any>[] = [
-    { key: 'num', header: '#', render: (m) => <span className="text-xs text-neutral-500">{treasury.morosos.indexOf(m) + 1}</span> },
+    { key: 'num', header: '#', render: (m) => <span className="text-xs text-neutral-500">{(page - 1) * PAGE_SIZE + morososData.indexOf(m) + 1}</span> },
     { key: 'tutor', header: 'Tutor', render: m => <span className="font-medium text-brand-700">{m.lastName} {m.firstName}</span> },
     { key: 'ci', header: 'CI', render: m => <span className="text-xs text-neutral-500">{m.ci || '—'}</span> },
     { key: 'telefono', header: 'Teléfono', render: m => <span className="text-xs text-neutral-500">{m.phone || '—'}</span> },
@@ -164,10 +197,17 @@ export default function ReportesFinancierosPage() {
 
           <Card padded={false} className="overflow-hidden">
             <div className="flex items-center gap-2 px-4.5 py-3.5 border-b border-neutral-100 text-[13px] font-bold text-brand-700">
-              <AlertCircle size={15}/> Tutores con deuda ({treasury.morosos.length})
+              <AlertCircle size={15}/> Tutores con deuda ({total})
             </div>
             <div className="p-4">
-              <Table columns={morososColumns} rows={treasury.morosos} rowKey={(m: any) => m.id} />
+              {morososLoading ? (
+                <div className="flex justify-center py-8"><p className="text-sm text-neutral-500">Cargando...</p></div>
+              ) : (
+                <>
+                  <Table columns={morososColumns} rows={morososData} rowKey={(m: any) => m.id} />
+                  <Pagination page={page} pageCount={Math.ceil(total / PAGE_SIZE)} onPageChange={fetchTreasury} className="mt-3" />
+                </>
+              )}
             </div>
           </Card>
         </div>

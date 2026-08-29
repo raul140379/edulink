@@ -127,4 +127,10 @@ export const reportRepository = {
       ...paginationArgs(pagination),
     })
   },
+
+  countMorosos(academicYearId: number) {
+    return prisma.parent.count({
+      where: { charges: { some: { academicYearId, status: { in: ['PENDIENTE', 'PARCIAL'] } } } },
+    })
+  },
 }

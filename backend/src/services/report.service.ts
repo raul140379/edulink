@@ -1,7 +1,7 @@
 import { reportRepository } from '../repositories/report.repository'
 import { HttpError } from '../utils/http-error'
 import { chargeBalance, aggregateChargeBalances } from '../utils/charge-balance'
-import { Pagination } from '../utils/pagination'
+import { Pagination, withTotal } from '../utils/pagination'
 
 export const reportService = {
   getTeachersReport() {
@@ -63,18 +63,19 @@ export const reportService = {
     }, {} as Record<string, number>)
 
     const morosos = await reportRepository.findMorosos(activeYear.id, pagination)
+    const morososMapped = morosos.map((p) => ({
+      id: p.id, firstName: p.firstName, lastName: p.lastName, ci: p.ci, phone: p.phone,
+      student: p.students[0]?.student,
+      pending: p.charges.reduce((s, c) => s + chargeBalance(c), 0),
+      charges: p.charges.length,
+    }))
 
     return {
       academicYear: activeYear,
       summary: { totalCharged, totalCollected, totalPending },
       byType,
       byStatus,
-      morosos: morosos.map((p) => ({
-        id: p.id, firstName: p.firstName, lastName: p.lastName, ci: p.ci, phone: p.phone,
-        student: p.students[0]?.student,
-        pending: p.charges.reduce((s, c) => s + chargeBalance(c), 0),
-        charges: p.charges.length,
-      })),
+      morosos: await withTotal(morososMapped, pagination, () => reportRepository.countMorosos(activeYear.id)),
     }
   },
 
