@@ -5,11 +5,11 @@ export const createTeacherSchema = z.object({
   lastName:  z.string().min(1, 'El apellido es requerido'),
   ci:        z.string().optional(),
   phone:     z.string().optional(),
-  email:     z.string().email('Email inválido').optional(),
+  email:     z.string().email('Email inválido').optional().or(z.literal('')),
   specialty: z.string().optional(),
-  birthDate: z.string().optional(),
-  hoursLoad: z.coerce.number().int().optional(),
-  gender:    z.string().optional(),
+  birthDate: z.string().nullable().optional(),
+  hoursLoad: z.coerce.number().int().nullable().optional(),
+  gender:    z.string().nullable().optional(),
 })
 
 export const updateTeacherSchema = z.object({
@@ -17,11 +17,11 @@ export const updateTeacherSchema = z.object({
   lastName:  z.string().min(1).optional(),
   ci:        z.string().optional(),
   phone:     z.string().optional(),
-  email:     z.string().email('Email inválido').optional(),
+  email:     z.string().email('Email inválido').optional().or(z.literal('')),
   specialty: z.string().optional(),
-  birthDate: z.string().optional(),
-  hoursLoad: z.coerce.number().int().optional(),
-  gender:    z.string().optional(),
+  birthDate: z.string().nullable().optional(),
+  hoursLoad: z.coerce.number().int().nullable().optional(),
+  gender:    z.string().nullable().optional(),
 })
 
 export const attendanceCodeSchema = z.object({
