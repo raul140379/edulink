@@ -9,10 +9,11 @@ import { parsePagination } from '../utils/pagination'
 // ─────────────────────────────────────────────
 export const getParents = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    const { search, isActive, isTutor, page, pageSize } = req.query
+    const { search, isActive, isTutor, page, pageSize, orderBy } = req.query
     const parents = await parentService.listParents(
       search as string | undefined, isActive as string | undefined, isTutor as string | undefined,
-      parsePagination(page as string | undefined, pageSize as string | undefined)
+      parsePagination(page as string | undefined, pageSize as string | undefined),
+      orderBy === 'kardex' ? 'kardex' : 'alfabetico',
     )
     res.json(parents)
   } catch (error) {

@@ -88,6 +88,10 @@ export const studentRepository = {
     })
   },
 
+  count(where: Prisma.StudentWhereInput) {
+    return prisma.student.count({ where })
+  },
+
   findById(id: number) {
     return prisma.student.findUnique({ where: { id }, include: detailInclude })
   },

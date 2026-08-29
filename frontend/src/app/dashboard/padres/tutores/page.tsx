@@ -9,10 +9,12 @@ import Button from '@/components/ui/Button'
 import Modal from '@/components/ui/Modal'
 import { Input } from '@/components/ui/Input'
 import Table, { Column } from '@/components/ui/Table'
+import Pagination from '@/components/ui/Pagination'
 import { useConfirm } from '@/components/ui/ConfirmProvider'
 import { useToast } from '@/components/ui/ToastProvider'
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000'
+const PAGE_SIZE = 30
 
 interface Tutor {
   id: number; firstName: string; lastName: string; ci: string | null
@@ -33,6 +35,8 @@ export default function TutoresPage() {
   const [tutors, setTutors] = useState<Tutor[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
+  const [page, setPage] = useState(1)
+  const [total, setTotal] = useState(0)
 
   const [creds, setCreds] = useState<{ email: string; password: string; title: string } | null>(null)
 
@@ -44,18 +48,21 @@ export default function TutoresPage() {
   const token = () => (typeof window !== 'undefined' ? localStorage.getItem('token') : '') || ''
   const auth  = () => ({ Authorization: `Bearer ${token()}` })
 
-  const fetchTutors = () => {
+  const fetchTutors = (targetPage = page) => {
     setLoading(true)
-    const params = new URLSearchParams({ isTutor: 'true' })
+    const params = new URLSearchParams({ isTutor: 'true', page: String(targetPage), pageSize: String(PAGE_SIZE) })
     if (search) params.set('search', search)
     fetch(`${API_URL}/api/parents?${params}`, { headers: auth() })
-      .then(r => r.ok ? r.json() : [])
-      .then(setTutors)
+      .then(r => r.ok ? r.json() : { data: [], total: 0 })
+      .then(res => { setTutors(res.data); setTotal(res.total); setPage(targetPage) })
       .catch(() => {})
       .finally(() => setLoading(false))
   }
 
-  useEffect(fetchTutors, [])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => fetchTutors(1), [])
+
+  const handleSearch = () => fetchTutors(1)
 
   const handleGenerateAccess = async (t: Tutor) => {
     if (!await confirm(`¿Generar acceso al sistema para ${t.firstName} ${t.lastName}?`)) return
@@ -189,11 +196,11 @@ export default function TutoresPage() {
           <Input
             placeholder="Buscar tutor por nombre o CI..." value={search}
             onChange={e => setSearch(e.target.value)}
-            onKeyDown={e => e.key === 'Enter' && fetchTutors()}
+            onKeyDown={e => e.key === 'Enter' && handleSearch()}
             className="pl-9"
           />
         </div>
-        <Button variant="secondary" onClick={fetchTutors}>Buscar</Button>
+        <Button variant="secondary" onClick={handleSearch}>Buscar</Button>
       </Card>
 
       <Card padded={false} className="overflow-hidden">
@@ -204,6 +211,7 @@ export default function TutoresPage() {
         ) : (
           <div className="p-4">
             <Table columns={columns} rows={tutors} rowKey={r => r.id} />
+            <Pagination page={page} pageCount={Math.ceil(total / PAGE_SIZE)} onPageChange={fetchTutors} />
           </div>
         )}
       </Card>

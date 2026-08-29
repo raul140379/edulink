@@ -8,10 +8,12 @@ import { Input, Select } from '@/components/ui/Input'
 import Badge from '@/components/ui/Badge'
 import Modal from '@/components/ui/Modal'
 import Table, { Column } from '@/components/ui/Table'
+import Pagination from '@/components/ui/Pagination'
 import { useToast } from '@/components/ui/ToastProvider'
 import { useConfirm } from '@/components/ui/ConfirmProvider'
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000'
+const PAGE_SIZE = 30
 
 interface Student {
   id:        number
@@ -64,6 +66,8 @@ export default function EstudiantesPage() {
   const [filterActive, setFilterActive] = useState('')
   const [filterGender, setFilterGender] = useState('')
   const [filterCourse, setFilterCourse] = useState('')
+  const [page, setPage] = useState(1)
+  const [total, setTotal] = useState(0)
   const [showModal,        setShowModal]        = useState(false)
   const [showEnrollModal,  setShowEnrollModal]  = useState(false)
   const [showCredentials,  setShowCredentials]  = useState(false)
@@ -82,19 +86,23 @@ export default function EstudiantesPage() {
   const [importResult,    setImportResult]    = useState<any>(null)
   const [importType, setImportType] = useState<'students' | 'tutors'>('students')
 
-  const fetchStudents = async () => {
+  const fetchStudents = async (targetPage = page) => {
     setLoading(true)
     try {
-      const params = new URLSearchParams()
+      const params = new URLSearchParams({ page: String(targetPage), pageSize: String(PAGE_SIZE) })
       if (search)       params.set('search', search)
       if (filterActive) params.set('isActive', filterActive)
+      if (filterGender) params.set('gender', filterGender)
+      if (filterCourse) params.set('courseId', filterCourse)
       const res  = await fetch(`${API_URL}/api/students?${params}`, { headers: { Authorization: `Bearer ${getToken()}` } })
       const data = await res.json()
-      if (res.ok) setStudents(data)
+      if (res.ok) { setStudents(data.data); setTotal(data.total); setPage(targetPage) }
       else toast('Error al cargar estudiantes', 'error')
     } catch { toast('Error de conexión', 'error') }
     finally  { setLoading(false) }
   }
+
+  const handleFilterChange = () => fetchStudents(1)
 
   const fetchCourses = async () => {
     try {
@@ -104,7 +112,8 @@ export default function EstudiantesPage() {
     } catch { console.error('Error cargando cursos') }
   }
 
-  useEffect(() => { fetchStudents(); fetchCourses() }, [])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => { fetchStudents(1); fetchCourses() }, [])
 
   const openCreate = () => { setEditMode(false); setEditId(null); setForm(emptyForm); setFormError(''); setShowModal(true) }
 
@@ -211,14 +220,6 @@ export default function EstudiantesPage() {
     return new Date(d).toLocaleDateString('es-BO', { day:'2-digit', month:'2-digit', year:'numeric' })
   }
 
-  const filteredStudents = students.filter(s => {
-    if (filterGender && s.gender !== filterGender) return false
-    if (filterCourse) {
-      const active = s.assignments.find(a => a.academicYear.isActive)
-      if (!active || String(active.course.level + '_' + active.course.grade + '_' + active.course.parallel) !== filterCourse) return false
-    }
-    return true
-  })
 
   const handleImport = async (file: File) => {
     setImporting(true)
@@ -255,7 +256,7 @@ export default function EstudiantesPage() {
   }
 
   const columns: Column<Student>[] = [
-    { key: 'idx', header: '#', render: (s) => <span className="text-neutral-500">{filteredStudents.indexOf(s) + 1}</span> },
+    { key: 'idx', header: '#', render: (s) => <span className="text-neutral-500">{(page - 1) * PAGE_SIZE + students.indexOf(s) + 1}</span> },
     {
       key: 'name', header: 'Nombre completo', render: (s) => (
         <div>
@@ -332,7 +333,7 @@ export default function EstudiantesPage() {
           <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-info-500 pointer-events-none" />
           <input
             placeholder="Buscar por nombre, CI o RUDE..." value={search}
-            onChange={e => setSearch(e.target.value)} onKeyDown={e => e.key === 'Enter' && fetchStudents()}
+            onChange={e => setSearch(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleFilterChange()}
             className="w-full h-10 pl-9 pr-3 rounded-lg border border-neutral-300 text-sm outline-none focus:border-brand-600 focus:ring-2 focus:ring-brand-600/15"
           />
         </div>
@@ -354,23 +355,19 @@ export default function EstudiantesPage() {
               const order = ['PRIMERO','SEGUNDO','TERCERO','CUARTO','QUINTO','SEXTO']
               return order.indexOf(a.grade) - order.indexOf(b.grade) || a.parallel.localeCompare(b.parallel)
             })
-            .map(c => {
-              const key = `${c.level}_${c.grade}_${c.parallel}`
-              return <option key={c.id} value={key}>{GRADE_LABELS[c.grade]}{c.parallel} · {LEVEL_LABELS[c.level]}</option>
-            })
+            .map(c => (
+              <option key={c.id} value={c.id}>{GRADE_LABELS[c.grade]}{c.parallel} · {LEVEL_LABELS[c.level]}</option>
+            ))
           }
         </Select>
-        <Button variant="secondary" onClick={fetchStudents}>Buscar</Button>
+        <Button variant="secondary" onClick={handleFilterChange}>Buscar</Button>
       </div>
 
-      <Table columns={columns} rows={filteredStudents} rowKey={(s) => s.id} loading={loading} emptyLabel="No se encontraron estudiantes" />
+      <Table columns={columns} rows={students} rowKey={(s) => s.id} loading={loading} emptyLabel="No se encontraron estudiantes" />
+      <Pagination page={page} pageCount={Math.ceil(total / PAGE_SIZE)} onPageChange={fetchStudents} />
 
       <div className="px-3.5 py-2.5 flex items-center justify-between flex-wrap gap-2 text-xs text-neutral-500">
-        <span>Mostrando <strong>{filteredStudents.length}</strong> de <strong>{students.length}</strong> estudiantes</span>
-        <div className="flex gap-3">
-          <span className="flex items-center gap-1.5"><Badge tone="info">♂ M</Badge> <strong>{filteredStudents.filter(s => s.gender === 'MASCULINO').length}</strong> masculinos</span>
-          <span className="flex items-center gap-1.5"><Badge tone="danger">♀ F</Badge> <strong>{filteredStudents.filter(s => s.gender === 'FEMENINO').length}</strong> femeninas</span>
-        </div>
+        <span>Mostrando <strong>{students.length}</strong> de <strong>{total}</strong> estudiantes (página {page})</span>
       </div>
 
       {/* Modal crear/editar */}

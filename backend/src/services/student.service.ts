@@ -1,6 +1,6 @@
 import bcrypt from 'bcryptjs'
 import * as XLSX from 'xlsx'
-import { Prisma, Role } from '@prisma/client'
+import { Prisma, Role, Gender } from '@prisma/client'
 import prisma from '../lib/prisma'
 import { studentRepository } from '../repositories/student.repository'
 import { userRepository } from '../repositories/user.repository'
@@ -15,7 +15,7 @@ import { normalizeLetters, generateUniqueEmail, generateParentPassword } from '.
 import {
   CreateStudentInput, UpdateStudentInput, EnrollInput, AutoEvaluacionInput,
 } from '../schemas/student.schema'
-import { Pagination } from '../utils/pagination'
+import { Pagination, withTotal } from '../utils/pagination'
 
 const BTH_GRADES = ['TERCERO', 'CUARTO', 'QUINTO', 'SEXTO']
 
@@ -37,11 +37,12 @@ function calcTotal(saber: number | null, hacer: number | null, ser: number | nul
 }
 
 export const studentService = {
-  async listStudents(search?: string, isActive?: string, pagination?: Pagination) {
+  async listStudents(search?: string, isActive?: string, pagination?: Pagination, gender?: string, courseId?: number) {
     const searchWords = search ? search.split(' ').filter((w) => w.trim().length > 0) : []
 
     const where: Prisma.StudentWhereInput = {
       ...(isActive !== undefined ? { isActive: isActive === 'true' } : {}),
+      ...(gender ? { gender: gender as Gender } : {}),
       ...(searchWords.length > 0 ? {
         OR: searchWords.flatMap((word) => [
           { firstName: { contains: word, mode: 'insensitive' as const } },
@@ -52,9 +53,19 @@ export const studentService = {
       } : {}),
     }
 
+    // Filtro por curso (gestión activa) — antes se aplicaba client-side sobre
+    // la lista completa (admin/estudiantes), rompía al paginar. Se combina
+    // (AND) con el candado de curso de TEACHER más abajo, no lo reemplaza.
+    const assignmentConditions: Prisma.StudentAcademicAssignmentWhereInput[] = []
+    if (courseId) assignmentConditions.push({ courseId, academicYear: { isActive: true } })
+
     // Junta de Núcleo/Distrito solo tiene STUDENT_VIEW_BASIC (no STUDENT_VIEW_ALL) —
     // ve nombre/colegio/padre/dirección, nunca notas/asistencia/kardex.
-    if (studentService.isBasicViewOnly()) return studentRepository.findManyBasic(where, pagination)
+    if (studentService.isBasicViewOnly()) {
+      if (assignmentConditions.length > 0) where.assignments = { some: assignmentConditions[0] }
+      const basicData = await studentRepository.findManyBasic(where, pagination)
+      return withTotal(basicData, pagination, () => studentRepository.count(where))
+    }
 
     // TEACHER/TEACHER_TUTOR: STUDENT_VIEW_ALL acá significa "todos los
     // estudiantes de SUS cursos", no de todo el colegio — antes no había
@@ -63,11 +74,16 @@ export const studentService = {
     const ctx = getTenantContext()
     if (ctx?.role === Role.TEACHER || ctx?.role === Role.TEACHER_TUTOR) {
       const courseIds = await studentRepository.findTeacherCourseIds(ctx.userId)
-      if (courseIds.length === 0) return []
-      where.assignments = { some: { courseId: { in: courseIds } } }
+      if (courseIds.length === 0) return pagination ? { data: [], total: 0, page: pagination.page, pageSize: pagination.pageSize } : []
+      assignmentConditions.push({ courseId: { in: courseIds } })
     }
 
-    return studentRepository.findMany(where, pagination)
+    if (assignmentConditions.length > 0) {
+      where.assignments = { some: assignmentConditions.length === 1 ? assignmentConditions[0] : { AND: assignmentConditions } }
+    }
+
+    const data = await studentRepository.findMany(where, pagination)
+    return withTotal(data, pagination, () => studentRepository.count(where))
   },
 
   async getStudentById(id: number) {

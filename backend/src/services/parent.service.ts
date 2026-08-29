@@ -16,7 +16,7 @@ import {
   CreateParentInput, UpdateParentInput, UpdateMeInput,
   LinkStudentsInput, ChangeTutorInput, ChangeRelationInput,
 } from '../schemas/parent.schema'
-import { Pagination } from '../utils/pagination'
+import { Pagination, withTotal } from '../utils/pagination'
 
 function makeInitials(firstName: string, lastName: string): string {
   const parts = [...firstName.trim().split(' '), ...lastName.trim().split(' ')]
@@ -82,7 +82,7 @@ async function createTutorUser(firstName: string, lastName: string, ci?: string 
 }
 
 export const parentService = {
-  listParents(search?: string, isActive?: string, isTutor?: string, pagination?: Pagination) {
+  async listParents(search?: string, isActive?: string, isTutor?: string, pagination?: Pagination, orderBy?: 'alfabetico' | 'kardex') {
     // AND de condiciones en vez de spread plano — search ya usa su propio OR,
     // así que un segundo OR (el de isActive) al mismo nivel lo pisaría en vez
     // de combinarse. Antes isActive se aplicaba con un .filter() de JS después
@@ -117,7 +117,8 @@ export const parentService = {
 
     const where: Prisma.ParentWhereInput = conditions.length > 0 ? { AND: conditions } : {}
 
-    return parentRepository.findMany(where, pagination)
+    const data = await parentRepository.findMany(where, pagination, orderBy)
+    return withTotal(data, pagination, () => parentRepository.count(where))
   },
 
   async getParentById(id: number) {

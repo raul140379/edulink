@@ -8,10 +8,12 @@ import { Select } from '@/components/ui/Input'
 import Badge from '@/components/ui/Badge'
 import Modal from '@/components/ui/Modal'
 import Table, { Column } from '@/components/ui/Table'
+import Pagination from '@/components/ui/Pagination'
 import { useToast } from '@/components/ui/ToastProvider'
 import { useConfirm } from '@/components/ui/ConfirmProvider'
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000'
+const PAGE_SIZE = 30
 
 interface Student {
   id: number; firstName: string; lastName: string; ci?: string; rude?: string; kardex?: string
@@ -31,6 +33,7 @@ interface Parent {
   phone?:    string
   email?:    string
   address?:  string
+  kardex?:   string | null
   user?:     { id: number; email: string; isActive: boolean }
   students:  ParentStudent[]
   _count:    { students: number }
@@ -91,34 +94,33 @@ export default function PadresPage() {
   const [changeIsTutor, setChangeIsTutor] = useState(false)
   const [filterTutor, setFilterTutor] = useState('')
   const [orderBy, setOrderBy] = useState('alfabetico')
+  const [page, setPage] = useState(1)
+  const [total, setTotal] = useState(0)
 
   const token = typeof window !== 'undefined' ? localStorage.getItem('token') : ''
 
-  const sortParents = (list: Parent[], by: string) => [...list].sort((a: any, b: any) => {
-    if (by === 'kardex') {
-      const kardexA = a.students.find((s: any) => s.isTutor)?.student?.kardex || '9999'
-      const kardexB = b.students.find((s: any) => s.isTutor)?.student?.kardex || '9999'
-      return kardexA.toString().localeCompare(kardexB.toString(), undefined, { numeric: true })
-    }
-    return `${a.lastName} ${a.firstName}`.localeCompare(`${b.lastName} ${b.firstName}`)
-  })
-
-  const fetchParents = async () => {
+  const fetchParents = async (targetPage = page, targetOrderBy = orderBy) => {
     setLoading(true)
     try {
-      const params = new URLSearchParams()
+      const params = new URLSearchParams({ page: String(targetPage), pageSize: String(PAGE_SIZE), orderBy: targetOrderBy })
       if (search) params.set('search', search)
       if (filterTutor === 'TUTOR')        params.set('isTutor', 'true')
       if (filterTutor === 'SIN_VINCULAR') params.set('isTutor', 'SIN_VINCULAR')
       if (filterTutor === 'NO_TUTOR')     params.set('isTutor', 'NO_TUTOR')
       const res  = await fetch(`${API_URL}/api/parents?${params}`, { headers: { Authorization: `Bearer ${token}` } })
       const data = await res.json()
-      if (res.ok) setParents(sortParents(data, orderBy))
+      if (res.ok) { setParents(data.data); setTotal(data.total); setPage(targetPage) }
       else toast('Error al cargar padres', 'error')
     } catch { toast('Error de conexión', 'error') }
     finally  { setLoading(false) }
   }
 
+  const handleFilterChange = () => fetchParents(1)
+
+  const handleOrderChange = (value: string) => { setOrderBy(value); fetchParents(1, value) }
+
+  // Picker de "vincular estudiante" — trae todos a propósito, es una
+  // búsqueda de selección, no una lista a paginar (ver ítem 24.1).
   const fetchStudents = async () => {
     try {
       const res  = await fetch(`${API_URL}/api/students`, { headers: { Authorization: `Bearer ${token}` } })
@@ -128,7 +130,7 @@ export default function PadresPage() {
   }
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => { fetchParents(); fetchStudents() }, [])
+  useEffect(() => { fetchParents(1); fetchStudents() }, [])
 
   const openLink = (id: number) => { setLinkId(id); setLinkStudentIds([]); setLinkRelType('PADRE'); setLinkError(''); setShowLinkModal(true) }
 
@@ -211,6 +213,10 @@ export default function PadresPage() {
       ),
     },
     { key: 'ci', header: 'CI', render: (p) => <span className="text-neutral-500 text-xs">{p.ci || '—'}</span> },
+    { key: 'kardex', header: 'Kardex tutor', render: (p) => p.kardex
+      ? <span className="text-xs font-mono text-brand-700 font-semibold">{p.kardex}</span>
+      : <span className="text-[11px] text-neutral-400 italic">Sin kardex</span>,
+    },
     { key: 'phone', header: 'Teléfono', render: (p) => <span className="text-neutral-500 text-xs">{p.phone || '—'}</span> },
     {
       key: 'students', header: 'Hijos vinculados', render: (p) => p.students.length === 0
@@ -268,7 +274,7 @@ export default function PadresPage() {
           <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-info-500 pointer-events-none" />
           <input
             placeholder="Buscar por nombre, CI o teléfono..." value={search}
-            onChange={e => setSearch(e.target.value)} onKeyDown={e => e.key === 'Enter' && fetchParents()}
+            onChange={e => setSearch(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleFilterChange()}
             className="w-full h-10 pl-9 pr-3 rounded-lg border border-neutral-300 text-sm outline-none focus:border-brand-600 focus:ring-2 focus:ring-brand-600/15"
           />
         </div>
@@ -280,17 +286,18 @@ export default function PadresPage() {
         </Select>
         <Select
           value={orderBy}
-          onChange={e => { setOrderBy(e.target.value); setParents(prev => sortParents(prev, e.target.value)) }}
+          onChange={e => handleOrderChange(e.target.value)}
           className="w-auto min-w-[170px]"
         >
           <option value="alfabetico">Ordenar: Alfabético</option>
           <option value="kardex">Ordenar: Por Kardex</option>
         </Select>
-        <Button variant="secondary" onClick={fetchParents}>Buscar</Button>
+        <Button variant="secondary" onClick={handleFilterChange}>Buscar</Button>
       </div>
 
       <Table columns={columns} rows={parents} rowKey={(p) => p.id} loading={loading} emptyLabel="No se encontraron padres/tutores" />
-      <div className="px-3.5 py-2.5 text-xs text-neutral-500">Total: <strong>{parents.length}</strong> padres/tutores</div>
+      <Pagination page={page} pageCount={Math.ceil(total / PAGE_SIZE)} onPageChange={fetchParents} />
+      <div className="px-3.5 py-2.5 text-xs text-neutral-500">Mostrando <strong>{parents.length}</strong> de <strong>{total}</strong> padres/tutores (página {page})</div>
 
       {/* Modal cambiar relación */}
       <Modal

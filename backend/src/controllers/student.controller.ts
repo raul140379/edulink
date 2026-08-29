@@ -9,10 +9,12 @@ import { parsePagination } from '../utils/pagination'
 // ─────────────────────────────────────────────
 export const getStudents = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    const { search, isActive, page, pageSize } = req.query
+    const { search, isActive, page, pageSize, gender, courseId } = req.query
     const students = await studentService.listStudents(
       search as string | undefined, isActive as string | undefined,
-      parsePagination(page as string | undefined, pageSize as string | undefined)
+      parsePagination(page as string | undefined, pageSize as string | undefined),
+      gender as string | undefined,
+      courseId ? parseInt(courseId as string) : undefined,
     )
     res.json(students)
   } catch (error) {

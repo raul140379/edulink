@@ -9,24 +9,57 @@ import { Pagination, paginationArgs } from '../utils/pagination'
 // usa academicClosure.repository.ts.
 type TxClient = Parameters<Parameters<typeof prisma.$transaction>[0]>[0]
 
+const findManyInclude = {
+  user: { select: { id: true, email: true, role: true, isActive: true } },
+  students: {
+    select: {
+      relationType: true,
+      isTutor: true,
+      student: { select: { id: true, firstName: true, lastName: true, ci: true, rude: true, kardex: true } },
+    },
+  },
+  _count: { select: { students: true } },
+} satisfies Prisma.ParentInclude
+
 export const parentRepository = {
-  findMany(where: Prisma.ParentWhereInput, pagination?: Pagination) {
+  // orderBy 'kardex' usa Parent.kardex (el propio del tutor, mismo campo que
+  // usa el resto del sistema — Tesorería, etc.) — antes admin/padres ordenaba
+  // client-side por el kardex del HIJO tutoreado (Student.kardex), una
+  // inconsistencia real con el resto del proyecto, corregida al mover el
+  // orden al backend (decisión confirmada, no asumida).
+  //
+  // 'kardex' NO usa el orderBy nativo de Prisma/Postgres a propósito: kardex
+  // es String? en el schema, así que ORDER BY sobre ese campo es
+  // lexicográfico ("1000" queda entre "100" y "101"), distinto del orden
+  // numérico natural que tenía el sort client-side viejo. Se resuelve leyendo
+  // solo {id, kardex} (liviano, sin includes) para TODO lo que matchea el
+  // where, se ordena numéricamente en JS (mismo criterio que antes:
+  // localeCompare con numeric:true, null al final), se recorta la página de
+  // esa lista de ids, y recién ahí se trae el detalle completo — evita
+  // duplicar la lógica de filtros (search/isTutor/isActive) en SQL crudo.
+  async findMany(where: Prisma.ParentWhereInput, pagination?: Pagination, orderBy: 'alfabetico' | 'kardex' = 'alfabetico') {
+    if (orderBy === 'kardex') {
+      const all = await prisma.parent.findMany({ where, select: { id: true, kardex: true } })
+      all.sort((a, b) => (a.kardex || '9999999').localeCompare(b.kardex || '9999999', undefined, { numeric: true }))
+      const orderedIds = pagination
+        ? all.slice((pagination.page - 1) * pagination.pageSize, pagination.page * pagination.pageSize).map((r) => r.id)
+        : all.map((r) => r.id)
+      if (orderedIds.length === 0) return []
+      const rows = await prisma.parent.findMany({ where: { id: { in: orderedIds } }, include: findManyInclude })
+      const byId = new Map(rows.map((r) => [r.id, r]))
+      return orderedIds.map((id) => byId.get(id)!)
+    }
+
     return prisma.parent.findMany({
       where,
-      include: {
-        user: { select: { id: true, email: true, role: true, isActive: true } },
-        students: {
-          select: {
-            relationType: true,
-            isTutor: true,
-            student: { select: { id: true, firstName: true, lastName: true, ci: true, rude: true, kardex: true } },
-          },
-        },
-        _count: { select: { students: true } },
-      },
+      include: findManyInclude,
       orderBy: [{ lastName: 'asc' }, { firstName: 'asc' }],
       ...paginationArgs(pagination),
     })
+  },
+
+  count(where: Prisma.ParentWhereInput) {
+    return prisma.parent.count({ where })
   },
 
   findById(id: number) {
