@@ -8,6 +8,18 @@ function startOfDay(d: Date) { const s = new Date(d); s.setHours(0, 0, 0, 0); re
 function endOfDay(d: Date) { const e = new Date(d); e.setHours(23, 59, 59, 999); return e }
 function parseTime(t: string) { const [h, m] = t.split(':').map(Number); return h * 60 + m }
 
+// Horario fijo del módulo de portería (abierto para registrar entradas/
+// salidas), independiente del horario real de turnos (SchoolSchedule.
+// startTime/exitTime, que sigue usándose tal cual para generar el horario de
+// clases y para el aviso de "turno por finalizar" de maestros) — a pedido de
+// Raul, 29-ago-2026: dejar el reloj de asistencia abierto de 7:00 a 23:00.
+const GATE_OPEN_MIN  = 7 * 60
+const GATE_CLOSE_MIN = 23 * 60
+function isGateClosedNow(now: Date): boolean {
+  const nowMin = now.getHours() * 60 + now.getMinutes()
+  return nowMin < GATE_OPEN_MIN || nowMin > GATE_CLOSE_MIN
+}
+
 function makeCode(firstName: string, lastName: string): string {
   const parts = [...firstName.trim().split(' '), ...lastName.trim().split(' ')]
   const initials = parts.filter((p) => p.length > 0).slice(0, 3).map((p) => p[0].toUpperCase()).join('')
@@ -80,7 +92,7 @@ export const gateService = {
     const nowMin = now.getHours() * 60 + now.getMinutes()
     const diffToExit = exitMin - nowMin
     const windowOpen = diffToExit >= 0 && diffToExit <= 30
-    const isClosed = nowMin > exitMin + 30
+    const isClosed = isGateClosedNow(now)
 
     const schedulesToday = await gateRepository.findSchedulesForDay(todayDow)
 
@@ -155,13 +167,13 @@ export const gateService = {
     if (!teacher) throw new HttpError(404, 'Maestro no encontrado')
 
     if (input.action === 'ENTRADA') {
+      const now = new Date()
+      if (isGateClosedNow(now)) throw new HttpError(400, 'El módulo de portería está cerrado.')
+
       const schedule = await gateRepository.findActiveSchoolSchedule()
       if (schedule) {
-        const now = new Date()
         const exitMin = parseTime(schedule.exitTime)
         const nowMin = now.getHours() * 60 + now.getMinutes()
-
-        if (nowMin > exitMin + 30) throw new HttpError(400, 'El módulo de portería está cerrado. El turno finalizó hace más de 30 minutos.')
         if (nowMin > exitMin) throw new HttpError(400, 'El turno ya finalizó. No se puede registrar entrada.')
       }
 
@@ -177,7 +189,6 @@ export const gateService = {
         return { message: `${teacher.firstName} ${teacher.lastName} no tiene clases hoy — registrado como visitante`, record, asVisitor: true }
       }
 
-      const now = new Date()
       const todayAtt = await gateRepository.findTeacherAttendanceForDay(input.teacherId, startOfDay(now), endOfDay(now))
       if (todayAtt?.status === 'AUSENTE') throw new HttpError(400, `${teacher.firstName} ${teacher.lastName} ya fue marcado como AUSENTE para hoy`)
     }
@@ -211,14 +222,8 @@ export const gateService = {
     const staff = await gateRepository.findStaffById(input.staffId)
     if (!staff) throw new HttpError(404, 'Personal no encontrado')
 
-    if (input.action === 'ENTRADA') {
-      const schedule = await gateRepository.findActiveSchoolSchedule()
-      if (schedule) {
-        const now = new Date()
-        const exitMin = parseTime(schedule.exitTime)
-        const nowMin = now.getHours() * 60 + now.getMinutes()
-        if (nowMin > exitMin + 30) throw new HttpError(400, 'El módulo de portería está cerrado. El turno finalizó hace más de 30 minutos.')
-      }
+    if (input.action === 'ENTRADA' && isGateClosedNow(new Date())) {
+      throw new HttpError(400, 'El módulo de portería está cerrado.')
     }
 
     const record = await gateRepository.createGateRecordWithInclude(
@@ -230,14 +235,8 @@ export const gateService = {
   },
 
   async registerVisitor(userId: number | undefined, input: RegisterVisitorInput) {
-    if (input.action === 'ENTRADA') {
-      const schedule = await gateRepository.findActiveSchoolSchedule()
-      if (schedule) {
-        const now = new Date()
-        const exitMin = parseTime(schedule.exitTime)
-        const nowMin = now.getHours() * 60 + now.getMinutes()
-        if (nowMin > exitMin + 30) throw new HttpError(400, 'El módulo de portería está cerrado. El turno finalizó hace más de 30 minutos.')
-      }
+    if (input.action === 'ENTRADA' && isGateClosedNow(new Date())) {
+      throw new HttpError(400, 'El módulo de portería está cerrado.')
     }
 
     const record = await gateRepository.createGateRecord({

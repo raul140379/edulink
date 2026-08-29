@@ -307,7 +307,7 @@ export default function PorteroPage() {
           Control cerrado
         </div>
         <div style={{ fontSize: 14, color: '#94A3B8', marginBottom: 32 }}>
-          El turno finalizó. El módulo se habilitará nuevamente mañana.
+          Fuera del horario de atención de portería (7:00 a 23:00).
         </div>
         <button onClick={handleLogout} style={{
           background: 'rgba(255,255,255,.1)', border: 'none', borderRadius: 8,
