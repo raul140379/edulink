@@ -596,13 +596,47 @@ export const parentService = {
   // Activo/Inactivo según tengan o no un hijo matriculado en la gestión
   // activa — "matriculado" = tiene una StudentAcademicAssignment ese año, no
   // el interruptor manual Student.isActive (que no distingue año).
-  async getAllWithStatus(pagination?: Pagination) {
+  // search/active se mueven al backend porque, paginado, el filtrado en
+  // cliente sobre solo la página visible dejaría de reflejar los 935+
+  // padres reales (mismo criterio ya aplicado en listParents/listStudents).
+  async getAllWithStatus(pagination?: Pagination, search?: string, active?: string) {
     const activeYear = await parentRepository.findActiveAcademicYear()
     if (!activeYear) throw new HttpError(404, 'No hay gestión académica activa')
 
-    const parents = await parentRepository.findAllWithEnrollmentStatus(activeYear.id, pagination)
+    const conditions: Prisma.ParentWhereInput[] = []
 
-    return parents.map((p) => ({
+    if (search) {
+      conditions.push({
+        OR: [
+          { firstName: { contains: search, mode: 'insensitive' as const } },
+          { lastName:  { contains: search, mode: 'insensitive' as const } },
+          { ci:        { contains: search, mode: 'insensitive' as const } },
+          { AND: [
+            { firstName: { contains: search.split(' ')[0], mode: 'insensitive' as const } },
+            { lastName:  { contains: search.split(' ')[1] || '', mode: 'insensitive' as const } },
+          ]},
+          { AND: [
+            { lastName:  { contains: search.split(' ')[0], mode: 'insensitive' as const } },
+            { firstName: { contains: search.split(' ')[1] || '', mode: 'insensitive' as const } },
+          ]},
+        ],
+      })
+    }
+
+    // "Activo" = tiene al menos un hijo con matrícula en la gestión activa —
+    // mismo criterio que el "active" calculado más abajo, solo que acá se
+    // evalúa en SQL para poder filtrar antes de paginar.
+    const hasActiveEnrollment: Prisma.ParentWhereInput = {
+      students: { some: { student: { assignments: { some: { academicYearId: activeYear.id } } } } },
+    }
+    if (active === 'true')  conditions.push(hasActiveEnrollment)
+    if (active === 'false') conditions.push({ NOT: hasActiveEnrollment })
+
+    const where: Prisma.ParentWhereInput = conditions.length > 0 ? { AND: conditions } : {}
+
+    const parents = await parentRepository.findAllWithEnrollmentStatus(activeYear.id, pagination, where)
+
+    const mapped = parents.map((p) => ({
       id: p.id, firstName: p.firstName, lastName: p.lastName, ci: p.ci, phone: p.phone,
       user: p.user,
       students: p.students.map((ps) => ({
@@ -611,6 +645,22 @@ export const parentService = {
       })),
       active: p.students.some((ps) => ps.student.assignments.length > 0),
     }))
+
+    if (!pagination) return mapped
+
+    // Stat cards del encabezado — totales globales, ignoran search/active
+    // (mismo criterio que la pantalla ya tenía: reflejan a TODOS los padres,
+    // no solo la página o el filtro actual).
+    const [total, totalCount, totalActivosCount] = await Promise.all([
+      parentRepository.countWithEnrollmentStatus(where),
+      parentRepository.countWithEnrollmentStatus({}),
+      parentRepository.countWithEnrollmentStatus(hasActiveEnrollment),
+    ])
+
+    return {
+      data: mapped, total, page: pagination.page, pageSize: pagination.pageSize,
+      summary: { total: totalCount, activos: totalActivosCount, inactivos: totalCount - totalActivosCount },
+    }
   },
 
   // Padres/tutores agrupados por curso — misma consulta de base para ambas

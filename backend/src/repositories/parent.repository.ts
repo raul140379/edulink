@@ -348,8 +348,9 @@ export const parentRepository = {
   // Todos los padres (cualquier relación) con la info mínima para calcular si
   // tienen algún hijo matriculado en la gestión activa (Activo) o no
   // (Inactivo) — ver parentService.getAllWithStatus.
-  findAllWithEnrollmentStatus(activeYearId: number, pagination?: Pagination) {
+  findAllWithEnrollmentStatus(activeYearId: number, pagination?: Pagination, where: Prisma.ParentWhereInput = {}) {
     return prisma.parent.findMany({
+      where,
       include: {
         user: { select: { id: true, email: true, isActive: true } },
         students: {
@@ -366,6 +367,10 @@ export const parentRepository = {
       orderBy: [{ lastName: 'asc' }, { firstName: 'asc' }],
       ...paginationArgs(pagination),
     })
+  },
+
+  countWithEnrollmentStatus(where: Prisma.ParentWhereInput = {}) {
+    return prisma.parent.count({ where })
   },
 
   // Padres/tutores agrupados por curso (Familias → Listado) — mismo shape que

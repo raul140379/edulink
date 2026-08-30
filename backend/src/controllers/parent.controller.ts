@@ -259,8 +259,12 @@ export const releaseTutorKardex = async (req: AuthRequest, res: Response): Promi
 // ─────────────────────────────────────────────
 export const getRegisteredStatus = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    const { page, pageSize } = req.query
-    res.json(await parentService.getAllWithStatus(parsePagination(page as string | undefined, pageSize as string | undefined)))
+    const { page, pageSize, search, active } = req.query
+    res.json(await parentService.getAllWithStatus(
+      parsePagination(page as string | undefined, pageSize as string | undefined),
+      search as string | undefined,
+      active as string | undefined,
+    ))
   } catch (error) {
     handleControllerError(res, error)
   }

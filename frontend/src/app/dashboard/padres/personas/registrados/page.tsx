@@ -6,9 +6,11 @@ import Card from '@/components/ui/Card'
 import Badge from '@/components/ui/Badge'
 import Table, { Column } from '@/components/ui/Table'
 import Toolbar from '@/components/ui/Toolbar'
+import Pagination from '@/components/ui/Pagination'
 import { useToast } from '@/components/ui/ToastProvider'
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000'
+const PAGE_SIZE = 30
 
 const RELATION_LABELS: Record<string, string> = { PADRE: 'Padre', MADRE: 'Madre', TUTOR_LEGAL: 'Tutor legal', OTRO: 'Otro' }
 
@@ -28,29 +30,40 @@ export default function PadresRegistradosPage() {
   const [loading, setLoading] = useState(true)
   const [filter, setFilter]   = useState<'todos' | 'activo' | 'inactivo'>('todos')
   const [search, setSearch]   = useState('')
+  const [page,   setPage]     = useState(1)
+  const [total,  setTotal]    = useState(0)
+  const [summary, setSummary] = useState({ total: 0, activos: 0, inactivos: 0 })
+
+  // search/filter viajan como parámetros explícitos (no se leen del closure)
+  // para evitar el mismo bug de stale-closure ya encontrado en admin/padres:
+  // llamar fetchParents justo después de un setState no ve el valor nuevo
+  // todavía dentro de la misma función.
+  const fetchParents = async (targetPage = page, targetSearch = search, targetFilter = filter) => {
+    setLoading(true)
+    const token = localStorage.getItem('token')
+    const params = new URLSearchParams({ page: String(targetPage), pageSize: String(PAGE_SIZE) })
+    if (targetSearch.trim()) params.set('search', targetSearch.trim())
+    if (targetFilter !== 'todos') params.set('active', targetFilter === 'activo' ? 'true' : 'false')
+
+    try {
+      const r = await fetch(`${API_URL}/api/parents/registered-status?${params}`, { headers: { Authorization: `Bearer ${token}` } })
+      const data = await r.json()
+      if (!r.ok) { toast(data.message, 'error'); return }
+      setParents(data.data)
+      setTotal(data.total)
+      setPage(targetPage)
+      if (data.summary) setSummary(data.summary)
+    } catch { toast('Error de conexión', 'error') }
+    finally { setLoading(false) }
+  }
 
   useEffect(() => {
-    const token = localStorage.getItem('token')
-    fetch(`${API_URL}/api/parents/registered-status`, { headers: { Authorization: `Bearer ${token}` } })
-      .then(async r => {
-        const data = await r.json()
-        if (!r.ok) { toast(data.message, 'error'); return }
-        setParents(data)
-      })
-      .catch(() => toast('Error de conexión', 'error'))
-      .finally(() => setLoading(false))
+    fetchParents(1)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  const bySearch = search.trim()
-    ? parents.filter(p => {
-        const q = search.trim().toLowerCase()
-        const name = `${p.firstName} ${p.lastName}`.toLowerCase()
-        return name.includes(q) || (p.ci || '').toLowerCase().includes(q)
-      })
-    : parents
-  const filtered = bySearch.filter(p => filter === 'todos' ? true : filter === 'activo' ? p.active : !p.active)
-  const totalActivos = parents.filter(p => p.active).length
+  const handleSearch = () => fetchParents(1)
+  const handleFilterChange = (f: typeof filter) => { setFilter(f); fetchParents(1, search, f) }
 
   const columns: Column<ParentStatus>[] = [
     { key: 'padre', header: 'Padre/Madre/Tutor', render: p => (
@@ -84,19 +97,20 @@ export default function PadresRegistradosPage() {
       </div>
 
       <div className="grid gap-3 mb-4" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))' }}>
-        <Card><div className="text-[11px] text-neutral-500 uppercase tracking-wide mb-1.5">Total padres</div><div className="text-lg font-bold text-brand-700">{parents.length}</div></Card>
-        <Card className="!border-success-500/40"><div className="text-[11px] text-neutral-500 uppercase tracking-wide mb-1.5">Activos</div><div className="text-lg font-bold text-success-700">{totalActivos}</div></Card>
-        <Card className="!border-danger-500/40"><div className="text-[11px] text-neutral-500 uppercase tracking-wide mb-1.5">Inactivos</div><div className="text-lg font-bold text-danger-600">{parents.length - totalActivos}</div></Card>
+        <Card><div className="text-[11px] text-neutral-500 uppercase tracking-wide mb-1.5">Total padres</div><div className="text-lg font-bold text-brand-700">{summary.total}</div></Card>
+        <Card className="!border-success-500/40"><div className="text-[11px] text-neutral-500 uppercase tracking-wide mb-1.5">Activos</div><div className="text-lg font-bold text-success-700">{summary.activos}</div></Card>
+        <Card className="!border-danger-500/40"><div className="text-[11px] text-neutral-500 uppercase tracking-wide mb-1.5">Inactivos</div><div className="text-lg font-bold text-danger-600">{summary.inactivos}</div></Card>
       </div>
 
       <Toolbar
         className="mb-4"
-        search={{ value: search, onChange: setSearch, placeholder: 'Buscar por nombre o CI...' }}
+        search={{ value: search, onChange: setSearch, placeholder: 'Buscar por nombre o CI...', onSubmit: handleSearch }}
+        actions={[{ key: 'buscar', label: 'Buscar', onClick: handleSearch, variant: 'secondary' }]}
       />
 
       <div className="flex gap-2 mb-4">
         {(['todos', 'activo', 'inactivo'] as const).map(f => (
-          <button key={f} onClick={() => setFilter(f)}
+          <button key={f} onClick={() => handleFilterChange(f)}
             className={`px-3.5 py-2 rounded-lg text-[12.5px] font-medium transition-colors ${filter === f ? 'bg-brand-600 text-white' : 'bg-neutral-100 text-neutral-600 hover:bg-neutral-200'}`}>
             {f === 'todos' ? 'Todos' : f === 'activo' ? 'Activos' : 'Inactivos'}
           </button>
@@ -106,14 +120,15 @@ export default function PadresRegistradosPage() {
       <Card padded={false} className="overflow-hidden">
         {loading ? (
           <div className="flex justify-center py-16"><p className="text-sm text-neutral-500">Cargando...</p></div>
-        ) : filtered.length === 0 ? (
+        ) : parents.length === 0 ? (
           <div className="flex flex-col items-center gap-3 py-16 text-neutral-500">
             <UserCheck size={40} className="text-neutral-300"/>
             <p className="text-[13px]">No hay padres para este filtro</p>
           </div>
         ) : (
           <div className="p-4">
-            <Table columns={columns} rows={filtered} rowKey={p => p.id} />
+            <Table columns={columns} rows={parents} rowKey={p => p.id} />
+            <Pagination page={page} pageCount={Math.ceil(total / PAGE_SIZE)} onPageChange={fetchParents} className="mt-3" />
           </div>
         )}
       </Card>
