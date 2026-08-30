@@ -1,5 +1,6 @@
 import { notificationRepository } from '../repositories/notification.repository'
 import { HttpError } from '../utils/http-error'
+import { assertTeacherOwnsParent } from '../utils/teacher-scope'
 import { SendNotificationInput, SendBulkNotificationInput } from '../schemas/notification.schema'
 
 export const notificationService = {
@@ -21,6 +22,8 @@ export const notificationService = {
   },
 
   async sendNotification(userId: number | undefined, input: SendNotificationInput) {
+    await assertTeacherOwnsParent([input.parentId], 'Solo podés notificar a padres de estudiantes de tus propios cursos')
+
     const notification = await notificationRepository.createNotification({
       title: input.title, message: input.message, type: input.type, parentId: input.parentId, sentById: userId!,
     })
@@ -34,6 +37,8 @@ export const notificationService = {
   },
 
   async sendBulkNotification(userId: number | undefined, input: SendBulkNotificationInput) {
+    await assertTeacherOwnsParent(input.parentIds, 'Solo podés notificar a padres de estudiantes de tus propios cursos')
+
     await notificationRepository.createManyNotifications(
       input.parentIds.map((parentId) => ({ title: input.title, message: input.message, type: input.type, parentId, sentById: userId! }))
     )

@@ -70,6 +70,20 @@ export const studentRepository = {
     return Array.from(ids)
   },
 
+  // Cuántos de estos parentIds tienen al menos un hijo matriculado (gestión
+  // activa) en alguno de estos cursos — usado por assertTeacherOwnsParent
+  // (teacher-scope.ts) para validar de una sola vez todo un lote de
+  // parentIds (caso send-bulk), comparando el resultado contra el tamaño
+  // del lote en vez de consultar uno por uno.
+  countParentsWithChildInCourses(parentIds: number[], courseIds: number[], academicYearId: number) {
+    return prisma.parent.count({
+      where: {
+        id: { in: parentIds },
+        students: { some: { student: { assignments: { some: { academicYearId, courseId: { in: courseIds } } } } } },
+      },
+    })
+  },
+
   findMany(where: Prisma.StudentWhereInput, pagination?: Pagination) {
     return prisma.student.findMany({
       where,
