@@ -8,7 +8,7 @@ export const createStudentSchema = z.object({
   rude:      z.string().optional(),
   birthDate: z.string().optional(),
   phone:     z.string().optional(),
-  email:     z.string().email('Email inválido').optional(),
+  email:     z.string().email('Email inválido').optional().or(z.literal('')),
   address:   z.string().optional(),
   gender:    z.nativeEnum(Gender).optional(),
 })
@@ -20,7 +20,7 @@ export const updateStudentSchema = z.object({
   rude:      z.string().optional(),
   birthDate: z.string().optional(),
   phone:     z.string().optional(),
-  email:     z.string().email('Email inválido').optional(),
+  email:     z.string().email('Email inválido').optional().or(z.literal('')),
   address:   z.string().optional(),
   gender:    z.nativeEnum(Gender).optional(),
 })
