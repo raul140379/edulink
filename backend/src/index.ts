@@ -39,13 +39,19 @@ dotenv.config()
 const app  = express()
 const PORT = parseInt(process.env.PORT || '4000')
 
-// CORS: en producción acepta cualquier origen, en local solo localhost:3000
-const allowedOrigins = process.env.NODE_ENV === 'production'
-  ? '*'
-  : 'http://localhost:3000'
+// CORS: en producción acepta cualquier origen (cada app-por-rol tiene su
+// propio dominio en Vercel); en local, cada app de desarrollo corre en su
+// propio puerto (frontend admin 3000, maestro-app 3001, próximas apps
+// livianas suman su puerto acá) — más cualquier IP de red local (192.168.*/
+// 10.*/172.16-31.*), necesario para probar en el celular real desde la
+// misma red, sin depender de que la IP quede fija (DHCP puede cambiarla).
+const LOCAL_NETWORK_ORIGIN = /^http:\/\/(localhost|127\.0\.0\.1|192\.168\.\d{1,3}\.\d{1,3}|10\.\d{1,3}\.\d{1,3}\.\d{1,3}|172\.(1[6-9]|2\d|3[01])\.\d{1,3}\.\d{1,3}):\d+$/
 
 app.use(cors({
-  origin: allowedOrigins,
+  origin: process.env.NODE_ENV === 'production' ? '*' : (origin, callback) => {
+    if (!origin || LOCAL_NETWORK_ORIGIN.test(origin)) callback(null, true)
+    else callback(new Error('No permitido por CORS'))
+  },
   credentials: process.env.NODE_ENV !== 'production'
 }))
 

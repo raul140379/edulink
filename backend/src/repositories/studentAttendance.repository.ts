@@ -60,4 +60,35 @@ export const studentAttendanceRepository = {
       orderBy: { date: 'desc' },
     })
   },
+
+  // Períodos que ESTE maestro tiene hoy para ESTE curso — la ventana de
+  // asistencia (ver studentAttendance.service.ts) es la unión de [inicio-5,
+  // fin+10] de todos ellos, no un horario genérico del curso (la asistencia
+  // es una vez por curso por día, cualquier maestro asignado puede tomarla).
+  // Feriado de HOY (gestión activa) — si existe, la ventana ni siquiera mira
+  // los períodos del maestro (ver resolveAttendanceWindow).
+  findHolidayForToday(academicYearId: number, start: Date, next: Date) {
+    return prisma.holiday.findFirst({ where: { academicYearId, date: { gte: start, lt: next } }, select: { description: true } })
+  },
+
+  findTeacherPeriodsForCourseToday(teacherId: number, courseId: number, dayOfWeek: number, academicYearId: number) {
+    return prisma.schedule.findMany({
+      where: { academicYearId, courseId, dayOfWeek, teacherSubjectCourse: { teacherId } },
+      select: { startTime: true, endTime: true },
+    })
+  },
+
+  // StudentAttendance.teacherId es obligatorio, pero DIRECTOR/SECRETARY (que
+  // pueden corregir asistencia sin ventana horaria) no tienen su propio
+  // Teacher — se le atribuye al tutor del curso, o si no tiene, a cualquier
+  // maestro asignado a ese curso. No es un reemplazo de auditoría real (ver
+  // CLAUDE.md ítem 17.1) — es solo para satisfacer la FK obligatoria hasta
+  // que exista la pantalla admin real.
+  async findAnyTeacherIdForCourse(courseId: number): Promise<number | null> {
+    const course = await prisma.course.findUnique({ where: { id: courseId }, select: { tutor: { select: { teacherId: true } } } })
+    if (course?.tutor?.teacherId) return course.tutor.teacherId
+
+    const tsc = await prisma.teacherSubjectCourse.findFirst({ where: { courseId }, select: { teacherId: true } })
+    return tsc?.teacherId ?? null
+  },
 }

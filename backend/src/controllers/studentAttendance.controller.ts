@@ -8,7 +8,7 @@ import { studentAttendanceService } from '../services/studentAttendance.service'
 // ─────────────────────────────────────────────
 export const getAttendanceByCourse = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    const result = await studentAttendanceService.getAttendanceByCourse(parseInt(req.params.courseId), req.query.date as string | undefined)
+    const result = await studentAttendanceService.getAttendanceByCourse(req.userId, parseInt(req.params.courseId), req.query.date as string | undefined)
     res.json(result)
   } catch (error) {
     handleControllerError(res, error)
@@ -22,6 +22,17 @@ export const saveAttendance = async (req: AuthRequest, res: Response): Promise<v
   try {
     const result = await studentAttendanceService.saveAttendance(req.userId, parseInt(req.params.courseId), req.body)
     res.json(result)
+  } catch (error) {
+    handleControllerError(res, error)
+  }
+}
+
+// ─────────────────────────────────────────────
+// GET /api/student-attendance/today-status
+// ─────────────────────────────────────────────
+export const getTodayStatus = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    res.json(await studentAttendanceService.getTodayStatus())
   } catch (error) {
     handleControllerError(res, error)
   }

@@ -1,25 +1,12 @@
 import { gateRepository } from '../repositories/gate.repository'
 import { HttpError } from '../utils/http-error'
+import { nowMinutesBolivia, parseTimeToMinutes as parseTime } from '../utils/bolivia-time'
 import {
   RegisterStudentInput, RegisterTeacherInput, RegisterStaffInput, RegisterVisitorInput,
 } from '../schemas/gate.schema'
 
 function startOfDay(d: Date) { const s = new Date(d); s.setHours(0, 0, 0, 0); return s }
 function endOfDay(d: Date) { const e = new Date(d); e.setHours(23, 59, 59, 999); return e }
-function parseTime(t: string) { const [h, m] = t.split(':').map(Number); return h * 60 + m }
-
-// El contenedor de producción no tiene TZ configurada (Node corre en UTC,
-// confirmado 29-ago-2026: el servidor calculaba ~4h adelantado de la hora
-// real de Bolivia) — todas las comparaciones contra horas de reloj
-// (startTime/exitTime/tolerancia/ventana del portal) deben convertir a hora
-// de Bolivia explícitamente (UTC-4 fijo, el país no usa horario de verano)
-// en vez de usar getHours()/getMinutes() del proceso, que reflejan la hora
-// del servidor, no la del colegio.
-const BOLIVIA_UTC_OFFSET_MIN = -4 * 60
-function nowMinutesBolivia(now: Date): number {
-  const utcMin = now.getUTCHours() * 60 + now.getUTCMinutes()
-  return ((utcMin + BOLIVIA_UTC_OFFSET_MIN) % 1440 + 1440) % 1440
-}
 
 // Horario fijo del módulo de portería (abierto para registrar entradas/
 // salidas), independiente del horario real de turnos (SchoolSchedule.

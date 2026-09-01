@@ -1,5 +1,8 @@
+import { Role } from '@prisma/client'
 import { studentAttendanceRepository } from '../repositories/studentAttendance.repository'
 import { HttpError } from '../utils/http-error'
+import { getTenantContext } from '../lib/tenant-context'
+import { nowMinutesBolivia, todayDayOfWeekBolivia, todayDateRangeBolivia, parseTimeToMinutes } from '../utils/bolivia-time'
 import { SaveAttendanceInput, CloseAttendanceInput } from '../schemas/studentAttendance.schema'
 import { gamificationService } from './gamification.service'
 
@@ -13,10 +16,99 @@ function dayRange(dateStr?: string) {
   return { base, next }
 }
 
+function formatHM(min: number): string {
+  const h = Math.floor(min / 60).toString().padStart(2, '0')
+  const m = (min % 60).toString().padStart(2, '0')
+  return `${h}:${m}`
+}
+
+export interface AttendanceWindow {
+  exempt: boolean
+  open: boolean
+  message: string | null
+  opensAt: string | null
+  closesAt: string | null
+}
+
+// Ventana de asistencia: se abre 5 min antes del período y cierra 10 min
+// después — pero es la ventana de ESTE maestro para ESTE curso hoy, no del
+// curso en abstracto (la asistencia es una vez por curso por día, cualquier
+// maestro asignado al curso puede tomarla, así que se mira la unión de
+// TODOS los períodos que este maestro específico tiene hoy en este curso).
+// DIRECTOR/SECRETARY quedan exentos — pueden registrar/corregir en
+// cualquier momento (sin pantalla propia todavía, backend preparado).
+async function resolveAttendanceWindow(userId: number | undefined, courseId: number, academicYearId: number): Promise<AttendanceWindow> {
+  const ctx = getTenantContext()
+  if (ctx?.role === Role.DIRECTOR || ctx?.role === Role.SECRETARY) {
+    return { exempt: true, open: true, message: null, opensAt: null, closesAt: null }
+  }
+
+  const teacher = await studentAttendanceRepository.findTeacherByUserId(userId)
+  if (!teacher) return { exempt: false, open: false, message: 'Maestro no encontrado', opensAt: null, closesAt: null }
+
+  const now = new Date()
+
+  // Feriado de hoy (planificado con anticipación o creado el mismo día) —
+  // ni siquiera mira los períodos del maestro si hoy no hay clases.
+  const { start, next } = todayDateRangeBolivia(now)
+  const holiday = await studentAttendanceRepository.findHolidayForToday(academicYearId, start, next)
+  if (holiday) {
+    return { exempt: false, open: false, opensAt: null, closesAt: null, message: `Hoy no hay clases: ${holiday.description}.` }
+  }
+
+  const dow = todayDayOfWeekBolivia(now)
+  const nowMin = nowMinutesBolivia(now)
+  const periods = await studentAttendanceRepository.findTeacherPeriodsForCourseToday(teacher.id, courseId, dow, academicYearId)
+
+  if (periods.length === 0) {
+    return { exempt: false, open: false, message: 'No tenés esta materia programada hoy en este curso.', opensAt: null, closesAt: null }
+  }
+
+  const windows = periods
+    .map((p) => ({ start: parseTimeToMinutes(p.startTime) - 5, end: parseTimeToMinutes(p.endTime) + 10 }))
+    .sort((a, b) => a.start - b.start)
+
+  const open = windows.some((w) => nowMin >= w.start && nowMin <= w.end)
+  if (open) return { exempt: false, open: true, message: null, opensAt: null, closesAt: null }
+
+  const upcoming = windows.find((w) => w.start > nowMin)
+  if (upcoming) {
+    return {
+      exempt: false, open: false, opensAt: formatHM(upcoming.start), closesAt: null,
+      message: `La asistencia se habilita a las ${formatHM(upcoming.start)}.`,
+    }
+  }
+
+  const last = windows[windows.length - 1]
+  return {
+    exempt: false, open: false, opensAt: null, closesAt: formatHM(last.end),
+    message: `La ventana para tomar asistencia de este curso ya cerró a las ${formatHM(last.end)}.`,
+  }
+}
+
 export const studentAttendanceService = {
-  async getAttendanceByCourse(courseId: number, date?: string) {
+  // Estado del día — SOLO el feriado, sin depender de un curso específico.
+  // Usado por la pantalla "Ahora" de maestro-app para no mostrar "te toca
+  // ahora"/"no tenés más clases hoy" (mensajes de horario, sin relación con
+  // el feriado) cuando en realidad hoy no hay clases — mismo chequeo que ya
+  // usa resolveAttendanceWindow, para que ambas pantallas digan lo mismo.
+  async getTodayStatus() {
+    const activeYear = await studentAttendanceRepository.findActiveAcademicYear()
+    if (!activeYear) return { isHoliday: false, message: null }
+
+    const { start, next } = todayDateRangeBolivia(new Date())
+    const holiday = await studentAttendanceRepository.findHolidayForToday(activeYear.id, start, next)
+
+    return holiday
+      ? { isHoliday: true, message: `Hoy no hay clases: ${holiday.description}.` }
+      : { isHoliday: false, message: null }
+  },
+
+  async getAttendanceByCourse(userId: number | undefined, courseId: number, date?: string) {
     const activeYear = await studentAttendanceRepository.findActiveAcademicYear()
     if (!activeYear) throw new HttpError(400, 'No hay gestión activa')
+
+    const window = await resolveAttendanceWindow(userId, courseId, activeYear.id)
 
     const { base, next } = dayRange(date)
 
@@ -45,15 +137,38 @@ export const studentAttendanceService = {
       registrado: attendances.length > 0,
     }
 
-    return { date: base.toISOString().split('T')[0], students, summary }
+    return { date: base.toISOString().split('T')[0], students, summary, window }
   },
 
   async saveAttendance(userId: number | undefined, courseId: number, input: SaveAttendanceInput) {
     const activeYear = await studentAttendanceRepository.findActiveAcademicYear()
     if (!activeYear) throw new HttpError(400, 'No hay gestión activa')
 
-    const teacher = await studentAttendanceRepository.findTeacherByUserId(userId)
-    if (!teacher) throw new HttpError(404, 'Maestro no encontrado')
+    const ctx = getTenantContext()
+    const isExemptRole = ctx?.role === Role.DIRECTOR || ctx?.role === Role.SECRETARY
+
+    // teacherId: a quién se le atribuye el registro (FK obligatoria).
+    // actorLabel: qué nombre ve el padre en la notificación de inasistencia.
+    // Se separan porque DIRECTOR/SECRETARY no tienen Teacher propio — no
+    // corresponde atribuirle la corrección a otro maestro que no la hizo.
+    let teacherId: number
+    let actorLabel: string
+
+    if (isExemptRole) {
+      const resolvedTeacherId = await studentAttendanceRepository.findAnyTeacherIdForCourse(courseId)
+      if (!resolvedTeacherId) throw new HttpError(400, 'Este curso no tiene ningún maestro asignado — no se puede registrar asistencia.')
+      teacherId = resolvedTeacherId
+      actorLabel = 'Dirección'
+    } else {
+      const teacher = await studentAttendanceRepository.findTeacherByUserId(userId)
+      if (!teacher) throw new HttpError(404, 'Maestro no encontrado')
+
+      const window = await resolveAttendanceWindow(userId, courseId, activeYear.id)
+      if (!window.open) throw new HttpError(403, window.message || 'Fuera de la ventana permitida para tomar asistencia.')
+
+      teacherId = teacher.id
+      actorLabel = `${teacher.lastName} ${teacher.firstName}`
+    }
 
     const course = await studentAttendanceRepository.findCourseById(courseId)
     if (!course) throw new HttpError(404, 'Curso no encontrado')
@@ -69,7 +184,7 @@ export const studentAttendanceService = {
       const existing = await studentAttendanceRepository.findOneForDay(att.studentId, courseId, base)
 
       await studentAttendanceRepository.upsertAttendance({
-        studentId: att.studentId, courseId, teacherId: teacher.id, academicYearId: activeYear.id,
+        studentId: att.studentId, courseId, teacherId, academicYearId: activeYear.id,
         date: base, status: att.status, note: att.note || null,
       })
       count++
@@ -86,11 +201,11 @@ export const studentAttendanceService = {
         const statusLabel = att.status === 'AUSENTE' ? 'ausente' : 'con retraso'
         const emoji = att.status === 'AUSENTE' ? '❌' : '⏰'
         const title = `${emoji} Inasistencia — ${cursoLabel}`
-        const message = `Su hijo/a estuvo ${statusLabel} el ${dateStr} en el curso ${cursoLabel}. Maestro: ${teacher.lastName} ${teacher.firstName}.${att.note ? ` Observación: ${att.note}` : ''}`
+        const message = `Su hijo/a estuvo ${statusLabel} el ${dateStr} en el curso ${cursoLabel}. Maestro: ${actorLabel}.${att.note ? ` Observación: ${att.note}` : ''}`
 
         const parentLink = await studentAttendanceRepository.findTutorLink(att.studentId)
         if (parentLink?.parent) {
-          await studentAttendanceRepository.createNotification({ title, message, sentById: teacher.userId, parentId: parentLink.parent.id })
+          await studentAttendanceRepository.createNotification({ title, message, sentById: userId!, parentId: parentLink.parent.id })
           notifCount++
         }
       }
@@ -137,8 +252,29 @@ export const studentAttendanceService = {
     const activeYear = await studentAttendanceRepository.findActiveAcademicYear()
     if (!activeYear) throw new HttpError(400, 'No hay gestión activa')
 
-    const teacher = await studentAttendanceRepository.findTeacherByUserId(userId)
-    if (!teacher) throw new HttpError(404, 'Maestro no encontrado')
+    // Mismo candado que saveAttendance — sin esto, un maestro bloqueado por
+    // la ventana horaria podría igual marcar ausentes masivos por esta vía.
+    const ctx = getTenantContext()
+    const isExemptRole = ctx?.role === Role.DIRECTOR || ctx?.role === Role.SECRETARY
+
+    let teacherId: number
+    let actorLabel: string
+
+    if (isExemptRole) {
+      const resolvedTeacherId = await studentAttendanceRepository.findAnyTeacherIdForCourse(courseId)
+      if (!resolvedTeacherId) throw new HttpError(400, 'Este curso no tiene ningún maestro asignado — no se puede registrar asistencia.')
+      teacherId = resolvedTeacherId
+      actorLabel = 'Dirección'
+    } else {
+      const teacher = await studentAttendanceRepository.findTeacherByUserId(userId)
+      if (!teacher) throw new HttpError(404, 'Maestro no encontrado')
+
+      const window = await resolveAttendanceWindow(userId, courseId, activeYear.id)
+      if (!window.open) throw new HttpError(403, window.message || 'Fuera de la ventana permitida para tomar asistencia.')
+
+      teacherId = teacher.id
+      actorLabel = `${teacher.lastName} ${teacher.firstName}`
+    }
 
     const course = await studentAttendanceRepository.findCourseById(courseId)
     if (!course) throw new HttpError(404, 'Curso no encontrado')
@@ -158,7 +294,7 @@ export const studentAttendanceService = {
     let notifCount = 0
     for (const a of sinRegistro) {
       await studentAttendanceRepository.upsertAttendance({
-        studentId: a.student.id, courseId, teacherId: teacher.id, academicYearId: activeYear.id,
+        studentId: a.student.id, courseId, teacherId, academicYearId: activeYear.id,
         date: base, status: 'AUSENTE', note: 'Registrado automáticamente al cerrar asistencia',
       })
 
@@ -166,8 +302,8 @@ export const studentAttendanceService = {
       if (parentLink?.parent) {
         await studentAttendanceRepository.createNotification({
           title: `❌ Inasistencia — ${cursoLabel}`,
-          message: `Su hijo/a estuvo ausente el ${dateStr} en el curso ${cursoLabel}. Maestro: ${teacher.lastName} ${teacher.firstName}.`,
-          sentById: teacher.userId, parentId: parentLink.parent.id,
+          message: `Su hijo/a estuvo ausente el ${dateStr} en el curso ${cursoLabel}. Maestro: ${actorLabel}.`,
+          sentById: userId!, parentId: parentLink.parent.id,
         })
         notifCount++
       }

@@ -178,6 +178,11 @@ export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
     Permission.ENROLLMENT_VIEW,
     Permission.GRADE_VIEW_ALL,
     Permission.ATTENDANCE_VIEW,
+    // Único rol admin con autoridad para registrar/corregir asistencia sin
+    // la ventana horaria estricta que sí aplica a TEACHER/TEACHER_TUTOR (ver
+    // studentAttendance.service.ts) — pantalla dedicada pendiente, backend
+    // ya preparado.
+    Permission.ATTENDANCE_CREATE,
     Permission.SCHEDULE_CREATE,
     Permission.SCHEDULE_VIEW_ALL,
     // Sin CHARGE_CREATE: la parte administrativa no maneja recursos, eso lo administra
@@ -241,6 +246,8 @@ export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
     Permission.ENROLLMENT_VIEW,
     Permission.GRADE_VIEW_ALL,
     Permission.ATTENDANCE_VIEW,
+    // Mismo criterio que Director — exenta de la ventana horaria estricta.
+    Permission.ATTENDANCE_CREATE,
     Permission.SCHEDULE_VIEW_ALL,
     // Sin CHARGE_CREATE: la administración de recursos es función exclusiva de la
     // Junta Escolar de padres. Secretaría solo puede ver el estado de tesorería.

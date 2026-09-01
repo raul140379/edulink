@@ -6,6 +6,17 @@ export const notificationRepository = {
     return prisma.parent.findUnique({ where: { userId } })
   },
 
+  // Encabezado institucional (ver sendNotification) — nombre real del
+  // maestro y de SU colegio, nunca hardcodeado, para que sirva igual en
+  // cualquier UE del distrito.
+  findTeacherNameByUserId(userId: number | undefined) {
+    return prisma.teacher.findFirst({ where: { OR: [{ userId }, { tutorUserId: userId }] }, select: { firstName: true, lastName: true } })
+  },
+
+  findSchoolName(schoolId: number) {
+    return prisma.school.findUnique({ where: { id: schoolId }, select: { name: true } })
+  },
+
   findNotificationsByParent(parentId: number) {
     return prisma.notification.findMany({
       where: { parentId },

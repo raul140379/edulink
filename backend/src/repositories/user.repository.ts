@@ -198,6 +198,7 @@ export const userRepository = {
         email:    true,
         role:     true,
         isActive: true,
+        school:   { select: { id: true, name: true } },
         parent: {
           select: { id: true, firstName: true, lastName: true, phone: true },
         },
