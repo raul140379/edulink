@@ -1,13 +1,16 @@
 import type { MetadataRoute } from 'next'
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000'
-
 // La marca de esta app es a nivel DISTRITO (la unidad real por despliegue —
 // "una instancia por distrito", con muchos colegios adentro), nunca de un
 // colegio específico: un maestro de cualquier UE del distrito instala la
 // misma app, con el mismo ícono — el escudo del Distrito/Municipio El
-// Torno, no el de ninguna UE en particular. El NOMBRE se pide en vivo a
-// /api/public/district (público, sin auth). El ÍCONO usa PNG propios
+// Torno, no el de ninguna UE en particular. El NOMBRE es fijo "EduLink
+// Maestro" (consistencia de marca con el resto del sistema, decisión
+// 1-sep-2026) — antes se pedía en vivo a /api/public/district y mostraba
+// "Maestro — {nombre del distrito}", pero eso hacía que el nombre visible
+// bajo el ícono cambiara según el distrito desplegado, inconsistente con
+// el resto de EduLink; se quitó también la dependencia de red que eso
+// implicaba para generar el manifest. El ÍCONO usa PNG propios
 // (public/icons/icon-192.png, icon-512.png) re-derivados una sola vez del
 // logo real del distrito (recortado el margen blanco + reescalado con
 // padding de zona segura para maskable) — no el data: URI de ~1.3MB que
@@ -23,22 +26,10 @@ const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000'
 // solución real es una app separada por colegio — no intentar que esta
 // misma app sirva íconos distintos por usuario logueado. No implementar
 // hasta que haya más de una UE usando maestro-app activamente.
-export default async function manifest(): Promise<MetadataRoute.Manifest> {
-  let name = 'EduLink Maestro'
-
-  try {
-    const res = await fetch(`${API_URL}/api/public/district`, { next: { revalidate: 3600 } })
-    if (res.ok) {
-      const district = await res.json()
-      if (district?.name) name = `Maestro — ${district.name}`
-    }
-  } catch {
-    // Sin conexión al backend al momento de generar el manifest — se usa el nombre genérico.
-  }
-
+export default function manifest(): MetadataRoute.Manifest {
   return {
-    name,
-    short_name: 'Maestro',
+    name: 'EduLink Maestro',
+    short_name: 'EduLink Maestro',
     description: 'Asistencia y notificaciones para el docente, desde el celular',
     start_url: '/',
     display: 'standalone',
