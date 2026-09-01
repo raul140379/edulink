@@ -103,6 +103,7 @@ model School {
   parentKardexHistory     ParentKardexHistory[]
   refunds                 Refund[]
   auditLogs               AuditLog[]
+  sportsParticipants      SportsParticipant[]
 }
 
 model SchoolSchedule {
@@ -159,6 +160,7 @@ model User {
   academicYearsClosed     AcademicYear[]           @relation("AcademicYearEconomicClosedBy")
   refundsHandled          Refund[]
   auditLogsActed          AuditLog[]
+  sportsParticipantsAdded SportsParticipant[]
 
   @@index([schoolId])
 }
@@ -249,6 +251,7 @@ model AcademicYear {
   studentAttendances  StudentAttendance[]
   trimesters          Trimester[]
   parentKardexHistory ParentKardexHistory[]
+  sportsParticipants  SportsParticipant[]
 
   @@unique([year, schoolId])
 }
@@ -330,34 +333,35 @@ model Parent {
 }
 
 model Student {
-  id                 Int                         @id @default(autoincrement())
-  firstName          String
-  lastName           String
-  ci                 String?
-  rude               String?
-  birthDate          DateTime?
-  phone              String?
-  email              String?
-  isActive           Boolean                     @default(true)
-  createdAt          DateTime                    @default(now())
-  updatedAt          DateTime                    @updatedAt
-  userId             Int?                        @unique
-  address            String?
-  gender             Gender                      @default(MASCULINO)
-  kardex             String?
-  schoolId           Int
-  school             School                      @relation(fields: [schoolId], references: [id])
-  charges            Charge[]
-  notas              Nota[]
-  parents            ParentStudent[]
-  user               User?                       @relation(fields: [userId], references: [id])
-  assignments        StudentAcademicAssignment[]
-  studentAttendances StudentAttendance[]
-  taskSubmissions    TaskSubmission[]
-  gateRecords        GateRecord[]
-  gamification       StudentGamification?
-  achievements       StudentAchievement[]
-  trimesterBonuses   StudentTrimesterBonus[]
+  id                   Int                         @id @default(autoincrement())
+  firstName            String
+  lastName             String
+  ci                   String?
+  rude                 String?
+  birthDate            DateTime?
+  phone                String?
+  email                String?
+  isActive             Boolean                     @default(true)
+  createdAt            DateTime                    @default(now())
+  updatedAt            DateTime                    @updatedAt
+  userId               Int?                        @unique
+  address              String?
+  gender               Gender                      @default(MASCULINO)
+  kardex               String?
+  schoolId             Int
+  school               School                      @relation(fields: [schoolId], references: [id])
+  charges              Charge[]
+  notas                Nota[]
+  parents              ParentStudent[]
+  user                 User?                       @relation(fields: [userId], references: [id])
+  assignments          StudentAcademicAssignment[]
+  studentAttendances   StudentAttendance[]
+  taskSubmissions      TaskSubmission[]
+  gateRecords          GateRecord[]
+  gamification         StudentGamification?
+  achievements         StudentAchievement[]
+  trimesterBonuses     StudentTrimesterBonus[]
+  sportsParticipations SportsParticipant[]
 
   @@unique([ci, schoolId])
   @@unique([rude, schoolId])
@@ -833,6 +837,30 @@ model AuditLog {
   @@index([entityType, entityId])
   @@index([schoolId])
   @@index([actorUserId])
+}
+
+// Deportista que representa al colegio en una disciplina de los Juegos
+// Estudiantiles Municipales. Un mismo estudiante puede tener varias filas
+// (una por disciplina) — el único índice único es sobre la combinación
+// completa (estudiante + disciplina + gestión), para evitar un duplicado
+// exacto por doble clic, nunca para limitar a una disciplina por estudiante.
+model SportsParticipant {
+  id             Int          @id @default(autoincrement())
+  studentId      Int
+  student        Student      @relation(fields: [studentId], references: [id])
+  discipline     String
+  modality       String?
+  academicYearId Int
+  academicYear   AcademicYear @relation(fields: [academicYearId], references: [id])
+  schoolId       Int
+  school         School       @relation(fields: [schoolId], references: [id])
+  createdById    Int?
+  createdBy      User?        @relation(fields: [createdById], references: [id])
+  createdAt      DateTime     @default(now())
+
+  @@unique([studentId, discipline, academicYearId])
+  @@index([schoolId])
+  @@index([academicYearId])
 }
 
 // Plantilla de cargo obligatorio — al crearla se aplica de inmediato a todos

@@ -35,6 +35,9 @@ export enum Permission {
   STUDENT_VERIFY        = 'student:verify',       // Solo portero
   STUDENT_TOGGLE_STATUS = 'student:toggle-status', // Activar/desactivar (ej. "retirado") sin crear/editar/borrar — Junta Escolar, desde Verificación por Curso
 
+  // Juegos Estudiantiles Municipales — registro de estudiantes por disciplina
+  SPORTS_MANAGE = 'sports:manage',
+
   // Maestros
   TEACHER_CREATE     = 'teacher:create',
   TEACHER_VIEW_ALL   = 'teacher:view:all',
@@ -165,6 +168,7 @@ export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
     Permission.USER_EDIT_OWN,
     Permission.STUDENT_CREATE,
     Permission.STUDENT_VIEW_ALL,
+    Permission.SPORTS_MANAGE,
     Permission.TEACHER_CREATE,
     Permission.TEACHER_VIEW_ALL,
     // Sin PARENT_CREATE: registrar un padre nuevo es responsabilidad exclusiva
@@ -209,6 +213,7 @@ export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
     Permission.USER_EDIT_OWN,
     Permission.STUDENT_CREATE,
     Permission.STUDENT_VIEW_ALL,
+    Permission.SPORTS_MANAGE,
     // Sin TEACHER_CREATE: contratar/registrar un maestro nuevo queda como decisión de Dirección.
     Permission.TEACHER_VIEW_ALL,
     // Sin PARENT_CREATE: ver DIRECTOR arriba — Regente solo asigna/cambia tutor.
@@ -236,6 +241,7 @@ export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
     Permission.USER_EDIT_OWN,
     Permission.STUDENT_CREATE,
     Permission.STUDENT_VIEW_ALL,
+    Permission.SPORTS_MANAGE,
     Permission.TEACHER_VIEW_ALL,
     // Sin PARENT_CREATE: ver DIRECTOR arriba — Secretaria solo asigna/cambia tutor.
     Permission.PARENT_ASSIGN_TUTOR,

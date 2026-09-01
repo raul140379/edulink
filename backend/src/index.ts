@@ -33,6 +33,7 @@ import juntaRoutes from './routes/junta.routes'
 import gobiernoRoutes from './routes/gobierno.routes'
 import poaActaRoutes from './routes/poa-acta.routes'
 import attendanceCheckinRoutes from './routes/attendance-checkin.routes'
+import sportsParticipantRoutes from './routes/sportsParticipant.routes'
 
 dotenv.config()
 
@@ -89,6 +90,7 @@ app.use('/api/convocatorias', convocatoriaRoutes)
 app.use('/api/gobierno', gobiernoRoutes)
 app.use('/api/poa-acta', poaActaRoutes)
 app.use('/api/attendance-checkin', attendanceCheckinRoutes)
+app.use('/api/sports-participants', sportsParticipantRoutes)
 
 app.get('/', (req, res) => {
   res.json({ message: '🚀 EduLink Backend funcionando correctamente', version: '1.0.0' })
