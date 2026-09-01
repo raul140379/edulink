@@ -26,7 +26,7 @@ interface User {
 
 const roleLabels: Record<string, string> = {
   SUPER_ADMIN: 'Super Admin', DIRECTOR_DISTRITAL: 'Director Distrital', DIRECTOR: 'Director', REGENTE: 'Regente',
-  SECRETARY: 'Secretaria', TEACHER: 'Maestro', DELEGATE: 'Delegado',
+  SECRETARY: 'Secretaria', PSICOLOGO: 'Psicóloga/o', TEACHER: 'Maestro', DELEGATE: 'Delegado',
   JUNTA_ESCOLAR: 'Junta Escolar', TEACHER_TUTOR: 'Maestro Tutor',
   PARENT: 'Padre / Tutor', STUDENT: 'Estudiante', STUDENT_GOV: 'Gob. Estudiantil', STAFF: 'Personal',
   JUNTA_NUCLEO: 'Junta de Núcleo', JUNTA_DISTRITO: 'Junta de Distrito',
@@ -46,7 +46,7 @@ const BOARD_ROLES = new Set(['JUNTA_NUCLEO', 'JUNTA_DISTRITO', 'GOBIERNO_NUCLEO'
 // no tiene restricción (ver getCreatableRoles).
 const CREATABLE_ROLES: Record<string, string[]> = {
   DIRECTOR_DISTRITAL: ['DIRECTOR', 'REGENTE', 'SECRETARY', 'JUNTA_DISTRITO', 'GOBIERNO_DISTRITO'],
-  DIRECTOR: ['REGENTE', 'SECRETARY', 'TEACHER', 'TEACHER_TUTOR', 'STAFF', 'PORTERO', 'PARENT', 'STUDENT', 'DELEGATE', 'JUNTA_ESCOLAR', 'STUDENT_GOV'],
+  DIRECTOR: ['REGENTE', 'SECRETARY', 'PSICOLOGO', 'TEACHER', 'TEACHER_TUTOR', 'STAFF', 'PORTERO', 'PARENT', 'STUDENT', 'DELEGATE', 'JUNTA_ESCOLAR', 'STUDENT_GOV'],
   JUNTA_DISTRITO: ['JUNTA_DISTRITO', 'JUNTA_NUCLEO', 'JUNTA_ESCOLAR'],
   JUNTA_NUCLEO: ['JUNTA_ESCOLAR'],
   GOBIERNO_DISTRITO: ['GOBIERNO_NUCLEO', 'STUDENT_GOV'],
@@ -79,7 +79,7 @@ const CARGO_LABELS: Record<string, string> = {
 // Roles que necesitan que se indique explícitamente a qué colegio pertenecen
 // cuando quien crea el usuario ve/administra más de un colegio (Super Admin / Director Distrital).
 const SCHOOL_SCOPED_ROLES = new Set([
-  'DIRECTOR', 'REGENTE', 'SECRETARY', 'TEACHER', 'TEACHER_TUTOR', 'DELEGATE',
+  'DIRECTOR', 'REGENTE', 'SECRETARY', 'PSICOLOGO', 'TEACHER', 'TEACHER_TUTOR', 'DELEGATE',
   'JUNTA_ESCOLAR', 'PARENT', 'STUDENT', 'STUDENT_GOV', 'STAFF',
 ])
 
@@ -108,7 +108,7 @@ const generatePassword = (email: string, role: string): string => {
   const last4     = localPart.slice(-4).toLowerCase()
   const prefixes: Record<string, string> = {
     PARENT: 'padre', TEACHER: 'maestro', TEACHER_TUTOR: 'maestro',
-    SECRETARY: 'secretaria', STAFF: 'portero', DIRECTOR: 'director',
+    SECRETARY: 'secretaria', PSICOLOGO: 'psicologo', STAFF: 'portero', DIRECTOR: 'director',
     REGENTE: 'regente', STUDENT: 'estudiante', DELEGATE: 'delegado',
     JUNTA_ESCOLAR: 'junta', SUPER_ADMIN: 'admin',
     JUNTA_DISTRITO: 'junta', GOBIERNO_DISTRITO: 'gobierno',

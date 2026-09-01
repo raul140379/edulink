@@ -18,6 +18,7 @@ export enum Role {
   STUDENT_GOV  = 'STUDENT_GOV',
   STAFF        = 'STAFF',
   PORTERO      = 'PORTERO',
+  PSICOLOGO    = 'PSICOLOGO',
 }
 
 // Definición de todos los permisos del sistema
@@ -231,6 +232,22 @@ export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
     Permission.TEACHER_ATTENDANCE_MANAGE,
     // Solo ver tesorería — administrarla es función de la Junta Escolar de padres.
     Permission.CHARGE_VIEW_ALL,
+  ],
+
+  // Personal administrativo de apoyo psicopedagógico — alcance de solo
+  // lectura (ficha del estudiante, asistencia, notas) + notificación puntual
+  // a padres. Sin CHARGE_VIEW_ALL a propósito: no está en la lista de
+  // excepciones del invariante de Tesorería (ver CLAUDE.md), así que no
+  // tiene ningún acceso a esa área, ni de solo lectura. Tampoco
+  // STUDENT_CREATE/PARENT_ASSIGN_TUTOR/COURSE_*/ATTENDANCE_CREATE — no
+  // gestiona matrícula, tutores, cursos ni registra asistencia.
+  [Role.PSICOLOGO]: [
+    Permission.USER_EDIT_OWN,
+    Permission.STUDENT_VIEW_ALL,
+    Permission.ATTENDANCE_VIEW,
+    Permission.GRADE_VIEW_ALL,
+    Permission.NOTIFICATION_SEND,
+    Permission.NOTIFICATION_VIEW,
   ],
 
   [Role.SECRETARY]: [
@@ -517,7 +534,7 @@ export const CREATABLE_ROLES: Partial<Record<string, string[]>> = {
     Role.JUNTA_DISTRITO, Role.GOBIERNO_DISTRITO,
   ],
   [Role.DIRECTOR]: [
-    Role.REGENTE, Role.SECRETARY, Role.TEACHER, Role.TEACHER_TUTOR,
+    Role.REGENTE, Role.SECRETARY, Role.PSICOLOGO, Role.TEACHER, Role.TEACHER_TUTOR,
     Role.STAFF, Role.PORTERO, Role.PARENT, Role.STUDENT,
     Role.DELEGATE, Role.JUNTA_ESCOLAR, Role.STUDENT_GOV,
   ],
