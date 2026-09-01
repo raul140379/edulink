@@ -83,6 +83,12 @@ const SCHOOL_SCOPED_ROLES = new Set([
   'JUNTA_ESCOLAR', 'PARENT', 'STUDENT', 'STUDENT_GOV', 'STAFF',
 ])
 
+// Espejo de STAFF_ROLE_BY_USER_ROLE en backend/src/services/user.service.ts —
+// estos roles además de la cuenta de login quedan registrados en portería
+// (control de ingreso/salida), así que el backend exige nombre/apellido para
+// ellos. Se valida acá también para no hacer ida y vuelta al servidor.
+const STAFF_LINKED_ROLES = new Set(['REGENTE', 'SECRETARY', 'PSICOLOGO', 'STAFF', 'PORTERO'])
+
 const RESET_OPTIONS = [
   { key: 'ALL',       label: 'Todos',          desc: 'Todos los roles permitidos' },
   { key: 'STUDENT',   label: 'Estudiantes',    desc: 'RUDE o 4 letras apellido + año' },
@@ -242,10 +248,13 @@ export default function UsuariosPage() {
   const handleCreate = async () => {
     if (!form.email || !form.password) { setFormError('El correo y la contraseña son requeridos'); return }
     if (needsSchoolPicker && !form.schoolId) { setFormError('Selecciona a qué colegio pertenece este usuario'); return }
+    if (STAFF_LINKED_ROLES.has(form.role) && (!form.firstName.trim() || !form.lastName.trim())) {
+      setFormError('Nombre y apellido son requeridos para este rol — queda registrado en el control de ingreso/salida de portería')
+      return
+    }
     setFormError(''); setSaving(true)
     try {
-      const { firstName, lastName, ...userFields } = form
-      const body = { ...userFields, schoolId: form.schoolId ? parseInt(form.schoolId) : undefined }
+      const body = { ...form, schoolId: form.schoolId ? parseInt(form.schoolId) : undefined }
       const res  = await fetch(`${API_URL}/api/users`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },

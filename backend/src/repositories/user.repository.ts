@@ -109,6 +109,18 @@ export const userRepository = {
     })
   },
 
+  // Misma forma que create(), pero dentro de una transacción — usado cuando
+  // el rol necesita además crear su Staff vinculado (ver userService.createUser).
+  createTx(tx: TxClient, data: { email: string; password: string; role: Role; schoolId?: number; districtId?: number; nucleoId?: number; createdByUserId?: number }) {
+    return tx.user.create({
+      data:   { ...data, isActive: true },
+      select: {
+        id: true, email: true, role: true, isActive: true, createdAt: true,
+        schoolId: true, districtId: true, nucleoId: true,
+      },
+    })
+  },
+
   update(id: number, data: Partial<{
     email: string; role: Role; password: string; isActive: boolean
     schoolId: number | null; nucleoId: number | null; districtId: number | null
@@ -177,8 +189,9 @@ export const userRepository = {
   },
 
   // Variante para usarse dentro de una transacción existente (ver
-  // parentService.deleteParent) — deja `delete` intacto para los demás
-  // llamadores (student/teacher/user service) que no la necesitan.
+  // parentService.deleteParent y userService.deleteUser, este último cuando
+  // hay un Staff vinculado que borrar en el mismo paso) — deja `delete`
+  // intacto para los demás llamadores que no la necesitan.
   deleteTx(tx: TxClient, id: number) {
     return tx.user.delete({ where: { id } })
   },

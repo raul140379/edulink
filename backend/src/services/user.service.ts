@@ -1,6 +1,7 @@
 import bcrypt from 'bcryptjs'
-import { Role } from '@prisma/client'
+import { Role, StaffRole } from '@prisma/client'
 import { userRepository, UserListFilters } from '../repositories/user.repository'
+import { staffRepository } from '../repositories/staff.repository'
 import { HttpError } from '../utils/http-error'
 import { getTenantContext } from '../lib/tenant-context'
 import { CREATABLE_ROLES } from '../config/permissions'
@@ -8,6 +9,20 @@ import { DISTRICT_WIDE_ROLES, NUCLEO_WIDE_ROLES } from '../lib/scoped-models'
 import prisma from '../lib/prisma'
 import { CreateUserInput, UpdateUserInput, ResetByEmailInput } from '../schemas/user.schema'
 import { generateUniqueEmail } from '../utils/account-generator'
+
+// Roles que además de la cuenta de login necesitan quedar registrados en
+// portería (control de ingreso/salida) — createUser crea el Staff
+// correspondiente en la misma transacción que el User, para que no pueda
+// pasar lo que pasaba antes: el User se crea pero el Staff se pierde en
+// silencio (ver admin/portero/page.tsx, llamaba a un endpoint que no
+// existía). DIRECTOR queda fuera a propósito — no pasa por control de acceso.
+const STAFF_ROLE_BY_USER_ROLE: Partial<Record<Role, StaffRole>> = {
+  [Role.REGENTE]:   StaffRole.REGENTE,
+  [Role.SECRETARY]: StaffRole.SECRETARIA,
+  [Role.PSICOLOGO]: StaffRole.PSICOLOGO,
+  [Role.PORTERO]:   StaffRole.PORTERO,
+  [Role.STAFF]:     StaffRole.OTRO,
+}
 
 // Un DIRECTOR_DISTRITAL solo puede gestionar (editar/desactivar/resetear/eliminar)
 // las cuentas que él mismo creó — ver a un Director de otro colegio en la lista no
@@ -41,7 +56,7 @@ export const userService = {
     return user
   },
 
-  async createUser({ email, password, role, schoolId, districtId, nucleoId }: CreateUserInput) {
+  async createUser({ email, password, role, schoolId, districtId, nucleoId, firstName, lastName, ci, phone, shift }: CreateUserInput) {
     const existing = await userRepository.findByEmail(email)
     if (existing) throw new HttpError(409, 'Ya existe un usuario con ese correo')
 
@@ -96,9 +111,31 @@ export const userService = {
 
     const hashedPassword = await bcrypt.hash(password, 10)
     const createdByUserId = ctx?.userId
-    return userRepository.create({
+    const userData = {
       email, password: hashedPassword, role, schoolId,
       districtId: resolvedDistrictId, nucleoId: resolvedNucleoId, createdByUserId,
+    }
+
+    const staffRole = STAFF_ROLE_BY_USER_ROLE[role]
+    if (!staffRole) return userRepository.create(userData)
+
+    if (!firstName?.trim() || !lastName?.trim()) {
+      throw new HttpError(400, 'Nombre y apellido son requeridos para este rol — quedan registrados en el control de ingreso/salida de portería')
+    }
+
+    return prisma.$transaction(async (tx) => {
+      const user = await userRepository.createTx(tx, userData)
+      await staffRepository.createTx(tx, {
+        firstName: firstName.trim(),
+        lastName:  lastName.trim(),
+        ci:        ci    || null,
+        phone:     phone || null,
+        shift:     shift || null,
+        staffRole,
+        userId:    user.id,
+        schoolId:  user.schoolId!,
+      })
+      return user
     })
   },
 
@@ -154,8 +191,26 @@ export const userService = {
     if (!user) throw new HttpError(404, 'Usuario no encontrado')
     assertManageableByDistrictDirector(user)
 
+    // Nuevo desde que createUser empezó a crear el Staff vinculado (ver
+    // STAFF_ROLE_BY_USER_ROLE): Staff_userId_fkey es RESTRICT, así que borrar
+    // el User de alguien con Staff revienta esa constraint si no se maneja acá.
+    const staff = await staffRepository.findByUserId(id)
+    if (staff) {
+      const activityCount = await staffRepository.countActivity(staff.id)
+      if (activityCount > 0) {
+        throw new HttpError(409, 'Este usuario tiene registros de portería (ingresos/salidas o huella/QR) asociados — no se puede eliminar directamente. Contactá soporte si necesitás depurar esos datos primero.')
+      }
+    }
+
     await userRepository.detachRelations(id)
-    await userRepository.delete(id)
+    if (staff) {
+      await prisma.$transaction(async (tx) => {
+        await staffRepository.deleteTx(tx, staff.id)
+        await userRepository.deleteTx(tx, id)
+      })
+    } else {
+      await userRepository.delete(id)
+    }
   },
 
   async getJuntaParents() {

@@ -80,26 +80,22 @@ export default function PorteroAdminPage() {
 
     setSaving(true); setFormError('')
     try {
-      const resU  = await fetch(`${API}/api/users`, {
-        method: 'POST',
-        headers: { ...auth(), 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email: finalEmail, password: finalPassword, role: 'PORTERO' })
-      })
-      const dataU = await resU.json()
-      if (!resU.ok) { setFormError(dataU.message); return }
-
-      await fetch(`${API}/api/users/${dataU.user.id}/staff`, {
+      // Una sola llamada — createUser ahora crea el Staff vinculado en la
+      // misma transacción (antes esto era una segunda llamada a un endpoint
+      // que no existía, `/api/users/:id/staff` — daba 404 en silencio,
+      // .catch() solo atrapa fallos de red, no respuestas HTTP con error, así
+      // que el toast de éxito se mostraba igual sin haber creado el Staff).
+      const res  = await fetch(`${API}/api/users`, {
         method: 'POST',
         headers: { ...auth(), 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          firstName: form.firstName,
-          lastName:  form.lastName,
-          ci:        form.ci    || null,
-          phone:     form.phone || null,
-          staffRole: 'PORTERO',
-          shift:     form.shift,
+          email: finalEmail, password: finalPassword, role: 'PORTERO',
+          firstName: form.firstName, lastName: form.lastName,
+          ci: form.ci || undefined, phone: form.phone || undefined, shift: form.shift,
         })
-      }).catch(() => null)
+      })
+      const data = await res.json()
+      if (!res.ok) { setFormError(data.message); return }
 
       toast(`✅ Personal de seguridad creado — Email: ${finalEmail} · Contraseña: ${finalPassword}`, 'success')
       setShowModal(false)

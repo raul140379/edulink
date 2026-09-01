@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { Role } from '@prisma/client'
+import { Role, Shift } from '@prisma/client'
 
 export const createUserSchema = z.object({
   email:    z.string().email('Email inválido'),
@@ -13,6 +13,16 @@ export const createUserSchema = z.object({
   districtId: z.coerce.number().int().optional(),
   // Solo para JUNTA_NUCLEO/GOBIERNO_NUCLEO — a qué núcleo pertenece el nuevo usuario.
   nucleoId:   z.coerce.number().int().optional(),
+  // Los siguientes 5 solo se usan (y se exigen firstName/lastName) cuando el
+  // rol es uno de los que necesita quedar registrado en portería (REGENTE,
+  // SECRETARY, PSICOLOGO, STAFF, PORTERO — ver STAFF_ROLE_BY_USER_ROLE en
+  // user.service.ts) — createUser crea el Staff correspondiente en la misma
+  // transacción. Para cualquier otro rol se ignoran sin error.
+  firstName: z.string().optional(),
+  lastName:  z.string().optional(),
+  ci:        z.string().optional(),
+  phone:     z.string().optional(),
+  shift:     z.nativeEnum(Shift).optional(),
 })
 
 export const updateUserSchema = z.object({
