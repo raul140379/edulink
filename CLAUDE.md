@@ -477,6 +477,18 @@ Contexto: EduLink hoy opera 1 sola UE (cientos de familias); el objetivo es pode
 20.1. ✅ **RESUELTO (25-ago-2026) — buscador agregado a "Padres registrados".** Mismo componente `Toolbar` del sistema de diseño compartido que ya usa Tesorería (prop `search`) — filtro 100% cliente por nombre completo o CI, combinable con el filtro Activo/Inactivo existente, sin tocar backend (la pantalla ya trae todos los padres en una sola llamada). Probado en pantalla local antes de desplegar.
 21. Revisar checklist completo de `docs/reporte-pre-produccion-tesoreria-2025.md`.
 
+### 🔵 Prioridad 5 — Familia de apps livianas por rol (sin apuro, después del martes)
+
+`maestro-app` (Asistencia + Notificación puntual para TEACHER/TEACHER_TUTOR, ver sesión 31-ago/1-sep-2026) es la primera de una familia planeada de PWAs livianas, una por rol — mismo patrón: login con el JWT real, gate de rol en el login (solo entra el rol dueño de esa app), instalable desde el navegador sin tiendas de apps. **Ninguna de las siguientes está construida todavía — es solo el orden de prioridad ya definido para cuando se retome**, decidido a propósito así:
+
+1. **Padre** — el actor con más volumen de uso diario (notas, horario, tesorería, comunicados de sus hijos), primer candidato después de Maestro.
+2. **Portería** — control de ingreso/salida (QR, lector USB), ya es una pantalla acotada y de uso muy puntual/repetitivo, encaja bien en el patrón liviano.
+3. **Junta Escolar** — tesorería + delegados + comunicados de su UE.
+4. **Estudiante** — notas, tareas, horario, gamificación.
+5. **Administración** (Director/Regente/Secretaría) — **antes de construir una app liviana para este rol, completar primero el panel web existente** (hoy tiene huecos conocidos, ver resto del Roadmap) — no vale la pena una versión liviana de un panel todavía incompleto.
+
+No implementar ninguna hasta que el usuario lo pida explícitamente — este ítem es solo el plan anotado, no una autorización para empezar.
+
 ### Fuera de alcance por ahora (posible v2)
 - Reportes de calificaciones, matrícula/inscripciones, asistencia diaria agregada (hoy solo existen Maestros, Delegados, Asistencia-de-reuniones)
 - Consolidación financiera hacia arriba (Núcleo/Distrito viendo tesorería agregada de sus colegios) — depende del punto 18
