@@ -24,6 +24,7 @@ export const sportsParticipantRepository = {
             ci: true,
             rude: true,
             birthDate: true,
+            gender: true,
             assignments: {
               where: { academicYear: { isActive: true } },
               include: { course: true },
@@ -32,7 +33,13 @@ export const sportsParticipantRepository = {
           },
         },
       },
-      orderBy: [{ discipline: 'asc' }, { student: { lastName: 'asc' } }],
+      // Solo por disciplina acá — el orden por género (mujeres primero) se
+      // hace en el servicio, no vía Prisma: `orderBy` sobre un campo enum
+      // ordena por la posición de DECLARACIÓN del enum en el schema (no
+      // alfabéticamente), así que un 'asc' aparentaba estar mal (MASCULINO
+      // salía primero por estar declarado antes que FEMENINO) — confirmado
+      // real contra la API local, no solo teórico.
+      orderBy: [{ discipline: 'asc' }],
     })
   },
 

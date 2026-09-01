@@ -3,12 +3,22 @@ import { HttpError } from '../utils/http-error'
 import { getTenantContext } from '../lib/tenant-context'
 import { CreateSportsParticipantInput } from '../schemas/sportsParticipant.schema'
 
+// Orden explícito (no vía Prisma `orderBy` en el enum — ver repository) para
+// que la planilla salga lista para uso real: mujeres primero dentro de cada
+// disciplina, después por apellido.
+const GENDER_ORDER: Record<string, number> = { FEMENINO: 0, MASCULINO: 1 }
+
 export const sportsParticipantService = {
   async listParticipants() {
     const activeYear = await sportsParticipantRepository.findActiveAcademicYear()
     if (!activeYear) return []
 
     const rows = await sportsParticipantRepository.findMany(activeYear.id)
+    rows.sort((a, b) =>
+      a.discipline.localeCompare(b.discipline)
+      || (GENDER_ORDER[a.student.gender] ?? 2) - (GENDER_ORDER[b.student.gender] ?? 2)
+      || a.student.lastName.localeCompare(b.student.lastName))
+
     return rows.map((r) => ({
       id: r.id,
       discipline: r.discipline,
@@ -20,6 +30,7 @@ export const sportsParticipantService = {
         ci: r.student.ci,
         rude: r.student.rude,
         birthDate: r.student.birthDate,
+        gender: r.student.gender,
         course: r.student.assignments[0]?.course
           ? { grade: r.student.assignments[0].course.grade, parallel: r.student.assignments[0].course.parallel }
           : null,

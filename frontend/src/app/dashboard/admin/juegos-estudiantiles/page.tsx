@@ -1,13 +1,14 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { Trophy, Plus, Search, Download, Trash2 } from 'lucide-react'
+import { Trophy, Plus, Search, Download, Trash2, CheckCircle2 } from 'lucide-react'
 import Card from '@/components/ui/Card'
 import Table, { Column } from '@/components/ui/Table'
 import PageHeader from '@/components/ui/PageHeader'
 import Toolbar from '@/components/ui/Toolbar'
 import Modal from '@/components/ui/Modal'
 import Button from '@/components/ui/Button'
+import Badge from '@/components/ui/Badge'
 import Input, { Select } from '@/components/ui/Input'
 import LoadingState from '@/components/ui/LoadingState'
 import { useToast } from '@/components/ui/ToastProvider'
@@ -42,6 +43,7 @@ interface Participant {
     ci: string | null
     rude: string | null
     birthDate: string | null
+    gender: 'MASCULINO' | 'FEMENINO'
     course: { grade: string; parallel: string } | null
   }
 }
@@ -68,6 +70,11 @@ export default function JuegosEstudiantilesPage() {
   const [searchingStudents, setSearchingStudents] = useState(false)
   const [selectedStudents, setSelectedStudents] = useState<StudentHit[]>([])
   const [saving, setSaving] = useState(false)
+  // Confirmación explícita dentro del modal en vez de solo un toast que
+  // desaparece a la vez que el modal se cierra — mismo ajuste que ya se hizo
+  // en NotifySheet (maestro-app): un toast en la esquina es fácil de perder
+  // justo cuando el resto de la pantalla también está cambiando de golpe.
+  const [submitResult, setSubmitResult] = useState<{ message: string; created: number; skipped: number } | null>(null)
 
   const token = typeof window !== 'undefined' ? localStorage.getItem('token') : ''
 
@@ -131,7 +138,10 @@ export default function JuegosEstudiantilesPage() {
     setStudentSearch('')
     setStudentResults([])
     setSelectedStudents([])
+    setSubmitResult(null)
   }
+
+  const closeAddModal = () => { setShowAdd(false); resetAddForm() }
 
   const handleSubmit = async () => {
     const discipline = disciplineChoice === OTRO ? customDiscipline.trim() : disciplineChoice
@@ -147,9 +157,10 @@ export default function JuegosEstudiantilesPage() {
       })
       const data = await res.json()
       if (!res.ok) { toast(data.message || 'Error al guardar', 'error'); return }
-      toast(data.message, 'success')
-      setShowAdd(false)
-      resetAddForm()
+      // Se muestra DENTRO del modal (no se cierra solo) — el mensaje queda
+      // fijo en pantalla hasta que el usuario lo cierra a propósito, en vez
+      // de depender de un toast que se pierde con el cierre simultáneo del modal.
+      setSubmitResult({ message: data.message, created: data.created, skipped: data.skipped })
       fetchParticipants()
     } catch { toast('Error de conexión', 'error') }
     finally { setSaving(false) }
@@ -180,14 +191,14 @@ export default function JuegosEstudiantilesPage() {
     doc.setFontSize(12)
     doc.text('Juegos Estudiantiles Municipales — Lista de Deportistas', 14, 25)
 
-    const sorted = [...participants].sort((a, b) =>
-      a.discipline.localeCompare(b.discipline) || a.student.fullName.localeCompare(b.student.fullName))
-
+    // `participants` ya viene ordenado por disciplina → género (mujeres
+    // primero) → apellido desde el backend (mismo orden de la pantalla) — no
+    // se reordena acá para no desincronizar el PDF de lo que se ve en pantalla.
     autoTable(doc, {
       startY: 33,
-      head: [['#', 'Disciplina', 'Modalidad', 'Estudiante', 'RUDE', 'CI', 'F. Nacimiento', 'Curso']],
-      body: sorted.map((p, i) => [
-        i + 1, p.discipline, p.modality || '—', p.student.fullName,
+      head: [['#', 'Disciplina', 'Modalidad', 'Estudiante', 'Género', 'RUDE', 'CI', 'F. Nacimiento', 'Curso']],
+      body: participants.map((p, i) => [
+        i + 1, p.discipline, p.modality || '—', p.student.fullName, p.student.gender === 'MASCULINO' ? 'M' : 'F',
         p.student.rude || '—', p.student.ci || '—', formatDate(p.student.birthDate), courseLabel(p.student.course),
       ]),
       styles: { fontSize: 8 },
@@ -199,6 +210,7 @@ export default function JuegosEstudiantilesPage() {
     { key: 'discipline', header: 'Disciplina', render: p => <span className="font-semibold text-brand-700">{p.discipline}</span> },
     { key: 'modality', header: 'Modalidad', render: p => p.modality || '—' },
     { key: 'student', header: 'Estudiante', render: p => p.student.fullName },
+    { key: 'gender', header: 'Género', render: p => <Badge tone={p.student.gender === 'MASCULINO' ? 'info' : 'danger'}>{p.student.gender === 'MASCULINO' ? '♂ M' : '♀ F'}</Badge> },
     { key: 'rude', header: 'RUDE', render: p => p.student.rude || '—' },
     { key: 'ci', header: 'CI', render: p => p.student.ci || '—' },
     { key: 'birthDate', header: 'F. Nacimiento', render: p => formatDate(p.student.birthDate) },
@@ -240,65 +252,78 @@ export default function JuegosEstudiantilesPage() {
 
       <Modal
         open={showAdd}
-        onClose={() => { setShowAdd(false); resetAddForm() }}
-        title="Agregar deportistas"
+        onClose={closeAddModal}
+        title={submitResult ? '✅ Deportistas agregados' : 'Agregar deportistas'}
         maxWidth={520}
         footer={
-          <>
-            <Button variant="secondary" onClick={() => { setShowAdd(false); resetAddForm() }}>Cancelar</Button>
-            <Button onClick={handleSubmit} loading={saving}>Agregar {selectedStudents.length > 0 ? `(${selectedStudents.length})` : ''}</Button>
-          </>
+          submitResult ? (
+            <Button onClick={closeAddModal}>Listo</Button>
+          ) : (
+            <>
+              <Button variant="secondary" onClick={closeAddModal}>Cancelar</Button>
+              <Button onClick={handleSubmit} loading={saving}>Agregar {selectedStudents.length > 0 ? `(${selectedStudents.length})` : ''}</Button>
+            </>
+          )
         }
       >
-        <div className="flex flex-col gap-3.5">
-          <div className="grid grid-cols-2 gap-3">
-            <Select label="Disciplina" value={disciplineChoice} onChange={e => handleDisciplineChoice(e.target.value)}>
-              {DISCIPLINES.map(d => <option key={d} value={d}>{d}</option>)}
-              <option value={OTRO}>{OTRO}</option>
-            </Select>
-            <Select label="Modalidad" value={modality} onChange={e => setModality(e.target.value as 'INDIVIDUAL' | 'GRUPAL' | '')}>
-              <option value="">Sin especificar</option>
-              <option value="INDIVIDUAL">Individual</option>
-              <option value="GRUPAL">Grupal</option>
-            </Select>
+        {submitResult ? (
+          <div className="flex flex-col gap-2.5">
+            <p className={`text-[13px] rounded-lg px-3.5 py-3 flex items-start gap-2 ${submitResult.skipped > 0 ? 'bg-warning-100 text-[#8A6116]' : 'bg-success-100 text-success-700'}`}>
+              <CheckCircle2 size={16} className="shrink-0 mt-0.5" />
+              <span>{submitResult.message}</span>
+            </p>
           </div>
-
-          {disciplineChoice === OTRO && (
-            <Input value={customDiscipline} onChange={e => setCustomDiscipline(e.target.value)} placeholder="Nombre de la disciplina" />
-          )}
-
-          <div>
-            <div className="text-[13px] font-semibold text-brand-700 mb-1.5">
-              Estudiante(s) {disciplineToUse && <span className="font-normal text-neutral-500">— para {disciplineToUse}</span>}
+        ) : (
+          <div className="flex flex-col gap-3.5">
+            <div className="grid grid-cols-2 gap-3">
+              <Select label="Disciplina" value={disciplineChoice} onChange={e => handleDisciplineChoice(e.target.value)}>
+                {DISCIPLINES.map(d => <option key={d} value={d}>{d}</option>)}
+                <option value={OTRO}>{OTRO}</option>
+              </Select>
+              <Select label="Modalidad" value={modality} onChange={e => setModality(e.target.value as 'INDIVIDUAL' | 'GRUPAL' | '')}>
+                <option value="">Sin especificar</option>
+                <option value="INDIVIDUAL">Individual</option>
+                <option value="GRUPAL">Grupal</option>
+              </Select>
             </div>
-            <div className="flex gap-2 mb-2">
-              <div className="flex-1">
-                <Input
-                  value={studentSearch}
-                  onChange={e => setStudentSearch(e.target.value)}
-                  onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleSearchStudents() } }}
-                  placeholder="Buscar estudiante por nombre, CI o RUDE"
-                />
+
+            {disciplineChoice === OTRO && (
+              <Input value={customDiscipline} onChange={e => setCustomDiscipline(e.target.value)} placeholder="Nombre de la disciplina" />
+            )}
+
+            <div>
+              <div className="text-[13px] font-semibold text-brand-700 mb-1.5">
+                Estudiante(s) {disciplineToUse && <span className="font-normal text-neutral-500">— para {disciplineToUse}</span>}
               </div>
-              <Button variant="secondary" onClick={handleSearchStudents} loading={searchingStudents}><Search size={14} /></Button>
-            </div>
-            <div className="flex flex-col gap-1.5 max-h-52 overflow-y-auto">
-              {studentResults.map(s => {
-                const checked = selectedStudents.some(x => x.id === s.id)
-                return (
-                  <label key={s.id} className={`flex items-center gap-2.5 px-3 py-2 rounded-lg cursor-pointer text-[13px] ${checked ? 'bg-success-100' : 'bg-neutral-100/60 hover:bg-neutral-100'}`}>
-                    <input type="checkbox" checked={checked} onChange={() => toggleStudent(s)} className="accent-brand-700" />
-                    <span className="font-medium text-brand-700">{s.lastName} {s.firstName}</span>
-                    {s.ci && <span className="text-neutral-500">· CI {s.ci}</span>}
-                  </label>
-                )
-              })}
-              {studentResults.length === 0 && (
-                <p className="text-[12px] text-neutral-500 italic">Buscá un estudiante para agregarlo</p>
-              )}
+              <div className="flex gap-2 mb-2">
+                <div className="flex-1">
+                  <Input
+                    value={studentSearch}
+                    onChange={e => setStudentSearch(e.target.value)}
+                    onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleSearchStudents() } }}
+                    placeholder="Buscar estudiante por nombre, CI o RUDE"
+                  />
+                </div>
+                <Button variant="secondary" onClick={handleSearchStudents} loading={searchingStudents}><Search size={14} /></Button>
+              </div>
+              <div className="flex flex-col gap-1.5 max-h-52 overflow-y-auto">
+                {studentResults.map(s => {
+                  const checked = selectedStudents.some(x => x.id === s.id)
+                  return (
+                    <label key={s.id} className={`flex items-center gap-2.5 px-3 py-2 rounded-lg cursor-pointer text-[13px] ${checked ? 'bg-success-100' : 'bg-neutral-100/60 hover:bg-neutral-100'}`}>
+                      <input type="checkbox" checked={checked} onChange={() => toggleStudent(s)} className="accent-brand-700" />
+                      <span className="font-medium text-brand-700">{s.lastName} {s.firstName}</span>
+                      {s.ci && <span className="text-neutral-500">· CI {s.ci}</span>}
+                    </label>
+                  )
+                })}
+                {studentResults.length === 0 && (
+                  <p className="text-[12px] text-neutral-500 italic">Buscá un estudiante para agregarlo</p>
+                )}
+              </div>
             </div>
           </div>
-        </div>
+        )}
       </Modal>
     </div>
   )
