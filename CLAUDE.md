@@ -489,6 +489,8 @@ Contexto: EduLink hoy opera 1 sola UE (cientos de familias); el objetivo es pode
 
 No implementar ninguna hasta que el usuario lo pida explícitamente — este ítem es solo el plan anotado, no una autorización para empezar.
 
+5.1. ⏳ **Sincronización automática offline en `maestro-app`** (sin apuro, después del martes) — investigado y probado a fondo el 1-sep-2026 (offline real vía bloqueo de red a nivel de resolución de Chrome, no solo la emulación de DevTools que da falsos positivos con Service Worker de por medio). Estado actual, ya confirmado en pantalla: si se corta la señal a mitad de tomar asistencia, **el trabajo no se pierde** — las marcas por estudiante quedan en memoria, "Guardar asistencia" falla con un mensaje claro ("Error de conexión"), y reintentar manualmente al volver la señal guarda bien. La limitación real es que ese reintento es **manual** — el maestro tiene que darse cuenta de que falló y volver a tocar "Guardar". Mejora futura: cola local en IndexedDB + reenvío automático al detectar que volvió la conexión, sin intervención del maestro — requiere Background Sync API (o un detector de reconexión tipo `online`/`offline` event + cola persistente como respaldo, ya que Background Sync no está disponible en todos los navegadores). No se construye ahora.
+
 ### Fuera de alcance por ahora (posible v2)
 - Reportes de calificaciones, matrícula/inscripciones, asistencia diaria agregada (hoy solo existen Maestros, Delegados, Asistencia-de-reuniones)
 - Consolidación financiera hacia arriba (Núcleo/Distrito viendo tesorería agregada de sus colegios) — depende del punto 18
