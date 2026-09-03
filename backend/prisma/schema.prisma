@@ -845,20 +845,33 @@ model AuditLog {
 // completa (estudiante + disciplina + gestión), para evitar un duplicado
 // exacto por doble clic, nunca para limitar a una disciplina por estudiante.
 model SportsParticipant {
-  id             Int          @id @default(autoincrement())
+  id             Int            @id @default(autoincrement())
   studentId      Int
-  student        Student      @relation(fields: [studentId], references: [id])
+  student        Student        @relation(fields: [studentId], references: [id])
   discipline     String
   modality       String?
+  // Categoría de edad del torneo — obligatoria, elegida a mano (el sistema
+  // no restringe qué disciplinas corresponden a cada categoría, ambas
+  // comparten el mismo catálogo). Rango real esperado (Sub14: 12-14 años
+  // cumplidos, Sub19: nacidos 2007-2014) se usa solo para una advertencia no
+  // bloqueante — hay superposición real entre ambas, es esperado.
+  categoria      SportsCategory
+  // Exclusivos de la planilla formato Sub-14 (Sub-19 no los tiene en su
+  // hoja real) — quedan nulos para Sub-19, no se fuerza su llenado.
+  rolFuncion     SportsRole?
+  contactPhone   String?
   academicYearId Int
-  academicYear   AcademicYear @relation(fields: [academicYearId], references: [id])
+  academicYear   AcademicYear   @relation(fields: [academicYearId], references: [id])
   schoolId       Int
-  school         School       @relation(fields: [schoolId], references: [id])
+  school         School         @relation(fields: [schoolId], references: [id])
   createdById    Int?
-  createdBy      User?        @relation(fields: [createdById], references: [id])
-  createdAt      DateTime     @default(now())
+  createdBy      User?          @relation(fields: [createdById], references: [id])
+  createdAt      DateTime       @default(now())
 
-  @@unique([studentId, discipline, academicYearId])
+  // Incluye categoria a propósito: el mismo estudiante podría estar anotado
+  // en la misma disciplina bajo Sub14 Y Sub19 (edades superpuestas, caso
+  // real) — el duplicado que se evita es dentro de la MISMA categoría.
+  @@unique([studentId, discipline, categoria, academicYearId])
   @@index([schoolId])
   @@index([academicYearId])
 }
@@ -1213,6 +1226,17 @@ enum CampoSaber {
 enum Gender {
   MASCULINO
   FEMENINO
+}
+
+enum SportsCategory {
+  SUB14
+  SUB19
+}
+
+enum SportsRole {
+  JUGADOR
+  ENTRENADOR
+  DELEGADO
 }
 
 enum EducationType {

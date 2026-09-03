@@ -1,3 +1,4 @@
+import { SportsCategory, SportsRole } from '@prisma/client'
 import prisma from '../lib/prisma'
 
 export const sportsParticipantRepository = {
@@ -8,7 +9,11 @@ export const sportsParticipantRepository = {
   // skipDuplicates: re-agregar un estudiante que ya está en esa disciplina
   // (mismo studentId+discipline+academicYearId) no rompe el lote entero —
   // simplemente no duplica esa fila, el resto del lote sí se crea.
-  createMany(rows: { studentId: number; discipline: string; modality: string | null; academicYearId: number; schoolId: number; createdById: number | undefined }[]) {
+  createMany(rows: {
+    studentId: number; discipline: string; modality: string | null
+    categoria: SportsCategory; rolFuncion: SportsRole | null; contactPhone: string | null
+    academicYearId: number; schoolId: number; createdById: number | undefined
+  }[]) {
     return prisma.sportsParticipant.createMany({ data: rows, skipDuplicates: true })
   },
 

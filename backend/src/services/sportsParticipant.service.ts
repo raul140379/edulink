@@ -23,10 +23,15 @@ export const sportsParticipantService = {
       id: r.id,
       discipline: r.discipline,
       modality: r.modality,
+      categoria: r.categoria,
+      rolFuncion: r.rolFuncion,
+      contactPhone: r.contactPhone,
       createdAt: r.createdAt,
       student: {
         id: r.student.id,
         fullName: `${r.student.lastName} ${r.student.firstName}`,
+        firstName: r.student.firstName,
+        lastName: r.student.lastName,
         ci: r.student.ci,
         rude: r.student.rude,
         birthDate: r.student.birthDate,
@@ -50,6 +55,9 @@ export const sportsParticipantService = {
       studentId,
       discipline: input.discipline,
       modality: input.modality ?? null,
+      categoria: input.categoria,
+      rolFuncion: input.rolFuncion ?? null,
+      contactPhone: input.contactPhone ?? null,
       academicYearId: activeYear.id,
       schoolId,
       createdById: userId,
@@ -59,7 +67,7 @@ export const sportsParticipantService = {
     const skipped = input.studentIds.length - result.count
     return {
       message: skipped > 0
-        ? `${result.count} de ${input.studentIds.length} agregado(s) a ${input.discipline} — ${skipped} ya estaba(n) registrado(s) en esa disciplina`
+        ? `${result.count} de ${input.studentIds.length} agregado(s) a ${input.discipline} — ${skipped} ya estaba(n) registrado(s) en esa disciplina y categoría`
         : `${result.count} estudiante(s) agregado(s) a ${input.discipline}`,
       created: result.count,
       skipped,
