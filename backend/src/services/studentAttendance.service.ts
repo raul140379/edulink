@@ -201,9 +201,39 @@ export const studentAttendanceService = {
     const course = await studentAttendanceRepository.findCourseById(courseId)
     if (!course) throw new HttpError(404, 'Curso no encontrado')
 
-    const { base } = dayRange(input.date)
+    const { base, next } = dayRange(input.date)
     const dateStr = base.toLocaleDateString('es-BO', { weekday: 'long', day: 'numeric', month: 'long' })
     const cursoLabel = `${GRADES[course.grade]} "${course.parallel}"`
+
+    // Mitigación urgente contra pisado silencioso (4-sep-2026): un curso
+    // puede tener varios maestros (uno por materia) y hoy solo hay un
+    // registro compartido por curso/día — sin este candado, el maestro que
+    // guarda después pisa en silencio lo que haya guardado otro, sin ningún
+    // aviso (confirmado con una prueba real: nota y estado de un maestro
+    // desaparecían sin rastro al guardar otro). No es la solución de fondo
+    // (esa necesita scheduleId, ver diagnóstico de arquitectura aparte) —
+    // solo saca el "en silencio": si hay conflicto, se rechaza con el
+    // nombre del maestro que ya registró, y solo se sobreescribe si el
+    // usuario confirmó en pantalla (force:true). Nunca aplica a
+    // DIRECTOR/SECRETARY — su capacidad de corregir asistencia sin ventana
+    // horaria es una regla de negocio ya existente, no se toca acá.
+    if (!isExemptRole && !input.force) {
+      const existingRows = await studentAttendanceRepository.findAttendancesForCourseDateWithTeacher(courseId, activeYear.id, base, next)
+      const requestedIds = new Set(input.attendances.map((a) => a.studentId))
+      const conflicts = existingRows.filter((r) => requestedIds.has(r.studentId) && r.teacherId !== teacherId)
+
+      if (conflicts.length > 0) {
+        const byTeacher = new Map<string, number>()
+        for (const c of conflicts) {
+          const name = `${c.teacher.firstName} ${c.teacher.lastName}`
+          byTeacher.set(name, (byTeacher.get(name) || 0) + 1)
+        }
+        const detail = [...byTeacher.entries()]
+          .map(([name, n]) => `${name} (${n} estudiante${n > 1 ? 's' : ''})`)
+          .join(' y ')
+        throw new HttpError(409, `Ya hay asistencia registrada por ${detail} para este guardado. Si continuás, se reemplazará. ¿Confirmás?`)
+      }
+    }
 
     let count = 0
     let notifCount = 0

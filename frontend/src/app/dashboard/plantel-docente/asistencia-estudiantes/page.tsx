@@ -145,10 +145,37 @@ export default function AsistenciaEstudiantesPage() {
       .finally(() => setLoading(false))
   }, [selCourse, date])
 
+  // Mitigación urgente contra pisado silencioso (4-sep-2026): un curso
+  // compartido por varios maestros solo tiene un registro por estudiante/
+  // día — si el backend detecta que ya lo guardó un maestro distinto,
+  // responde 409 con el nombre de quién lo hizo. Acá se pide confirmación
+  // explícita antes de reemplazar (nunca en silencio); si el usuario
+  // cancela, se reenvía con force:true. null = canceló, no se guardó nada.
+  const postAttendanceWithConfirm = async (
+    attendances: { studentId: number; status: StatusKey; note?: string }[]
+  ): Promise<{ ok: boolean; data: any } | null> => {
+    const send = (force?: boolean) => fetch(`${API}/api/student-attendance/course/${selCourse!.id}`, {
+      method:  'POST',
+      headers: { ...auth(), 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ date, attendances, ...(force ? { force: true } : {}) }),
+    })
+
+    let res  = await send()
+    let data = await res.json()
+
+    if (res.status === 409) {
+      if (!await confirm(data.message, { danger: true })) return null
+      res  = await send(true)
+      data = await res.json()
+    }
+    return { ok: res.ok, data }
+  }
+
   const setStatus = async (studentId: number, status: StatusKey) => {
     if (!selCourse) return
 
-    const current    = students.find(s => s.studentId === studentId)
+    const current      = students.find(s => s.studentId === studentId)
+    const prevStudents = students
     const newStatus: StatusKey | null = current?.status === status ? null : status
 
     const updated = students.map(s => s.studentId === studentId ? { ...s, status: newStatus } : s)
@@ -159,42 +186,29 @@ export default function AsistenciaEstudiantesPage() {
 
     setSaving(studentId)
     try {
-      const res  = await fetch(`${API}/api/student-attendance/course/${selCourse.id}`, {
-        method:  'POST',
-        headers: { ...auth(), 'Content-Type': 'application/json' },
-        body:    JSON.stringify({
-          date,
-          attendances: [{ studentId, status: newStatus, note: current?.note || '' }]
-        })
-      })
-      const data = await res.json()
-      if (!res.ok) { toast(data.message, 'error') }
-      else if (data.notifications > 0) {
-        toast(`${STATUS_CONFIG[newStatus].emoji} Guardado · ${data.notifications} notif. enviada`, 'success')
+      const result = await postAttendanceWithConfirm([{ studentId, status: newStatus, note: current?.note || '' }])
+      if (!result) { setStudents(prevStudents); updateSummary(prevStudents); return }
+      if (!result.ok) { toast(result.data.message, 'error'); setStudents(prevStudents); updateSummary(prevStudents) }
+      else if (result.data.notifications > 0) {
+        toast(`${STATUS_CONFIG[newStatus].emoji} Guardado · ${result.data.notifications} notif. enviada`, 'success')
       }
-    } catch { toast('Error al guardar', 'error') }
+    } catch { toast('Error al guardar', 'error'); setStudents(prevStudents); updateSummary(prevStudents) }
     finally { setSaving(null) }
   }
 
   const markAll = async (status: StatusKey) => {
     if (!selCourse || students.length === 0) return
+    const prevStudents = students
     const updated = students.map(s => ({ ...s, status }))
     setStudents(updated)
     updateSummary(updated)
 
     try {
-      const res  = await fetch(`${API}/api/student-attendance/course/${selCourse.id}`, {
-        method:  'POST',
-        headers: { ...auth(), 'Content-Type': 'application/json' },
-        body:    JSON.stringify({
-          date,
-          attendances: updated.map(s => ({ studentId: s.studentId, status, note: s.note || '' }))
-        })
-      })
-      const data = await res.json()
-      if (res.ok) toast(data.message, 'success')
-      else toast(data.message, 'error')
-    } catch { toast('Error al guardar', 'error') }
+      const result = await postAttendanceWithConfirm(updated.map(s => ({ studentId: s.studentId, status, note: s.note || '' })))
+      if (!result) { setStudents(prevStudents); updateSummary(prevStudents); return }
+      if (result.ok) toast(result.data.message, 'success')
+      else { toast(result.data.message, 'error'); setStudents(prevStudents); updateSummary(prevStudents) }
+    } catch { toast('Error al guardar', 'error'); setStudents(prevStudents); updateSummary(prevStudents) }
   }
 
   const handleClose = async () => {
