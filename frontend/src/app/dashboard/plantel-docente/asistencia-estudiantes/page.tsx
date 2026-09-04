@@ -6,6 +6,7 @@ import { useConfirm } from '@/components/ui/ConfirmProvider'
 import { useToast } from '@/components/ui/ToastProvider'
 import { useDistrictConfig } from '@/hooks/useDistrictConfig'
 import { exportAttendancePdf } from '@/lib/attendancePdf'
+import { todayLocalStr } from '@/lib/localDate'
 
 const API = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000'
 
@@ -41,18 +42,6 @@ const STATUS_CONFIG = {
 }
 
 type StatusKey = keyof typeof STATUS_CONFIG
-
-// Fecha de HOY en hora local del navegador — new Date().toISOString() da la
-// fecha en UTC, que se corre un día entre las 20:00 y 23:59 hora Bolivia
-// (ya es "mañana" en UTC). getFullYear/getMonth/getDate leen los componentes
-// en la zona horaria del navegador, que es la real del maestro.
-function todayLocalStr(): string {
-  const now = new Date()
-  const y = now.getFullYear()
-  const m = String(now.getMonth() + 1).padStart(2, '0')
-  const d = String(now.getDate()).padStart(2, '0')
-  return `${y}-${m}-${d}`
-}
 
 export default function AsistenciaEstudiantesPage() {
   const confirm  = useConfirm()

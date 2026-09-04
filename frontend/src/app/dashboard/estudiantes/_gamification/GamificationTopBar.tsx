@@ -3,10 +3,7 @@
 import { useEffect, useState } from 'react'
 import { Flame } from 'lucide-react'
 import { useGamification } from './GamificationContext'
-
-function todayKey(): string {
-  return new Date().toISOString().split('T')[0]
-}
+import { todayLocalStr } from '@/lib/localDate'
 
 export default function GamificationTopBar() {
   const { state } = useGamification()
@@ -22,7 +19,7 @@ export default function GamificationTopBar() {
 
   if (!state.enabled || state.loading) return null
 
-  const today = todayKey()
+  const today = todayLocalStr()
 
   return (
     <div className="gm-topbar bg-white border border-neutral-300 rounded-xl px-5 py-3.5 mb-5 flex items-center gap-7 flex-wrap">

@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { todayLocalStr } from '@/lib/localDate'
 
 const API = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000'
 
@@ -19,7 +20,7 @@ export default function ReporteAccesosPage() {
   const [records,  setRecords]  = useState<GateRecord[]>([])
   const [summary,  setSummary]  = useState<Summary | null>(null)
   const [loading,  setLoading]  = useState(true)
-  const [date,     setDate]     = useState(() => new Date().toISOString().split('T')[0])
+  const [date,     setDate]     = useState(() => todayLocalStr())
   const [type,     setType]     = useState('')
   const [action,   setAction]   = useState('')
 

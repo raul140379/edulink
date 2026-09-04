@@ -13,6 +13,7 @@ import LoadingState from '@/components/ui/LoadingState'
 import { useToast } from '@/components/ui/ToastProvider'
 import { useDistrictConfig } from '@/hooks/useDistrictConfig'
 import { exportAttendancePdf } from '@/lib/attendancePdf'
+import { todayLocalStr } from '@/lib/localDate'
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000'
 
@@ -40,13 +41,12 @@ interface Detail {
 }
 
 const courseLabel = (c: CourseRow['course']) => `${GRADE_LABELS[c.grade] || c.grade} "${c.parallel}"`
-const todayStr = () => new Date().toISOString().split('T')[0]
 
 export default function AsistenciaDiariaPage() {
   const toast = useToast()
   const district = useDistrictConfig()
 
-  const [date, setDate] = useState(todayStr())
+  const [date, setDate] = useState(todayLocalStr())
   const [courses, setCourses] = useState<CourseRow[]>([])
   const [loading, setLoading] = useState(true)
 
@@ -129,7 +129,7 @@ export default function AsistenciaDiariaPage() {
       <Card className="mb-4">
         <div className="flex items-center gap-3">
           <div className="w-52">
-            <Input type="date" label="Fecha" value={date} max={todayStr()} onChange={e => setDate(e.target.value)} />
+            <Input type="date" label="Fecha" value={date} max={todayLocalStr()} onChange={e => setDate(e.target.value)} />
           </div>
         </div>
       </Card>

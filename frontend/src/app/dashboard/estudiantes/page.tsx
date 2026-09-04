@@ -12,6 +12,7 @@ import GobiernoDistritoHome from './_GobiernoDistritoHome'
 import GobiernoNucleoHome from './_GobiernoNucleoHome'
 import { pickMotivo, PerformanceCategoria } from './_gamification/motivationalMessages'
 import { useGamification } from './_gamification/GamificationContext'
+import { todayLocalStr } from '@/lib/localDate'
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000'
 
@@ -181,7 +182,11 @@ export default function EstudiantesDashboard() {
   // no hay asistencia por período en el sistema, solo por día.
   const now         = new Date()
   const todayDay    = now.getDay() === 0 ? 7 : now.getDay()
-  const todayKey    = now.toISOString().split('T')[0]
+  // Antes usaba now.toISOString() (fecha en UTC) mientras todayDay ya usaba
+  // getDay() (local) — podían apuntar a días distintos cerca de medianoche.
+  // todayLocalStr() usa los mismos componentes locales que getDay(), así
+  // quedan consistentes entre sí.
+  const todayKey    = todayLocalStr()
   const todayStatus = gam.weekCalendar.find(d => d.date === todayKey)?.status ?? null
 
   const clasesHoy = schedule

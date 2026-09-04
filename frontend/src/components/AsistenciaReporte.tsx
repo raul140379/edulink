@@ -5,6 +5,7 @@ import { ChevronLeft, ChevronRight, ChevronDown, ChevronUp } from 'lucide-react'
 import Card from '@/components/ui/Card'
 import Badge from '@/components/ui/Badge'
 import { Input } from '@/components/ui/Input'
+import { todayLocalStr } from '@/lib/localDate'
 
 const API = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000'
 
@@ -45,7 +46,7 @@ export default function AsistenciaReporte() {
   const [year,     setYear]     = useState(new Date().getFullYear())
   const [mode,     setMode]     = useState<'diario' | 'semanal' | 'mensual'>('diario')
   const [week,     setWeek]     = useState(1)
-  const [selDate,  setSelDate]  = useState(new Date().toISOString().split('T')[0])
+  const [selDate,  setSelDate]  = useState(todayLocalStr())
   const [expanded, setExpanded] = useState<number | null>(null)
   const [search,   setSearch]   = useState('')
 
