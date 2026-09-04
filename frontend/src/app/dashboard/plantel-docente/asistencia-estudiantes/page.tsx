@@ -4,6 +4,8 @@ import { useEffect, useState } from 'react'
 import Card from '@/components/ui/Card'
 import { useConfirm } from '@/components/ui/ConfirmProvider'
 import { useToast } from '@/components/ui/ToastProvider'
+import { useDistrictConfig } from '@/hooks/useDistrictConfig'
+import { exportAttendancePdf } from '@/lib/attendancePdf'
 
 const API = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000'
 
@@ -41,17 +43,20 @@ const STATUS_CONFIG = {
 type StatusKey = keyof typeof STATUS_CONFIG
 
 export default function AsistenciaEstudiantesPage() {
-  const confirm = useConfirm()
-  const toast   = useToast()
+  const confirm  = useConfirm()
+  const toast    = useToast()
+  const district = useDistrictConfig()
   const [courses,     setCourses]     = useState<Course[]>([])
   const [mySchedule,  setMySchedule]  = useState<ScheduleItem[]>([])
   const [selCourse,   setSelCourse]   = useState<Course | null>(null)
   const [students,  setStudents]  = useState<StudentAtt[]>([])
   const [summary,   setSummary]   = useState<Summary | null>(null)
+  const [teacherName, setTeacherName] = useState<string | null>(null)
   const [date,      setDate]      = useState(() => new Date().toISOString().split('T')[0])
   const [loading,   setLoading]   = useState(false)
   const [saving,    setSaving]    = useState<number | null>(null)
   const [closing,   setClosing]   = useState(false)
+  const [exporting, setExporting] = useState(false)
 
   const auth = () => ({ Authorization: `Bearer ${localStorage.getItem('token') || ''}` })
 
@@ -130,6 +135,7 @@ export default function AsistenciaEstudiantesPage() {
           }))
           setStudents(mapped)
           updateSummary(mapped)
+          setTeacherName(d.teacherName ?? null)
         }
       })
       .catch(() => {})
@@ -214,6 +220,22 @@ export default function AsistenciaEstudiantesPage() {
     finally { setClosing(false) }
   }
 
+  const handleExportPdf = async () => {
+    if (!selCourse) return
+    setExporting(true)
+    try {
+      await exportAttendancePdf({
+        districtName: district.name || 'U.E. Naciones Unidas',
+        districtLocation: district.location,
+        courseLabel: `${GRADES[selCourse.grade] || selCourse.grade} "${selCourse.parallel}"`,
+        date,
+        teacherName,
+        students,
+      })
+    } catch { toast('No se pudo generar el PDF', 'error') }
+    finally { setExporting(false) }
+  }
+
   const registrados   = students.filter(s => s.status !== null).length
   const sinRegistrar  = students.filter(s => s.status === null).length
   const today         = new Date().toISOString().split('T')[0]
@@ -225,12 +247,23 @@ export default function AsistenciaEstudiantesPage() {
           <h1 className="text-xl font-bold text-brand-700 mb-1">Asistencia de Estudiantes</h1>
           <p className="text-[13px] text-neutral-500">Toca el estado para registrar — se guarda automáticamente</p>
         </div>
-        <div className="shrink-0">
-          <label className="text-[11px] font-bold text-brand-700 uppercase tracking-wide block mb-1.5">Fecha</label>
-          <input
-            type="date" value={date} onChange={e => setDate(e.target.value)} max={today}
-            className="px-3 py-2 border border-neutral-300 rounded-lg text-sm text-brand-700 outline-none focus:border-info-500"
-          />
+        <div className="shrink-0 flex items-end gap-2">
+          <div>
+            <label className="text-[11px] font-bold text-brand-700 uppercase tracking-wide block mb-1.5">Fecha</label>
+            <input
+              type="date" value={date} onChange={e => setDate(e.target.value)} max={today}
+              className="px-3 py-2 border border-neutral-300 rounded-lg text-sm text-brand-700 outline-none focus:border-info-500"
+            />
+          </div>
+          {selCourse && students.length > 0 && (
+            <button
+              onClick={handleExportPdf} disabled={exporting}
+              className="px-3 py-2 rounded-lg text-sm font-semibold border border-neutral-300 text-brand-700 bg-white hover:bg-brand-100 whitespace-nowrap disabled:opacity-60"
+              title="Exportar PDF con espacio de firma"
+            >
+              {exporting ? '⏳ Generando...' : '📄 Exportar PDF'}
+            </button>
+          )}
         </div>
       </div>
 

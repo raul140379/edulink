@@ -2,6 +2,7 @@ import { reportRepository } from '../repositories/report.repository'
 import { HttpError } from '../utils/http-error'
 import { chargeBalance, aggregateChargeBalances } from '../utils/charge-balance'
 import { Pagination, withTotal } from '../utils/pagination'
+import { dayRange } from './studentAttendance.service'
 
 export const reportService = {
   getTeachersReport() {
@@ -36,6 +37,89 @@ export const reportService = {
       totalAttendances: e.total,
       presentRate: e.total > 0 ? Math.round((e.present / e.total) * 100) : 0,
     }))
+  },
+
+  // Reporte diario de cumplimiento (Administración → Reportes) — 2 consultas
+  // totales sin importar cuántos cursos haya: todos los cursos del colegio +
+  // toda la asistencia de ese día, agrupada en memoria por courseId. Nunca
+  // una consulta por curso.
+  async getDailyAttendanceCompliance(date?: string) {
+    const activeYear = await reportRepository.findActiveAcademicYear()
+    if (!activeYear) throw new HttpError(404, 'No hay gestión académica activa')
+
+    const { base, next } = dayRange(date)
+    const [courses, attendances] = await Promise.all([
+      reportRepository.findAllCoursesForSchool(),
+      reportRepository.findAttendancesForSchoolDate(activeYear.id, base, next),
+    ])
+
+    const byCourse = new Map<number, { presentes: number; ausentes: number; retrasos: number; licencias: number }>()
+    for (const a of attendances) {
+      if (!byCourse.has(a.courseId)) byCourse.set(a.courseId, { presentes: 0, ausentes: 0, retrasos: 0, licencias: 0 })
+      const entry = byCourse.get(a.courseId)!
+      if (a.status === 'PRESENTE') entry.presentes++
+      else if (a.status === 'AUSENTE') entry.ausentes++
+      else if (a.status === 'RETRASO') entry.retrasos++
+      else if (a.status === 'LICENCIA') entry.licencias++
+    }
+
+    return {
+      date: base.toISOString().split('T')[0],
+      courses: courses.map((c) => {
+        const entry = byCourse.get(c.id)
+        const total = entry ? entry.presentes + entry.ausentes + entry.retrasos + entry.licencias : 0
+        return {
+          course: c,
+          registrado: total > 0,
+          totalEstudiantes: total,
+          presentes: entry?.presentes ?? 0,
+          ausentes: entry?.ausentes ?? 0,
+          retrasos: entry?.retrasos ?? 0,
+          licencias: entry?.licencias ?? 0,
+        }
+      }),
+    }
+  },
+
+  // Detalle de un curso — bajo demanda (solo cuando se hace clic en ESE
+  // curso puntual, nunca los ~18 de una). A propósito SIN
+  // resolveAttendanceWindow (esa lógica es para validar que se puede
+  // GUARDAR asistencia, no para consultar un historial) — reusarla rompería
+  // para REGENTE, que tiene ATTENDANCE_VIEW pero no fila Teacher propia y no
+  // está exento ahí como sí lo están DIRECTOR/SECRETARY.
+  async getDailyAttendanceCourseDetail(courseId: number, date?: string) {
+    const activeYear = await reportRepository.findActiveAcademicYear()
+    if (!activeYear) throw new HttpError(404, 'No hay gestión académica activa')
+
+    const course = await reportRepository.findCourseById(courseId)
+    if (!course) throw new HttpError(404, 'Curso no encontrado')
+
+    const { base, next } = dayRange(date)
+    const [assignments, attendances] = await Promise.all([
+      reportRepository.findAssignmentsForCourse(courseId, activeYear.id),
+      reportRepository.findAttendancesForCourseDateWithTeacher(courseId, activeYear.id, base, next),
+    ])
+
+    const attendanceMap: Record<number, (typeof attendances)[number]> = {}
+    attendances.forEach((a) => { attendanceMap[a.studentId] = a })
+
+    const teacherName = attendances[0]?.teacher
+      ? `${attendances[0].teacher.firstName} ${attendances[0].teacher.lastName}`
+      : null
+
+    return {
+      date: base.toISOString().split('T')[0],
+      course,
+      teacherName,
+      registrado: attendances.length > 0,
+      students: assignments.map((a) => ({
+        studentId: a.student.id,
+        firstName: a.student.firstName,
+        lastName:  a.student.lastName,
+        gender:    a.student.gender,
+        status:    attendanceMap[a.student.id]?.status ?? null,
+      })),
+    }
   },
 
   async getTreasuryReport(academicYearId?: number, pagination?: Pagination) {

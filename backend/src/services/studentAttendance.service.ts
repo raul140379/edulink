@@ -8,7 +8,10 @@ import { gamificationService } from './gamification.service'
 
 const GRADES: Record<string, string> = { PRIMERO: '1°', SEGUNDO: '2°', TERCERO: '3°', CUARTO: '4°', QUINTO: '5°', SEXTO: '6°' }
 
-function dayRange(dateStr?: string) {
+// Exportado para que reportService (reporte diario de cumplimiento) calcule
+// el mismo rango de "un día" que ya usa esta pantalla — evita que ambos
+// puedan llegar a discrepar sobre qué cuenta como "ese día".
+export function dayRange(dateStr?: string) {
   const base = dateStr ? new Date(dateStr) : new Date()
   base.setHours(0, 0, 0, 0)
   const next = new Date(base)
@@ -113,7 +116,7 @@ export const studentAttendanceService = {
     const { base, next } = dayRange(date)
 
     const assignments = await studentAttendanceRepository.findAssignmentsForCourse(courseId, activeYear.id)
-    const attendances = await studentAttendanceRepository.findAttendancesForCourseDate(courseId, activeYear.id, base, next)
+    const attendances = await studentAttendanceRepository.findAttendancesForCourseDateWithTeacher(courseId, activeYear.id, base, next)
 
     const attendanceMap: Record<number, any> = {}
     attendances.forEach((a) => { attendanceMap[a.studentId] = a })
@@ -128,6 +131,13 @@ export const studentAttendanceService = {
       note:      attendanceMap[a.student.id]?.note || '',
     }))
 
+    // Nombre de quien REALMENTE registró (de la fila guardada), no de quien
+    // está mirando la pantalla ahora — para el PDF con firma de respaldo.
+    // null si el día todavía no se registró.
+    const teacherName = attendances[0]?.teacher
+      ? `${attendances[0].teacher.firstName} ${attendances[0].teacher.lastName}`
+      : null
+
     const summary = {
       total:      students.length,
       presentes:  attendances.filter((a) => a.status === 'PRESENTE').length,
@@ -137,7 +147,7 @@ export const studentAttendanceService = {
       registrado: attendances.length > 0,
     }
 
-    return { date: base.toISOString().split('T')[0], students, summary, window }
+    return { date: base.toISOString().split('T')[0], students, summary, window, teacherName }
   },
 
   async saveAttendance(userId: number | undefined, courseId: number, input: SaveAttendanceInput) {

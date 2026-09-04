@@ -52,6 +52,48 @@ export const reportRepository = {
     })
   },
 
+  // Reporte diario de cumplimiento de asistencia (Administración → Reportes).
+  // Deliberadamente SIN la lógica de resolveAttendanceWindow que sí usa
+  // studentAttendanceService — esa ventana existe para VALIDAR que se puede
+  // GUARDAR asistencia, no para simplemente CONSULTAR un historial. Reusarla
+  // acá rompería para REGENTE (tiene ATTENDANCE_VIEW pero no Teacher propio,
+  // y a diferencia de DIRECTOR/SECRETARY no está exento en esa función).
+  findAllCoursesForSchool() {
+    return prisma.course.findMany({
+      select: { id: true, grade: true, parallel: true, level: true, shift: true },
+      orderBy: [{ level: 'asc' }, { grade: 'asc' }, { parallel: 'asc' }],
+    })
+  },
+
+  findAttendancesForSchoolDate(academicYearId: number, start: Date, next: Date) {
+    return prisma.studentAttendance.findMany({
+      where: { academicYearId, date: { gte: start, lt: next } },
+      select: { courseId: true, status: true },
+    })
+  },
+
+  findCourseById(id: number) {
+    return prisma.course.findUnique({
+      where: { id },
+      select: { id: true, grade: true, parallel: true, level: true, shift: true },
+    })
+  },
+
+  findAssignmentsForCourse(courseId: number, academicYearId: number) {
+    return prisma.studentAcademicAssignment.findMany({
+      where: { courseId, academicYearId },
+      select: { student: { select: { id: true, firstName: true, lastName: true, gender: true } } },
+      orderBy: { student: { lastName: 'asc' } },
+    })
+  },
+
+  findAttendancesForCourseDateWithTeacher(courseId: number, academicYearId: number, start: Date, next: Date) {
+    return prisma.studentAttendance.findMany({
+      where: { courseId, academicYearId, date: { gte: start, lt: next } },
+      include: { teacher: { select: { firstName: true, lastName: true } } },
+    })
+  },
+
   findChargesForYear(academicYearId: number) {
     return prisma.charge.findMany({
       where: { academicYearId, status: { not: 'ANULADO' } },

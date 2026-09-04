@@ -1104,6 +1104,12 @@ model StudentAttendance {
   @@unique([studentId, courseId, date])
   @@index([studentId])
   @@index([schoolId])
+  // El único índice que ya tocaba courseId/date era el unique de arriba, que
+  // empieza por studentId — inútil para "todas las filas de este curso en
+  // esta fecha" sin conocer el estudiante (Postgres solo usa el prefijo de
+  // un índice compuesto). Beneficia tanto a getAttendanceByCourse (ya
+  // existía, sin índice útil hasta ahora) como al reporte diario nuevo.
+  @@index([courseId, date])
 }
 
 model BiometricTemplate {

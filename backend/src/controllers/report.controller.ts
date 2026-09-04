@@ -31,6 +31,25 @@ export const getAttendanceReport = async (req: AuthRequest, res: Response): Prom
   }
 }
 
+// GET /api/reports/attendance-daily
+export const getDailyAttendanceCompliance = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    res.json(await reportService.getDailyAttendanceCompliance(req.query.date as string | undefined))
+  } catch (error) {
+    handleControllerError(res, error)
+  }
+}
+
+// GET /api/reports/attendance-daily/:courseId
+export const getDailyAttendanceCourseDetail = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const report = await reportService.getDailyAttendanceCourseDetail(parseInt(req.params.courseId, 10), req.query.date as string | undefined)
+    res.json(report)
+  } catch (error) {
+    handleControllerError(res, error)
+  }
+}
+
 // GET /api/reports/treasury
 export const getTreasuryReport = async (req: AuthRequest, res: Response): Promise<void> => {
   try {

@@ -18,6 +18,17 @@ export const studentAttendanceRepository = {
     return prisma.studentAttendance.findMany({ where: { courseId, academicYearId, date: { gte: start, lt: next } } })
   },
 
+  // Variante con el maestro incluido — usada solo por getAttendanceByCourse
+  // (para el nombre en el PDF de respaldo con firma); el otro llamador de
+  // findAttendancesForCourseDate (chequeo de existencia antes de guardar) no
+  // lo necesita, se deja sin tocar.
+  findAttendancesForCourseDateWithTeacher(courseId: number, academicYearId: number, start: Date, next: Date) {
+    return prisma.studentAttendance.findMany({
+      where: { courseId, academicYearId, date: { gte: start, lt: next } },
+      include: { teacher: { select: { firstName: true, lastName: true } } },
+    })
+  },
+
   findTeacherByUserId(userId: number | undefined) {
     return prisma.teacher.findUnique({ where: { userId }, include: { user: true } })
   },
