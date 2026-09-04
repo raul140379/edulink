@@ -12,6 +12,7 @@ import Input from '@/components/ui/Input'
 import LoadingState from '@/components/ui/LoadingState'
 import { useToast } from '@/components/ui/ToastProvider'
 import { useDistrictConfig } from '@/hooks/useDistrictConfig'
+import { useSchoolConfig } from '@/hooks/useSchoolConfig'
 import { exportAttendancePdf } from '@/lib/attendancePdf'
 import { todayLocalStr } from '@/lib/localDate'
 
@@ -45,6 +46,7 @@ const courseLabel = (c: CourseRow['course']) => `${GRADE_LABELS[c.grade] || c.gr
 export default function AsistenciaDiariaPage() {
   const toast = useToast()
   const district = useDistrictConfig()
+  const school = useSchoolConfig()
 
   const [date, setDate] = useState(todayLocalStr())
   const [courses, setCourses] = useState<CourseRow[]>([])
@@ -88,8 +90,10 @@ export default function AsistenciaDiariaPage() {
   const handleExport = async () => {
     if (!detail) return
     await exportAttendancePdf({
-      districtName: district.name || 'U.E. Naciones Unidas',
+      districtName: district.name,
       districtLocation: district.location,
+      schoolName: school.name,
+      courseLevel: detail.course.level,
       courseLabel: courseLabel(detail.course),
       date: detail.date,
       teacherName: detail.teacherName,

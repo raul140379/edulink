@@ -22,10 +22,19 @@ export const studentAttendanceRepository = {
   // (para el nombre en el PDF de respaldo con firma); el otro llamador de
   // findAttendancesForCourseDate (chequeo de existencia antes de guardar) no
   // lo necesita, se deja sin tocar.
+  //
+  // orderBy updatedAt desc: un curso puede tener muchos maestros asignados
+  // (uno por materia) y "tomar asistencia" es una sola acción compartida por
+  // curso/día — cualquiera de ellos puede hacerlo. Sin este orden, [0] salía
+  // en el orden que Postgres devolviera (no determinístico, y cambia según
+  // el plan de consulta/índice usado). Ordenando por el último en tocar el
+  // registro, el nombre resuelto es siempre el mismo y refleja el estado más
+  // reciente — el criterio correcto para la firma de respaldo.
   findAttendancesForCourseDateWithTeacher(courseId: number, academicYearId: number, start: Date, next: Date) {
     return prisma.studentAttendance.findMany({
       where: { courseId, academicYearId, date: { gte: start, lt: next } },
       include: { teacher: { select: { firstName: true, lastName: true } } },
+      orderBy: { updatedAt: 'desc' },
     })
   },
 

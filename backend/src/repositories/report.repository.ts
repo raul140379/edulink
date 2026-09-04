@@ -87,10 +87,16 @@ export const reportRepository = {
     })
   },
 
+  // orderBy updatedAt desc: mismo criterio que studentAttendance.repository.ts
+  // — un curso puede tener varios maestros (uno por materia) y cualquiera
+  // puede tomar la asistencia compartida del día; sin orden, [0] no era
+  // determinístico. El último en tocar el registro es el nombre correcto
+  // para la firma de respaldo.
   findAttendancesForCourseDateWithTeacher(courseId: number, academicYearId: number, start: Date, next: Date) {
     return prisma.studentAttendance.findMany({
       where: { courseId, academicYearId, date: { gte: start, lt: next } },
       include: { teacher: { select: { firstName: true, lastName: true } } },
+      orderBy: { updatedAt: 'desc' },
     })
   },
 

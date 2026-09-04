@@ -5,6 +5,7 @@ import Card from '@/components/ui/Card'
 import { useConfirm } from '@/components/ui/ConfirmProvider'
 import { useToast } from '@/components/ui/ToastProvider'
 import { useDistrictConfig } from '@/hooks/useDistrictConfig'
+import { useSchoolConfig } from '@/hooks/useSchoolConfig'
 import { exportAttendancePdf } from '@/lib/attendancePdf'
 import { todayLocalStr } from '@/lib/localDate'
 
@@ -47,6 +48,7 @@ export default function AsistenciaEstudiantesPage() {
   const confirm  = useConfirm()
   const toast    = useToast()
   const district = useDistrictConfig()
+  const school   = useSchoolConfig()
   const [courses,     setCourses]     = useState<Course[]>([])
   const [mySchedule,  setMySchedule]  = useState<ScheduleItem[]>([])
   const [selCourse,   setSelCourse]   = useState<Course | null>(null)
@@ -226,8 +228,10 @@ export default function AsistenciaEstudiantesPage() {
     setExporting(true)
     try {
       await exportAttendancePdf({
-        districtName: district.name || 'U.E. Naciones Unidas',
+        districtName: district.name,
         districtLocation: district.location,
+        schoolName: school.name,
+        courseLevel: selCourse.level,
         courseLabel: `${GRADES[selCourse.grade] || selCourse.grade} "${selCourse.parallel}"`,
         date,
         teacherName,
@@ -337,6 +341,13 @@ export default function AsistenciaEstudiantesPage() {
             </div>
           ))}
         </div>
+      )}
+
+      {summary && summary.registrado && teacherName && (
+        <p className="text-[12px] text-neutral-500 mb-3.5 -mt-2">
+          📝 Registrado por: <span className="font-semibold text-brand-700">{teacherName}</span>
+          {' '}— un curso puede tener varios maestros, cualquiera puede tomar la asistencia del día.
+        </p>
       )}
 
       {students.length > 0 && (
