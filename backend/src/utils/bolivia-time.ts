@@ -40,3 +40,16 @@ export function todayDateRangeBolivia(now: Date): { start: Date; next: Date } {
   const next = new Date(start.getTime() + 24 * 60 * 60 * 1000)
   return { start, next }
 }
+
+// Fecha calendario (YYYY-MM-DD) de HOY en Bolivia — para el valor por
+// defecto de dayRange() (asistencia de estudiantes), sin depender de en qué
+// huso corre el proceso (a diferencia de `new Date().toISOString()`, que da
+// la fecha calendario en UTC — distinta de la de Bolivia entre las 20:00 y
+// las 23:59 hora Bolivia, cuando en UTC ya es el día siguiente).
+export function todayDateStrBolivia(now: Date): string {
+  const bolivia = new Date(now.getTime() + BOLIVIA_UTC_OFFSET_MIN * 60 * 1000)
+  const y = bolivia.getUTCFullYear()
+  const m = String(bolivia.getUTCMonth() + 1).padStart(2, '0')
+  const d = String(bolivia.getUTCDate()).padStart(2, '0')
+  return `${y}-${m}-${d}`
+}

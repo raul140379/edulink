@@ -2,7 +2,7 @@ import { Role } from '@prisma/client'
 import { studentAttendanceRepository } from '../repositories/studentAttendance.repository'
 import { HttpError } from '../utils/http-error'
 import { getTenantContext } from '../lib/tenant-context'
-import { nowMinutesBolivia, todayDayOfWeekBolivia, todayDateRangeBolivia, parseTimeToMinutes } from '../utils/bolivia-time'
+import { nowMinutesBolivia, todayDayOfWeekBolivia, todayDateRangeBolivia, todayDateStrBolivia, parseTimeToMinutes } from '../utils/bolivia-time'
 import { SaveAttendanceInput, CloseAttendanceInput } from '../schemas/studentAttendance.schema'
 import { gamificationService } from './gamification.service'
 
@@ -11,11 +11,29 @@ const GRADES: Record<string, string> = { PRIMERO: '1°', SEGUNDO: '2°', TERCERO
 // Exportado para que reportService (reporte diario de cumplimiento) calcule
 // el mismo rango de "un día" que ya usa esta pantalla — evita que ambos
 // puedan llegar a discrepar sobre qué cuenta como "ese día".
+//
+// Corrección de huso horario (3-sep-2026): la versión anterior usaba
+// `new Date(dateStr)` + `.setHours(0,0,0,0)`, que interpreta "medianoche" en
+// la hora LOCAL del proceso — en el servidor de producción (siempre en UTC)
+// coincidía por casualidad con la fecha pedida, pero en cualquier máquina en
+// otro huso (ej. esta máquina local, América/La_Paz, UTC-4) se corría un día
+// hacia atrás. Ahora se parsean año/mes/día del string directamente y se
+// ancla en 00:00 UTC de esa fecha vía Date.UTC — sin tocar ningún método
+// dependiente de la zona horaria del proceso (ni `setHours` ni `setDate`).
+// "Hoy" (sin dateStr) usa el día calendario de Bolivia (todayDateStrBolivia),
+// no el del servidor, por el mismo motivo.
+//
+// Se ancla a propósito en 00:00 UTC de la fecha (no en medianoche Bolivia,
+// 04:00 UTC, como sí hace todayDateRangeBolivia) — es el mismo punto que ya
+// usaba producción antes de este fix (servidor en UTC, donde el bug anterior
+// nunca se notó), así los registros de asistencia ya guardados siguen
+// encontrándose exacto, sin correrse un día hacia atrás.
 export function dayRange(dateStr?: string) {
-  const base = dateStr ? new Date(dateStr) : new Date()
-  base.setHours(0, 0, 0, 0)
+  const ds = dateStr || todayDateStrBolivia(new Date())
+  const [y, m, d] = ds.split('-').map(Number)
+  const base = new Date(Date.UTC(y, m - 1, d, 0, 0, 0, 0))
   const next = new Date(base)
-  next.setDate(next.getDate() + 1)
+  next.setUTCDate(next.getUTCDate() + 1)
   return { base, next }
 }
 
