@@ -2,6 +2,7 @@ import { gamificationRepository } from '../repositories/gamification.repository'
 import { studentRepository } from '../repositories/student.repository'
 import { studentAttendanceRepository } from '../repositories/studentAttendance.repository'
 import { academicRepository } from '../repositories/academic.repository'
+import { collapseToDailyStatus } from '../utils/attendance-daily-status'
 
 const XP_TASK_ON_TIME    = 40
 const XP_ATTENDANCE_DAY  = 10
@@ -67,8 +68,11 @@ export const gamificationService = {
     const history = await studentAttendanceRepository.findStudentHistory(studentId, academicYearId, undefined, {
       gte: monthStart, lt: now,
     })
-    if (history.length < 15) return false
-    return history.every((a) => a.status === 'PRESENTE' || a.status === 'RETRASO')
+    // Colapsado a días reales (4-sep-2026): varios maestros pueden registrar
+    // el mismo día, "15 filas" ya no es lo mismo que "15 días".
+    const daily = collapseToDailyStatus(history)
+    if (daily.size < 15) return false
+    return [...daily.values()].every((s) => s === 'PRESENTE' || s === 'RETRASO')
   },
 
   async evaluateAchievements(studentId: number) {
@@ -113,7 +117,11 @@ export const gamificationService = {
 
     const holidays = await academicRepository.findHolidaysByYear(assignment.academicYearId)
     const holidaySet = new Set(holidays.map((h) => toDateKey(h.date)))
-    const attendanceByDate = new Map(history.map((a) => [toDateKey(a.date), a.status]))
+    // Colapsado a días reales (4-sep-2026): antes un Map directo por fecha
+    // podía quedar con el estado de "el último procesado", no-determinístico
+    // si 2 maestros registran el mismo día — collapseToDailyStatus aplica la
+    // regla confirmada (presente en cualquier fila del día = ese día cuenta).
+    const attendanceByDate = collapseToDailyStatus(history)
 
     let cursor = new Date(history[0].date)
     let streak = 0
@@ -164,7 +172,7 @@ export const gamificationService = {
     const history = await studentAttendanceRepository.findStudentHistory(studentId, assignment.academicYearId, undefined, {
       gte: monday, lt: sundayEnd,
     })
-    const byDate = new Map(history.map((a) => [toDateKey(a.date), a.status]))
+    const byDate = collapseToDailyStatus(history)
 
     return labels.map((label, i) => {
       const d = new Date(monday.getTime() + i * DAY_MS)
@@ -188,8 +196,13 @@ export const gamificationService = {
     })
     if (history.length === 0) return null
 
-    const presentes = history.filter((a) => a.status === 'PRESENTE' || a.status === 'RETRASO').length
-    return Math.round((presentes / history.length) * 100)
+    // Colapsado a días reales (4-sep-2026): el % es sobre días, no sobre
+    // filas — varios maestros registrando el mismo día no deben inflar ni
+    // desviar el porcentaje.
+    const daily = collapseToDailyStatus(history)
+    if (daily.size === 0) return null
+    const presentes = [...daily.values()].filter((s) => s === 'PRESENTE' || s === 'RETRASO').length
+    return Math.round((presentes / daily.size) * 100)
   },
 
   async getSummary(studentId: number) {

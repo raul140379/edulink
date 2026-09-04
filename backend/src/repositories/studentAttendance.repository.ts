@@ -14,22 +14,30 @@ export const studentAttendanceRepository = {
     })
   },
 
-  findAttendancesForCourseDate(courseId: number, academicYearId: number, start: Date, next: Date) {
-    return prisma.studentAttendance.findMany({ where: { courseId, academicYearId, date: { gte: start, lt: next } } })
+  // teacherId opcional (4-sep-2026): usado por closeAttendance para saber
+  // qué estudiantes le faltan a ESTE maestro específico, no al curso entero
+  // — cada maestro tiene su propio registro desde que teacherId entró a la
+  // clave única. DIRECTOR/SECRETARY (sin teacherId propio real) siguen
+  // viendo el agregado de todo el curso, a propósito (su rol es corregir el
+  // curso completo, no un maestro puntual).
+  findAttendancesForCourseDate(courseId: number, academicYearId: number, start: Date, next: Date, teacherId?: number) {
+    return prisma.studentAttendance.findMany({
+      where: { courseId, academicYearId, date: { gte: start, lt: next }, ...(teacherId ? { teacherId } : {}) },
+    })
   },
 
-  // Variante con el maestro incluido — usada solo por getAttendanceByCourse
-  // (para el nombre en el PDF de respaldo con firma); el otro llamador de
-  // findAttendancesForCourseDate (chequeo de existencia antes de guardar) no
-  // lo necesita, se deja sin tocar.
+  // Variante con el maestro incluido — usada por getAttendanceByCourse (para
+  // el nombre en el PDF de respaldo con firma) y por el reporte diario del
+  // Director.
   //
   // orderBy updatedAt desc: un curso puede tener muchos maestros asignados
-  // (uno por materia) y "tomar asistencia" es una sola acción compartida por
-  // curso/día — cualquiera de ellos puede hacerlo. Sin este orden, [0] salía
-  // en el orden que Postgres devolviera (no determinístico, y cambia según
-  // el plan de consulta/índice usado). Ordenando por el último en tocar el
-  // registro, el nombre resuelto es siempre el mismo y refleja el estado más
-  // reciente — el criterio correcto para la firma de respaldo.
+  // (uno por materia). Desde el 4-sep-2026 cada maestro tiene su PROPIA fila
+  // por estudiante (teacherId en la clave única) — así que puede haber
+  // varias filas reales por estudiante/curso/día, una por cada maestro que
+  // registró. Este orden se usa para las vistas agregadas (DIRECTOR/
+  // SECRETARY, reporte) que necesitan "un solo estado representativo": se
+  // toma la fila más reciente por estudiante (primera que aparece en este
+  // orden), nunca una al azar.
   findAttendancesForCourseDateWithTeacher(courseId: number, academicYearId: number, start: Date, next: Date) {
     return prisma.studentAttendance.findMany({
       where: { courseId, academicYearId, date: { gte: start, lt: next } },
@@ -46,14 +54,26 @@ export const studentAttendanceRepository = {
     return prisma.course.findUnique({ where: { id } })
   },
 
-  findOneForDay(studentId: number, courseId: number, date: Date) {
-    return prisma.studentAttendance.findUnique({ where: { studentId_courseId_date: { studentId, courseId, date } } })
+  // Reemplaza al viejo findOneForDay (4-sep-2026): la pregunta relevante ya
+  // no es "existe la fila de ESTE maestro" (el upsert ya lo resuelve solo,
+  // con la clave única nueva) sino "¿algún maestro YA registró a este
+  // estudiante presente/con retraso HOY, en cualquiera de sus propias
+  // filas?" — para no dar XP dos veces el mismo día si 2 maestros distintos
+  // registran al mismo estudiante presente cada uno por su lado.
+  findAnyPresentOrLateForDay(studentId: number, courseId: number, date: Date) {
+    return prisma.studentAttendance.findFirst({
+      where: { studentId, courseId, date, status: { in: ['PRESENTE', 'RETRASO'] } },
+    })
   },
 
   upsertAttendance(data: { studentId: number; courseId: number; teacherId: number; academicYearId: number; date: Date; status: string; note: string | null }) {
     return prisma.studentAttendance.upsert({
-      where: { studentId_courseId_date: { studentId: data.studentId, courseId: data.courseId, date: data.date } },
-      update: { status: data.status as any, note: data.note, teacherId: data.teacherId },
+      where: {
+        studentId_courseId_date_teacherId: {
+          studentId: data.studentId, courseId: data.courseId, date: data.date, teacherId: data.teacherId,
+        },
+      },
+      update: { status: data.status as any, note: data.note },
       create: {
         studentId: data.studentId, courseId: data.courseId, teacherId: data.teacherId,
         academicYearId: data.academicYearId, date: data.date, status: data.status as any, note: data.note,
@@ -68,6 +88,20 @@ export const studentAttendanceRepository = {
 
   createNotification(data: { title: string; message: string; sentById: number; parentId: number }) {
     return prisma.notification.create({ data: { title: data.title, message: data.message, type: 'ACADEMICA', sentById: data.sentById, parentId: data.parentId, schoolId: getTenantContext()?.schoolId ?? 0 } })
+  },
+
+  // Deduplicación de notificaciones (4-sep-2026): un estudiante puede tener
+  // varios maestros registrando su ausencia el mismo día (uno cada uno, en
+  // su propia fila) — sin esto, el padre recibiría una notificación por
+  // cada maestro. Se aproxima "mismo aviso" por padre + curso (vía el
+  // rótulo del curso en el título) + rango del día — Notification no guarda
+  // studentId propio, así que en el caso rarísimo de mellizos en el MISMO
+  // curso, el segundo aviso real se suprimiría por error; aceptado como
+  // limitación menor conocida, no se resuelve esta noche.
+  findNotificationSentTodayForParent(parentId: number, cursoLabel: string, start: Date, next: Date) {
+    return prisma.notification.findFirst({
+      where: { parentId, title: { contains: cursoLabel }, createdAt: { gte: start, lt: next } },
+    })
   },
 
   findMyCourses(teacherId: number) {

@@ -53,8 +53,19 @@ export const reportService = {
       reportRepository.findAttendancesForSchoolDate(activeYear.id, base, next),
     ])
 
+    // Dedupe por estudiante (4-sep-2026): con teacherId en la clave única de
+    // StudentAttendance, un curso con varios maestros puede tener más de una
+    // fila por estudiante el mismo día — sin esto, "presentes" contaría cada
+    // fila en vez de cada estudiante (37 alumnos podría mostrar 74). Se
+    // queda con la más reciente por estudiante (attendances ya viene
+    // ordenado updatedAt desc).
+    const seen = new Set<string>()
     const byCourse = new Map<number, { presentes: number; ausentes: number; retrasos: number; licencias: number }>()
     for (const a of attendances) {
+      const key = `${a.courseId}-${a.studentId}`
+      if (seen.has(key)) continue
+      seen.add(key)
+
       if (!byCourse.has(a.courseId)) byCourse.set(a.courseId, { presentes: 0, ausentes: 0, retrasos: 0, licencias: 0 })
       const entry = byCourse.get(a.courseId)!
       if (a.status === 'PRESENTE') entry.presentes++
@@ -100,8 +111,13 @@ export const reportService = {
       reportRepository.findAttendancesForCourseDateWithTeacher(courseId, activeYear.id, base, next),
     ])
 
+    // Primero-visto-gana (4-sep-2026): attendances viene ordenado updatedAt
+    // desc — con teacherId en la clave única, un estudiante puede tener
+    // varias filas (una por maestro) el mismo día; sin este orden de
+    // asignación, un forEach normal sobreescribe con la ÚLTIMA fila
+    // procesada (la más VIEJA), al revés de lo que se quiere mostrar.
     const attendanceMap: Record<number, (typeof attendances)[number]> = {}
-    attendances.forEach((a) => { attendanceMap[a.studentId] = a })
+    attendances.forEach((a) => { if (!attendanceMap[a.studentId]) attendanceMap[a.studentId] = a })
 
     const teacherName = attendances[0]?.teacher
       ? `${attendances[0].teacher.firstName} ${attendances[0].teacher.lastName}`

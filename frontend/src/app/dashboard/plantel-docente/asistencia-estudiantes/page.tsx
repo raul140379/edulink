@@ -145,29 +145,20 @@ export default function AsistenciaEstudiantesPage() {
       .finally(() => setLoading(false))
   }, [selCourse, date])
 
-  // Mitigación urgente contra pisado silencioso (4-sep-2026): un curso
-  // compartido por varios maestros solo tiene un registro por estudiante/
-  // día — si el backend detecta que ya lo guardó un maestro distinto,
-  // responde 409 con el nombre de quién lo hizo. Acá se pide confirmación
-  // explícita antes de reemplazar (nunca en silencio); si el usuario
-  // cancela, se reenvía con force:true. null = canceló, no se guardó nada.
-  const postAttendanceWithConfirm = async (
+  // Desde el 4-sep-2026 cada maestro tiene su propia fila de asistencia
+  // (teacherId en la clave única) — ya no puede pisar la de otro maestro
+  // del mismo curso, así que no hace falta pedir confirmación antes de
+  // guardar (el candado 409 que existió por un rato quedó innecesario y se
+  // sacó del backend).
+  const postAttendance = async (
     attendances: { studentId: number; status: StatusKey; note?: string }[]
-  ): Promise<{ ok: boolean; data: any } | null> => {
-    const send = (force?: boolean) => fetch(`${API}/api/student-attendance/course/${selCourse!.id}`, {
+  ): Promise<{ ok: boolean; data: any }> => {
+    const res  = await fetch(`${API}/api/student-attendance/course/${selCourse!.id}`, {
       method:  'POST',
       headers: { ...auth(), 'Content-Type': 'application/json' },
-      body:    JSON.stringify({ date, attendances, ...(force ? { force: true } : {}) }),
+      body:    JSON.stringify({ date, attendances }),
     })
-
-    let res  = await send()
-    let data = await res.json()
-
-    if (res.status === 409) {
-      if (!await confirm(data.message, { danger: true })) return null
-      res  = await send(true)
-      data = await res.json()
-    }
+    const data = await res.json()
     return { ok: res.ok, data }
   }
 
@@ -186,8 +177,7 @@ export default function AsistenciaEstudiantesPage() {
 
     setSaving(studentId)
     try {
-      const result = await postAttendanceWithConfirm([{ studentId, status: newStatus, note: current?.note || '' }])
-      if (!result) { setStudents(prevStudents); updateSummary(prevStudents); return }
+      const result = await postAttendance([{ studentId, status: newStatus, note: current?.note || '' }])
       if (!result.ok) { toast(result.data.message, 'error'); setStudents(prevStudents); updateSummary(prevStudents) }
       else if (result.data.notifications > 0) {
         toast(`${STATUS_CONFIG[newStatus].emoji} Guardado · ${result.data.notifications} notif. enviada`, 'success')
@@ -204,8 +194,7 @@ export default function AsistenciaEstudiantesPage() {
     updateSummary(updated)
 
     try {
-      const result = await postAttendanceWithConfirm(updated.map(s => ({ studentId: s.studentId, status, note: s.note || '' })))
-      if (!result) { setStudents(prevStudents); updateSummary(prevStudents); return }
+      const result = await postAttendance(updated.map(s => ({ studentId: s.studentId, status, note: s.note || '' })))
       if (result.ok) toast(result.data.message, 'success')
       else { toast(result.data.message, 'error'); setStudents(prevStudents); updateSummary(prevStudents) }
     } catch { toast('Error al guardar', 'error'); setStudents(prevStudents); updateSummary(prevStudents) }

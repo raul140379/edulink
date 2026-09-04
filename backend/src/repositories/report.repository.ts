@@ -65,10 +65,17 @@ export const reportRepository = {
     })
   },
 
+  // studentId + orderBy (4-sep-2026): desde que teacherId entró a la clave
+  // única de StudentAttendance, un estudiante puede tener varias filas el
+  // mismo día (una por maestro) — el servicio necesita studentId para
+  // deduplicar antes de contar (si no, un curso con 2 maestros mostraría el
+  // doble de "presentes" de los que realmente tiene). orderBy updatedAt
+  // desc: para quedarse con la fila más reciente de cada estudiante.
   findAttendancesForSchoolDate(academicYearId: number, start: Date, next: Date) {
     return prisma.studentAttendance.findMany({
       where: { academicYearId, date: { gte: start, lt: next } },
-      select: { courseId: true, status: true },
+      select: { courseId: true, studentId: true, status: true },
+      orderBy: { updatedAt: 'desc' },
     })
   },
 

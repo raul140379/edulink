@@ -1101,7 +1101,16 @@ model StudentAttendance {
   student        Student                 @relation(fields: [studentId], references: [id])
   teacher        Teacher                 @relation(fields: [teacherId], references: [id])
 
-  @@unique([studentId, courseId, date])
+  // teacherId entra a la clave única (4-sep-2026, urgente): un curso tiene
+  // muchos maestros (uno por materia, horarios sin cruzarse) — antes solo
+  // podía existir UN registro por estudiante+curso+día para TODO el curso,
+  // así que el segundo maestro que guardaba pisaba en silencio al primero
+  // (confirmado con una prueba real). Ahora cada maestro tiene su propia
+  // fila, independiente de los demás. No cubre todavía el caso de un mismo
+  // maestro con períodos NO seguidos el mismo curso/día (ej. 1°,2° y luego
+  // 5°,6°) — eso queda para el rediseño completo por bloques de períodos
+  // (scheduleId), diseñado y aprobado, pendiente de construir con calma.
+  @@unique([studentId, courseId, date, teacherId])
   @@index([studentId])
   @@index([schoolId])
   // El único índice que ya tocaba courseId/date era el unique de arriba, que

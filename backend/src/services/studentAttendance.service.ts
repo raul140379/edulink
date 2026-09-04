@@ -53,11 +53,11 @@ export interface AttendanceWindow {
 
 // Ventana de asistencia: se abre 5 min antes del período y cierra 10 min
 // después — pero es la ventana de ESTE maestro para ESTE curso hoy, no del
-// curso en abstracto (la asistencia es una vez por curso por día, cualquier
-// maestro asignado al curso puede tomarla, así que se mira la unión de
-// TODOS los períodos que este maestro específico tiene hoy en este curso).
-// DIRECTOR/SECRETARY quedan exentos — pueden registrar/corregir en
-// cualquier momento (sin pantalla propia todavía, backend preparado).
+// curso en abstracto (un curso puede tener varios maestros, uno por materia,
+// así que se mira la unión de TODOS los períodos que este maestro específico
+// tiene hoy en este curso). DIRECTOR/SECRETARY quedan exentos — pueden
+// registrar/corregir en cualquier momento (sin pantalla propia todavía,
+// backend preparado).
 async function resolveAttendanceWindow(userId: number | undefined, courseId: number, academicYearId: number): Promise<AttendanceWindow> {
   const ctx = getTenantContext()
   if (ctx?.role === Role.DIRECTOR || ctx?.role === Role.SECRETARY) {
@@ -133,11 +133,28 @@ export const studentAttendanceService = {
 
     const { base, next } = dayRange(date)
 
-    const assignments = await studentAttendanceRepository.findAssignmentsForCourse(courseId, activeYear.id)
-    const attendances = await studentAttendanceRepository.findAttendancesForCourseDateWithTeacher(courseId, activeYear.id, base, next)
+    const ctx = getTenantContext()
+    const isExemptRole = ctx?.role === Role.DIRECTOR || ctx?.role === Role.SECRETARY
+    const myTeacher = isExemptRole ? null : await studentAttendanceRepository.findTeacherByUserId(userId)
 
+    const assignments = await studentAttendanceRepository.findAssignmentsForCourse(courseId, activeYear.id)
+    const allAttendances = await studentAttendanceRepository.findAttendancesForCourseDateWithTeacher(courseId, activeYear.id, base, next)
+
+    // Desde el 4-sep-2026 cada maestro tiene su PROPIA fila por estudiante
+    // (teacherId entra a la clave única) — un maestro real ve/edita SOLO lo
+    // suyo, independiente de lo que otros maestros del mismo curso hayan
+    // registrado. DIRECTOR/SECRETARY (sin Teacher propio) siguen viendo el
+    // agregado del curso completo, que es justamente su rol.
+    const rawAttendances = myTeacher
+      ? allAttendances.filter((a) => a.teacherId === myTeacher.id)
+      : allAttendances
+
+    // rawAttendances ya viene ordenado updatedAt desc — primero-visto-gana
+    // da la fila más reciente por estudiante (relevante sobre todo para
+    // DIRECTOR/SECRETARY, donde puede haber varios maestros mezclados).
     const attendanceMap: Record<number, any> = {}
-    attendances.forEach((a) => { attendanceMap[a.studentId] = a })
+    rawAttendances.forEach((a) => { if (!attendanceMap[a.studentId]) attendanceMap[a.studentId] = a })
+    const dedupedAttendances = Object.values(attendanceMap)
 
     const students = assignments.map((a) => ({
       studentId: a.student.id,
@@ -149,20 +166,21 @@ export const studentAttendanceService = {
       note:      attendanceMap[a.student.id]?.note || '',
     }))
 
-    // Nombre de quien REALMENTE registró (de la fila guardada), no de quien
-    // está mirando la pantalla ahora — para el PDF con firma de respaldo.
-    // null si el día todavía no se registró.
-    const teacherName = attendances[0]?.teacher
-      ? `${attendances[0].teacher.firstName} ${attendances[0].teacher.lastName}`
+    // Nombre de quien REALMENTE registró — con un maestro real esto ya
+    // siempre es uno mismo (o null si todavía no guardó nada); con
+    // DIRECTOR/SECRETARY sigue siendo "quien tocó esto por última vez entre
+    // todos los maestros del curso", para el PDF con firma de respaldo.
+    const teacherName = rawAttendances[0]?.teacher
+      ? `${rawAttendances[0].teacher.firstName} ${rawAttendances[0].teacher.lastName}`
       : null
 
     const summary = {
       total:      students.length,
-      presentes:  attendances.filter((a) => a.status === 'PRESENTE').length,
-      ausentes:   attendances.filter((a) => a.status === 'AUSENTE').length,
-      retrasos:   attendances.filter((a) => a.status === 'RETRASO').length,
-      licencias:  attendances.filter((a) => a.status === 'LICENCIA').length,
-      registrado: attendances.length > 0,
+      presentes:  dedupedAttendances.filter((a: any) => a.status === 'PRESENTE').length,
+      ausentes:   dedupedAttendances.filter((a: any) => a.status === 'AUSENTE').length,
+      retrasos:   dedupedAttendances.filter((a: any) => a.status === 'RETRASO').length,
+      licencias:  dedupedAttendances.filter((a: any) => a.status === 'LICENCIA').length,
+      registrado: dedupedAttendances.length > 0,
     }
 
     return { date: base.toISOString().split('T')[0], students, summary, window, teacherName }
@@ -175,7 +193,9 @@ export const studentAttendanceService = {
     const ctx = getTenantContext()
     const isExemptRole = ctx?.role === Role.DIRECTOR || ctx?.role === Role.SECRETARY
 
-    // teacherId: a quién se le atribuye el registro (FK obligatoria).
+    // teacherId: a quién se le atribuye el registro (FK obligatoria, y desde
+    // el 4-sep-2026 también parte de la clave única — cada maestro tiene su
+    // propia fila, nunca pisa la de otro).
     // actorLabel: qué nombre ve el padre en la notificación de inasistencia.
     // Se separan porque DIRECTOR/SECRETARY no tienen Teacher propio — no
     // corresponde atribuirle la corrección a otro maestro que no la hizo.
@@ -205,41 +225,15 @@ export const studentAttendanceService = {
     const dateStr = base.toLocaleDateString('es-BO', { weekday: 'long', day: 'numeric', month: 'long' })
     const cursoLabel = `${GRADES[course.grade]} "${course.parallel}"`
 
-    // Mitigación urgente contra pisado silencioso (4-sep-2026): un curso
-    // puede tener varios maestros (uno por materia) y hoy solo hay un
-    // registro compartido por curso/día — sin este candado, el maestro que
-    // guarda después pisa en silencio lo que haya guardado otro, sin ningún
-    // aviso (confirmado con una prueba real: nota y estado de un maestro
-    // desaparecían sin rastro al guardar otro). No es la solución de fondo
-    // (esa necesita scheduleId, ver diagnóstico de arquitectura aparte) —
-    // solo saca el "en silencio": si hay conflicto, se rechaza con el
-    // nombre del maestro que ya registró, y solo se sobreescribe si el
-    // usuario confirmó en pantalla (force:true). Nunca aplica a
-    // DIRECTOR/SECRETARY — su capacidad de corregir asistencia sin ventana
-    // horaria es una regla de negocio ya existente, no se toca acá.
-    if (!isExemptRole && !input.force) {
-      const existingRows = await studentAttendanceRepository.findAttendancesForCourseDateWithTeacher(courseId, activeYear.id, base, next)
-      const requestedIds = new Set(input.attendances.map((a) => a.studentId))
-      const conflicts = existingRows.filter((r) => requestedIds.has(r.studentId) && r.teacherId !== teacherId)
-
-      if (conflicts.length > 0) {
-        const byTeacher = new Map<string, number>()
-        for (const c of conflicts) {
-          const name = `${c.teacher.firstName} ${c.teacher.lastName}`
-          byTeacher.set(name, (byTeacher.get(name) || 0) + 1)
-        }
-        const detail = [...byTeacher.entries()]
-          .map(([name, n]) => `${name} (${n} estudiante${n > 1 ? 's' : ''})`)
-          .join(' y ')
-        throw new HttpError(409, `Ya hay asistencia registrada por ${detail} para este guardado. Si continuás, se reemplazará. ¿Confirmás?`)
-      }
-    }
-
     let count = 0
     let notifCount = 0
 
     for (const att of input.attendances) {
-      const existing = await studentAttendanceRepository.findOneForDay(att.studentId, courseId, base)
+      // XP y racha una sola vez por día para este estudiante, sin importar
+      // cuántos maestros distintos lo registren — se chequea ANTES de este
+      // guardado si YA hay presente/retraso de CUALQUIER maestro hoy (no
+      // solo del que está guardando ahora).
+      const alreadyPresentToday = await studentAttendanceRepository.findAnyPresentOrLateForDay(att.studentId, courseId, base)
 
       await studentAttendanceRepository.upsertAttendance({
         studentId: att.studentId, courseId, teacherId, academicYearId: activeYear.id,
@@ -247,10 +241,7 @@ export const studentAttendanceService = {
       })
       count++
 
-      // XP y racha solo la primera vez que se registra este día para este
-      // estudiante — si un profesor corrige PRESENTE→RETRASO el mismo día no
-      // debe volver a sumar.
-      if (!existing && (att.status === 'PRESENTE' || att.status === 'RETRASO')) {
+      if (!alreadyPresentToday && (att.status === 'PRESENTE' || att.status === 'RETRASO')) {
         await gamificationService.awardXp(att.studentId, gamificationService.XP_ATTENDANCE_DAY)
         await gamificationService.recalculateStreak(att.studentId)
       }
@@ -263,8 +254,21 @@ export const studentAttendanceService = {
 
         const parentLink = await studentAttendanceRepository.findTutorLink(att.studentId)
         if (parentLink?.parent) {
-          await studentAttendanceRepository.createNotification({ title, message, sentById: userId!, parentId: parentLink.parent.id })
-          notifCount++
+          // Dedupe (4-sep-2026): no mandar 2 avisos el mismo día si 2
+          // maestros distintos marcan al mismo estudiante ausente/con
+          // retraso, cada uno en su propia fila. Se compara contra el
+          // rango del día REAL (Bolivia, ahora), no contra `base`/`next`
+          // (la fecha de la asistencia que se está guardando) — createdAt
+          // de Notification es un timestamp real de cuándo se mandó, no de
+          // qué fecha de asistencia trata; usar base/next ahí no encuentra
+          // nada si se corrige un día pasado (bug encontrado en la prueba
+          // real de esta noche, antes de desplegar).
+          const { start: notifStart, next: notifNext } = todayDateRangeBolivia(new Date())
+          const alreadyNotified = await studentAttendanceRepository.findNotificationSentTodayForParent(parentLink.parent.id, cursoLabel, notifStart, notifNext)
+          if (!alreadyNotified) {
+            await studentAttendanceRepository.createNotification({ title, message, sentById: userId!, parentId: parentLink.parent.id })
+            notifCount++
+          }
         }
       }
     }
@@ -342,7 +346,14 @@ export const studentAttendanceService = {
     const cursoLabel = `${GRADES[course.grade]} "${course.parallel}"`
 
     const assignments = await studentAttendanceRepository.findAssignmentsForCourse(courseId, activeYear.id)
-    const existing = await studentAttendanceRepository.findAttendancesForCourseDate(courseId, activeYear.id, base, next)
+    // Desde el 4-sep-2026, "quién falta" se mira POR MAESTRO: un maestro
+    // real solo ve/cierra su propia parte (antes, si otro maestro ya había
+    // completado el curso entero, éste no podía ni cerrar la suya — bug
+    // encontrado en el diagnóstico de arquitectura). DIRECTOR/SECRETARY
+    // siguen viendo el agregado del curso completo, que es su rol.
+    const existing = await studentAttendanceRepository.findAttendancesForCourseDate(
+      courseId, activeYear.id, base, next, isExemptRole ? undefined : teacherId,
+    )
 
     const registeredIds = new Set(existing.map((e) => e.studentId))
     const sinRegistro = assignments.filter((a) => !registeredIds.has(a.student.id))
@@ -358,12 +369,18 @@ export const studentAttendanceService = {
 
       const parentLink = await studentAttendanceRepository.findTutorLink(a.student.id)
       if (parentLink?.parent) {
-        await studentAttendanceRepository.createNotification({
-          title: `❌ Inasistencia — ${cursoLabel}`,
-          message: `Su hijo/a estuvo ausente el ${dateStr} en el curso ${cursoLabel}. Maestro: ${actorLabel}.`,
-          sentById: userId!, parentId: parentLink.parent.id,
-        })
-        notifCount++
+        // Mismo motivo que en saveAttendance: dedupe contra el día REAL, no
+        // contra la fecha de la asistencia que se está cerrando.
+        const { start: notifStart, next: notifNext } = todayDateRangeBolivia(new Date())
+        const alreadyNotified = await studentAttendanceRepository.findNotificationSentTodayForParent(parentLink.parent.id, cursoLabel, notifStart, notifNext)
+        if (!alreadyNotified) {
+          await studentAttendanceRepository.createNotification({
+            title: `❌ Inasistencia — ${cursoLabel}`,
+            message: `Su hijo/a estuvo ausente el ${dateStr} en el curso ${cursoLabel}. Maestro: ${actorLabel}.`,
+            sentById: userId!, parentId: parentLink.parent.id,
+          })
+          notifCount++
+        }
       }
     }
 
