@@ -191,6 +191,21 @@ export const studentAttendanceRepository = {
     })
   },
 
+  // Todas las licencias de UN estudiante que se superponen con el rango
+  // pedido (usado por getStudentHistory, panel Padres) — sin rango (historial
+  // completo sin filtro de mes), trae todas las licencias del estudiante sin
+  // acotar, son pocas filas por estudiante en la práctica.
+  findLicensesForStudent(studentId: number, start?: Date, end?: Date) {
+    return prisma.studentLicense.findMany({
+      where: {
+        studentId,
+        ...(start ? { endDate: { gte: start } } : {}),
+        ...(end ? { startDate: { lt: end } } : {}),
+      },
+      select: { startDate: true, endDate: true, reason: true },
+    })
+  },
+
   // StudentAttendance.teacherId es obligatorio, pero DIRECTOR/SECRETARY (que
   // pueden corregir asistencia sin ventana horaria) no tienen su propio
   // Teacher — se le atribuye al tutor del curso, o si no tiene, a cualquier

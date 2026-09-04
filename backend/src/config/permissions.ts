@@ -75,6 +75,7 @@ export enum Permission {
   // Asistencia
   ATTENDANCE_CREATE       = 'attendance:create',
   ATTENDANCE_VIEW         = 'attendance:view',
+  ATTENDANCE_VIEW_OWN     = 'attendance:view:own',   // Padre ve la asistencia de sus propios hijos
   TEACHER_ATTENDANCE_MANAGE = 'teacher-attendance:manage', // Corregir/marcar ausente asistencia de maestros (admin)
 
   // Horarios
@@ -367,6 +368,7 @@ export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
   Permission.STUDENT_VIEW_OWN,
   Permission.GRADE_VIEW_OWN,
   Permission.SCHEDULE_VIEW_OWN,
+  Permission.ATTENDANCE_VIEW_OWN,
   // Asignar/remover delegados de curso
   Permission.DELEGATE_MANAGE,
   Permission.ACADEMIC_VIEW,
@@ -464,6 +466,7 @@ export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
     Permission.COURSE_VIEW_OWN,     // Solo el/los curso(s) de sus hijos (plan de materias/maestros)
     Permission.SCHEDULE_VIEW_OWN,   // Solo horario de sus hijos
     Permission.CHARGE_VIEW_OWN,     // Solo sus propios cobros
+    Permission.ATTENDANCE_VIEW_OWN, // Solo asistencia de sus hijos
     Permission.NOTIFICATION_VIEW,
   ],
 

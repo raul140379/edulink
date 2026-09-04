@@ -4,6 +4,7 @@ import { HttpError } from '../utils/http-error'
 import { getTenantContext } from '../lib/tenant-context'
 import { nowMinutesBolivia, todayDayOfWeekBolivia, todayDateRangeBolivia, todayDateStrBolivia, parseTimeToMinutes } from '../utils/bolivia-time'
 import { groupIntoBlocks, AttendanceBlockRange } from '../utils/attendance-blocks'
+import { collapseToDailyStatus } from '../utils/attendance-daily-status'
 import { SaveAttendanceInput, CloseAttendanceInput } from '../schemas/studentAttendance.schema'
 import { gamificationService } from './gamification.service'
 
@@ -374,27 +375,55 @@ export const studentAttendanceService = {
     return assignments.map((a) => a.course)
   },
 
+  // Historial día por día de UN estudiante (padre-app, 5-sep-2026) — colapsa
+  // las filas por bloque/materia a UN estado por día (mismo criterio ya
+  // usado por gamificación: presente en cualquier bloque del día cuenta) y
+  // le aplica el overlay de licencia (Opción A: tapa el día sin importar si
+  // ya había o no una fila real de abajo, sin borrar/tocar esa fila).
   async getStudentHistory(studentId: number, courseId?: number, month?: string) {
     const activeYear = await studentAttendanceRepository.findActiveAcademicYear()
     if (!activeYear) throw new HttpError(400, 'No hay gestión activa')
 
+    // Mismo anclaje TZ-independiente que dayRange — un mes se ancla por sus
+    // componentes literales, no por la hora local del proceso.
     let dateFilter: { gte: Date; lt: Date } | undefined
     if (month) {
       const [year, m] = month.split('-').map(Number)
-      dateFilter = { gte: new Date(year, m - 1, 1), lt: new Date(year, m, 1) }
+      dateFilter = { gte: new Date(Date.UTC(year, m - 1, 1)), lt: new Date(Date.UTC(year, m, 1)) }
     }
 
     const attendances = await studentAttendanceRepository.findStudentHistory(studentId, activeYear.id, courseId, dateFilter)
+    const dailyMap = collapseToDailyStatus(attendances)
 
-    const summary = {
-      total:     attendances.length,
-      presentes: attendances.filter((a) => a.status === 'PRESENTE').length,
-      ausentes:  attendances.filter((a) => a.status === 'AUSENTE').length,
-      retrasos:  attendances.filter((a) => a.status === 'RETRASO').length,
-      licencias: attendances.filter((a) => a.status === 'LICENCIA').length,
+    const licenses = await studentAttendanceRepository.findLicensesForStudent(studentId, dateFilter?.gte, dateFilter?.lt)
+    const licenseReasonByDate = new Map<string, string | null>()
+    for (const lic of licenses) {
+      const start = dateFilter && lic.startDate < dateFilter.gte ? dateFilter.gte : lic.startDate
+      const endExclusive = dateFilter && lic.endDate >= dateFilter.lt ? dateFilter.lt : new Date(lic.endDate.getTime() + 86400000)
+      for (let d = new Date(start); d.getTime() < endExclusive.getTime(); d.setUTCDate(d.getUTCDate() + 1)) {
+        const key = d.toISOString().split('T')[0]
+        dailyMap.set(key, 'LICENCIA')
+        licenseReasonByDate.set(key, lic.reason)
+      }
     }
 
-    return { attendances, summary }
+    const days = [...dailyMap.entries()]
+      .map(([date, status]) => ({
+        date, status,
+        onLicense: status === 'LICENCIA',
+        note: status === 'LICENCIA' ? (licenseReasonByDate.get(date) || 'Licencia') : null,
+      }))
+      .sort((a, b) => b.date.localeCompare(a.date))
+
+    const summary = {
+      total:     days.length,
+      presentes: days.filter((d) => d.status === 'PRESENTE').length,
+      ausentes:  days.filter((d) => d.status === 'AUSENTE').length,
+      retrasos:  days.filter((d) => d.status === 'RETRASO').length,
+      licencias: days.filter((d) => d.status === 'LICENCIA').length,
+    }
+
+    return { days, summary }
   },
 
   async closeAttendance(userId: number | undefined, courseId: number, input: CloseAttendanceInput) {

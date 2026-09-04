@@ -1,6 +1,8 @@
 import { Response } from 'express'
 import { AuthRequest } from '../middlewares/auth.middleware'
 import { handleControllerError } from '../utils/http-error'
+import { hasPermission, Permission } from '../config/permissions'
+import { assertOwnStudent } from '../utils/ownership-guards'
 import { studentAttendanceService } from '../services/studentAttendance.service'
 
 // ─────────────────────────────────────────────
@@ -54,9 +56,13 @@ export const getMyCourses = async (req: AuthRequest, res: Response): Promise<voi
 // ─────────────────────────────────────────────
 export const getStudentHistory = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
+    const studentId = parseInt(req.params.studentId)
+    if (!hasPermission(req.userRole!, Permission.ATTENDANCE_VIEW)) {
+      await assertOwnStudent(req, studentId)
+    }
     const { courseId, month } = req.query
     const result = await studentAttendanceService.getStudentHistory(
-      parseInt(req.params.studentId), courseId ? parseInt(courseId as string) : undefined, month as string | undefined
+      studentId, courseId ? parseInt(courseId as string) : undefined, month as string | undefined
     )
     res.json(result)
   } catch (error) {
