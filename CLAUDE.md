@@ -217,7 +217,7 @@ Cada módulo sigue: `routes.ts` → middlewares → `<modulo>.controller.ts` →
 | **Matrícula / Académico** | ✅ Completo | Cursos por nivel/grado/paralelo/turno, `StudentAcademicAssignment` (matrícula por año), materias por Campo del Saber, `TeacherSubjectCourse` |
 | **Horarios** | ✅ Completo | Generación de horario con algoritmo de dos fases (Fisher-Yates shuffle, base 60–90%), asignación de aulas, `SchedulePlan` para prototipos A/B antes de promover a horario oficial |
 | **Evaluación (Notas/Tareas)** | ✅ Completo | 4 dimensiones (Ser/Saber/Hacer/Decidir) por materia/curso/trimestre, `Task`/`TaskSubmission` |
-| **Asistencia (académica)** | ✅ Completo | Asistencia de estudiantes y docentes por día/curso |
+| **Asistencia (académica)** | 🟡 Funcional, con deuda de arquitectura conocida | Asistencia de estudiantes y docentes por día/curso. **Un curso solo admite UN registro compartido por día** (no por maestro/período) — mitigación urgente contra pisado silencioso ya desplegada, rediseño completo por bloques de períodos ya diseñado y aprobado, pendiente de construir (ver Pendientes / Roadmap) |
 | **Portero / Control de acceso** | ✅ Completo | QR (`html5-qrcode`), lector USB, códigos formato `INITIALS-NNNN`, `GateRecord`, `BiometricTemplate`, banner de cuenta regresiva a cierre de portal |
 | **Panel Docente** | ✅ Completo + rediseño motivacional | Notas, asistencia, tareas, horario; rediseño de UX (clases de hoy, trabajos pendientes de revisar) — **no es gamificación real** (sin XP/niveles/rachas), a diferencia del panel Estudiante |
 | **Panel Estudiante** | ✅ Completo + gamificación real | Materias, notas, tareas, horario, comunicados; XP/nivel/racha/insignias confirmado real (`_gamification/`, `GamificationContext`), mensajes en lenguaje juvenil urbano boliviano |
@@ -266,6 +266,26 @@ Comunicación:               Notification (puntual, a un padre) · Meeting (conv
 
 ## Pendientes / Roadmap (priorizado, agosto 2026)
 
+### 🔖 Próximos pasos (consolidado 4-sep-2026, madrugada — para retomar en frío)
+
+**URGENTE-ALTA (no bloquea el uso de mañana — la mitigación + fix de fondo de esta noche ya cerraron el riesgo real):**
+- Diseño completo por bloques de períodos (ya aprobado) — construir lo que quedó pendiente de esta noche: reporte diario con detalle/selector por bloque, PDF con selector de bloque, y el caso de un mismo maestro con períodos NO consecutivos el mismo curso/día (ej. 1°,2° y luego 5°,6° — hoy sigue siendo una sola fila para ambos tramos, no dos). Detalle completo, con qué partes ya están resueltas, en "Prioridad 1.5" más abajo.
+
+**MEDIA:**
+- Sincronización automática offline en `maestro-app` — cola local (IndexedDB) + reenvío automático al volver la señal, sin que el maestro tenga que darse cuenta y reintentar a mano. Detalle en el ítem 5.1.
+- Conectar Calificaciones/Reportes/Notificaciones del panel Admin — backend ya listo, falta solo el frontend (hallazgo de auditoría, sin más detalle registrado todavía).
+- Pantalla admin para que el Director corrija asistencia vencida (fuera de la ventana horaria normal del maestro).
+- Botón "Hoy no hay clases" de un clic, para suspensión de emergencia (feriado no planificado, corte de agua/luz, etc.).
+- Funciones 3 y 4 del módulo Maestro: dar práctico/calificar, programar evaluación/calificar.
+- Familia de apps livianas para Padre, Portería, Junta Escolar, Estudiante — mismo patrón que `maestro-app` (login con JWT real, gate de rol, instalable sin tienda de apps). Orden y detalle ya definidos en "Prioridad 5" más abajo — no empezar ninguna sin que el usuario lo pida explícitamente.
+
+**BAJA / SIN APURO:**
+- Caso de Maitane Hurtado Herrera (2 tutores activos, invariante roto — solo en local, producción sana). Detalle en el ítem 17.3.
+- Definir el dominio de negocio de Tesorería a nivel Núcleo/Distrito antes de destrabar esa UI. Detalle en el ítem 18.
+- Revisar el checklist completo de `docs/reporte-pre-produccion-tesoreria-2025.md`. Detalle en el ítem 21.
+- PgBouncer (evaluar cuando hagan falta más de ~8 instancias del backend) y licencia comercial propia de EduLink (archivo `LICENSE`, postura sobre copyleft débil transitivo). Detalle en los ítems 26 y 27.
+- Limitación conocida del export Sub-14 de Juegos Estudiantiles: apellidos compuestos de 3+ palabras no se separan bien en Apellido Paterno/Materno (se infiere por la primera palabra, no exacto para esos casos) — documentada en el commit del módulo, no oculta, sin corregir todavía.
+
 ### 🔴 Prioridad 1 — Seguridad de datos ✅ COMPLETA (10-ago-2026)
 
 **Resumen de la sesión de seguridad (7 commits, 21 hallazgos corregidos y probados contra API real):**
@@ -294,6 +314,43 @@ Los 7 puntos originales del roadmap de seguridad quedan cerrados. Próxima prior
     - Aclaración importante resuelta en el camino: existe un caso legítimo real (Junta de Distrito/Núcleo convocando una asamblea de audiencia amplia) que **no se ve afectado** por estos fixes — se confirmó que el sistema no tiene hoy ninguna vía funcional para eso (`Meeting.courseId` obligatorio, `Convocatoria.schoolId` obligatorio + permiso solo de `JUNTA_ESCOLAR`, `Comunicado` sin filtro de audiencia por rol) — anotado como funcionalidad futura, no bug (ver "Fuera de alcance por ahora").
 7. ✅ **Junta/Delegado sin escritura académica — CERRADO 10-ago.** Confirmado correcto en los 6 módulos revisados (Student CRUD/matrícula, Nota, Task, StudentAcademicAssignment, AcademicYear/Trimestre) — ninguno acepta escritura desde `JUNTA_ESCOLAR`/`DELEGATE`. `STUDENT_TOGGLE_STATUS` de `JUNTA_ESCOLAR` es angosto a propósito (solo activo/retirado, ya documentado).
 7.1. 🔴 **Hallazgo colateral, más grave — CERRADO 10-ago:** `POST /api/students/import` e `/import-tutors` no tenían **ningún** permiso — accesibles para cualquier usuario logueado (`PARENT`, `STUDENT`, cualquiera), no específico de Junta/Delegado. Permitía crear estudiantes/asignar tutores en bloque vía Excel sin ningún control de rol. Corregido: `requirePermission(Permission.STUDENT_CREATE)` agregado a ambas rutas, probado (403 para rol sin permiso, 200 sin cambio para rol con `STUDENT_CREATE`).
+
+### 🟠 Prioridad 1.5 — Asistencia: rediseño por bloques de períodos (mitigación + fix de fondo cerrados 4-sep-2026; diseño completo por bloques aprobado, parcialmente construido)
+
+**Hallazgo real (4-sep-2026):** `StudentAttendance` solo permite UN registro por estudiante+curso+día (`@@unique([studentId, courseId, date])`) — pero un curso típico tiene 10-12 maestros distintos (uno por materia, horarios sin cruzarse entre sí). Confirmado empíricamente (prueba real, no teórica) que si un segundo maestro guarda después de otro, pisa en silencio lo ya guardado — sin error, sin fusión, y sin `AuditLog` sobre esta tabla, así que no hay forma de saber cuánto de esto ya pasó antes de detectarlo. Origen del hallazgo: Oscar Villagómez exportó el PDF de asistencia de un curso compartido con Aide Menacho y apareció el nombre de ella en la firma — investigado a fondo, no era un bug de "el código elige mal entre varios" (`attendances[0]` sin `ORDER BY`, sí corregido de paso) sino el síntoma real de que el modelo no soporta múltiples maestros por curso/día en absoluto.
+
+**Números reales del colegio (medidos 4-sep-2026, solo lectura, sin tocar nada):**
+- **18 de 18 cursos (100%) tienen múltiples maestros asignados** (10 a 12 cada uno) — no es un caso raro como 6°C, es la estructura normal de todos los cursos.
+- El uso real a escala completa (los 18 cursos el mismo día) **recién arrancó el 3-sep-2026** (564 filas, 18 cursos, 11 maestros distintos ese día — antes de eso solo 3 fechas sueltas de prueba: 2 aisladas en junio + un arranque parcial de 2 cursos el 1-sep). Sin evidencia de colisión real ya ocurrida en los datos (cada curso/día tiene un solo `teacherId` homogéneo en todas sus filas).
+- **Lectura honesta:** no es una emergencia de esta semana (la mitigación ya cierra el riesgo de pérdida de datos), pero con el 100% de los cursos estructuralmente expuestos y el uso recién empezando a escalar a diario, esto se va a volver fricción rutinaria pronto — no dejarlo en el backlog indefinidamente.
+
+**Paso 1 — mitigación urgente (4-sep-2026, noche, commit `58f80d2`), luego reemplazada por el paso 2:** `saveAttendance` rechazaba con `409` (nombrando al maestro que ya registró) si otro maestro intentaba guardar sobre el registro de un tercero, salvo `force: true` tras confirmación en pantalla. Probada contra producción real (Oscar/Aide, datos descartables) — funcionó, pero solo avisaba antes de pisar, no resolvía el problema de fondo.
+
+**Paso 2 — FIX DE FONDO, ya construido y desplegado (4-sep-2026, madrugada, commit `edbd0e3`):** cambio de plan sobre la marcha — en vez de esperar al diseño completo por bloques, se acotó un alcance mínimo que resuelve el problema real (Oscar y Aide pisándose) sin todavía cubrir el modelo de bloques completo. `StudentAttendance.@@unique` pasa a `[studentId, courseId, date, teacherId]` — cada maestro tiene su propia fila, nunca compite por la de otro. Con esto, **el candado 409 del paso 1 ya no hace falta y se sacó del código** (ya no puede haber conflicto real). Cambios acompañantes, todos necesarios para que nada se rompiera con el nuevo modelo (varias filas posibles por estudiante/día en vez de una sola):
+- `getAttendanceByCourse`: cada maestro real ve/edita solo sus propias filas; DIRECTOR/SECRETARY siguen viendo el agregado del curso.
+- `closeAttendance`: "quién falta" pasa a mirarse por maestro — de paso arregla que uno no pudiera cerrar su propia parte si otro ya había completado el curso entero.
+- Notificaciones a padres: deduplicadas contra el día real (no la fecha de la asistencia) — bug real encontrado y corregido en la primera prueba de esa noche antes de desplegar.
+- Reporte diario del Director: deduplicado por estudiante antes de contar (si no, un curso con 2 maestros mostraba el doble de presentes/ausentes).
+- Gamificación (`hasPerfectAttendanceThisMonth`, `recalculateStreak`, `getWeekCalendar`, `getAttendancePercentThisTrimester`): las 4 asumían 1 fila = 1 día y se rompían de verdad con el modelo nuevo — corregidas con un helper compartido (`collapseToDailyStatus`) que aplica la regla ya confirmada (presente en cualquier fila del día cuenta).
+
+Probado de punta a punta contra producción real con Oscar y Aide (los mismos del caso original): las 2 filas coexisten intactas, cada pantalla de maestro muestra solo lo propio, XP una sola vez, notificación una sola vez, reporte del Director sin duplicar. Un incidente real en el camino (500 por una instancia vieja del contenedor todavía sirviendo tráfico durante el rollover del deploy, con el Prisma Client generado contra el schema anterior) se resolvió solo al reintentar — no era un bug del código. Clon sincronizado (3 migraciones pendientes aplicadas, verificado índice por índice).
+
+**Lo que el paso 2 NO cubre todavía** (queda para el diseño completo por bloques, ver "Próximos pasos" al principio de este documento — URGENTE-ALTA, no bloquea el uso diario pero no debe quedar indefinido): un mismo maestro con períodos NO consecutivos el mismo curso/día (ej. 1°,2° y luego 5°,6°) sigue siendo una sola fila para ambos tramos, no dos — el modelo por `teacherId` no distingue eso. Tampoco están construidos el reporte diario con detalle/selector por bloque ni el PDF con selector de bloque (ambos siguen funcionando en modo simple/agregado, sin romperse, tal como se pidió).
+
+**Diseño completo por bloques, aprobado, parcialmente construido — retomar con calma cuando corresponda:**
+
+Regla de agrupación confirmada: si un maestro tiene varios períodos SEGUIDOS (números de período consecutivos — un recreo entre período 2 y 3 no rompe el bloque, se interpreta por número, no por reloj real) con el mismo curso el mismo día, es UNA sola asistencia para todo el bloque. Períodos no consecutivos del mismo maestro/curso/día = bloques separados. Un solo período = bloque de tamaño 1, mismo algoritmo, sin caso especial.
+
+1. ⏳ **Algoritmo de bloques** (pendiente — el fix de esta noche por `teacherId` no lo necesitó): traer `Schedule` de (teacherId vía `teacherSubjectCourse`, courseId, dayOfWeek), ordenar por `period`, cortar donde `period[i+1] != period[i]+1`. Cada corte = un bloque (`periodStart`/`periodEnd`/`startTime`/`endTime`). Es lo único que falta para cubrir el caso de un mismo maestro con períodos NO consecutivos el mismo curso/día.
+2. ⏳ **Modelo de datos — Opción B aprobada, pendiente** (esta noche se usó la Opción A simplificada, solo `teacherId` en la clave, sin tabla nueva): tabla `AttendanceBlock` (`courseId, teacherId, date, periodStart, periodEnd, startTime, endTime, schoolId`) + `StudentAttendance.blockId` FK nullable (`NULL` = registro histórico o del fix de esta noche, sin bloque — el pasado no se reconstruye, ya confirmado). El bloque se resuelve y se **congela en el momento de guardar** con el horario vigente ese día — nunca se recalcula en vivo si el horario se edita después.
+3. ⏳ **Reporte diario — pendiente, hoy sigue en modo simple/agregado** (deduplicado, no roto, pero sin desglose por bloque): "cumplimiento" pasaría de ✓/✗ a fracción ("3 de 5 bloques") — bloques esperados (derivados del `Schedule` completo agrupado) vs bloques reales guardados. Pantalla de detalle: selector de bloque dentro del curso — **maqueta a revisar junto con Raul antes de construir, no armar a ciegas**.
+4. ⏳ **PDF con firma — pendiente, hoy exporta simple** (el bloque actual del maestro que exporta, sin selector): un PDF por bloque — un maestro con 3 períodos seguidos tendría una sola firma para todo el bloque. Encabezado agregaría el rango ("Períodos 3°-5° · 09:35-11:30").
+5. ✅ **Ventana de horario del Maestro** — ya estaba bien antes de esta noche (confirmado en el diagnóstico: no junta de más huecos entre tramos no seguidos) y no necesitó cambios; el guardado/lectura sí quedó resuelto esta noche, aunque por `teacherId` y no por bloque real.
+6. ✅ **Gamificación — RESUELTO esta noche.** XP/racha 1 vez por día, alcanza con PRESENTE en al menos una fila del día (`collapseToDailyStatus`).
+7. ✅ **Notificación a padres — RESUELTO esta noche.** Máximo 1 por día, deduplicada contra el día real.
+8. ✅ **`closeAttendance` — RESUELTO esta noche**, scopeado por maestro (no por bloque real, pero ya no se bloquea entre maestros distintos del mismo curso).
+
+**Con esto, de los 8 puntos originales solo quedan 4 pendientes de fondo: el algoritmo de agrupación (1), la tabla `AttendanceBlock` real (2), y las 2 piezas de UI (3 reporte, 4 PDF) — los puntos 5-8 ya están resueltos en la práctica, aunque no exactamente con el modelo de bloques todavía.**
 
 ### 🟡 Prioridad 2 — Funcionalidad de Tesorería en curso
 8. ✅ Cerrado sin acción (10-ago): el "Aporte BTH 2026" mal asignado no existía en la base — Raul ya lo había eliminado manualmente antes de esta verificación. Confirmado: no existe ningún `Charge`/`MandatoryCharge` así en el sistema; lo único con "BTH" en 2026 es `Deuda Anterior — Aporte BTH 2025` (84 registros, traslado legítimo del cierre económico), sin relación con este pendiente. No confundir con "Cuota Inicial de Inscripción" 2026 (425 cargos reales, 145 pagados) — esos NO se tocan.
