@@ -50,6 +50,16 @@ export const getDailyAttendanceCourseDetail = async (req: AuthRequest, res: Resp
   }
 }
 
+// GET /api/reports/attendance-weekly/:courseId
+export const getWeeklyAttendanceMatrix = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const matrix = await reportService.getWeeklyAttendanceMatrix(parseInt(req.params.courseId, 10), req.query.date as string | undefined)
+    res.json(matrix)
+  } catch (error) {
+    handleControllerError(res, error)
+  }
+}
+
 // GET /api/reports/treasury
 export const getTreasuryReport = async (req: AuthRequest, res: Response): Promise<void> => {
   try {

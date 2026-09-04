@@ -14,15 +14,16 @@ export const studentAttendanceRepository = {
     })
   },
 
-  // teacherId opcional (4-sep-2026): usado por closeAttendance para saber
-  // qué estudiantes le faltan a ESTE maestro específico, no al curso entero
-  // — cada maestro tiene su propio registro desde que teacherId entró a la
-  // clave única. DIRECTOR/SECRETARY (sin teacherId propio real) siguen
-  // viendo el agregado de todo el curso, a propósito (su rol es corregir el
-  // curso completo, no un maestro puntual).
-  findAttendancesForCourseDate(courseId: number, academicYearId: number, start: Date, next: Date, teacherId?: number) {
+  // blockId opcional (5-sep-2026, rediseño por bloques): usado por
+  // closeAttendance para saber qué estudiantes le faltan a ESTE bloque
+  // específico — un maestro puede tener 2 bloques no seguidos el mismo
+  // curso/día (ej. 1°,2° y luego 5°,6°), cada uno con su propio estado de
+  // "completo". DIRECTOR/SECRETARY (camino de corrección administrativa,
+  // sin bloque real propio) siguen viendo el agregado de todo el curso, a
+  // propósito (su rol es corregir el curso completo, no un bloque puntual).
+  findAttendancesForCourseDate(courseId: number, academicYearId: number, start: Date, next: Date, blockId?: number) {
     return prisma.studentAttendance.findMany({
-      where: { courseId, academicYearId, date: { gte: start, lt: next }, ...(teacherId ? { teacherId } : {}) },
+      where: { courseId, academicYearId, date: { gte: start, lt: next }, ...(blockId ? { blockId } : {}) },
     })
   },
 
@@ -31,13 +32,12 @@ export const studentAttendanceRepository = {
   // Director.
   //
   // orderBy updatedAt desc: un curso puede tener muchos maestros asignados
-  // (uno por materia). Desde el 4-sep-2026 cada maestro tiene su PROPIA fila
-  // por estudiante (teacherId en la clave única) — así que puede haber
-  // varias filas reales por estudiante/curso/día, una por cada maestro que
-  // registró. Este orden se usa para las vistas agregadas (DIRECTOR/
-  // SECRETARY, reporte) que necesitan "un solo estado representativo": se
-  // toma la fila más reciente por estudiante (primera que aparece en este
-  // orden), nunca una al azar.
+  // (uno por materia), y desde el 5-sep-2026 cada maestro puede tener
+  // además varios BLOQUES no seguidos el mismo día — así que puede haber
+  // varias filas reales por estudiante/curso/día. Este orden se usa para
+  // las vistas agregadas (DIRECTOR/SECRETARY, reporte) que necesitan "un
+  // solo estado representativo": se toma la fila más reciente por
+  // estudiante (primera que aparece en este orden), nunca una al azar.
   findAttendancesForCourseDateWithTeacher(courseId: number, academicYearId: number, start: Date, next: Date) {
     return prisma.studentAttendance.findMany({
       where: { courseId, academicYearId, date: { gte: start, lt: next } },
@@ -54,11 +54,9 @@ export const studentAttendanceRepository = {
     return prisma.course.findUnique({ where: { id } })
   },
 
-  // Reemplaza al viejo findOneForDay (4-sep-2026): la pregunta relevante ya
-  // no es "existe la fila de ESTE maestro" (el upsert ya lo resuelve solo,
-  // con la clave única nueva) sino "¿algún maestro YA registró a este
-  // estudiante presente/con retraso HOY, en cualquiera de sus propias
-  // filas?" — para no dar XP dos veces el mismo día si 2 maestros distintos
+  // "¿algún maestro YA registró a este estudiante presente/con retraso HOY,
+  // en cualquiera de sus propias filas (cualquier bloque)?" — para no dar
+  // XP dos veces el mismo día si 2 maestros (o 2 bloques del mismo maestro)
   // registran al mismo estudiante presente cada uno por su lado.
   findAnyPresentOrLateForDay(studentId: number, courseId: number, date: Date) {
     return prisma.studentAttendance.findFirst({
@@ -66,16 +64,17 @@ export const studentAttendanceRepository = {
     })
   },
 
-  upsertAttendance(data: { studentId: number; courseId: number; teacherId: number; academicYearId: number; date: Date; status: string; note: string | null }) {
+  // 5-sep-2026: la clave del upsert pasa a ser [studentId, blockId] — un
+  // bloque ya identifica sin ambigüedad curso+fecha+maestro+rango de
+  // períodos, así que alcanza con blockId para saber si esta fila ya existe.
+  upsertAttendance(data: { studentId: number; courseId: number; teacherId: number; blockId: number; academicYearId: number; date: Date; status: string; note: string | null }) {
     return prisma.studentAttendance.upsert({
       where: {
-        studentId_courseId_date_teacherId: {
-          studentId: data.studentId, courseId: data.courseId, date: data.date, teacherId: data.teacherId,
-        },
+        studentId_blockId: { studentId: data.studentId, blockId: data.blockId },
       },
       update: { status: data.status as any, note: data.note },
       create: {
-        studentId: data.studentId, courseId: data.courseId, teacherId: data.teacherId,
+        studentId: data.studentId, courseId: data.courseId, teacherId: data.teacherId, blockId: data.blockId,
         academicYearId: data.academicYearId, date: data.date, status: data.status as any, note: data.note,
         schoolId: getTenantContext()?.schoolId ?? 0,
       },
@@ -90,14 +89,13 @@ export const studentAttendanceRepository = {
     return prisma.notification.create({ data: { title: data.title, message: data.message, type: 'ACADEMICA', sentById: data.sentById, parentId: data.parentId, schoolId: getTenantContext()?.schoolId ?? 0 } })
   },
 
-  // Deduplicación de notificaciones (4-sep-2026): un estudiante puede tener
-  // varios maestros registrando su ausencia el mismo día (uno cada uno, en
-  // su propia fila) — sin esto, el padre recibiría una notificación por
-  // cada maestro. Se aproxima "mismo aviso" por padre + curso (vía el
-  // rótulo del curso en el título) + rango del día — Notification no guarda
-  // studentId propio, así que en el caso rarísimo de mellizos en el MISMO
-  // curso, el segundo aviso real se suprimiría por error; aceptado como
-  // limitación menor conocida, no se resuelve esta noche.
+  // Deduplicación de notificaciones: un estudiante puede tener varios
+  // maestros (o varios bloques del mismo maestro) registrando su ausencia
+  // el mismo día — sin esto, el padre recibiría un aviso por cada uno. Se
+  // aproxima "mismo aviso" por padre + curso (vía el rótulo del curso en el
+  // título) + rango del día — Notification no guarda studentId propio, así
+  // que en el caso rarísimo de mellizos en el MISMO curso, el segundo aviso
+  // real se suprimiría por error; aceptado como limitación menor conocida.
   findNotificationSentTodayForParent(parentId: number, cursoLabel: string, start: Date, next: Date) {
     return prisma.notification.findFirst({
       where: { parentId, title: { contains: cursoLabel }, createdAt: { gte: start, lt: next } },
@@ -115,20 +113,81 @@ export const studentAttendanceRepository = {
     })
   },
 
-  // Períodos que ESTE maestro tiene hoy para ESTE curso — la ventana de
-  // asistencia (ver studentAttendance.service.ts) es la unión de [inicio-5,
-  // fin+10] de todos ellos, no un horario genérico del curso (la asistencia
-  // es una vez por curso por día, cualquier maestro asignado puede tomarla).
-  // Feriado de HOY (gestión activa) — si existe, la ventana ni siquiera mira
-  // los períodos del maestro (ver resolveAttendanceWindow).
   findHolidayForToday(academicYearId: number, start: Date, next: Date) {
     return prisma.holiday.findFirst({ where: { academicYearId, date: { gte: start, lt: next } }, select: { description: true } })
   },
 
-  findTeacherPeriodsForCourseToday(teacherId: number, courseId: number, dayOfWeek: number, academicYearId: number) {
-    return prisma.schedule.findMany({
+  // Períodos de ESTE maestro para ESTE curso en un día de la semana dado
+  // (no necesariamente "hoy" — se reutiliza tanto para la ventana en vivo
+  // como para resolver el bloque de una fecha cualquiera, pasada o futura).
+  // Incluye `period` y `subjectId` (vía teacherSubjectCourse) porque
+  // groupIntoBlocks los necesita: períodos consecutivos Y de la misma
+  // materia para cortar en bloques. Se aplana el resultado acá (en vez de
+  // devolver el objeto anidado) para que el llamador no tenga que conocer
+  // la forma de la relación.
+  async findTeacherPeriodsForCourseDay(teacherId: number, courseId: number, dayOfWeek: number, academicYearId: number) {
+    const rows = await prisma.schedule.findMany({
       where: { academicYearId, courseId, dayOfWeek, teacherSubjectCourse: { teacherId } },
-      select: { startTime: true, endTime: true },
+      select: { period: true, startTime: true, endTime: true, teacherSubjectCourse: { select: { subjectId: true } } },
+      orderBy: { period: 'asc' },
+    })
+    return rows.map((r) => ({ period: r.period, startTime: r.startTime, endTime: r.endTime, subjectId: r.teacherSubjectCourse.subjectId }))
+  },
+
+  // Solo LECTURA — a diferencia de findOrCreateAttendanceBlock, nunca crea
+  // nada. Usada por getAttendanceByCourse: si nadie guardó todavía nada en
+  // este bloque, simplemente no hay datos que mostrar (no hace falta
+  // materializar el bloque solo para mirarlo).
+  findAttendanceBlockByNaturalKey(courseId: number, date: Date, periodStart: number) {
+    return prisma.attendanceBlock.findUnique({
+      where: { courseId_date_periodStart: { courseId, date, periodStart } },
+    })
+  },
+
+  // Encuentra el bloque ya creado para (courseId, date, periodStart), o lo
+  // crea si es la primera vez que alguien guarda algo en él — el bloque se
+  // CONGELA en ese momento (periodEnd/horarios quedan fijos para siempre,
+  // `update: {}` es un no-op a propósito, ver comentario del modelo en
+  // schema.prisma). safety check: si el bloque YA existía con un teacherId
+  // distinto al resuelto ahora, es una inconsistencia real (un período de
+  // un curso/fecha solo puede pertenecer a un maestro) — se loguea pero no
+  // se corrige solo, para no enmascarar un bug de resolución.
+  async findOrCreateAttendanceBlock(data: {
+    courseId: number; teacherId: number; subjectId: number | null; date: Date
+    periodStart: number; periodEnd: number; startTime: string; endTime: string
+    academicYearId: number
+  }) {
+    const block = await prisma.attendanceBlock.upsert({
+      where: { courseId_date_periodStart: { courseId: data.courseId, date: data.date, periodStart: data.periodStart } },
+      update: {},
+      create: {
+        courseId: data.courseId, teacherId: data.teacherId, subjectId: data.subjectId, date: data.date,
+        periodStart: data.periodStart, periodEnd: data.periodEnd,
+        startTime: data.startTime, endTime: data.endTime,
+        academicYearId: data.academicYearId,
+        schoolId: getTenantContext()?.schoolId ?? 0,
+      },
+    })
+
+    if (block.teacherId !== data.teacherId) {
+      console.error(
+        `[AttendanceBlock] inconsistencia real: bloque ${block.id} (courseId=${data.courseId}, date=${data.date.toISOString()}, periodStart=${data.periodStart}) ya existía con teacherId=${block.teacherId}, pero se resolvió teacherId=${data.teacherId} — un período de un curso/fecha debería pertenecer a un solo maestro.`,
+      )
+    }
+
+    return block
+  },
+
+  // Licencias activas para un grupo de estudiantes en una fecha dada — UNA
+  // consulta en batch (nunca una por estudiante), reutilizada por
+  // getAttendanceByCourse, closeAttendance y los reportes/matriz. Opción A
+  // (aprobada): esto NUNCA escribe StudentAttendance, solo se consulta acá
+  // y el llamador decide "tapar" la vista con LICENCIA — el dato real de
+  // abajo (si el maestro ya había marcado algo) queda intacto.
+  findActiveLicensesForStudents(studentIds: number[], date: Date) {
+    return prisma.studentLicense.findMany({
+      where: { studentId: { in: studentIds }, startDate: { lte: date }, endDate: { gte: date } },
+      select: { studentId: true, reason: true },
     })
   },
 
@@ -137,7 +196,7 @@ export const studentAttendanceRepository = {
   // Teacher — se le atribuye al tutor del curso, o si no tiene, a cualquier
   // maestro asignado a ese curso. No es un reemplazo de auditoría real (ver
   // CLAUDE.md ítem 17.1) — es solo para satisfacer la FK obligatoria hasta
-  // que exista la pantalla admin real.
+  // que exista la pantalla admin real (ver Próximos pasos).
   async findAnyTeacherIdForCourse(courseId: number): Promise<number | null> {
     const course = await prisma.course.findUnique({ where: { id: courseId }, select: { tutor: { select: { teacherId: true } } } })
     if (course?.tutor?.teacherId) return course.tutor.teacherId

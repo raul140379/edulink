@@ -2,7 +2,8 @@ import { reportRepository } from '../repositories/report.repository'
 import { HttpError } from '../utils/http-error'
 import { chargeBalance, aggregateChargeBalances } from '../utils/charge-balance'
 import { Pagination, withTotal } from '../utils/pagination'
-import { dayRange } from './studentAttendance.service'
+import { dayRange, dayOfWeekFromBase } from './studentAttendance.service'
+import { groupIntoBlocks, AttendanceBlockRange } from '../utils/attendance-blocks'
 
 export const reportService = {
   getTeachersReport() {
@@ -135,6 +136,151 @@ export const reportService = {
         gender:    a.student.gender,
         status:    attendanceMap[a.student.id]?.status ?? null,
       })),
+    }
+  },
+
+  // Matriz semanal (5-sep-2026, aprobada — ver CLAUDE.md): 5 consultas
+  // totales sin importar cuántos bloques tenga la semana (horario completo +
+  // AttendanceBlock reales + roster + asistencia de esos bloques +
+  // licencias), nunca una por día/bloque. Sin PDF/frontend todavía — eso se
+  // diseña con maqueta aparte, como se acordó.
+  //
+  // Bloques ESPERADOS: se agrupan primero por (día, maestro) — groupIntoBlocks
+  // espera los períodos de UN SOLO maestro (mismo contrato que usa el
+  // guardado real en studentAttendance.service) — un día puede tener varios
+  // maestros distintos dando materias distintas al mismo curso.
+  async getWeeklyAttendanceMatrix(courseId: number, dateStr?: string) {
+    const activeYear = await reportRepository.findActiveAcademicYear()
+    if (!activeYear) throw new HttpError(404, 'No hay gestión académica activa')
+
+    const course = await reportRepository.findCourseById(courseId)
+    if (!course) throw new HttpError(404, 'Curso no encontrado')
+
+    // Semana = lunes..viernes que contiene la fecha pedida (hoy en Bolivia
+    // por defecto) — mismo anclaje TZ-independiente que dayRange.
+    const { base: refDate } = dayRange(dateStr)
+    const refDow = dayOfWeekFromBase(refDate)
+    const monday = new Date(refDate)
+    monday.setUTCDate(monday.getUTCDate() - (refDow - 1))
+    const saturday = new Date(monday)
+    saturday.setUTCDate(saturday.getUTCDate() + 5) // exclusivo: cubre lun..vie
+
+    const weekDates: Date[] = []
+    for (let i = 0; i < 5; i++) {
+      const d = new Date(monday)
+      d.setUTCDate(d.getUTCDate() + i)
+      weekDates.push(d)
+    }
+
+    const [schedule, realBlocks, assignments] = await Promise.all([
+      reportRepository.findScheduleForCourseWeek(courseId, activeYear.id),
+      reportRepository.findAttendanceBlocksForCourseWeek(courseId, monday, saturday),
+      reportRepository.findAssignmentsForCourse(courseId, activeYear.id),
+    ])
+
+    const studentIds = assignments.map((a) => a.student.id)
+    const [attendances, licenses] = await Promise.all([
+      reportRepository.findAttendancesForBlocks(realBlocks.map((b) => b.id)),
+      reportRepository.findLicensesOverlappingRange(studentIds, monday, saturday),
+    ])
+
+    type ExpectedBlock = AttendanceBlockRange & {
+      dayOfWeek: number; teacherId: number; teacherName: string; subjectName: string | null
+    }
+    const byDayTeacher = new Map<string, {
+      dayOfWeek: number; teacherId: number; teacherName: string
+      periods: { period: number; startTime: string; endTime: string; subjectId: number; subjectName: string }[]
+    }>()
+    for (const s of schedule) {
+      const key = `${s.dayOfWeek}-${s.teacherSubjectCourse.teacherId}`
+      if (!byDayTeacher.has(key)) {
+        byDayTeacher.set(key, {
+          dayOfWeek: s.dayOfWeek, teacherId: s.teacherSubjectCourse.teacherId,
+          teacherName: `${s.teacherSubjectCourse.teacher.firstName} ${s.teacherSubjectCourse.teacher.lastName}`,
+          periods: [],
+        })
+      }
+      byDayTeacher.get(key)!.periods.push({
+        period: s.period, startTime: s.startTime, endTime: s.endTime,
+        subjectId: s.teacherSubjectCourse.subjectId, subjectName: s.teacherSubjectCourse.subject.name,
+      })
+    }
+
+    const expectedBlocks: ExpectedBlock[] = []
+    for (const group of byDayTeacher.values()) {
+      for (const r of groupIntoBlocks(group.periods)) {
+        const subjectName = group.periods.find((p) => p.subjectId === r.subjectId)?.subjectName ?? null
+        expectedBlocks.push({ ...r, dayOfWeek: group.dayOfWeek, teacherId: group.teacherId, teacherName: group.teacherName, subjectName })
+      }
+    }
+
+    // Bloques REALES: lookup por (fecha exacta, periodStart) — misma clave
+    // natural que @@unique([courseId, date, periodStart]) de AttendanceBlock.
+    const realBlockByKey = new Map<string, (typeof realBlocks)[number]>()
+    for (const b of realBlocks) realBlockByKey.set(`${b.date.getTime()}-${b.periodStart}`, b)
+
+    const attendanceByBlock = new Map<number, Map<number, string>>()
+    for (const a of attendances) {
+      if (!attendanceByBlock.has(a.blockId!)) attendanceByBlock.set(a.blockId!, new Map())
+      attendanceByBlock.get(a.blockId!)!.set(a.studentId, a.status)
+    }
+
+    // Licencias por estudiante (Opción A: nunca se guardan en
+    // StudentAttendance — se evalúan acá, por día exacto, al armar cada
+    // celda, "tapando" la vista sin tocar el dato real de abajo).
+    const licensesByStudent = new Map<number, { startDate: Date; endDate: Date }[]>()
+    for (const lic of licenses) {
+      if (!licensesByStudent.has(lic.studentId)) licensesByStudent.set(lic.studentId, [])
+      licensesByStudent.get(lic.studentId)!.push({ startDate: lic.startDate, endDate: lic.endDate })
+    }
+    const isOnLicense = (studentId: number, date: Date) =>
+      (licensesByStudent.get(studentId) ?? []).some((r) => date.getTime() >= r.startDate.getTime() && date.getTime() <= r.endDate.getTime())
+
+    const roster = assignments.map((a) => a.student)
+
+    const days = weekDates.map((date, idx) => {
+      const dow = idx + 1
+      const blocksForDay = expectedBlocks
+        .filter((b) => b.dayOfWeek === dow)
+        .sort((a, b) => a.periodStart - b.periodStart)
+
+      return {
+        dayOfWeek: dow,
+        date: date.toISOString().split('T')[0],
+        blocks: blocksForDay.map((eb) => {
+          const realBlock = realBlockByKey.get(`${date.getTime()}-${eb.periodStart}`)
+          const attByStudent = realBlock ? attendanceByBlock.get(realBlock.id) : undefined
+
+          let presentes = 0, ausentes = 0, retrasos = 0, licencias = 0, sinRegistrar = 0
+          const students = roster.map((st) => {
+            const onLicense = isOnLicense(st.id, date)
+            const status = onLicense ? 'LICENCIA' : attByStudent?.get(st.id) ?? null
+            if (status === 'PRESENTE') presentes++
+            else if (status === 'AUSENTE') ausentes++
+            else if (status === 'RETRASO') retrasos++
+            else if (status === 'LICENCIA') licencias++
+            else sinRegistrar++
+            return { studentId: st.id, firstName: st.firstName, lastName: st.lastName, status, onLicense }
+          })
+
+          return {
+            periodStart: eb.periodStart, periodEnd: eb.periodEnd,
+            startTime: eb.startTime, endTime: eb.endTime,
+            teacherId: eb.teacherId, teacherName: eb.teacherName,
+            subjectId: eb.subjectId, subjectName: eb.subjectName,
+            registrado: !!realBlock,
+            students,
+            summary: { presentes, ausentes, retrasos, licencias, sinRegistrar },
+          }
+        }),
+      }
+    })
+
+    return {
+      course,
+      weekStart: days[0].date,
+      weekEnd: days[4].date,
+      days,
     }
   },
 

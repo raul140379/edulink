@@ -94,6 +94,8 @@ model School {
   gateRecords             GateRecord[]
   teacherAttendances      TeacherAttendance[]
   studentAttendances      StudentAttendance[]
+  attendanceBlocks        AttendanceBlock[]
+  studentLicenses         StudentLicense[]
   biometricTemplates      BiometricTemplate[]
   poaActas                PoaActa[]
   studentGamifications    StudentGamification[]
@@ -161,6 +163,7 @@ model User {
   refundsHandled          Refund[]
   auditLogsActed          AuditLog[]
   sportsParticipantsAdded SportsParticipant[]
+  licensesCreated         StudentLicense[]
 
   @@index([schoolId])
 }
@@ -249,6 +252,7 @@ model AcademicYear {
   schedulePlans       SchedulePlan[]
   assignments         StudentAcademicAssignment[]
   studentAttendances  StudentAttendance[]
+  attendanceBlocks    AttendanceBlock[]
   trimesters          Trimester[]
   parentKardexHistory ParentKardexHistory[]
   sportsParticipants  SportsParticipant[]
@@ -362,6 +366,7 @@ model Student {
   achievements         StudentAchievement[]
   trimesterBonuses     StudentTrimesterBonus[]
   sportsParticipations SportsParticipant[]
+  licenses             StudentLicense[]
 
   @@unique([ci, schoolId])
   @@unique([rude, schoolId])
@@ -408,6 +413,7 @@ model Teacher {
   gateRecords        GateRecord[]
   notas              Nota[]
   studentAttendances StudentAttendance[]
+  attendanceBlocks   AttendanceBlock[]
   tasks              Task[]
   tutorUser          User?                  @relation("TeacherTutor", fields: [tutorUserId], references: [id])
   user               User                   @relation("TeacherUser", fields: [userId], references: [id])
@@ -509,6 +515,7 @@ model Course {
   schedulePlans      SchedulePlan[]
   assignments        StudentAcademicAssignment[]
   studentAttendances StudentAttendance[]
+  attendanceBlocks   AttendanceBlock[]
   tasks              Task[]
   teacherSubjects    TeacherSubjectCourse[]
 
@@ -540,6 +547,7 @@ model Subject {
   tasks              Task[]
   teacherSpecialties TeacherSpecialty[]
   teacherSubjects    TeacherSubjectCourse[]
+  attendanceBlocks   AttendanceBlock[]
 
   @@unique([name, level, schoolId])
 }
@@ -1093,6 +1101,13 @@ model StudentAttendance {
   studentId      Int
   courseId       Int
   teacherId      Int
+  // Bloque real al que pertenece este registro (5-sep-2026 — rediseño
+  // completo). NULL = histórico previo al rediseño por bloques (4-sep,
+  // clave por teacherId) o previo a eso — el pasado nunca se reconstruye.
+  // Desde este cambio, TODO registro nuevo siempre resuelve un bloque real
+  // (incluido el camino DIRECTOR/SECRETARY, ver resolveBlockForCorrection en
+  // el servicio) — nunca se vuelve a escribir con blockId null.
+  blockId        Int?
   academicYearId Int
   schoolId       Int
   school         School                  @relation(fields: [schoolId], references: [id])
@@ -1100,25 +1115,102 @@ model StudentAttendance {
   course         Course                  @relation(fields: [courseId], references: [id])
   student        Student                 @relation(fields: [studentId], references: [id])
   teacher        Teacher                 @relation(fields: [teacherId], references: [id])
+  block          AttendanceBlock?        @relation(fields: [blockId], references: [id])
 
-  // teacherId entra a la clave única (4-sep-2026, urgente): un curso tiene
-  // muchos maestros (uno por materia, horarios sin cruzarse) — antes solo
-  // podía existir UN registro por estudiante+curso+día para TODO el curso,
-  // así que el segundo maestro que guardaba pisaba en silencio al primero
-  // (confirmado con una prueba real). Ahora cada maestro tiene su propia
-  // fila, independiente de los demás. No cubre todavía el caso de un mismo
-  // maestro con períodos NO seguidos el mismo curso/día (ej. 1°,2° y luego
-  // 5°,6°) — eso queda para el rediseño completo por bloques de períodos
-  // (scheduleId), diseñado y aprobado, pendiente de construir con calma.
-  @@unique([studentId, courseId, date, teacherId])
+  // La clave única pasa de [studentId, courseId, date, teacherId] (fix
+  // urgente 4-sep) a [studentId, blockId] (rediseño completo 5-sep): un
+  // bloque ya identifica sin ambigüedad curso+fecha+maestro+rango de
+  // períodos, así que alcanza con blockId — y de paso resuelve el caso que
+  // el fix urgente no cubría: un mismo maestro con tramos NO seguidos el
+  // mismo curso/día (ej. 1°,2° y luego 5°,6°) ahora cae en 2 blockId
+  // distintos, nunca se pisan entre sí.
+  @@unique([studentId, blockId])
   @@index([studentId])
   @@index([schoolId])
+  @@index([blockId])
   // El único índice que ya tocaba courseId/date era el unique de arriba, que
   // empieza por studentId — inútil para "todas las filas de este curso en
   // esta fecha" sin conocer el estudiante (Postgres solo usa el prefijo de
   // un índice compuesto). Beneficia tanto a getAttendanceByCourse (ya
   // existía, sin índice útil hasta ahora) como al reporte diario nuevo.
   @@index([courseId, date])
+}
+
+// Rediseño completo por bloques de períodos (5-sep-2026, diseño aprobado
+// 4-sep). Un bloque = tramo de períodos CONSECUTIVOS del mismo maestro, en
+// el mismo curso, el mismo día — "seguidos" se interpreta por número de
+// período, no por reloj real (un recreo entre período 2 y 3 no rompe el
+// bloque). Un solo período es un bloque de tamaño 1, mismo criterio, sin
+// caso especial. Se resuelve y se CONGELA en el momento de guardar (con el
+// horario vigente ese día) — nunca se recalcula en vivo si el horario se
+// edita después, mismo criterio de "el histórico nunca se pierde" ya
+// establecido en el proyecto.
+model AttendanceBlock {
+  id             Int      @id @default(autoincrement())
+  courseId       Int
+  teacherId      Int
+  // 5-sep-2026: la materia real del bloque — investigado con datos reales
+  // antes de asumir nada (ver CLAUDE.md): hoy NUNCA cambia de materia
+  // dentro de un mismo tramo de períodos consecutivos (el generador de
+  // horarios nunca pone 2 materias del mismo maestro el mismo día), pero
+  // no está garantizado por el modelo — por eso subjectId entra también
+  // como criterio de corte en groupIntoBlocks, no solo el número de
+  // período. Necesario además para mostrar la materia en la matriz semanal.
+  // Nullable: el bloque "sin período" (corrección DIRECTOR/SECRETARY sobre
+  // un maestro sin ningún período programado ese día) no tiene una materia
+  // real detrás — forzar una sería un dato falso.
+  subjectId      Int?
+  date           DateTime
+  periodStart    Int
+  periodEnd      Int
+  startTime      String
+  endTime        String
+  academicYearId Int
+  schoolId       Int
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  school         School              @relation(fields: [schoolId], references: [id])
+  academicYear   AcademicYear        @relation(fields: [academicYearId], references: [id])
+  course         Course              @relation(fields: [courseId], references: [id])
+  teacher        Teacher             @relation(fields: [teacherId], references: [id])
+  subject        Subject?            @relation(fields: [subjectId], references: [id])
+  attendances    StudentAttendance[]
+
+  // periodStart alcanza para desambiguar sin teacherId en la clave: un
+  // período de un curso, en una fecha dada, solo puede pertenecer a UN
+  // maestro (ya lo garantiza el único de Schedule sobre
+  // [courseId, academicYearId, dayOfWeek, period]) — así que dos maestros
+  // nunca pueden generar el mismo (courseId, date, periodStart).
+  @@unique([courseId, date, periodStart])
+  @@index([teacherId])
+  @@index([schoolId])
+}
+
+// Licencia de un estudiante (5-sep-2026) — Dirección la registra por rango
+// de fechas. Diseño Opción A (aprobada): NUNCA escribe StudentAttendance —
+// se consulta en cada punto de lectura y "tapa" la vista con LICENCIA sin
+// borrar ni tocar lo que el maestro ya hubiera registrado por debajo (el
+// histórico nunca se pierde, mismo criterio ya establecido en el proyecto).
+// Alcance de esta primera versión: SOLO alta — listado/anulación queda
+// pendiente a propósito (ver Próximos pasos en CLAUDE.md, para no repetir
+// el mismo hueco de "alta sin gestión posterior" ya visto en Gobierno
+// Estudiantil).
+model StudentLicense {
+  id          Int      @id @default(autoincrement())
+  studentId   Int
+  startDate   DateTime
+  endDate     DateTime
+  reason      String?
+  createdById Int
+  schoolId    Int
+  createdAt   DateTime @default(now())
+  student     Student  @relation(fields: [studentId], references: [id])
+  createdBy   User     @relation(fields: [createdById], references: [id])
+  school      School   @relation(fields: [schoolId], references: [id])
+
+  @@index([studentId])
+  @@index([schoolId])
+  @@index([startDate, endDate])
 }
 
 model BiometricTemplate {

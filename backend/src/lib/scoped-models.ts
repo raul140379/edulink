@@ -37,6 +37,8 @@ export const DIRECT_SCHOOL_SCOPED_MODELS = new Set([
   'Refund',
   'AuditLog',
   'SportsParticipant',
+  'AttendanceBlock',
+  'StudentLicense',
 ])
 
 /**

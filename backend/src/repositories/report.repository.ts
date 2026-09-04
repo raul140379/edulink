@@ -94,6 +94,56 @@ export const reportRepository = {
     })
   },
 
+  // Matriz semanal (5-sep-2026): horario COMPLETO esperado del curso para
+  // los 5 días de clase — 1 sola consulta, se agrupa en memoria por
+  // (dayOfWeek, teacherId) y se corre groupIntoBlocks sobre cada grupo para
+  // armar las celdas esperadas de la semana.
+  findScheduleForCourseWeek(courseId: number, academicYearId: number) {
+    return prisma.schedule.findMany({
+      where: { academicYearId, courseId, dayOfWeek: { in: [1, 2, 3, 4, 5] } },
+      select: {
+        dayOfWeek: true, period: true, startTime: true, endTime: true,
+        teacherSubjectCourse: {
+          select: {
+            teacherId: true, subjectId: true,
+            teacher: { select: { firstName: true, lastName: true } },
+            subject: { select: { name: true } },
+          },
+        },
+      },
+      orderBy: [{ dayOfWeek: 'asc' }, { period: 'asc' }],
+    })
+  },
+
+  // Bloques REALES ya registrados en la semana — 1 consulta por rango de
+  // fecha (nunca una por día).
+  findAttendanceBlocksForCourseWeek(courseId: number, start: Date, end: Date) {
+    return prisma.attendanceBlock.findMany({
+      where: { courseId, date: { gte: start, lt: end } },
+    })
+  },
+
+  // Asistencia de TODOS los bloques de la semana en una sola consulta (por
+  // blockId, no por día) — para los conteos de cada celda.
+  findAttendancesForBlocks(blockIds: number[]) {
+    if (blockIds.length === 0) return Promise.resolve([])
+    return prisma.studentAttendance.findMany({
+      where: { blockId: { in: blockIds } },
+      select: { studentId: true, blockId: true, status: true },
+    })
+  },
+
+  // Licencias que se superponen con CUALQUIER parte de la semana pedida —
+  // el ajuste por día/bloque específico se hace en memoria en el servicio
+  // (una licencia puede cubrir solo algunos días de la semana, no todos).
+  findLicensesOverlappingRange(studentIds: number[], start: Date, end: Date) {
+    if (studentIds.length === 0) return Promise.resolve([])
+    return prisma.studentLicense.findMany({
+      where: { studentId: { in: studentIds }, startDate: { lt: end }, endDate: { gte: start } },
+      select: { studentId: true, startDate: true, endDate: true },
+    })
+  },
+
   // orderBy updatedAt desc: mismo criterio que studentAttendance.repository.ts
   // — un curso puede tener varios maestros (uno por materia) y cualquiera
   // puede tomar la asistencia compartida del día; sin orden, [0] no era
