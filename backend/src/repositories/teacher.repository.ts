@@ -1,6 +1,8 @@
 import { Prisma } from '@prisma/client'
 import prisma from '../lib/prisma'
 
+type TxClient = Parameters<Parameters<typeof prisma.$transaction>[0]>[0]
+
 export const teacherRepository = {
   findMany(where: Prisma.TeacherWhereInput) {
     return prisma.teacher.findMany({
@@ -125,8 +127,22 @@ export const teacherRepository = {
     })
   },
 
-  create(data: Prisma.TeacherCreateInput) {
+  // Forma "unchecked" (schoolId/userId planos) a propósito — el motor de
+  // tenant-scoping (applyWriteScope, lib/prisma.ts) inyecta `data.schoolId`
+  // directo sobre cualquier create de un modelo DIRECT_SCHOOL_SCOPED_MODELS;
+  // con la forma "checked" (school: {connect}) eso choca con Prisma
+  // ("Unknown argument schoolId") porque no se pueden mezclar las dos formas
+  // en el mismo create — bug real que dejaba el Teacher sin crear el 100% de
+  // las veces (ver CLAUDE.md, incidente Silvia/Patricia Torrico 4-sep-2026).
+  create(data: Prisma.TeacherUncheckedCreateInput) {
     return prisma.teacher.create({ data, include: { user: { select: { id: true, email: true, role: true } } } })
+  },
+
+  // Misma forma, dentro de una transacción — usado por teacherService.createTeacher
+  // junto con userRepository.createTx, para que un User nunca quede huérfano
+  // sin su Teacher si algo falla (mismo patrón que staffRepository.createTx).
+  createTx(tx: TxClient, data: Prisma.TeacherUncheckedCreateInput) {
+    return tx.teacher.create({ data, include: { user: { select: { id: true, email: true, role: true } } } })
   },
 
   update(id: number, data: Prisma.TeacherUpdateInput) {

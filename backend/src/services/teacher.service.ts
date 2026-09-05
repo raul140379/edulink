@@ -1,10 +1,10 @@
 import bcrypt from 'bcryptjs'
 import { Prisma, Role } from '@prisma/client'
+import prisma from '../lib/prisma'
 import { teacherRepository } from '../repositories/teacher.repository'
 import { userRepository } from '../repositories/user.repository'
 import { HttpError } from '../utils/http-error'
 import { normalizeLetters, generateUniqueEmail } from '../utils/account-generator'
-import { getTenantContext } from '../lib/tenant-context'
 import { CreateTeacherInput, UpdateTeacherInput, AttendanceCodeInput, TeacherScheduleInput } from '../schemas/teacher.schema'
 
 function generateTeacherPassword(lastName: string, ci?: string): string {
@@ -157,20 +157,28 @@ export const teacherService = {
     const defaultPassword = generateTeacherPassword(lastName, ci)
     const hashedPassword  = await bcrypt.hash(defaultPassword, 10)
 
-    const user = await userRepository.create({ email: accessEmail, password: hashedPassword, role: Role.TEACHER })
+    // Transacción única (mismo patrón que userService.createUser con Staff):
+    // si teacherRepository.createTx falla por cualquier motivo, el User
+    // creado acá también se revierte — nunca queda un User huérfano sin su
+    // Teacher (ver CLAUDE.md, incidente Silvia/Patricia Torrico 4-sep-2026).
+    const { user, teacher } = await prisma.$transaction(async (tx) => {
+      const user = await userRepository.createTx(tx, { email: accessEmail, password: hashedPassword, role: Role.TEACHER })
 
-    const teacher = await teacherRepository.create({
-      firstName, lastName,
-      ci:        ci        || null,
-      phone:     phone     || null,
-      email:     email     || null,
-      specialty: specialty || null,
-      birthDate: birthDate ? new Date(birthDate) : null,
-      hoursLoad: hoursLoad ?? null,
-      gender:    gender    || null,
-      isActive:  true,
-      user:      { connect: { id: user.id } },
-      school:    { connect: { id: getTenantContext()?.schoolId ?? 0 } },
+      const teacher = await teacherRepository.createTx(tx, {
+        firstName, lastName,
+        ci:        ci        || null,
+        phone:     phone     || null,
+        email:     email     || null,
+        specialty: specialty || null,
+        birthDate: birthDate ? new Date(birthDate) : null,
+        hoursLoad: hoursLoad ?? null,
+        gender:    gender    || null,
+        isActive:  true,
+        userId:    user.id,
+        schoolId:  user.schoolId!,
+      })
+
+      return { user, teacher }
     })
 
     return { teacher, accessEmail, defaultPassword, passwordHint: passwordHint(ci) }
