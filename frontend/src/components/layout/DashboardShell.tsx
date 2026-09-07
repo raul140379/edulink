@@ -5,6 +5,7 @@ import { useRouter, usePathname } from 'next/navigation'
 import AppHeader from './AppHeader'
 import ModuleNavigation from './ModuleNavigation'
 import Breadcrumb from '../ui/Breadcrumb'
+import { resetSchoolConfigCache } from '@/hooks/useSchoolConfig'
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000'
 
@@ -129,6 +130,7 @@ export default function DashboardShell({
   const handleLogout = () => {
     localStorage.removeItem('token')
     localStorage.removeItem('user')
+    resetSchoolConfigCache()
     router.push('/login')
   }
 

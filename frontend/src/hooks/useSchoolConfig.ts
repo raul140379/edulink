@@ -31,6 +31,19 @@ async function fetchSchoolConfig(): Promise<SchoolConfig> {
   return inFlight
 }
 
+// El caché es por identidad de usuario, no por pestaña — si no se limpia al
+// cerrar sesión, una cuenta sin colegio (SUPER_ADMIN, distrital) deja el
+// caché en FALLBACK para siempre en esa pestaña, y la siguiente cuenta que
+// inicie sesión ahí (aunque sí tenga colegio) sigue viendo el valor viejo,
+// porque login/logout navegan client-side (router.push, sin recargar la
+// página) y nunca reinician el estado de este módulo. Confirmado con
+// reproducción real (7-sep-2026): login sin colegio → Salir → login con
+// colegio real, misma pestaña → el PDF seguía mostrando "sin colegio".
+export function resetSchoolConfigCache() {
+  cached = null
+  inFlight = null
+}
+
 /** Nombre del colegio del usuario logueado (School.name vía /api/auth/me) —
  * para encabezados de PDF/reportes que necesitan el colegio, no el distrito. */
 export function useSchoolConfig(): SchoolConfig {
