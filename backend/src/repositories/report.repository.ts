@@ -95,12 +95,14 @@ export const reportRepository = {
   },
 
   // Matriz semanal (5-sep-2026): horario COMPLETO esperado del curso para
-  // los 5 días de clase — 1 sola consulta, se agrupa en memoria por
+  // los días de clase — 1 sola consulta, se agrupa en memoria por
   // (dayOfWeek, teacherId) y se corre groupIntoBlocks sobre cada grupo para
-  // armar las celdas esperadas de la semana.
-  findScheduleForCourseWeek(courseId: number, academicYearId: number) {
+  // armar las celdas esperadas de la semana. `days` viene del servicio
+  // (lunes-viernes o lunes-sábado según el nivel del curso — SECUNDARIA sí
+  // tiene clases el sábado, ver generateSchedule).
+  findScheduleForCourseWeek(courseId: number, academicYearId: number, days: number[]) {
     return prisma.schedule.findMany({
-      where: { academicYearId, courseId, dayOfWeek: { in: [1, 2, 3, 4, 5] } },
+      where: { academicYearId, courseId, dayOfWeek: { in: days } },
       select: {
         dayOfWeek: true, period: true, startTime: true, endTime: true,
         teacherSubjectCourse: {
@@ -113,6 +115,14 @@ export const reportRepository = {
       },
       orderBy: [{ dayOfWeek: 'asc' }, { period: 'asc' }],
     })
+  },
+
+  // Config de horario institucional activa para el turno del curso — usada
+  // para saber cuántos períodos tiene el turno en total (maxPeriods), así
+  // el frontend puede dibujar columnas vacías para períodos sin clase ese
+  // día, en vez de solo los períodos que sí tienen Schedule.
+  findActiveSchoolScheduleForShift(shift: string) {
+    return prisma.schoolSchedule.findFirst({ where: { shift: shift as any, isActive: true }, select: { periods: true } })
   },
 
   // Bloques REALES ya registrados en la semana — 1 consulta por rango de

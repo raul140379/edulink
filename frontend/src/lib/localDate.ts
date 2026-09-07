@@ -11,3 +11,17 @@ export function todayLocalStr(): string {
   const d = String(now.getDate()).padStart(2, '0')
   return `${y}-${m}-${d}`
 }
+
+// Suma/resta días a una fecha "YYYY-MM-DD" sin pasar por Date con hora local
+// (evita el corrimiento de +-1 día que da new Date("YYYY-MM-DD") al
+// interpretarla como medianoche UTC en vez de local) — arma el Date con los
+// componentes explícitos, sin necesidad de string parsing ambiguo.
+export function addDaysLocalStr(dateStr: string, days: number): string {
+  const [y, m, d] = dateStr.split('-').map(Number)
+  const date = new Date(y, m - 1, d)
+  date.setDate(date.getDate() + days)
+  const yy = date.getFullYear()
+  const mm = String(date.getMonth() + 1).padStart(2, '0')
+  const dd = String(date.getDate()).padStart(2, '0')
+  return `${yy}-${mm}-${dd}`
+}

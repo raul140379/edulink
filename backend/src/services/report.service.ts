@@ -156,32 +156,37 @@ export const reportService = {
     const course = await reportRepository.findCourseById(courseId)
     if (!course) throw new HttpError(404, 'Curso no encontrado')
 
-    // Semana = lunes..viernes que contiene la fecha pedida (hoy en Bolivia
-    // por defecto) — mismo anclaje TZ-independiente que dayRange.
+    // Semana = lunes..viernes o lunes..sábado según el nivel del curso —
+    // mismo criterio que generateSchedule (DAYS): SECUNDARIA sí tiene
+    // clases el sábado, el resto no. Anclaje TZ-independiente vía dayRange.
+    const numDays = course.level === 'SECUNDARIA' ? 6 : 5
+    const DAYS = Array.from({ length: numDays }, (_, i) => i + 1)
+
     const { base: refDate } = dayRange(dateStr)
     const refDow = dayOfWeekFromBase(refDate)
     const monday = new Date(refDate)
     monday.setUTCDate(monday.getUTCDate() - (refDow - 1))
-    const saturday = new Date(monday)
-    saturday.setUTCDate(saturday.getUTCDate() + 5) // exclusivo: cubre lun..vie
+    const weekEndExclusive = new Date(monday)
+    weekEndExclusive.setUTCDate(weekEndExclusive.getUTCDate() + numDays) // exclusivo
 
     const weekDates: Date[] = []
-    for (let i = 0; i < 5; i++) {
+    for (let i = 0; i < numDays; i++) {
       const d = new Date(monday)
       d.setUTCDate(d.getUTCDate() + i)
       weekDates.push(d)
     }
 
-    const [schedule, realBlocks, assignments] = await Promise.all([
-      reportRepository.findScheduleForCourseWeek(courseId, activeYear.id),
-      reportRepository.findAttendanceBlocksForCourseWeek(courseId, monday, saturday),
+    const [schedule, realBlocks, assignments, schoolSchedule] = await Promise.all([
+      reportRepository.findScheduleForCourseWeek(courseId, activeYear.id, DAYS),
+      reportRepository.findAttendanceBlocksForCourseWeek(courseId, monday, weekEndExclusive),
       reportRepository.findAssignmentsForCourse(courseId, activeYear.id),
+      reportRepository.findActiveSchoolScheduleForShift(course.shift),
     ])
 
     const studentIds = assignments.map((a) => a.student.id)
     const [attendances, licenses] = await Promise.all([
       reportRepository.findAttendancesForBlocks(realBlocks.map((b) => b.id)),
-      reportRepository.findLicensesOverlappingRange(studentIds, monday, saturday),
+      reportRepository.findLicensesOverlappingRange(studentIds, monday, weekEndExclusive),
     ])
 
     type ExpectedBlock = AttendanceBlockRange & {
@@ -279,7 +284,8 @@ export const reportService = {
     return {
       course,
       weekStart: days[0].date,
-      weekEnd: days[4].date,
+      weekEnd: days[days.length - 1].date,
+      maxPeriods: schoolSchedule?.periods ?? 7,
       days,
     }
   },

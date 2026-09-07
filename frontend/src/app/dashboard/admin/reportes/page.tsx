@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { ClipboardCheck, ChevronRight } from 'lucide-react'
+import { ClipboardCheck, CalendarRange, ChevronRight } from 'lucide-react'
 import Card from '@/components/ui/Card'
 import PageHeader from '@/components/ui/PageHeader'
 
@@ -15,6 +15,12 @@ const REPORTS = [
     icon: ClipboardCheck,
     title: 'Asistencia Diaria por Curso',
     description: 'Qué cursos registraron asistencia en un día específico, y el detalle por estudiante',
+  },
+  {
+    href: '/dashboard/admin/reportes/asistencia-semanal',
+    icon: CalendarRange,
+    title: 'Matriz Semanal de Asistencia',
+    description: 'Estado día por período de cada estudiante, toda la semana de un vistazo',
   },
 ]
 
