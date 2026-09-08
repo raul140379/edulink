@@ -10,6 +10,23 @@ import { gamificationService } from './gamification.service'
 
 const GRADES: Record<string, string> = { PRIMERO: '1°', SEGUNDO: '2°', TERCERO: '3°', CUARTO: '4°', QUINTO: '5°', SEXTO: '6°' }
 
+// ─────────────────────────────────────────────────────────────────────────
+// PERÍODO DE GRACIA DE ADOPCIÓN (confirmado con Raul, 7-sep-2026) — mientras
+// los maestros se acostumbran a maestro-app, "Guardar asistencia" no
+// rechaza por ventana cerrada/todavía no abierta. Se revierte SOLO cambiando
+// esta fecha — no toca resolveAttendanceWindow ni ninguna otra lectura
+// (avisos, banners, el botón Exportar/Imprimir de maestro-app siguen
+// reflejando la ventana REAL, sin gracia, a propósito). Contraparte exacta
+// en maestro-app/src/app/(protected)/curso/[id]/page.tsx (misma fecha,
+// desbloquea los botones de estado y "Guardar" ahí). BORRAR este bloque
+// completo (acá y en maestro-app) después del 30-sep-2026 — no dejarlo
+// dormido.
+const ATTENDANCE_WINDOW_GRACE_UNTIL = '2026-09-30'
+function isWithinAttendanceGrace(): boolean {
+  return todayDateStrBolivia(new Date()) <= ATTENDANCE_WINDOW_GRACE_UNTIL
+}
+// ─────────────────────────────────────────────────────────────────────────
+
 // Exportado para que reportService (reporte diario de cumplimiento) calcule
 // el mismo rango de "un día" que ya usa esta pantalla — evita que ambos
 // puedan llegar a discrepar sobre qué cuenta como "ese día".
@@ -294,11 +311,22 @@ export const studentAttendanceService = {
       if (!teacher) throw new HttpError(404, 'Maestro no encontrado')
 
       const window = await resolveAttendanceWindow(userId, courseId, activeYear.id)
-      if (!window.open || !window.block) throw new HttpError(403, window.message || 'Fuera de la ventana permitida para tomar asistencia.')
+      if (window.open && window.block) {
+        blockRange = window.block
+      } else if (isWithinAttendanceGrace()) {
+        // Gracia: mismo bloque que ya usaría la lectura fuera de la ventana
+        // en vivo (resolveReadBlock) — sigue exigiendo que el maestro tenga
+        // ALGÚN período programado hoy para este curso; sin eso no hay
+        // bloque real donde guardar, con o sin gracia.
+        const graced = await resolveReadBlock(teacher.id, courseId, base, activeYear.id, null)
+        if (!graced) throw new HttpError(403, 'No tenés esta materia programada hoy en este curso — no se puede registrar asistencia.')
+        blockRange = graced
+      } else {
+        throw new HttpError(403, window.message || 'Fuera de la ventana permitida para tomar asistencia.')
+      }
 
       teacherId = teacher.id
       actorLabel = `${teacher.lastName} ${teacher.firstName}`
-      blockRange = window.block
     }
 
     const course = await studentAttendanceRepository.findCourseById(courseId)

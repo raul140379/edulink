@@ -24,6 +24,26 @@ interface Me {
 const GRADES: Record<string, string> = { PRIMERO: '1°', SEGUNDO: '2°', TERCERO: '3°', CUARTO: '4°', QUINTO: '5°', SEXTO: '6°' }
 const courseLabel = (c: Course) => `${GRADES[c.grade] || c.grade} "${c.parallel}"`
 
+// ─────────────────────────────────────────────────────────────────────────
+// PERÍODO DE GRACIA DE ADOPCIÓN (confirmado con Raul, 7-sep-2026) — mientras
+// dure, "Guardar asistencia" y los botones de estado NO se bloquean aunque
+// la ventana ya haya cerrado (o no haya abierto todavía); el backend
+// (saveAttendance) acepta el guardado igual. El aviso de ventana cerrada, el
+// banner y el botón Exportar/Imprimir NO cambian acá — siguen reflejando el
+// estado REAL de la ventana a propósito (el export es un respaldo confiable
+// del momento real en que se registró, no debe mezclarse con la gracia).
+// Misma fecha exacta que ATTENDANCE_WINDOW_GRACE_UNTIL en
+// backend/src/services/studentAttendance.service.ts — BORRAR ambos bloques
+// después del 30-sep-2026, no dejarlos dormidos.
+const ATTENDANCE_WINDOW_GRACE_UNTIL = '2026-09-30'
+function isWithinAttendanceGrace(): boolean {
+  const now = new Date()
+  const y = now.getFullYear()
+  const m = String(now.getMonth() + 1).padStart(2, '0')
+  const d = String(now.getDate()).padStart(2, '0')
+  return `${y}-${m}-${d}` <= ATTENDANCE_WINDOW_GRACE_UNTIL
+}
+
 const STATUS_OPTS: { value: AttendanceStatus; label: string; on: string }[] = [
   { value: 'PRESENTE', label: 'Presente', on: 'bg-success-700 text-white' },
   { value: 'AUSENTE',  label: 'Ausente',  on: 'bg-danger-600 text-white' },
@@ -126,6 +146,11 @@ export default function CursoPage() {
     }
   }
 
+  // Bloquea Guardar/estado por ventana SOLO fuera del período de gracia —
+  // el aviso/banner de ventana (arriba) y el gate de Exportar (abajo) usan
+  // `window_.open` directo, sin pasar por acá, a propósito.
+  const isSaveLocked = !!window_ && !window_.open && !isWithinAttendanceGrace()
+
   // El PDF exporta SOLO lo que ya está en la base — nunca lo que se ve en
   // pantalla si difiere de lo guardado (decisión confirmada con Raul:
   // preferible pedir que guarde primero antes que arriesgar un PDF que
@@ -219,7 +244,7 @@ export default function CursoPage() {
 
       <button
         onClick={() => setAll('PRESENTE')}
-        disabled={!!window_ && !window_.open}
+        disabled={isSaveLocked}
         className="self-start flex items-center gap-1.5 text-[13px] font-semibold text-brand-600 px-3 py-1.5 rounded-lg bg-brand-100 disabled:opacity-40"
       >
         <Check size={14} /> Marcar todos Presente
@@ -246,7 +271,7 @@ export default function CursoPage() {
                   <button
                     key={opt.value}
                     onClick={() => setStatus(prev => ({ ...prev, [s.studentId]: opt.value }))}
-                    disabled={!!window_ && !window_.open}
+                    disabled={isSaveLocked}
                     className={`py-2 rounded-lg text-[11px] font-semibold transition-colors disabled:opacity-40 ${status[s.studentId] === opt.value ? opt.on : 'bg-bg-soft text-text-secondary'}`}
                   >
                     {opt.label}
@@ -260,8 +285,8 @@ export default function CursoPage() {
 
       <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-border p-3.5">
         <div className="max-w-lg mx-auto">
-          <Button onClick={handleSave} loading={saving} disabled={!!window_ && !window_.open}>
-            {window_ && !window_.open ? 'Asistencia bloqueada' : 'Guardar asistencia'}
+          <Button onClick={handleSave} loading={saving} disabled={isSaveLocked}>
+            {isSaveLocked ? 'Asistencia bloqueada' : 'Guardar asistencia'}
           </Button>
         </div>
       </div>
