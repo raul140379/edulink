@@ -10,6 +10,8 @@ import {
   getDailyAttendanceCompliance,
   getDailyAttendanceCourseDetail,
   getWeeklyAttendanceMatrix,
+  getDailyLateArrivals,
+  getWeeklyLateArrivals,
 } from '../controllers/report.controller'
 
 const router = Router()
@@ -25,5 +27,7 @@ router.get('/carried-debt',  requirePermission(Permission.CHARGE_VIEW_ALL), getC
 router.get('/attendance-daily',            requirePermission(Permission.REPORT_VIEW), getDailyAttendanceCompliance)
 router.get('/attendance-daily/:courseId',  requirePermission(Permission.REPORT_VIEW), getDailyAttendanceCourseDetail)
 router.get('/attendance-weekly/:courseId', requirePermission(Permission.REPORT_VIEW), getWeeklyAttendanceMatrix)
+router.get('/late-arrivals-daily',            requirePermission(Permission.REPORT_VIEW), getDailyLateArrivals)
+router.get('/late-arrivals-weekly/:courseId', requirePermission(Permission.REPORT_VIEW), getWeeklyLateArrivals)
 
 export default router

@@ -24,6 +24,7 @@ import classroomRoutes from './routes/classroom.routes'
 import gateRoutes from './routes/gate.routes'
 import studentAttendanceRoutes from './routes/studentAttendance.routes'
 import studentLicenseRoutes from './routes/studentLicense.routes'
+import studentLateArrivalRoutes from './routes/studentLateArrival.routes'
 import planificacionRoutes from './routes/planificacion.routes'
 import schoolRoutes from './routes/school.routes'
 import nucleoRoutes from './routes/nucleo.routes'
@@ -81,6 +82,7 @@ app.use('/api/classrooms', classroomRoutes)
 app.use('/api/gate', gateRoutes)
 app.use('/api/student-attendance', studentAttendanceRoutes)
 app.use('/api/student-licenses', studentLicenseRoutes)
+app.use('/api/student-late-arrivals', studentLateArrivalRoutes)
 app.use('/api/planificacion', planificacionRoutes)
 app.use('/api/schools', schoolRoutes)
 app.use('/api/nucleos', nucleoRoutes)

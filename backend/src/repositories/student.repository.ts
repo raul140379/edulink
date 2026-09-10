@@ -130,6 +130,24 @@ export const studentRepository = {
     return prisma.student.findFirst({ where: { rude } })
   },
 
+  // Para el escaneo de QR de llegada tardía (regente-app) — trae de una vez
+  // el curso vigente, para no necesitar una segunda consulta antes de
+  // mostrar la pantalla de confirmación.
+  findByRudeWithCourse(rude: string) {
+    return prisma.student.findFirst({
+      where: { rude, isActive: true },
+      select: {
+        id: true, firstName: true, lastName: true, rude: true,
+        assignments: {
+          where: { academicYear: { isActive: true } },
+          include: { course: { select: { id: true, grade: true, parallel: true, level: true, shift: true } } },
+          orderBy: { createdAt: 'desc' },
+          take: 1,
+        },
+      },
+    })
+  },
+
   findByKardexAndName(kardex: string, firstName: string, lastName: string) {
     return prisma.student.findFirst({ where: { kardex, firstName, lastName } })
   },

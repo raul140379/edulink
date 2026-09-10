@@ -157,6 +157,18 @@ export const getStudentsByCourse = async (req: AuthRequest, res: Response): Prom
 }
 
 // ─────────────────────────────────────────────
+// GET /api/students/by-rude/:rude
+// ─────────────────────────────────────────────
+export const getStudentByRude = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const student = await studentService.getStudentByRude(req.params.rude)
+    res.json(student)
+  } catch (error) {
+    handleControllerError(res, error)
+  }
+}
+
+// ─────────────────────────────────────────────
 // Autoservicio del estudiante
 // ─────────────────────────────────────────────
 export const getMyProfile = async (req: AuthRequest, res: Response): Promise<void> => {

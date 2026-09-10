@@ -304,6 +304,15 @@ export const studentService = {
     return studentRepository.findByCourseInYear(courseId, activeYear.id)
   },
 
+  // Escaneo de QR (RUDE) para llegada tardía, ver studentLateArrival.
+  getStudentByRude: async (rude: string) => {
+    const student = await studentRepository.findByRudeWithCourse(rude)
+    if (!student) throw new HttpError(404, 'No se encontró ningún estudiante con ese código.')
+    const course = student.assignments[0]?.course
+    if (!course) throw new HttpError(400, `${student.firstName} ${student.lastName} no tiene matrícula activa este año.`)
+    return { id: student.id, firstName: student.firstName, lastName: student.lastName, rude: student.rude, course }
+  },
+
   // ── Autoservicio ──────────────────────────────
   async getMyProfile(userId: number | undefined) {
     const student = await studentRepository.findProfileByUserId(userId)

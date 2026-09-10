@@ -12,7 +12,8 @@ import {
   importStudents,
   importTutors,
   getStudentsByCourse,
-  changeEnrollment, 
+  getStudentByRude,
+  changeEnrollment,
   getMyProfile,
   getMyGrades,
   getMyTasks,
@@ -63,6 +64,7 @@ router.post('/:id/generate-credentials',     requirePermission(Permission.STUDEN
 router.post('/import',                       requirePermission(Permission.STUDENT_CREATE), upload.single('file'), restoreTenantContext, importStudents)
 router.post('/import-tutors',                requirePermission(Permission.STUDENT_CREATE), upload.single('file'), restoreTenantContext, importTutors)
 router.get('/by-course/:courseId',           requirePermission(Permission.STUDENT_VIEW_ALL),  getStudentsByCourse)
+router.get('/by-rude/:rude',                 requirePermission(Permission.STUDENT_VIEW_ALL),  getStudentByRude)
 router.put('/:id/enroll',                    requirePermission(Permission.ENROLLMENT_CREATE), changeEnrollment)
 router.delete('/:id/enroll',                  requirePermission(Permission.STUDENT_CREATE), cancelEnrollment)
 

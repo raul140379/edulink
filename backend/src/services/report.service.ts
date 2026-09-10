@@ -4,6 +4,7 @@ import { chargeBalance, aggregateChargeBalances } from '../utils/charge-balance'
 import { Pagination, withTotal } from '../utils/pagination'
 import { dayRange, dayOfWeekFromBase } from './studentAttendance.service'
 import { groupIntoBlocks, AttendanceBlockRange } from '../utils/attendance-blocks'
+import { collapseToDailyStatus } from '../utils/attendance-daily-status'
 
 export const reportService = {
   getTeachersReport() {
@@ -429,6 +430,86 @@ export const reportService = {
       sourceAcademicYear: { id: sourceYear.id, year: sourceYear.year },
       totalCasos: charges.length, totalTrasladado, totalYaResuelto, totalAunPendiente,
       courses,
+    }
+  },
+
+  // Reporte diario de llegadas tarde — agrupado por curso, con el detalle
+  // de cada registro para no necesitar una segunda llamada por curso (el
+  // volumen real de un solo colegio no lo justifica).
+  async getDailyLateArrivals(dateStr?: string) {
+    const { base } = dayRange(dateStr)
+    const rows = await reportRepository.findLateArrivalsForDate(base)
+
+    const byCourse = new Map<number, { course: any; records: typeof rows }>()
+    for (const r of rows) {
+      if (!byCourse.has(r.courseId)) byCourse.set(r.courseId, { course: r.course, records: [] })
+      byCourse.get(r.courseId)!.records.push(r)
+    }
+
+    const courses = Array.from(byCourse.values()).map(({ course, records }) => ({
+      course,
+      total: records.length,
+      entraronClase: records.filter((r) => r.enteredClass).length,
+      noEntraronClase: records.filter((r) => !r.enteredClass).length,
+      promedioMinutos: Math.round(records.reduce((s, r) => s + r.minutesLate, 0) / records.length),
+      records: records.map((r) => ({
+        id: r.id, studentId: r.studentId, firstName: r.student.firstName, lastName: r.student.lastName,
+        arrivalTime: r.arrivalTime, minutesLate: r.minutesLate, enteredClass: r.enteredClass, notified: !!r.notifiedAt,
+      })),
+    }))
+
+    return { date: base.toISOString().split('T')[0], totalDia: rows.length, courses }
+  },
+
+  // Reporte semanal de llegadas tarde de UN curso, cruzado contra la
+  // asistencia real de esos mismos días (confirmado con Raul: por ahora solo
+  // esto, el cruce con notas queda para cuando Calificaciones esté
+  // conectado en el panel Admin). Mismo cálculo de semana Lunes-Sábado/
+  // Lunes-Viernes que ya usa la matriz semanal de asistencia.
+  async getWeeklyLateArrivals(courseId: number, dateStr?: string) {
+    const activeYear = await reportRepository.findActiveAcademicYear()
+    if (!activeYear) throw new HttpError(404, 'No hay gestión académica activa')
+
+    const course = await reportRepository.findCourseById(courseId)
+    if (!course) throw new HttpError(404, 'Curso no encontrado')
+
+    const numDays = course.level === 'SECUNDARIA' ? 6 : 5
+    const { base: refDate } = dayRange(dateStr)
+    const refDow = dayOfWeekFromBase(refDate)
+    const monday = new Date(refDate)
+    monday.setUTCDate(monday.getUTCDate() - (refDow - 1))
+    const weekEndExclusive = new Date(monday)
+    weekEndExclusive.setUTCDate(weekEndExclusive.getUTCDate() + numDays)
+
+    const [lateArrivals, attendances] = await Promise.all([
+      reportRepository.findLateArrivalsForCourseWeek(courseId, monday, weekEndExclusive),
+      reportRepository.findAttendancesForCourseDateWithTeacher(courseId, activeYear.id, monday, weekEndExclusive),
+    ])
+
+    const attendanceByStudent = new Map<number, { date: Date; status: any }[]>()
+    for (const a of attendances) {
+      if (!attendanceByStudent.has(a.studentId)) attendanceByStudent.set(a.studentId, [])
+      attendanceByStudent.get(a.studentId)!.push({ date: a.date, status: a.status })
+    }
+
+    const rows = lateArrivals.map((la) => {
+      const dailyStatus = collapseToDailyStatus(attendanceByStudent.get(la.studentId) || [])
+      const dateKey = la.date.toISOString().split('T')[0]
+      return {
+        id: la.id, studentId: la.studentId, firstName: la.student.firstName, lastName: la.student.lastName,
+        date: dateKey, arrivalTime: la.arrivalTime, minutesLate: la.minutesLate, enteredClass: la.enteredClass,
+        notified: !!la.notifiedAt,
+        // Estado real de asistencia ESE mismo día, si el maestro ya lo registró.
+        realAttendanceStatus: dailyStatus.get(dateKey) ?? null,
+      }
+    })
+
+    return {
+      course: { id: course.id, grade: course.grade, parallel: course.parallel, level: course.level },
+      weekStart: monday.toISOString().split('T')[0],
+      weekEnd: new Date(weekEndExclusive.getTime() - 86400000).toISOString().split('T')[0],
+      total: rows.length,
+      rows,
     }
   },
 }

@@ -8,9 +8,9 @@ import { createLicense } from '../controllers/studentLicense.controller'
 const router = Router()
 router.use(verifyToken)
 
-// Solo DIRECTOR/SECRETARY — mismo alcance que la corrección de asistencia
-// sin ventana horaria (ver studentAttendance.service.ts). REGENTE queda
-// afuera a propósito (no tiene ATTENDANCE_CREATE tampoco).
-router.post('/', requireRole(Role.DIRECTOR, Role.SECRETARY), validateBody(createLicenseSchema), createLicense)
+// DIRECTOR/SECRETARY, y desde 8-sep-2026 también REGENTE (confirmado con
+// Raul, para el flujo de llegada tardía — ver studentLateArrival.service.ts,
+// registra tardanzas y puede registrar Licencia desde la misma pantalla).
+router.post('/', requireRole(Role.DIRECTOR, Role.SECRETARY, Role.REGENTE), validateBody(createLicenseSchema), createLicense)
 
 export default router

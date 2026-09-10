@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react'
 import {
   LayoutDashboard, Users, GraduationCap, BookOpen,
   ClipboardList, Clock, DollarSign, Bell, FileBarChart,
-  Settings, ShieldCheck, Calendar, ClipboardCheck, Building2, Megaphone, Trophy
+  Settings, ShieldCheck, Calendar, ClipboardCheck, Building2, Megaphone, Trophy, QrCode
 } from 'lucide-react'
 import DashboardShell, { MenuGroup } from '@/components/layout/DashboardShell'
 import { useDistrictConfig } from '@/hooks/useDistrictConfig'
@@ -34,6 +34,7 @@ const menuGroups: MenuGroup[] = [
       { label: 'Gestión Académica', href: '/dashboard/admin/gestion',       icon: <Calendar size={16}/>,      roles: ['SUPER_ADMIN','DIRECTOR','SECRETARY'] },
       { label: 'Horarios',          href: '/dashboard/admin/horarios',      icon: <Clock size={16}/>,         roles: ADMIN_ROLES },
       { label: 'Calificaciones',    href: '/dashboard/admin/notas',         icon: <ClipboardList size={16}/>, roles: ADMIN_ROLES },
+      { label: 'Códigos QR',        href: '/dashboard/admin/estudiantes/codigos-qr', icon: <QrCode size={16}/>, roles: ADMIN_ROLES },
     ]
   },
   {
@@ -77,9 +78,9 @@ const menuGroups: MenuGroup[] = [
   {
     label: 'Reportes',
     icon:  <FileBarChart size={15}/>,
-    roles: ['SUPER_ADMIN','DIRECTOR','SECRETARY'],
+    roles: ['SUPER_ADMIN','DIRECTOR','SECRETARY','REGENTE'],
     items: [
-      { label: 'Reportes', href: '/dashboard/admin/reportes', icon: <FileBarChart size={16}/>, roles: ['SUPER_ADMIN','DIRECTOR','SECRETARY'] },
+      { label: 'Reportes', href: '/dashboard/admin/reportes', icon: <FileBarChart size={16}/>, roles: ['SUPER_ADMIN','DIRECTOR','SECRETARY','REGENTE'] },
     ]
   },
 ]

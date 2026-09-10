@@ -60,6 +60,25 @@ export const getWeeklyAttendanceMatrix = async (req: AuthRequest, res: Response)
   }
 }
 
+// GET /api/reports/late-arrivals-daily
+export const getDailyLateArrivals = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    res.json(await reportService.getDailyLateArrivals(req.query.date as string | undefined))
+  } catch (error) {
+    handleControllerError(res, error)
+  }
+}
+
+// GET /api/reports/late-arrivals-weekly/:courseId
+export const getWeeklyLateArrivals = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const report = await reportService.getWeeklyLateArrivals(parseInt(req.params.courseId, 10), req.query.date as string | undefined)
+    res.json(report)
+  } catch (error) {
+    handleControllerError(res, error)
+  }
+}
+
 // GET /api/reports/treasury
 export const getTreasuryReport = async (req: AuthRequest, res: Response): Promise<void> => {
   try {

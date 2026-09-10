@@ -248,4 +248,27 @@ export const reportRepository = {
       where: { charges: { some: { academicYearId, status: { in: ['PENDIENTE', 'PARCIAL'] } } } },
     })
   },
+
+  // Reporte de llegadas tarde (Regente), diario y semanal — ver
+  // report.service.ts. Consultas propias (no se cruzan con
+  // studentLateArrival.repository.ts), mismo criterio ya usado en el resto
+  // de este archivo para los reportes de asistencia.
+  findLateArrivalsForDate(date: Date) {
+    return prisma.studentLateArrival.findMany({
+      where: { date },
+      include: {
+        student: { select: { id: true, firstName: true, lastName: true } },
+        course: { select: { id: true, grade: true, parallel: true, level: true } },
+      },
+      orderBy: [{ courseId: 'asc' }, { arrivalTime: 'asc' }],
+    })
+  },
+
+  findLateArrivalsForCourseWeek(courseId: number, start: Date, next: Date) {
+    return prisma.studentLateArrival.findMany({
+      where: { courseId, date: { gte: start, lt: next } },
+      include: { student: { select: { id: true, firstName: true, lastName: true } } },
+      orderBy: [{ date: 'asc' }, { arrivalTime: 'asc' }],
+    })
+  },
 }

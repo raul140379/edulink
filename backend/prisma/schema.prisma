@@ -96,6 +96,7 @@ model School {
   studentAttendances      StudentAttendance[]
   attendanceBlocks        AttendanceBlock[]
   studentLicenses         StudentLicense[]
+  studentLateArrivals     StudentLateArrival[]
   biometricTemplates      BiometricTemplate[]
   poaActas                PoaActa[]
   studentGamifications    StudentGamification[]
@@ -164,6 +165,7 @@ model User {
   auditLogsActed          AuditLog[]
   sportsParticipantsAdded SportsParticipant[]
   licensesCreated         StudentLicense[]
+  lateArrivalsRegistered  StudentLateArrival[]
 
   @@index([schoolId])
 }
@@ -367,6 +369,7 @@ model Student {
   trimesterBonuses     StudentTrimesterBonus[]
   sportsParticipations SportsParticipant[]
   licenses             StudentLicense[]
+  lateArrivals         StudentLateArrival[]
 
   @@unique([ci, schoolId])
   @@unique([rude, schoolId])
@@ -518,6 +521,7 @@ model Course {
   attendanceBlocks   AttendanceBlock[]
   tasks              Task[]
   teacherSubjects    TeacherSubjectCourse[]
+  lateArrivals       StudentLateArrival[]
 
   @@unique([level, grade, parallel, educationType, shift, schoolId])
 }
@@ -1211,6 +1215,42 @@ model StudentLicense {
   @@index([studentId])
   @@index([schoolId])
   @@index([startDate, endDate])
+}
+
+// Llegada tardía registrada por Regente/Dirección/Secretaría cuando un
+// estudiante llega después de que Portería cierra la puerta (control normal
+// de Portería hasta la hora de clase, GateRecord ya cubre eso — este modelo
+// arranca recién después, sin relación con ese flujo). Independiente a
+// propósito de StudentAttendance (asistencia de clase): un maestro puede
+// marcar Falta en el primer período sin importar este registro. minutesLate
+// se calcula y CONGELA en el momento de guardar contra el SchoolSchedule
+// vigente entonces — mismo criterio que AttendanceBlock, nunca se recalcula
+// si el horario cambia después.
+model StudentLateArrival {
+  id             Int       @id @default(autoincrement())
+  studentId      Int
+  courseId       Int
+  date           DateTime
+  arrivalTime    String
+  minutesLate    Int
+  enteredClass   Boolean
+  notifiedAt     DateTime?
+  // Sin @relation a propósito (confirmado con Raul: sin ninguna dependencia
+  // real todavía) — puntero opcional para un cruce futuro con GateRecord,
+  // la Regente siempre carga la hora a mano, nunca se resuelve solo.
+  gateRecordId   Int?
+  registeredById Int
+  schoolId       Int
+  createdAt      DateTime  @default(now())
+  student        Student   @relation(fields: [studentId], references: [id])
+  course         Course    @relation(fields: [courseId], references: [id])
+  registeredBy   User      @relation(fields: [registeredById], references: [id])
+  school         School    @relation(fields: [schoolId], references: [id])
+
+  @@index([studentId])
+  @@index([courseId])
+  @@index([schoolId])
+  @@index([date])
 }
 
 model BiometricTemplate {
