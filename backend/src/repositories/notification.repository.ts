@@ -59,4 +59,20 @@ export const notificationRepository = {
       take: 50,
     })
   },
+
+  // Historial compartido para DIRECTOR/SECRETARY/REGENTE (ver
+  // notification.service.ts) — a diferencia de findSentByUser, varias
+  // cuentas admin del mismo colegio pueden enviar, así que incluye quién lo
+  // mandó para poder distinguirlas en pantalla.
+  findSentBySchool(schoolId: number) {
+    return prisma.notification.findMany({
+      where: { schoolId },
+      include: {
+        parent: { select: { id: true, firstName: true, lastName: true, phone: true } },
+        sentBy: { select: { id: true, email: true, role: true } },
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 50,
+    })
+  },
 }

@@ -26,8 +26,13 @@ async function withTeacherHeader(userId: number | undefined, message: string): P
 
 export const notificationService = {
   async getMyNotifications(userId: number | undefined) {
+    // Notification es un modelo exclusivo de PARENT (destinatario = padre) —
+    // cualquier otro rol (Teacher, Student, Director, Junta, etc.) nunca
+    // tiene un Parent vinculado a su cuenta. Eso no es un error, es la
+    // campanita preguntando "¿este usuario tiene notificaciones de tipo
+    // padre?" — la respuesta correcta para ellos es "ninguna", no un 404.
     const parent = await notificationRepository.findParentByUserId(userId)
-    if (!parent) throw new HttpError(404, 'Perfil de padre no encontrado')
+    if (!parent) return []
     return notificationRepository.findNotificationsByParent(parent.id)
   },
 
@@ -71,6 +76,12 @@ export const notificationService = {
   },
 
   getSentNotifications(userId: number | undefined) {
+    // Director/Secretaría/Regente comparten un único historial por colegio
+    // (varias cuentas admin pueden enviar) — Maestro/Junta/Delegado siguen
+    // viendo solo lo que ellos mismos enviaron, sin cambios.
+    const ctx = getTenantContext()
+    const isAdminRole = ctx?.role === Role.DIRECTOR || ctx?.role === Role.SECRETARY || ctx?.role === Role.REGENTE
+    if (isAdminRole && ctx.schoolId) return notificationRepository.findSentBySchool(ctx.schoolId)
     return notificationRepository.findSentByUser(userId)
   },
 }
