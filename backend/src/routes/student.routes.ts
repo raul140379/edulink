@@ -14,6 +14,8 @@ import {
   getStudentsByCourse,
   getStudentByRude,
   changeEnrollment,
+  changeCourse,
+  withdrawStudent,
   getMyProfile,
   getMyGrades,
   getMyTasks,
@@ -26,10 +28,10 @@ import {
   getMyAchievements,
   deliverTask,
 } from '../controllers/student.controller'
-import { verifyToken, requirePermission, requireAnyPermission, restoreTenantContext } from '../middlewares/auth.middleware'
+import { verifyToken, requirePermission, requireAnyPermission, requireRole, restoreTenantContext } from '../middlewares/auth.middleware'
 import { validateBody } from '../middlewares/validate.middleware'
-import { createStudentSchema, updateStudentSchema, enrollSchema, autoEvaluacionSchema } from '../schemas/student.schema'
-import { Permission } from '../config/permissions'
+import { createStudentSchema, updateStudentSchema, enrollSchema, autoEvaluacionSchema, changeCourseSchema, withdrawStudentSchema } from '../schemas/student.schema'
+import { Permission, Role } from '../config/permissions'
 import multer from 'multer'
 const upload = multer({ storage: multer.memoryStorage() })
 
@@ -66,6 +68,11 @@ router.post('/import-tutors',                requirePermission(Permission.STUDEN
 router.get('/by-course/:courseId',           requirePermission(Permission.STUDENT_VIEW_ALL),  getStudentsByCourse)
 router.get('/by-rude/:rude',                 requirePermission(Permission.STUDENT_VIEW_ALL),  getStudentByRude)
 router.put('/:id/enroll',                    requirePermission(Permission.ENROLLMENT_CREATE), changeEnrollment)
+// Cambiar de curso dentro del mismo grado — solo DIRECTOR/SECRETARY (no
+// REGENTE), decisión explícita distinta del resto de ENROLLMENT_CREATE.
+router.put('/:id/course',                    requireRole(Role.DIRECTOR, Role.SECRETARY), validateBody(changeCourseSchema), changeCourse)
+// Baja definitiva — mismo criterio de rol que cambio de curso.
+router.post('/:id/withdraw',                 requireRole(Role.DIRECTOR, Role.SECRETARY), validateBody(withdrawStudentSchema), withdrawStudent)
 router.delete('/:id/enroll',                  requirePermission(Permission.STUDENT_CREATE), cancelEnrollment)
 
 export default router

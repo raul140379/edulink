@@ -133,6 +133,35 @@ export const changeEnrollment = async (req: AuthRequest, res: Response): Promise
 }
 
 // ─────────────────────────────────────────────
+// POST /api/students/:id/withdraw — dar de baja definitiva
+// ─────────────────────────────────────────────
+export const withdrawStudent = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const { withdrawnCourse } = await studentService.withdrawStudent(parseInt(req.params.id), req.body)
+    res.json({
+      message: withdrawnCourse
+        ? `Estudiante dado de baja. Salió de ${withdrawnCourse.grade} "${withdrawnCourse.parallel}"`
+        : 'Estudiante dado de baja',
+    })
+  } catch (error) {
+    handleControllerError(res, error)
+  }
+}
+
+// ─────────────────────────────────────────────
+// PUT /api/students/:id/course — cambiar de curso (mismo grado)
+// ─────────────────────────────────────────────
+export const changeCourse = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const { courseId } = req.body
+    const assignment = await studentService.changeCourse(parseInt(req.params.id), courseId)
+    res.json({ message: `Curso actualizado a ${assignment.course.grade} "${assignment.course.parallel}"`, assignment })
+  } catch (error) {
+    handleControllerError(res, error)
+  }
+}
+
+// ─────────────────────────────────────────────
 // DELETE /api/students/:id/enroll — anular inscripción
 // ─────────────────────────────────────────────
 export const cancelEnrollment = async (req: AuthRequest, res: Response): Promise<void> => {

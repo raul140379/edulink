@@ -1,5 +1,5 @@
 import { z } from 'zod'
-import { Gender, EducationType } from '@prisma/client'
+import { Gender, EducationType, WithdrawalReason } from '@prisma/client'
 
 export const createStudentSchema = z.object({
   firstName: z.string().min(1, 'El nombre es requerido'),
@@ -35,7 +35,18 @@ export const autoEvaluacionSchema = z.object({
   autoEvaluacion: z.coerce.number().min(0, 'Autoevaluación debe estar entre 0 y 5').max(5, 'Autoevaluación debe estar entre 0 y 5'),
 })
 
+export const changeCourseSchema = z.object({
+  courseId: z.coerce.number().int(),
+})
+
+export const withdrawStudentSchema = z.object({
+  reason: z.nativeEnum(WithdrawalReason),
+  note:   z.string().optional(),
+})
+
 export type CreateStudentInput   = z.infer<typeof createStudentSchema>
 export type UpdateStudentInput   = z.infer<typeof updateStudentSchema>
 export type EnrollInput          = z.infer<typeof enrollSchema>
 export type AutoEvaluacionInput  = z.infer<typeof autoEvaluacionSchema>
+export type ChangeCourseInput    = z.infer<typeof changeCourseSchema>
+export type WithdrawStudentInput = z.infer<typeof withdrawStudentSchema>

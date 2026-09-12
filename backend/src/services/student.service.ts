@@ -13,7 +13,7 @@ import { getTenantContext } from '../lib/tenant-context'
 import { Permission, hasPermission } from '../config/permissions'
 import { normalizeLetters, generateUniqueEmail, generateParentPassword } from '../utils/account-generator'
 import {
-  CreateStudentInput, UpdateStudentInput, EnrollInput, AutoEvaluacionInput,
+  CreateStudentInput, UpdateStudentInput, EnrollInput, AutoEvaluacionInput, WithdrawStudentInput,
 } from '../schemas/student.schema'
 import { Pagination, withTotal } from '../utils/pagination'
 
@@ -187,7 +187,57 @@ export const studentService = {
   async toggleStudentStatus(id: number) {
     const student = await studentRepository.findRaw(id)
     if (!student) throw new HttpError(404, 'Estudiante no encontrado')
-    return studentRepository.setActive(id, !student.isActive)
+    const nextActive = !student.isActive
+
+    // Al reactivar, el User propio (si tiene) debe recuperar el login de
+    // inmediato — dejarlo bloqueado sería una inconsistencia real (11-sep-2026,
+    // hallazgo de prueba real): el Director ve al estudiante "Activo" de
+    // nuevo pero no puede loguearse. Espejado también al desactivar, mismo
+    // criterio que withdrawStudent, para no reabrir la misma inconsistencia
+    // en la otra dirección.
+    if (student.userId) {
+      await userRepository.setActive(student.userId, nextActive)
+    }
+
+    return studentRepository.setActive(id, nextActive)
+  },
+
+  // Baja definitiva (traslado/retiro/otro) — a diferencia de toggleStudentStatus
+  // (flip simple, sin contexto, usado también para reactivar), esta acción deja
+  // rastro completo: motivo + fecha + nota, bloquea el acceso al sistema del
+  // estudiante (si tenía User propio) y lo saca del roster de la gestión activa
+  // (reusa cancelEnrollment — mismo mecanismo, sin tocar Nota/StudentAttendance
+  // ya registradas, que quedan intactas como historial). Reactivar después NO
+  // recrea la matrícula automáticamente — decisión explícita, documentada.
+  async withdrawStudent(id: number, input: WithdrawStudentInput) {
+    const ctx = getTenantContext()
+    const student = await studentRepository.findRaw(id)
+    if (!student) throw new HttpError(404, 'Estudiante no encontrado')
+    if (!student.isActive) throw new HttpError(400, 'El estudiante ya está inactivo')
+
+    const activeYear = await studentRepository.findActiveAcademicYear()
+    const assignment = activeYear ? await studentRepository.findEnrollmentForYear(id, activeYear.id) : null
+
+    return prisma.$transaction(async (tx) => {
+      await studentRepository.withdrawTx(tx, id, input.reason, input.note)
+
+      if (student.userId) {
+        await userRepository.setActiveTx(tx, student.userId, false)
+      }
+
+      if (assignment) {
+        await studentRepository.deleteEnrollmentById(assignment.id, tx)
+      }
+
+      await auditLogRepository.create({
+        action: 'OVERWRITE', entityType: 'Student', entityId: id,
+        before: { isActive: true, courseId: assignment?.courseId ?? null },
+        after: { isActive: false, withdrawalReason: input.reason, withdrawalNote: input.note ?? null },
+        reason: input.note, actorUserId: ctx?.userId ?? null, schoolId: student.schoolId,
+      }, tx)
+
+      return { withdrawnCourse: assignment?.course ?? null }
+    })
   },
 
   async deleteStudent(id: number) {
@@ -284,6 +334,50 @@ export const studentService = {
     return studentRepository.createEnrollment({
       studentId: id, courseId, academicYearId: activeYear.id,
       educationType: course.educationType, year: activeYear.year,
+    })
+  },
+
+  // "Cambiar de curso" — DIRECTOR/SECRETARY mueven a un estudiante a otro
+  // paralelo del MISMO grado/nivel/turno/tipo de educación (nunca cambia de
+  // grado). Sobrescribe courseId en la misma fila de StudentAcademicAssignment
+  // (decisión confirmada: el historial ya registrado en Nota/StudentAttendance
+  // no depende de este registro, así que no hace falta cerrar+crear uno nuevo
+  // para preservarlo — ver AuditLog para el rastro del cambio en sí).
+  async changeCourse(id: number, newCourseId: number) {
+    const ctx = getTenantContext()
+    const student = await studentRepository.findRaw(id)
+    if (!student) throw new HttpError(404, 'Estudiante no encontrado')
+
+    const activeYear = await studentRepository.findActiveAcademicYear()
+    if (!activeYear) throw new HttpError(400, 'No hay gestión académica activa')
+
+    const assignment = await studentRepository.findEnrollmentForYear(id, activeYear.id)
+    if (!assignment) throw new HttpError(404, 'El estudiante no tiene matrícula activa en la gestión actual')
+
+    const oldCourse = assignment.course
+    if (oldCourse.id === newCourseId) throw new HttpError(400, 'El estudiante ya está en ese curso')
+
+    const newCourse = await studentRepository.findCourseById(newCourseId)
+    if (!newCourse) throw new HttpError(404, 'Curso no encontrado')
+
+    if (
+      newCourse.grade !== oldCourse.grade
+      || newCourse.level !== oldCourse.level
+      || newCourse.educationType !== oldCourse.educationType
+      || newCourse.shift !== oldCourse.shift
+    ) {
+      throw new HttpError(400, 'El curso nuevo debe ser del mismo grado, nivel, turno y tipo de educación')
+    }
+
+    return prisma.$transaction(async (tx) => {
+      const updated = await studentRepository.updateEnrollmentCourse(assignment.id, newCourseId, tx)
+      await auditLogRepository.create({
+        action: 'OVERWRITE', entityType: 'StudentAcademicAssignment', entityId: assignment.id,
+        before: { courseId: oldCourse.id, grade: oldCourse.grade, parallel: oldCourse.parallel },
+        after: { courseId: newCourse.id, grade: newCourse.grade, parallel: newCourse.parallel },
+        actorUserId: ctx?.userId ?? null, schoolId: student.schoolId,
+      }, tx)
+      return updated
     })
   },
 

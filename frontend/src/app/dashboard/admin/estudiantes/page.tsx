@@ -86,6 +86,14 @@ export default function EstudiantesPage() {
   const [importResult,    setImportResult]    = useState<any>(null)
   const [importType, setImportType] = useState<'students' | 'tutors'>('students')
 
+  const [showWithdrawModal, setShowWithdrawModal] = useState(false)
+  const [withdrawId,        setWithdrawId]        = useState<number | null>(null)
+  const [withdrawName,      setWithdrawName]      = useState('')
+  const [withdrawReason,    setWithdrawReason]    = useState('')
+  const [withdrawNote,      setWithdrawNote]      = useState('')
+  const [withdrawSaving,    setWithdrawSaving]    = useState(false)
+  const [withdrawError,     setWithdrawError]     = useState('')
+
   const fetchStudents = async (targetPage = page) => {
     setLoading(true)
     try {
@@ -178,6 +186,28 @@ export default function EstudiantesPage() {
       if (res.ok) { toast(data.message, 'success'); fetchStudents() }
       else toast(data.message, 'error')
     } catch { toast('Error al cambiar estado', 'error') }
+  }
+
+  const openWithdraw = (id: number, name: string) => {
+    setWithdrawId(id); setWithdrawName(name)
+    setWithdrawReason(''); setWithdrawNote(''); setWithdrawError('')
+    setShowWithdrawModal(true)
+  }
+
+  const handleWithdraw = async () => {
+    if (!withdrawReason) { setWithdrawError('Seleccioná un motivo'); return }
+    setWithdrawError(''); setWithdrawSaving(true)
+    try {
+      const res  = await fetch(`${API_URL}/api/students/${withdrawId}/withdraw`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${getToken()}` },
+        body: JSON.stringify({ reason: withdrawReason, note: withdrawNote || undefined }),
+      })
+      const data = await res.json()
+      if (!res.ok) { setWithdrawError(data.message); return }
+      toast(data.message, 'success'); setShowWithdrawModal(false); fetchStudents()
+    } catch { setWithdrawError('Error de conexión') }
+    finally { setWithdrawSaving(false) }
   }
 
   const handleDelete = async (id: number, name: string) => {
@@ -301,7 +331,9 @@ export default function EstudiantesPage() {
           <button title="Inscribir en curso" onClick={() => openEnroll(s.id)} className="w-7 h-7 rounded-md bg-success-100 text-success-700 flex items-center justify-center hover:opacity-75">
             <BookOpen size={13} />
           </button>
-          <button title={s.isActive ? 'Desactivar' : 'Activar'} onClick={() => handleToggle(s.id)}
+          <button
+            title={s.isActive ? 'Dar de baja' : 'Activar'}
+            onClick={() => s.isActive ? openWithdraw(s.id, `${s.firstName} ${s.lastName}`) : handleToggle(s.id)}
             className={`w-7 h-7 rounded-md flex items-center justify-center hover:opacity-75 ${s.isActive ? 'bg-danger-100 text-danger-600' : 'bg-success-100 text-success-700'}`}>
             {s.isActive ? <UserX size={13} /> : <UserCheck size={13} />}
           </button>
@@ -465,6 +497,45 @@ export default function EstudiantesPage() {
               </optgroup>
             ))}
           </Select>
+        </div>
+      </Modal>
+
+      {/* Modal dar de baja */}
+      <Modal
+        open={showWithdrawModal}
+        onClose={() => !withdrawSaving && setShowWithdrawModal(false)}
+        title="Dar de baja"
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setShowWithdrawModal(false)} disabled={withdrawSaving}>Cancelar</Button>
+            <Button onClick={handleWithdraw} loading={withdrawSaving} disabled={!withdrawReason}>
+              <UserX size={14} /> Confirmar baja
+            </Button>
+          </>
+        }
+      >
+        <div className="flex flex-col gap-3.5">
+          <p className="text-[13px] text-neutral-500">
+            Estudiante: <strong className="text-brand-700">{withdrawName}</strong>
+          </p>
+          <p className="bg-neutral-100 border border-neutral-300 rounded-lg px-3 py-2.5 text-xs text-neutral-500 leading-relaxed">
+            El historial de asistencia y notas ya registrado queda intacto. El estudiante sale de su curso actual y, si tiene acceso al sistema, se le bloquea el ingreso.
+          </p>
+          {withdrawError && <p className="text-[13px] text-danger-600 bg-danger-100 rounded-lg px-3 py-2">{withdrawError}</p>}
+          <Select label="Motivo de la baja" required value={withdrawReason} onChange={e => setWithdrawReason(e.target.value)}>
+            <option value="">-- Selecciona un motivo --</option>
+            <option value="TRASLADO">Traslado a otra Unidad Educativa</option>
+            <option value="RETIRO_VOLUNTARIO">Retiro voluntario</option>
+            <option value="OTRO">Otro</option>
+          </Select>
+          <div className="flex flex-col gap-1.5">
+            <label className="text-[13px] font-semibold text-brand-700">Nota (opcional)</label>
+            <textarea
+              value={withdrawNote} onChange={e => setWithdrawNote(e.target.value)}
+              rows={3} placeholder="Detalle adicional, si hace falta..."
+              className="w-full px-3.5 py-2.5 rounded-lg border border-neutral-300 text-sm outline-none focus:border-brand-600 focus:ring-2 focus:ring-brand-600/15 resize-none"
+            />
+          </div>
         </div>
       </Modal>
 

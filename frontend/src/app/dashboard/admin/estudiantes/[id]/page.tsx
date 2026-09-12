@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import {
   ArrowLeft, User, BookOpen, Users, GraduationCap,
-  Phone, Mail, MapPin, CreditCard, Calendar, KeyRound
+  Phone, Mail, MapPin, CreditCard, Calendar, KeyRound, Repeat, X
 } from 'lucide-react'
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000'
@@ -39,6 +39,7 @@ interface Student {
     year:          number
     educationType: string
     course: {
+      id:            number
       level:         string
       grade:         string
       parallel:      string
@@ -47,6 +48,15 @@ interface Student {
     }
     academicYear: { year: number; isActive: boolean }
   }[]
+}
+
+interface CourseOption {
+  id:            number
+  level:         string
+  grade:         string
+  parallel:      string
+  shift:         string
+  educationType: string
 }
 
 const GRADE_LABELS: Record<string, string> = {
@@ -86,29 +96,101 @@ export default function StudentDetailPage() {
   const [loading, setLoading] = useState(true)
   const [error,   setError]   = useState('')
 
+  const [changeOpen,    setChangeOpen]    = useState(false)
+  const [courseOptions, setCourseOptions] = useState<CourseOption[]>([])
+  const [coursesLoading, setCoursesLoading] = useState(false)
+  const [selectedCourseId, setSelectedCourseId] = useState('')
+  const [changeSaving, setChangeSaving] = useState(false)
+  const [changeError,  setChangeError]  = useState('')
+
+  const [withdrawOpen,    setWithdrawOpen]    = useState(false)
+  const [withdrawReason,  setWithdrawReason]  = useState('')
+  const [withdrawNote,    setWithdrawNote]    = useState('')
+  const [withdrawSaving,  setWithdrawSaving]  = useState(false)
+  const [withdrawError,   setWithdrawError]   = useState('')
+
   const token = typeof window !== 'undefined' ? localStorage.getItem('token') : ''
 
-  useEffect(() => {
-    const fetchStudent = async () => {
-      setLoading(true)
-      try {
-        const res  = await fetch(`${API_URL}/api/students/${id}`, {
-          headers: { Authorization: `Bearer ${token}` }
-        })
-        const data = await res.json()
-        if (res.ok) setStudent(data)
-        else setError('Estudiante no encontrado')
-      } catch { setError('Error de conexión') }
-      finally  { setLoading(false) }
-    }
-    fetchStudent()
-  }, [id])
+  const fetchStudent = async () => {
+    setLoading(true)
+    try {
+      const res  = await fetch(`${API_URL}/api/students/${id}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      })
+      const data = await res.json()
+      if (res.ok) setStudent(data)
+      else setError('Estudiante no encontrado')
+    } catch { setError('Error de conexión') }
+    finally  { setLoading(false) }
+  }
+
+  useEffect(() => { fetchStudent() }, [id])
 
   if (loading) return <div className="center"><div className="spinner"/></div>
   if (error)   return <div className="center"><p className="err-msg">{error}</p></div>
   if (!student) return null
 
   const activeCourse = student.assignments.find(a => a.academicYear.isActive)
+
+  const openChangeCourse = async () => {
+    if (!activeCourse) return
+    setChangeError('')
+    setSelectedCourseId('')
+    setChangeOpen(true)
+    setCoursesLoading(true)
+    try {
+      const res  = await fetch(`${API_URL}/api/courses`, { headers: { Authorization: `Bearer ${token}` } })
+      const data = await res.json()
+      const list: CourseOption[] = Array.isArray(data) ? data : (data.data || [])
+      const c = activeCourse.course
+      setCourseOptions(list.filter(opt =>
+        opt.id !== c.id && opt.level === c.level && opt.grade === c.grade
+        && opt.educationType === c.educationType && opt.shift === c.shift
+      ))
+    } catch { setChangeError('No se pudo cargar la lista de paralelos') }
+    finally { setCoursesLoading(false) }
+  }
+
+  const submitChangeCourse = async () => {
+    if (!selectedCourseId) return
+    setChangeSaving(true)
+    setChangeError('')
+    try {
+      const res  = await fetch(`${API_URL}/api/students/${id}/course`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ courseId: Number(selectedCourseId) }),
+      })
+      const data = await res.json()
+      if (!res.ok) { setChangeError(data.message || 'No se pudo cambiar de curso'); return }
+      setChangeOpen(false)
+      await fetchStudent()
+    } catch { setChangeError('Error de conexión') }
+    finally { setChangeSaving(false) }
+  }
+
+  const openWithdraw = () => {
+    setWithdrawReason(''); setWithdrawNote(''); setWithdrawError('')
+    setWithdrawOpen(true)
+  }
+
+  const submitWithdraw = async () => {
+    if (!withdrawReason) { setWithdrawError('Seleccioná un motivo'); return }
+    setWithdrawSaving(true)
+    setWithdrawError('')
+    try {
+      const res  = await fetch(`${API_URL}/api/students/${id}/withdraw`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ reason: withdrawReason, note: withdrawNote || undefined }),
+      })
+      const data = await res.json()
+      if (!res.ok) { setWithdrawError(data.message || 'No se pudo dar de baja al estudiante'); return }
+      setWithdrawOpen(false)
+      await fetchStudent()
+    } catch { setWithdrawError('Error de conexión') }
+    finally { setWithdrawSaving(false) }
+  }
 
   return (
     <div>
@@ -133,6 +215,9 @@ export default function StudentDetailPage() {
                 <span className="access-pill">
                   <KeyRound size={11}/> Tiene acceso al sistema
                 </span>
+              )}
+              {student.isActive && (
+                <button className="withdraw-btn" onClick={openWithdraw}>Dar de baja</button>
               )}
             </div>
           </div>
@@ -209,6 +294,9 @@ export default function StudentDetailPage() {
                 <span>{activeCourse.course.educationType}</span>
                 <span>Gestión {activeCourse.year}</span>
               </div>
+              <button className="change-course-btn" onClick={openChangeCourse}>
+                <Repeat size={14}/> Cambiar de curso
+              </button>
             </div>
           ) : (
             <div className="no-data">No inscrito en la gestión actual</div>
@@ -272,6 +360,82 @@ export default function StudentDetailPage() {
         </div>
       </div>
 
+      {changeOpen && activeCourse && (
+        <div className="modal-backdrop" onClick={() => !changeSaving && setChangeOpen(false)}>
+          <div className="modal-box" onClick={e => e.stopPropagation()}>
+            <div className="modal-head">
+              <h3>Cambiar de curso</h3>
+              <button className="modal-close" onClick={() => setChangeOpen(false)} disabled={changeSaving}><X size={16}/></button>
+            </div>
+            <p className="modal-sub">
+              Curso actual: <strong>{GRADE_LABELS[activeCourse.course.grade]} {activeCourse.course.parallel}</strong> ({LEVEL_LABELS[activeCourse.course.level]}, {SHIFT_LABELS[activeCourse.course.shift]})
+            </p>
+            <p className="modal-hint">
+              El historial de asistencia y notas ya registrado queda intacto en el curso actual. Desde el momento del cambio, todo lo nuevo se registra en el curso elegido.
+            </p>
+
+            {coursesLoading ? (
+              <div className="center" style={{ padding: 16 }}><div className="spinner"/></div>
+            ) : courseOptions.length === 0 ? (
+              <div className="no-data">No hay otros paralelos del mismo grado, nivel y turno en este colegio.</div>
+            ) : (
+              <select className="course-select" value={selectedCourseId} onChange={e => setSelectedCourseId(e.target.value)}>
+                <option value="">Seleccioná el curso nuevo…</option>
+                {courseOptions.map(c => (
+                  <option key={c.id} value={c.id}>{GRADE_LABELS[c.grade]} {c.parallel}</option>
+                ))}
+              </select>
+            )}
+
+            {changeError && <p className="modal-error">{changeError}</p>}
+
+            <div className="modal-actions">
+              <button className="modal-cancel" onClick={() => setChangeOpen(false)} disabled={changeSaving}>Cancelar</button>
+              <button className="modal-confirm" onClick={submitChangeCourse} disabled={!selectedCourseId || changeSaving}>
+                {changeSaving ? 'Guardando…' : 'Confirmar cambio'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {withdrawOpen && (
+        <div className="modal-backdrop" onClick={() => !withdrawSaving && setWithdrawOpen(false)}>
+          <div className="modal-box" onClick={e => e.stopPropagation()}>
+            <div className="modal-head">
+              <h3>Dar de baja</h3>
+              <button className="modal-close" onClick={() => setWithdrawOpen(false)} disabled={withdrawSaving}><X size={16}/></button>
+            </div>
+            <p className="modal-sub">
+              Estudiante: <strong>{student.lastName} {student.firstName}</strong>
+            </p>
+            <p className="modal-hint">
+              El historial de asistencia y notas ya registrado queda intacto. El estudiante sale de su curso actual y, si tiene acceso al sistema, se le bloquea el ingreso.
+            </p>
+
+            <select className="course-select" value={withdrawReason} onChange={e => setWithdrawReason(e.target.value)}>
+              <option value="">Motivo de la baja…</option>
+              <option value="TRASLADO">Traslado a otra Unidad Educativa</option>
+              <option value="RETIRO_VOLUNTARIO">Retiro voluntario</option>
+              <option value="OTRO">Otro</option>
+            </select>
+            <textarea
+              className="withdraw-note" value={withdrawNote} onChange={e => setWithdrawNote(e.target.value)}
+              rows={3} placeholder="Nota adicional (opcional)"
+            />
+
+            {withdrawError && <p className="modal-error">{withdrawError}</p>}
+
+            <div className="modal-actions">
+              <button className="modal-cancel" onClick={() => setWithdrawOpen(false)} disabled={withdrawSaving}>Cancelar</button>
+              <button className="modal-confirm danger" onClick={submitWithdraw} disabled={!withdrawReason || withdrawSaving}>
+                {withdrawSaving ? 'Guardando…' : 'Confirmar baja'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <style>{`
         .center{display:flex;justify-content:center;align-items:center;padding:48px}
         .err-msg{color:#C0392B;font-size:14px}
@@ -305,6 +469,26 @@ export default function StudentDetailPage() {
         .course-details{display:flex;flex-wrap:wrap;gap:8px}
         .course-details span{background:#F5FAF7;color:#0A5A45;padding:3px 10px;border-radius:20px;font-size:12px}
         .no-data{color:#6B8F7F;font-size:13px;padding:12px 0;font-style:italic}
+        .change-course-btn{display:flex;align-items:center;gap:6px;justify-content:center;background:#F5FAF7;border:1px solid #DCEEE6;color:#0A5A45;font-size:12px;font-weight:600;padding:8px 12px;border-radius:8px;cursor:pointer;width:fit-content}
+        .change-course-btn:hover{background:#E1F5EE}
+        .modal-backdrop{position:fixed;inset:0;background:rgba(10,30,25,.45);display:flex;align-items:center;justify-content:center;z-index:100;padding:16px}
+        .modal-box{background:#fff;border-radius:14px;padding:22px;width:100%;max-width:420px;display:flex;flex-direction:column;gap:14px;max-height:90vh;overflow-y:auto}
+        .modal-head{display:flex;align-items:center;justify-content:space-between}
+        .modal-head h3{font-size:16px;font-weight:700;color:#0A5A45}
+        .modal-close{background:none;border:none;cursor:pointer;color:#6B8F7F;padding:4px}
+        .modal-close:hover{color:#0A5A45}
+        .modal-sub{font-size:13px;color:#0A5A45}
+        .modal-hint{font-size:12px;color:#6B8F7F;background:#F5FAF7;border-radius:8px;padding:10px;line-height:1.5}
+        .course-select{width:100%;padding:10px 12px;border:1px solid #DCEEE6;border-radius:8px;font-size:13px;color:#0A5A45;background:#fff}
+        .modal-error{color:#C0392B;font-size:12px;background:#FFF0F0;border-radius:8px;padding:8px 10px}
+        .modal-actions{display:flex;justify-content:flex-end;gap:10px}
+        .modal-cancel{background:none;border:1px solid #DCEEE6;color:#6B8F7F;font-size:13px;font-weight:600;padding:9px 16px;border-radius:8px;cursor:pointer}
+        .modal-confirm{background:#0A5A45;border:none;color:#fff;font-size:13px;font-weight:600;padding:9px 16px;border-radius:8px;cursor:pointer}
+        .modal-confirm:disabled{opacity:.5;cursor:not-allowed}
+        .modal-confirm.danger{background:#C0392B}
+        .withdraw-btn{background:#FFF0F0;color:#C0392B;border:1px solid #F5C6C6;font-size:11px;font-weight:600;padding:3px 10px;border-radius:20px;cursor:pointer}
+        .withdraw-btn:hover{background:#FFE1E1}
+        .withdraw-note{width:100%;padding:10px 12px;border:1px solid #DCEEE6;border-radius:8px;font-size:13px;color:#0A5A45;background:#fff;resize:none;font-family:inherit}
         .parents-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:12px}
         .parent-card{background:#F8FBFF;border:1px solid #DCEEE6;border-radius:10px;padding:14px;display:flex;flex-direction:column;gap:8px}
         .parent-card.tutor{border-color:#F5C518;background:#FFFDF0}

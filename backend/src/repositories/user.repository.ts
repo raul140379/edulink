@@ -147,6 +147,10 @@ export const userRepository = {
     })
   },
 
+  setActiveTx(tx: TxClient, id: number, isActive: boolean) {
+    return tx.user.update({ where: { id }, data: { isActive } })
+  },
+
   async detachRelations(userId: number) {
     await prisma.parent.updateMany({ where: { userId },              data: { userId: null } })
     await prisma.parent.updateMany({ where: { delegateUserId: userId }, data: { delegateUserId: null } })

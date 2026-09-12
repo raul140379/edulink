@@ -338,6 +338,15 @@ model Parent {
   @@index([schoolId])
 }
 
+// Motivo de baja definitiva de un estudiante (traslado a otra UE, retiro
+// voluntario, u otro) — ver Student.withdrawalReason. Solo se completa junto
+// con withdrawnAt, nunca por separado (ver studentService.withdrawStudent).
+enum WithdrawalReason {
+  TRASLADO
+  RETIRO_VOLUNTARIO
+  OTRO
+}
+
 model Student {
   id                   Int                         @id @default(autoincrement())
   firstName            String
@@ -348,6 +357,12 @@ model Student {
   phone                String?
   email                String?
   isActive             Boolean                     @default(true)
+  // Baja definitiva (11-sep-2026) — se completan los 3 juntos, solo vía
+  // studentService.withdrawStudent (nunca el toggle simple de isActive, que
+  // sigue existiendo solo para reactivar/corregir sin este contexto).
+  withdrawnAt          DateTime?
+  withdrawalReason     WithdrawalReason?
+  withdrawalNote       String?
   createdAt            DateTime                    @default(now())
   updatedAt            DateTime                    @updatedAt
   userId               Int?                        @unique

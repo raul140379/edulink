@@ -1,4 +1,4 @@
-import { Prisma, Gender, EducationType } from '@prisma/client'
+import { Prisma, Gender, EducationType, WithdrawalReason } from '@prisma/client'
 import prisma from '../lib/prisma'
 import { getTenantContext } from '../lib/tenant-context'
 import { Pagination, paginationArgs } from '../utils/pagination'
@@ -192,6 +192,15 @@ export const studentRepository = {
     return prisma.student.update({ where: { id }, data: { isActive } })
   },
 
+  // Baja definitiva — isActive/withdrawnAt/withdrawalReason/withdrawalNote
+  // siempre juntos, solo vía withdrawStudent (ver AuditLog para el rastro).
+  withdrawTx(tx: TxClient, id: number, reason: WithdrawalReason, note: string | undefined) {
+    return tx.student.update({
+      where: { id },
+      data: { isActive: false, withdrawnAt: new Date(), withdrawalReason: reason, withdrawalNote: note },
+    })
+  },
+
   linkUser(id: number, userId: number) {
     return prisma.student.update({ where: { id }, data: { userId } })
   },
@@ -263,8 +272,21 @@ export const studentRepository = {
     return prisma.studentAcademicAssignment.deleteMany({ where: { studentId, academicYearId } })
   },
 
-  deleteEnrollmentById(id: number) {
-    return prisma.studentAcademicAssignment.delete({ where: { id } })
+  deleteEnrollmentById(id: number, tx?: TxClient) {
+    return (tx ?? prisma).studentAcademicAssignment.delete({ where: { id } })
+  },
+
+  // "Cambiar de curso" (dentro del mismo grado) — sobrescribe courseId en la
+  // misma fila (mismo id/createdAt), a diferencia de changeEnrollment que
+  // borra y recrea. El historial ya registrado (Nota/StudentAttendance) no
+  // depende de este registro y queda intacto sin importar cuál de los dos
+  // patrones se use — ver AuditLog para el rastro del cambio en sí.
+  updateEnrollmentCourse(id: number, courseId: number, tx?: TxClient) {
+    return (tx ?? prisma).studentAcademicAssignment.update({
+      where: { id },
+      data: { courseId },
+      include: { course: true, academicYear: { select: { year: true } } },
+    })
   },
 
   findByCourseInYear(courseId: number, academicYearId: number) {
