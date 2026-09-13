@@ -1,6 +1,8 @@
 import prisma from '../lib/prisma'
 import { getTenantContext } from '../lib/tenant-context'
 
+type TxClient = Parameters<Parameters<typeof prisma.$transaction>[0]>[0]
+
 const actorNameSelect = {
   select: {
     id: true, email: true,
@@ -66,16 +68,19 @@ export const studentLicenseRequestRepository = {
     return prisma.studentLicenseRequest.count({ where: { studentId, status: 'PENDIENTE' } })
   },
 
-  approve(id: number, reviewedById: number, note: string | undefined, licenseId: number) {
-    return prisma.studentLicenseRequest.update({
+  // `client` opcional (mismo criterio que studentLicense.repository.ts::create)
+  // -- approve() del service pasa su propio `tx` para que esto y la creación
+  // del StudentLicense real sean una sola operación atómica.
+  approve(id: number, reviewedById: number, note: string | undefined, licenseId: number, client: TxClient | typeof prisma = prisma) {
+    return client.studentLicenseRequest.update({
       where: { id },
       data: { status: 'APROBADA', reviewedById, reviewedAt: new Date(), reviewNote: note || null, licenseId },
       include: requestInclude,
     })
   },
 
-  reject(id: number, reviewedById: number, note: string) {
-    return prisma.studentLicenseRequest.update({
+  reject(id: number, reviewedById: number, note: string, client: TxClient | typeof prisma = prisma) {
+    return client.studentLicenseRequest.update({
       where: { id },
       data: { status: 'RECHAZADA', reviewedById, reviewedAt: new Date(), reviewNote: note },
       include: requestInclude,

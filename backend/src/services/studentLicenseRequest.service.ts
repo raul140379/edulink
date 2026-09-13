@@ -2,6 +2,7 @@ import { studentLicenseRequestRepository } from '../repositories/studentLicenseR
 import { studentLicenseRepository } from '../repositories/studentLicense.repository'
 import { notificationRepository } from '../repositories/notification.repository'
 import { HttpError } from '../utils/http-error'
+import prisma from '../lib/prisma'
 import { dayRange } from './studentAttendance.service'
 import {
   CreateLicenseRequestInput, ApproveLicenseRequestInput, RejectLicenseRequestInput,
@@ -80,20 +81,29 @@ export const studentLicenseRequestService = {
     if (!request) throw new HttpError(404, 'Solicitud no encontrada')
     if (request.status !== 'PENDIENTE') throw new HttpError(400, 'Esta solicitud ya fue resuelta')
 
-    // Crea el StudentLicense real — el mismo que ya activa el overlay en
-    // getAttendanceByCourse/closeAttendance/reportes/matriz, sin tocar nada
-    // de esos 4 puntos de lectura.
-    const license = await studentLicenseRepository.create({
-      studentId: request.studentId, startDate: request.startDate, endDate: request.endDate,
-      reason: request.reason, createdById: reviewedById,
+    // Crear el StudentLicense real (el mismo que activa el overlay en
+    // getAttendanceByCourse/closeAttendance/reportes/matriz) y marcar la
+    // solicitud como APROBADA son una sola operación atómica -- si algo
+    // falla en el medio (ej. el FK del que aprueba no existe, como pasó en
+    // el primer intento contra CLON), no debe quedar la licencia creada sin
+    // la solicitud actualizada, ni viceversa.
+    const updated = await prisma.$transaction(async (tx) => {
+      const license = await studentLicenseRepository.create({
+        studentId: request.studentId, startDate: request.startDate, endDate: request.endDate,
+        reason: request.reason, createdById: reviewedById,
+      }, tx)
+      return studentLicenseRequestRepository.approve(id, reviewedById, input.note, license.id, tx)
     })
 
-    const updated = await studentLicenseRequestRepository.approve(id, reviewedById, input.note, license.id)
-
-    await notificationRepository.createNotification({
-      title: 'Licencia aprobada', type: 'ACADEMICA', sentById: reviewedById, parentId: request.requestedById,
-      message: `Tu solicitud de licencia para ${request.student.lastName} ${request.student.firstName} del ${fmtDate(request.startDate.toISOString().slice(0, 10))} al ${fmtDate(request.endDate.toISOString().slice(0, 10))} fue aprobada.${input.note ? ` ${input.note}` : ''}`,
-    })
+    // La notificación es best-effort, fuera de la transacción a propósito --
+    // si falla (ej. un problema de red puntual), la aprobación ya real no
+    // debe revertirse ni la respuesta debe fallar por esto.
+    try {
+      await notificationRepository.createNotification({
+        title: 'Licencia aprobada', type: 'ACADEMICA', sentById: reviewedById, parentId: request.requestedById,
+        message: `Tu solicitud de licencia para ${request.student.lastName} ${request.student.firstName} del ${fmtDate(request.startDate.toISOString().slice(0, 10))} al ${fmtDate(request.endDate.toISOString().slice(0, 10))} fue aprobada.${input.note ? ` ${input.note}` : ''}`,
+      })
+    } catch { /* la aprobación ya quedó registrada, solo se pierde el aviso */ }
 
     return { message: 'Solicitud aprobada — la licencia ya está activa.', request: formatOutput(updated) }
   },
@@ -106,10 +116,12 @@ export const studentLicenseRequestService = {
 
     const updated = await studentLicenseRequestRepository.reject(id, reviewedById, input.note)
 
-    await notificationRepository.createNotification({
-      title: 'Licencia rechazada', type: 'ACADEMICA', sentById: reviewedById, parentId: request.requestedById,
-      message: `Tu solicitud de licencia para ${request.student.lastName} ${request.student.firstName} del ${fmtDate(request.startDate.toISOString().slice(0, 10))} al ${fmtDate(request.endDate.toISOString().slice(0, 10))} fue rechazada. Motivo: ${input.note}`,
-    })
+    try {
+      await notificationRepository.createNotification({
+        title: 'Licencia rechazada', type: 'ACADEMICA', sentById: reviewedById, parentId: request.requestedById,
+        message: `Tu solicitud de licencia para ${request.student.lastName} ${request.student.firstName} del ${fmtDate(request.startDate.toISOString().slice(0, 10))} al ${fmtDate(request.endDate.toISOString().slice(0, 10))} fue rechazada. Motivo: ${input.note}`,
+      })
+    } catch { /* el rechazo ya quedó registrado, solo se pierde el aviso */ }
 
     return { message: 'Solicitud rechazada.', request: formatOutput(updated) }
   },

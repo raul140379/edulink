@@ -1,9 +1,18 @@
 import prisma from '../lib/prisma'
 import { getTenantContext } from '../lib/tenant-context'
 
+// Mismo truco que parent.repository.ts para tipar el cliente transaccional
+// sin importarlo directo (no es asignable al tipo generico de @prisma/client).
+type TxClient = Parameters<Parameters<typeof prisma.$transaction>[0]>[0]
+
 export const studentLicenseRepository = {
-  create(data: { studentId: number; startDate: Date; endDate: Date; reason: string | null; createdById: number }) {
-    return prisma.studentLicense.create({
+  // `client` opcional: por defecto el prisma de siempre (alta directa de
+  // Dirección/Secretaría/Regente, sin transacción); studentLicenseRequest.service.ts
+  // pasa el `tx` de su propia transacción al aprobar una solicitud, para que
+  // la creación de la licencia y la actualización de la solicitud sean
+  // atómicas (si una falla, ninguna queda escrita a medias).
+  create(data: { studentId: number; startDate: Date; endDate: Date; reason: string | null; createdById: number }, client: TxClient | typeof prisma = prisma) {
+    return client.studentLicense.create({
       data: {
         studentId: data.studentId, startDate: data.startDate, endDate: data.endDate,
         reason: data.reason, createdById: data.createdById,
