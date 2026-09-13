@@ -1,3 +1,4 @@
+// prueba descartable de auto-deploy (13-sep-2026) — se revierte enseguida
 import type { Metadata, Viewport } from 'next'
 import RegisterServiceWorker from '@/components/RegisterServiceWorker'
 import './globals.css'
