@@ -12,3 +12,23 @@ export const createLicense = async (req: AuthRequest, res: Response): Promise<vo
     handleControllerError(res, error)
   }
 }
+
+// GET /api/student-licenses/student/:studentId
+export const getStudentLicenses = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const licenses = await studentLicenseService.getLicensesForStudent(parseInt(req.params.studentId))
+    res.json(licenses)
+  } catch (error) {
+    handleControllerError(res, error)
+  }
+}
+
+// POST /api/student-licenses/:id/cancel
+export const cancelLicense = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const result = await studentLicenseService.cancelLicense(parseInt(req.params.id), req.body, req.userId!)
+    res.json(result)
+  } catch (error) {
+    handleControllerError(res, error)
+  }
+}

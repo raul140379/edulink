@@ -1,8 +1,6 @@
 import { z } from 'zod'
 
-// Alta de licencia (5-sep-2026) — alcance de esta primera versión: SOLO
-// crear. Listado/anulación queda pendiente a propósito (ver Próximos pasos
-// en CLAUDE.md).
+// Alta de licencia (5-sep-2026).
 export const createLicenseSchema = z.object({
   studentId: z.coerce.number().int(),
   startDate: z.string(), // YYYY-MM-DD
@@ -13,4 +11,11 @@ export const createLicenseSchema = z.object({
   path: ['endDate'],
 })
 
+// Anulación (12-sep-2026) — nota obligatoria, queda como rastro de POR QUÉ
+// se anuló (no solo quién/cuándo).
+export const cancelLicenseSchema = z.object({
+  note: z.string().trim().min(1, 'La nota de anulación es requerida').max(300),
+})
+
 export type CreateLicenseInput = z.infer<typeof createLicenseSchema>
+export type CancelLicenseInput = z.infer<typeof cancelLicenseSchema>

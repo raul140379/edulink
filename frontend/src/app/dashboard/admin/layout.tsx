@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react'
 import {
   LayoutDashboard, Users, GraduationCap, BookOpen,
   ClipboardList, Clock, DollarSign, Bell, FileBarChart,
-  Settings, ShieldCheck, Calendar, ClipboardCheck, Building2, Megaphone, Trophy, QrCode
+  Settings, ShieldCheck, Calendar, ClipboardCheck, Building2, Megaphone, Trophy, QrCode, CalendarClock
 } from 'lucide-react'
 import DashboardShell, { MenuGroup } from '@/components/layout/DashboardShell'
 import { useDistrictConfig } from '@/hooks/useDistrictConfig'
@@ -35,6 +35,7 @@ const menuGroups: MenuGroup[] = [
       { label: 'Horarios',          href: '/dashboard/admin/horarios',      icon: <Clock size={16}/>,         roles: ADMIN_ROLES },
       { label: 'Calificaciones',    href: '/dashboard/admin/notas',         icon: <ClipboardList size={16}/>, roles: ADMIN_ROLES },
       { label: 'Códigos QR',        href: '/dashboard/admin/estudiantes/codigos-qr', icon: <QrCode size={16}/>, roles: ADMIN_ROLES },
+      { label: 'Solicitudes de Licencia', href: '/dashboard/admin/licencias', icon: <CalendarClock size={16}/>, roles: ['DIRECTOR'] },
     ]
   },
   {

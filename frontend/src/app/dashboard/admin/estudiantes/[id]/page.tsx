@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
+import Link from 'next/link'
 import {
   ArrowLeft, User, BookOpen, Users, GraduationCap,
   Phone, Mail, MapPin, CreditCard, Calendar, KeyRound, Repeat, X
@@ -59,6 +60,18 @@ interface CourseOption {
   educationType: string
 }
 
+interface License {
+  id:              number
+  startDate:       string
+  endDate:         string
+  reason:          string | null
+  createdAt:       string
+  createdByName:   string | null
+  cancelledAt:     string | null
+  cancelledNote:   string | null
+  cancelledByName: string | null
+}
+
 const GRADE_LABELS: Record<string, string> = {
   PRIMERO: '1°', SEGUNDO: '2°', TERCERO: '3°',
   CUARTO: '4°', QUINTO: '5°', SEXTO: '6°'
@@ -76,9 +89,14 @@ const REL_COLORS: Record<string, string> = {
   PADRE: '#0A5A45', MADRE: '#0F6E56', TUTOR_LEGAL: '#712B13', OTRO: '#444441'
 }
 
+// timeZone: 'UTC' es obligatorio acá — birthDate y las fechas de licencia son
+// fechas de calendario puras ancladas a medianoche UTC, nunca un instante
+// real. Sin esto, toLocaleDateString aplica el huso horario local del
+// navegador y corre la fecha un día hacia atrás (mismo bug ya corregido en
+// admin/licencias/page.tsx).
 const formatDate = (d?: string) => {
   if (!d) return '—'
-  return new Date(d).toLocaleDateString('es-BO', { day: '2-digit', month: 'long', year: 'numeric' })
+  return new Date(d).toLocaleDateString('es-BO', { day: '2-digit', month: 'long', year: 'numeric', timeZone: 'UTC' })
 }
 
 const calcAge = (d?: string) => {
@@ -109,6 +127,15 @@ export default function StudentDetailPage() {
   const [withdrawSaving,  setWithdrawSaving]  = useState(false)
   const [withdrawError,   setWithdrawError]   = useState('')
 
+  const [licenses,        setLicenses]        = useState<License[]>([])
+  const [licensesLoading, setLicensesLoading] = useState(true)
+  const [pendingRequests, setPendingRequests] = useState(0)
+  const [cancelOpen,      setCancelOpen]      = useState(false)
+  const [cancelLicenseId, setCancelLicenseId] = useState<number | null>(null)
+  const [cancelNote,      setCancelNote]      = useState('')
+  const [cancelSaving,    setCancelSaving]    = useState(false)
+  const [cancelError,     setCancelError]     = useState('')
+
   const token = typeof window !== 'undefined' ? localStorage.getItem('token') : ''
 
   const fetchStudent = async () => {
@@ -125,6 +152,28 @@ export default function StudentDetailPage() {
   }
 
   useEffect(() => { fetchStudent() }, [id])
+
+  const fetchLicenses = async () => {
+    setLicensesLoading(true)
+    try {
+      const res  = await fetch(`${API_URL}/api/student-licenses/student/${id}`, { headers: { Authorization: `Bearer ${token}` } })
+      const data = await res.json()
+      if (res.ok) setLicenses(data)
+    } catch { /* silencioso — la tarjeta muestra "sin licencias" si queda vacío */ }
+    finally { setLicensesLoading(false) }
+  }
+
+  useEffect(() => { fetchLicenses() }, [id])
+
+  const fetchPendingRequests = async () => {
+    try {
+      const res  = await fetch(`${API_URL}/api/student-license-requests/student/${id}/pending-count`, { headers: { Authorization: `Bearer ${token}` } })
+      const data = await res.json()
+      if (res.ok) setPendingRequests(data.count)
+    } catch { /* silencioso — el aviso simplemente no aparece */ }
+  }
+
+  useEffect(() => { fetchPendingRequests() }, [id])
 
   if (loading) return <div className="center"><div className="spinner"/></div>
   if (error)   return <div className="center"><p className="err-msg">{error}</p></div>
@@ -190,6 +239,29 @@ export default function StudentDetailPage() {
       await fetchStudent()
     } catch { setWithdrawError('Error de conexión') }
     finally { setWithdrawSaving(false) }
+  }
+
+  const openCancelLicense = (licenseId: number) => {
+    setCancelLicenseId(licenseId); setCancelNote(''); setCancelError('')
+    setCancelOpen(true)
+  }
+
+  const submitCancelLicense = async () => {
+    if (!cancelNote.trim()) { setCancelError('La nota de anulación es requerida'); return }
+    setCancelSaving(true)
+    setCancelError('')
+    try {
+      const res  = await fetch(`${API_URL}/api/student-licenses/${cancelLicenseId}/cancel`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ note: cancelNote }),
+      })
+      const data = await res.json()
+      if (!res.ok) { setCancelError(data.message || 'No se pudo anular la licencia'); return }
+      setCancelOpen(false)
+      await fetchLicenses()
+    } catch { setCancelError('Error de conexión') }
+    finally { setCancelSaving(false) }
   }
 
   return (
@@ -358,6 +430,54 @@ export default function StudentDetailPage() {
             </table>
           )}
         </div>
+
+        <div className="card card-full">
+          <div className="card-title" style={{ justifyContent: 'space-between' }}>
+            <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}><Calendar size={15}/> Licencias</span>
+            {pendingRequests > 0 && (
+              <Link href="/dashboard/admin/licencias" className="pending-request-pill">
+                {pendingRequests} solicitud{pendingRequests > 1 ? 'es' : ''} pendiente{pendingRequests > 1 ? 's' : ''}
+              </Link>
+            )}
+          </div>
+          {licensesLoading ? (
+            <div className="center" style={{ padding: 16 }}><div className="spinner"/></div>
+          ) : licenses.length === 0 ? (
+            <div className="no-data">Sin licencias registradas</div>
+          ) : (
+            <table>
+              <thead>
+                <tr><th>Inicio</th><th>Fin</th><th>Motivo</th><th>Registrada por</th><th>Estado</th><th></th></tr>
+              </thead>
+              <tbody>
+                {licenses.map(l => {
+                  const today = new Date().toISOString().slice(0, 10)
+                  const start = l.startDate.slice(0, 10)
+                  const end = l.endDate.slice(0, 10)
+                  const status = l.cancelledAt ? 'CANCELADA' : end < today ? 'FINALIZADA' : 'ACTIVA'
+                  return (
+                    <tr key={l.id}>
+                      <td>{formatDate(start)}</td>
+                      <td>{formatDate(end)}</td>
+                      <td className="muted">{l.reason || '—'}</td>
+                      <td className="muted">{l.createdByName || '—'}</td>
+                      <td>
+                        {status === 'ACTIVA' && <span className="sbadge act">Activa</span>}
+                        {status === 'FINALIZADA' && <span className="sbadge ina">Finalizada</span>}
+                        {status === 'CANCELADA' && <span className="sbadge cancelada" title={l.cancelledNote ? `${l.cancelledByName}: ${l.cancelledNote}` : undefined}>Cancelada</span>}
+                      </td>
+                      <td>
+                        {!l.cancelledAt && (
+                          <button className="cancel-license-btn" onClick={() => openCancelLicense(l.id)}>Anular</button>
+                        )}
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          )}
+        </div>
       </div>
 
       {changeOpen && activeCourse && (
@@ -436,6 +556,31 @@ export default function StudentDetailPage() {
         </div>
       )}
 
+      {cancelOpen && (
+        <div className="modal-backdrop" onClick={() => !cancelSaving && setCancelOpen(false)}>
+          <div className="modal-box" onClick={e => e.stopPropagation()}>
+            <div className="modal-head">
+              <h3>Anular licencia</h3>
+              <button className="modal-close" onClick={() => setCancelOpen(false)} disabled={cancelSaving}><X size={16}/></button>
+            </div>
+            <p className="modal-hint">
+              El registro no se borra — queda marcado como cancelado, con quién y cuándo lo anuló. Si tapaba el estado real de algún día, el maestro vuelve a ver el estado real (o "sin registrar") de inmediato.
+            </p>
+            <textarea
+              className="withdraw-note" value={cancelNote} onChange={e => setCancelNote(e.target.value)}
+              rows={3} placeholder="Motivo de la anulación (requerido)"
+            />
+            {cancelError && <p className="modal-error">{cancelError}</p>}
+            <div className="modal-actions">
+              <button className="modal-cancel" onClick={() => setCancelOpen(false)} disabled={cancelSaving}>Cerrar</button>
+              <button className="modal-confirm danger" onClick={submitCancelLicense} disabled={!cancelNote.trim() || cancelSaving}>
+                {cancelSaving ? 'Guardando…' : 'Confirmar anulación'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <style>{`
         .center{display:flex;justify-content:center;align-items:center;padding:48px}
         .err-msg{color:#C0392B;font-size:14px}
@@ -507,6 +652,11 @@ export default function StudentDetailPage() {
         .sbadge{padding:3px 9px;border-radius:20px;font-size:11px;font-weight:500}
         .sbadge.act{background:#E1F5EE;color:#0F6E56}
         .sbadge.ina{background:#F5FAF7;color:#6B8F7F}
+        .sbadge.cancelada{background:#FFF0F0;color:#C0392B;cursor:help}
+        .cancel-license-btn{background:#FFF0F0;color:#C0392B;border:1px solid #F5C6C6;font-size:11px;font-weight:600;padding:4px 10px;border-radius:8px;cursor:pointer}
+        .cancel-license-btn:hover{background:#FFE1E1}
+        .pending-request-pill{background:#FFF7E0;color:#7A6000;border:1px solid #F5E1A0;font-size:11px;font-weight:600;padding:3px 10px;border-radius:20px;text-decoration:none;white-space:nowrap}
+        .pending-request-pill:hover{background:#FFF0C6}
         .spinner{width:24px;height:24px;border:2px solid rgba(10,90,69,.2);border-top-color:#0A5A45;border-radius:50%;animation:spin .7s linear infinite}
         @keyframes spin{to{transform:rotate(360deg)}}
         @media(max-width:700px){.grid-layout{grid-template-columns:1fr}.data-grid{grid-template-columns:1fr}}
