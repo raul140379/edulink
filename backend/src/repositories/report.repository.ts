@@ -86,6 +86,16 @@ export const reportRepository = {
     })
   },
 
+  // Roster de TODO el colegio en una sola consulta — evita 1 query por
+  // curso. Usado tanto por getDailyAttendanceCompliance como por
+  // getWeeklyAbsences (mapea studentId -> courseId actual).
+  findAllAssignmentsForSchool(academicYearId: number) {
+    return prisma.studentAcademicAssignment.findMany({
+      where: { academicYearId },
+      select: { courseId: true, studentId: true },
+    })
+  },
+
   findAssignmentsForCourse(courseId: number, academicYearId: number) {
     return prisma.studentAcademicAssignment.findMany({
       where: { courseId, academicYearId },
@@ -269,6 +279,62 @@ export const reportRepository = {
       where: { courseId, date: { gte: start, lt: next } },
       include: { student: { select: { id: true, firstName: true, lastName: true } } },
       orderBy: [{ date: 'asc' }, { arrivalTime: 'asc' }],
+    })
+  },
+
+  // Reporte de ausentes de la semana (Dirección) — trimestre vigente
+  // determinado por FECHA (startDate<=hoy<=endDate), no por `isClosed` (ese
+  // flag no refleja de forma confiable el trimestre cronológicamente
+  // vigente, confirmado con datos reales de producción 14-sep-2026).
+  findCurrentTrimester(academicYearId: number, date: Date) {
+    return prisma.trimester.findFirst({
+      where: { academicYearId, startDate: { lte: date }, endDate: { gte: date } },
+      select: { id: true, name: true, number: true, startDate: true, endDate: true },
+    })
+  },
+
+  // Toda la asistencia del colegio en un rango arbitrario (usado para el
+  // trimestre completo, a diferencia de findAttendancesForSchoolDate que es
+  // de un solo día) — 1 sola consulta, sin importar cuántos estudiantes/días
+  // tenga el rango. Incluye `date` (a diferencia de la variante diaria, que
+  // no la necesita) porque acá hay que colapsar por día con
+  // collapseToDailyStatus antes de contar.
+  findAttendancesForSchoolRange(academicYearId: number, start: Date, end: Date) {
+    return prisma.studentAttendance.findMany({
+      where: { academicYearId, date: { gte: start, lte: end } },
+      select: { studentId: true, date: true, status: true },
+    })
+  },
+
+  // Licencias que se superponen con el rango, para TODO el colegio (a
+  // diferencia de findLicensesOverlappingRange de arriba, que ya acota por
+  // studentIds — acá todavía no sabemos cuáles son, es el primer filtro) —
+  // mismo criterio que el resto del sistema: una licencia siempre "tapa" el
+  // día real, sin importar qué diga la fila de StudentAttendance de abajo
+  // (ver studentAttendance.service.ts). Tabla chica en la práctica (las
+  // licencias no son comunes), sin riesgo de N+1.
+  findSchoolLicensesOverlappingRange(start: Date, end: Date) {
+    return prisma.studentLicense.findMany({
+      where: { cancelledAt: null, startDate: { lte: end }, endDate: { gte: start } },
+      select: { studentId: true, startDate: true, endDate: true },
+    })
+  },
+
+  // Detalle (nombre + tutor con teléfono) SOLO de los estudiantes que ya
+  // quedaron filtrados por tener >=1 falta esta semana — nunca de todo el
+  // colegio, para no traer de más.
+  findStudentDetailsWithTutor(studentIds: number[]) {
+    if (studentIds.length === 0) return Promise.resolve([])
+    return prisma.student.findMany({
+      where: { id: { in: studentIds } },
+      select: {
+        id: true, firstName: true, lastName: true,
+        parents: {
+          where: { isTutor: true },
+          select: { parentId: true, parent: { select: { firstName: true, lastName: true, phone: true } } },
+          take: 1,
+        },
+      },
     })
   },
 }

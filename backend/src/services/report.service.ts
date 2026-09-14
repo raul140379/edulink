@@ -512,4 +512,115 @@ export const reportService = {
       rows,
     }
   },
+
+  // Estudiantes ausentes de la semana (Dirección) — TODO el colegio a la
+  // vez (a diferencia de getWeeklyLateArrivals, que es de un curso). 2
+  // conteos por estudiante: faltas de la semana y faltas del trimestre
+  // vigente (determinado por fecha, ver findCurrentTrimester). Semana
+  // Lunes-Sábado fija (6 días) como ventana de consulta, unión de los dos
+  // largos de semana posibles (Primaria 5, Secundaria 6) — un curso de
+  // Primaria simplemente no tiene filas los sábados (sin horario ese día),
+  // así que no hay riesgo de sobre-contar.
+  //
+  // Consultas totales, sin importar cuántos estudiantes/cursos haya: 1)
+  // toda la asistencia del TRIMESTRE completo, 2) el roster completo
+  // (studentId→courseId), 3) todos los cursos, 4) licencias que se
+  // superponen con el trimestre — y una 5ta acotada SOLO a los estudiantes
+  // que ya quedaron filtrados por tener falta esta semana (nombre + tutor).
+  // Nunca una consulta por estudiante.
+  async getWeeklyAbsences(dateStr?: string) {
+    const activeYear = await reportRepository.findActiveAcademicYear()
+    if (!activeYear) throw new HttpError(404, 'No hay gestión académica activa')
+
+    const { base: refDate } = dayRange(dateStr)
+    const refDow = dayOfWeekFromBase(refDate)
+    const monday = new Date(refDate)
+    monday.setUTCDate(monday.getUTCDate() - (refDow - 1))
+    const weekEnd = new Date(monday)
+    weekEnd.setUTCDate(weekEnd.getUTCDate() + 5) // sábado (Lunes+5)
+
+    const trimester = await reportRepository.findCurrentTrimester(activeYear.id, refDate)
+    if (!trimester) throw new HttpError(404, 'No hay trimestre vigente para la fecha de hoy')
+
+    const [attendances, assignments, courses, licenses] = await Promise.all([
+      reportRepository.findAttendancesForSchoolRange(activeYear.id, trimester.startDate, trimester.endDate),
+      reportRepository.findAllAssignmentsForSchool(activeYear.id),
+      reportRepository.findAllCoursesForSchool(),
+      reportRepository.findSchoolLicensesOverlappingRange(trimester.startDate, trimester.endDate),
+    ])
+
+    const licensesByStudent = new Map<number, { startDate: Date; endDate: Date }[]>()
+    for (const lic of licenses) {
+      if (!licensesByStudent.has(lic.studentId)) licensesByStudent.set(lic.studentId, [])
+      licensesByStudent.get(lic.studentId)!.push({ startDate: lic.startDate, endDate: lic.endDate })
+    }
+    const isLicensed = (studentId: number, date: Date) =>
+      (licensesByStudent.get(studentId) || []).some((l) => date >= l.startDate && date <= l.endDate)
+
+    const byStudent = new Map<number, { date: Date; status: string }[]>()
+    for (const a of attendances) {
+      if (!byStudent.has(a.studentId)) byStudent.set(a.studentId, [])
+      byStudent.get(a.studentId)!.push({ date: a.date, status: a.status })
+    }
+
+    const courseByStudent = new Map(assignments.map((a) => [a.studentId, a.courseId]))
+    const weekStartKey = monday.toISOString().split('T')[0]
+    const weekEndKey = weekEnd.toISOString().split('T')[0]
+
+    const candidates: { studentId: number; courseId: number; faltasSemana: number; faltasTrimestre: number }[] = []
+    for (const [studentId, rows] of byStudent) {
+      const daily = collapseToDailyStatus(rows as any)
+      let faltasSemana = 0
+      let faltasTrimestre = 0
+      for (const [dateKey, status] of daily) {
+        if (status !== 'AUSENTE') continue
+        if (isLicensed(studentId, new Date(`${dateKey}T00:00:00.000Z`))) continue
+        faltasTrimestre++
+        if (dateKey >= weekStartKey && dateKey <= weekEndKey) faltasSemana++
+      }
+      if (faltasSemana === 0) continue
+      const courseId = courseByStudent.get(studentId)
+      if (courseId === undefined) continue
+      candidates.push({ studentId, courseId, faltasSemana, faltasTrimestre })
+    }
+
+    if (candidates.length === 0) {
+      return { weekStart: weekStartKey, weekEnd: weekEndKey, trimester, total: 0, students: [] }
+    }
+
+    const details = await reportRepository.findStudentDetailsWithTutor(candidates.map((c) => c.studentId))
+    const detailById = new Map(details.map((d) => [d.id, d]))
+    const courseById = new Map(courses.map((c) => [c.id, c]))
+    // `courses` ya viene ordenado pedagógicamente por Postgres (el enum
+    // Grade se declara PRIMERO..SEXTO, no alfabético — orderBy en el
+    // repositorio ya lo resuelve bien). Se reusa el ÍNDICE de ese array
+    // como clave de orden acá, en vez de comparar el string crudo del
+    // enum (que ordenaría mal: "QUINTO" antes que "SEGUNDO").
+    const courseOrder = new Map(courses.map((c, i) => [c.id, i]))
+
+    const students = candidates
+      .map((c) => {
+        const d = detailById.get(c.studentId)
+        const course = courseById.get(c.courseId)
+        const tutorLink = d?.parents[0]
+        return {
+          studentId: c.studentId,
+          firstName: d?.firstName ?? '',
+          lastName: d?.lastName ?? '',
+          course: course ? { id: course.id, grade: course.grade, parallel: course.parallel, level: course.level } : null,
+          faltasSemana: c.faltasSemana,
+          faltasTrimestre: c.faltasTrimestre,
+          parentId: tutorLink?.parentId ?? null,
+          tutorName: tutorLink ? `${tutorLink.parent.lastName} ${tutorLink.parent.firstName}` : null,
+          tutorPhone: tutorLink?.parent.phone ?? null,
+        }
+      })
+      .sort((a, b) => {
+        const orderA = courseOrder.get(a.course?.id ?? -1) ?? 999
+        const orderB = courseOrder.get(b.course?.id ?? -1) ?? 999
+        return orderA - orderB || a.lastName.localeCompare(b.lastName)
+      })
+
+    return { weekStart: weekStartKey, weekEnd: weekEndKey, trimester, total: students.length, students }
+  },
 }

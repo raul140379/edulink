@@ -79,6 +79,16 @@ export const getWeeklyLateArrivals = async (req: AuthRequest, res: Response): Pr
   }
 }
 
+// GET /api/reports/absences-weekly
+export const getWeeklyAbsences = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const report = await reportService.getWeeklyAbsences(req.query.date as string | undefined)
+    res.json(report)
+  } catch (error) {
+    handleControllerError(res, error)
+  }
+}
+
 // GET /api/reports/treasury
 export const getTreasuryReport = async (req: AuthRequest, res: Response): Promise<void> => {
   try {

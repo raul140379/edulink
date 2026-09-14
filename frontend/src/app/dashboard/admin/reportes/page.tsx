@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { ClipboardCheck, CalendarRange, ChevronRight, Clock, CalendarClock } from 'lucide-react'
+import { ClipboardCheck, CalendarRange, ChevronRight, Clock, CalendarClock, UserX } from 'lucide-react'
 import Card from '@/components/ui/Card'
 import PageHeader from '@/components/ui/PageHeader'
 
@@ -33,6 +33,12 @@ const REPORTS = [
     icon: CalendarClock,
     title: 'Llegadas Tarde — Semanal',
     description: 'Llegadas tarde de la semana cruzadas con la asistencia real, por curso',
+  },
+  {
+    href: '/dashboard/admin/reportes/ausencias-semanal',
+    icon: UserX,
+    title: 'Estudiantes Ausentes — Semanal',
+    description: 'Faltas de la semana y del trimestre por estudiante, con envío de notificación individual o masivo',
   },
 ]
 
