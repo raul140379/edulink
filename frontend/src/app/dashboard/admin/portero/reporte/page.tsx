@@ -8,6 +8,7 @@ const API = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000'
 interface GateRecord {
   id: number; type: string; action: string; createdAt: string
   teacher?:     { firstName: string; lastName: string; specialty?: string }
+  staff?:       { firstName: string; lastName: string; staffRole?: string }
   visitorName?: string; visitorCI?: string; reason?: string; destination?: string; note?: string
 }
 
@@ -70,6 +71,7 @@ export default function ReporteAccesosPage() {
             style={{padding:'8px 12px',border:'1.5px solid #DCEEE6',borderRadius:8,fontSize:13,color:'#0A5A45',outline:'none'}}>
             <option value="">Todos</option>
             <option value="MAESTRO">Maestros</option>
+            <option value="ADMINISTRATIVO">Personal administrativo</option>
             <option value="VISITANTE">Visitantes</option>
           </select>
         </div>
@@ -137,18 +139,23 @@ export default function ReporteAccesosPage() {
                   <td style={td}>
                     <span style={{
                       padding:'3px 10px',borderRadius:20,fontSize:11,fontWeight:600,
-                      background:r.type==='MAESTRO'?'#E0ECF8':'#E1F5EE',
-                      color:r.type==='MAESTRO'?'#0A5A45':'#0F6E56',
+                      background:r.type==='MAESTRO'?'#E0ECF8':r.type==='ADMINISTRATIVO'?'#FDF0E6':'#E1F5EE',
+                      color:r.type==='MAESTRO'?'#0A5A45':r.type==='ADMINISTRATIVO'?'#633806':'#0F6E56',
                     }}>
-                      {r.type==='MAESTRO'?'👨‍🏫 Maestro':'🧑‍💼 Visitante'}
+                      {r.type==='MAESTRO'?'👨‍🏫 Maestro':r.type==='ADMINISTRATIVO'?'🗂️ Personal':'🧑‍💼 Visitante'}
                     </span>
                   </td>
                   <td style={td}>
                     <div style={{fontWeight:600,fontSize:13,color:'#0A5A45'}}>
-                      {r.teacher ? `${r.teacher.lastName} ${r.teacher.firstName}` : r.visitorName}
+                      {r.teacher ? `${r.teacher.lastName} ${r.teacher.firstName}`
+                        : r.staff ? `${r.staff.lastName} ${r.staff.firstName}`
+                        : r.visitorName}
                     </div>
                     {r.teacher?.specialty && (
                       <div style={{fontSize:11,color:'#6B8F7F'}}>{r.teacher.specialty}</div>
+                    )}
+                    {r.staff?.staffRole && (
+                      <div style={{fontSize:11,color:'#6B8F7F'}}>{r.staff.staffRole}</div>
                     )}
                     {r.visitorCI && (
                       <div style={{fontSize:11,color:'#6B8F7F'}}>CI: {r.visitorCI}</div>

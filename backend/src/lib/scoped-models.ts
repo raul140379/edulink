@@ -41,6 +41,7 @@ export const DIRECT_SCHOOL_SCOPED_MODELS = new Set([
   'StudentLicense',
   'StudentLicenseRequest',
   'StudentLateArrival',
+  'StaffAttendance',
 ])
 
 /**

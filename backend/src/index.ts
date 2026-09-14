@@ -8,6 +8,7 @@ import courseRoutes   from './routes/course.routes'
 import studentRoutes  from './routes/student.routes'
 import parentRoutes   from './routes/parent.routes'
 import teacherRoutes  from './routes/teacher.routes'
+import staffRoutes    from './routes/staff.routes'
 import treasuryRoutes from './routes/treasury.routes'
 import delegateRoutes from './routes/delegate.routes'
 import meetingRoutes from './routes/meeting.routes'
@@ -19,6 +20,7 @@ import notaRoutes from './routes/nota.routes'
 import taskRoutes from './routes/task.routes'
 import adminRoutes from './routes/admin.routes'
 import teacherAttendanceRoutes from './routes/teacherAttendance.routes'
+import staffAttendanceRoutes from './routes/staffAttendance.routes'
 import scheduleRoutes from './routes/schedule.routes'
 import classroomRoutes from './routes/classroom.routes'
 import gateRoutes from './routes/gate.routes'
@@ -68,6 +70,7 @@ app.use('/api/courses',  courseRoutes)
 app.use('/api/students', studentRoutes)
 app.use('/api/parents',  parentRoutes)
 app.use('/api/teachers', teacherRoutes)
+app.use('/api/staff',    staffRoutes)
 app.use('/api/treasury', treasuryRoutes)
 app.use('/api/delegates', delegateRoutes)
 app.use('/api/meetings', meetingRoutes)
@@ -78,6 +81,7 @@ app.use('/api/notas', notaRoutes)
 app.use('/api/tasks', taskRoutes)
 app.use('/api/admin',         adminRoutes)   
 app.use('/api/teacher-attendance', teacherAttendanceRoutes)
+app.use('/api/staff-attendance', staffAttendanceRoutes)
 app.use('/api/schedules', scheduleRoutes)
 app.use('/api/classrooms', classroomRoutes)
 app.use('/api/gate', gateRoutes)

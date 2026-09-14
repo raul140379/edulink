@@ -88,6 +88,15 @@ export const markAbsentTeachers = async (req: AuthRequest, res: Response): Promi
   }
 }
 
+// POST /api/gate/mark-absent-staff
+export const markAbsentStaff = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    res.json(await gateService.markAbsentStaff())
+  } catch (error) {
+    handleControllerError(res, error)
+  }
+}
+
 // GET /api/gate/records
 export const getRecords = async (req: AuthRequest, res: Response): Promise<void> => {
   try {

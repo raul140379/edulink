@@ -93,6 +93,7 @@ model School {
   schedulePlans           SchedulePlan[]
   gateRecords             GateRecord[]
   teacherAttendances      TeacherAttendance[]
+  staffAttendances        StaffAttendance[]
   studentAttendances      StudentAttendance[]
   attendanceBlocks        AttendanceBlock[]
   studentLicenses         StudentLicense[]
@@ -483,8 +484,16 @@ model Staff {
   lastName          String
   ci                String?
   phone             String?
+  email             String? // correo personal, distinto del User.email institucional (mismo patrón que Teacher.email)
+  gender            Gender?
   staffRole         StaffRole
   shift             Shift?
+  // Hora esperada de entrada + tolerancia en minutos, para calcular retraso en
+  // registerStaff (gate.service.ts) -- mismo patrón que Teacher.entryTime/
+  // toleranceMin. entryTime nulo cae a un valor de respaldo fijo (ver
+  // checkIsRetrasoStaff), no hace falta llenarlo al crear.
+  entryTime         String?
+  toleranceMin      Int                 @default(10)
   isActive          Boolean             @default(true)
   createdAt         DateTime            @default(now())
   userId            Int                 @unique
@@ -493,10 +502,34 @@ model Staff {
   school            School              @relation(fields: [schoolId], references: [id])
   biometricTemplate BiometricTemplate[]
   gateRecord        GateRecord[]
+  attendances       StaffAttendance[]
   user              User                @relation(fields: [userId], references: [id])
 
   @@unique([ci, schoolId])
   @@unique([attendanceCode, schoolId])
+}
+
+// Asistencia laboral del personal administrativo -- mismo patrón exacto que
+// TeacherAttendance (presente/retraso/ausente/licencia, checkIn/checkOut,
+// un registro por día). Se escribe desde gate.service.ts::registerStaff
+// (portería), calcando lo que registerTeacher ya hace para TeacherAttendance
+// -- sin flujo de auto-registro propio, no fue pedido.
+model StaffAttendance {
+  id        Int              @id @default(autoincrement())
+  staffId   Int
+  date      DateTime         @default(now())
+  checkIn   DateTime?
+  checkOut  DateTime?
+  status    AttendanceStatus @default(PRESENTE)
+  note      String?
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
+  schoolId  Int
+  school    School           @relation(fields: [schoolId], references: [id])
+  staff     Staff            @relation(fields: [staffId], references: [id])
+
+  @@unique([staffId, date])
+  @@index([schoolId])
 }
 
 // Perfil del Director de una unidad educativa (mismo patrón que Teacher/Staff:

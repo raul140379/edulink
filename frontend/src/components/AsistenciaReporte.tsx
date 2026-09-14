@@ -9,8 +9,8 @@ import { todayLocalStr } from '@/lib/localDate'
 
 const API = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000'
 
-interface TeacherRecord {
-  teacher: { id: number; firstName: string; lastName: string; ci?: string }
+interface PersonRecord {
+  person: { id: number; firstName: string; lastName: string; ci?: string; staffRole?: string }
   records: {
     id: number; date: string; checkIn: string | null
     checkOut: string | null; status: string; note: string | null
@@ -20,7 +20,7 @@ interface TeacherRecord {
 
 interface ReportData {
   period: { start: string; end: string; month: number; year: number; week: number | null }
-  teachers: TeacherRecord[]
+  people: PersonRecord[]
   totalRecords: number
 }
 
@@ -39,7 +39,11 @@ const fmtTime = (d: string | null) => d ? new Date(d).toLocaleTimeString('es-BO'
 const fmtDate = (d: string) => new Date(d).toLocaleDateString('es-BO', { weekday:'short', day:'2-digit', month:'short' })
 const fmtDateFull = (d: string) => new Date(d).toLocaleDateString('es-BO', { weekday:'long', day:'2-digit', month:'long', year:'numeric' })
 
-export default function AsistenciaReporte() {
+interface AsistenciaReporteProps {
+  personType?: 'teacher' | 'staff'
+}
+
+export default function AsistenciaReporte({ personType = 'teacher' }: AsistenciaReporteProps) {
   const [data,     setData]     = useState<ReportData | null>(null)
   const [loading,  setLoading]  = useState(false)
   const [month,    setMonth]    = useState(new Date().getMonth() + 1)
@@ -49,6 +53,9 @@ export default function AsistenciaReporte() {
   const [selDate,  setSelDate]  = useState(todayLocalStr())
   const [expanded, setExpanded] = useState<number | null>(null)
   const [search,   setSearch]   = useState('')
+
+  const endpoint = personType === 'staff' ? 'staff-attendance' : 'teacher-attendance'
+  const personLabel = personType === 'staff' ? 'personal administrativo' : 'maestro'
 
   const auth = () => ({ Authorization: `Bearer ${localStorage.getItem('token') || ''}` })
 
@@ -60,42 +67,50 @@ export default function AsistenciaReporte() {
         const d = new Date(selDate)
         const m = d.getMonth() + 1
         const y = d.getFullYear()
-        url = `${API}/api/teacher-attendance/report?month=${m}&year=${y}&date=${selDate}`
+        url = `${API}/api/${endpoint}/report?month=${m}&year=${y}&date=${selDate}`
       } else if (mode === 'semanal') {
-        url = `${API}/api/teacher-attendance/report?month=${month}&year=${year}&week=${week}`
+        url = `${API}/api/${endpoint}/report?month=${month}&year=${year}&week=${week}`
       } else {
-        url = `${API}/api/teacher-attendance/report?month=${month}&year=${year}`
+        url = `${API}/api/${endpoint}/report?month=${month}&year=${year}`
       }
       const res = await fetch(url, { headers: auth() })
       const d   = await res.json()
-      if (res.ok) setData(d)
+      if (res.ok) {
+        const rawList = personType === 'staff' ? d.staff : d.teachers
+        const people: PersonRecord[] = (rawList || []).map((item: any) => ({
+          person: personType === 'staff' ? item.staff : item.teacher,
+          records: item.records,
+          summary: item.summary,
+        }))
+        setData({ period: d.period, people, totalRecords: d.totalRecords })
+      }
     } catch { console.error('Error al cargar reporte') }
     finally  { setLoading(false) }
   }
 
-  useEffect(() => { loadReport() }, [month, year, mode, week, selDate])
+  useEffect(() => { loadReport() }, [month, year, mode, week, selDate, personType])
 
   const prevMonth = () => { if (month===1){setMonth(12);setYear(y=>y-1)}else setMonth(m=>m-1) }
   const nextMonth = () => { if (month===12){setMonth(1);setYear(y=>y+1)}else setMonth(m=>m+1) }
 
-  const filteredTeachers = data?.teachers.filter(t =>
+  const filteredPeople = data?.people.filter(p =>
     search==='' ||
-    `${t.teacher.lastName} ${t.teacher.firstName}`.toLowerCase().includes(search.toLowerCase())
+    `${p.person.lastName} ${p.person.firstName}`.toLowerCase().includes(search.toLowerCase())
   ) || []
 
-  const totals = filteredTeachers.reduce((acc, t) => ({
-    presente: acc.presente + (t.summary.presente || 0),
-    retraso:  acc.retraso  + (t.summary.retraso  || 0),
-    ausente:  acc.ausente  + (t.summary.ausente  || 0),
-    licencia: acc.licencia + (t.summary.licencia || 0),
-    total:    acc.total    + (t.summary.total    || 0),
+  const totals = filteredPeople.reduce((acc, p) => ({
+    presente: acc.presente + (p.summary.presente || 0),
+    retraso:  acc.retraso  + (p.summary.retraso  || 0),
+    ausente:  acc.ausente  + (p.summary.ausente  || 0),
+    licencia: acc.licencia + (p.summary.licencia || 0),
+    total:    acc.total    + (p.summary.total    || 0),
   }), { presente:0, retraso:0, ausente:0, licencia:0, total:0 })
 
   return (
     <div>
       <div className="mb-6">
         <h1 className="text-xl font-bold text-brand-700 mb-1">Reporte de Asistencia</h1>
-        <p className="text-[13px] text-neutral-500">Control de asistencia de maestros — U.E. Naciones Unidas</p>
+        <p className="text-[13px] text-neutral-500">Control de asistencia de {personLabel} — U.E. Naciones Unidas</p>
       </div>
 
       {/* Controles */}
@@ -145,7 +160,7 @@ export default function AsistenciaReporte() {
         )}
 
         <Input
-          placeholder="Buscar maestro..." value={search} onChange={e => setSearch(e.target.value)}
+          placeholder={`Buscar ${personLabel}...`} value={search} onChange={e => setSearch(e.target.value)}
           className="!w-[200px] ml-auto"
         />
       </Card>
@@ -176,46 +191,47 @@ export default function AsistenciaReporte() {
         </div>
       )}
 
-      {/* Lista de maestros */}
+      {/* Lista de personas */}
       {loading ? (
         <div className="flex justify-center py-16"><p className="text-sm text-neutral-500">Cargando...</p></div>
-      ) : filteredTeachers.length === 0 ? (
+      ) : filteredPeople.length === 0 ? (
         <Card className="text-center py-12 text-neutral-500">No hay registros para el período seleccionado</Card>
       ) : (
         <div className="flex flex-col gap-2.5">
-          {filteredTeachers.map(t => {
-            const isOpen = expanded === t.teacher.id
-            const pct    = t.summary.total > 0 ? Math.round(((t.summary.presente || 0) / t.summary.total) * 100) : 0
+          {filteredPeople.map(p => {
+            const isOpen = expanded === p.person.id
+            const pct    = p.summary.total > 0 ? Math.round(((p.summary.presente || 0) / p.summary.total) * 100) : 0
             return (
-              <Card key={t.teacher.id} padded={false} className="overflow-hidden">
-                <div className="flex items-center px-4.5 py-3.5 cursor-pointer gap-4" onClick={() => setExpanded(isOpen ? null : t.teacher.id)}>
+              <Card key={p.person.id} padded={false} className="overflow-hidden">
+                <div className="flex items-center px-4.5 py-3.5 cursor-pointer gap-4" onClick={() => setExpanded(isOpen ? null : p.person.id)}>
                   <div className="w-[38px] h-[38px] rounded-full bg-brand-700 text-white flex items-center justify-center font-bold text-sm shrink-0">
-                    {t.teacher.lastName.charAt(0)}
+                    {p.person.lastName.charAt(0)}
                   </div>
                   <div className="flex-1">
-                    <div className="font-bold text-sm text-brand-700">{t.teacher.lastName} {t.teacher.firstName}</div>
-                    {t.teacher.ci && <div className="text-xs text-neutral-500">CI: {t.teacher.ci}</div>}
+                    <div className="font-bold text-sm text-brand-700">{p.person.lastName} {p.person.firstName}</div>
+                    {p.person.ci && <div className="text-xs text-neutral-500">CI: {p.person.ci}</div>}
+                    {p.person.staffRole && <div className="text-xs text-neutral-500">{p.person.staffRole}</div>}
                   </div>
 
-                  {mode === 'diario' && t.records[0] ? (
+                  {mode === 'diario' && p.records[0] ? (
                     <div className="flex gap-5 items-center">
                       <div className="text-center">
                         <div className="text-[10px] text-neutral-500 mb-0.5">Entrada</div>
-                        <div className="text-[15px] font-extrabold text-success-700">{fmtTime(t.records[0].checkIn)}</div>
+                        <div className="text-[15px] font-extrabold text-success-700">{fmtTime(p.records[0].checkIn)}</div>
                       </div>
                       <div className="text-center">
                         <div className="text-[10px] text-neutral-500 mb-0.5">Salida</div>
-                        <div className="text-[15px] font-extrabold text-danger-600">{fmtTime(t.records[0].checkOut)}</div>
+                        <div className="text-[15px] font-extrabold text-danger-600">{fmtTime(p.records[0].checkOut)}</div>
                       </div>
-                      <Badge tone={STATUS_CONFIG[t.records[0].status]?.tone || 'neutral'}>{STATUS_CONFIG[t.records[0].status]?.label}</Badge>
+                      <Badge tone={STATUS_CONFIG[p.records[0].status]?.tone || 'neutral'}>{STATUS_CONFIG[p.records[0].status]?.label}</Badge>
                     </div>
                   ) : (
                     <div className="flex gap-2 items-center flex-wrap">
                       {[
-                        { key:'presente', label:'P', tone:'success' as Tone, val:t.summary.presente||0 },
-                        { key:'retraso',  label:'R', tone:'warning' as Tone, val:t.summary.retraso||0 },
-                        { key:'ausente',  label:'A', tone:'danger'  as Tone, val:t.summary.ausente||0 },
-                        { key:'licencia', label:'L', tone:'brand'   as Tone, val:t.summary.licencia||0 },
+                        { key:'presente', label:'P', tone:'success' as Tone, val:p.summary.presente||0 },
+                        { key:'retraso',  label:'R', tone:'warning' as Tone, val:p.summary.retraso||0 },
+                        { key:'ausente',  label:'A', tone:'danger'  as Tone, val:p.summary.ausente||0 },
+                        { key:'licencia', label:'L', tone:'brand'   as Tone, val:p.summary.licencia||0 },
                       ].map(s => (
                         <div key={s.key} className="text-center min-w-[36px]">
                           <div className={`text-sm font-extrabold ${s.tone === 'success' ? 'text-success-700' : s.tone === 'warning' ? 'text-[#BA7517]' : s.tone === 'danger' ? 'text-danger-600' : 'text-brand-700'}`}>{String(s.val)}</div>
@@ -246,7 +262,7 @@ export default function AsistenciaReporte() {
                         </tr>
                       </thead>
                       <tbody>
-                        {t.records.map(r => {
+                        {p.records.map(r => {
                           const st = STATUS_CONFIG[r.status] || STATUS_CONFIG['AUSENTE']
                           return (
                             <tr key={r.id} className="border-t border-neutral-100">

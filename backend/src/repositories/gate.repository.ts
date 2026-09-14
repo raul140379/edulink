@@ -104,6 +104,18 @@ export const gateRepository = {
     return prisma.teacherAttendance.create({ data })
   },
 
+  findStaffAttendanceForDay(staffId: number, start: Date, end: Date) {
+    return prisma.staffAttendance.findFirst({ where: { staffId, date: { gte: start, lte: end } } })
+  },
+
+  updateStaffAttendance(id: number, data: any) {
+    return prisma.staffAttendance.update({ where: { id }, data })
+  },
+
+  createStaffAttendance(data: any) {
+    return prisma.staffAttendance.create({ data })
+  },
+
   findGateRecords(where: any, include: any, orderBy: any) {
     return prisma.gateRecord.findMany({ where, include, orderBy })
   },

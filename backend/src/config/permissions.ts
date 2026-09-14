@@ -43,6 +43,10 @@ export enum Permission {
   TEACHER_CREATE     = 'teacher:create',
   TEACHER_VIEW_ALL   = 'teacher:view:all',
 
+  // Personal administrativo (Regente/Secretaria/Psicóloga/Portera/Otro)
+  STAFF_CREATE       = 'staff:create',
+  STAFF_VIEW_ALL     = 'staff:view:all',
+
   // Padres y tutores
   PARENT_CREATE       = 'parent:create',
   // Vincular un padre YA EXISTENTE a un estudiante / cambiar tutor (matrícula,
@@ -144,6 +148,7 @@ export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
     Permission.USER_EDIT_OWN,
     Permission.STUDENT_VIEW_ALL,
     Permission.TEACHER_VIEW_ALL,
+    Permission.STAFF_VIEW_ALL,
     Permission.PARENT_VIEW_ALL,
     Permission.COURSE_VIEW_ALL,
     Permission.GRADE_VIEW_ALL,
@@ -173,6 +178,8 @@ export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
     Permission.SPORTS_MANAGE,
     Permission.TEACHER_CREATE,
     Permission.TEACHER_VIEW_ALL,
+    Permission.STAFF_CREATE,
+    Permission.STAFF_VIEW_ALL,
     // Sin PARENT_CREATE: registrar un padre nuevo es responsabilidad exclusiva
     // de Junta Escolar/Delegado. Director conserva solo asignar/cambiar tutor
     // (matrícula, cambio de gestión) usando un padre ya registrado.
@@ -218,6 +225,8 @@ export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
     Permission.SPORTS_MANAGE,
     // Sin TEACHER_CREATE: contratar/registrar un maestro nuevo queda como decisión de Dirección.
     Permission.TEACHER_VIEW_ALL,
+    // Sin STAFF_CREATE, mismo criterio: registrar personal administrativo nuevo queda como decisión de Dirección.
+    Permission.STAFF_VIEW_ALL,
     // Sin PARENT_CREATE: ver DIRECTOR arriba — Regente solo asigna/cambia tutor.
     Permission.PARENT_ASSIGN_TUTOR,
     Permission.PARENT_VIEW_ALL,
@@ -261,6 +270,7 @@ export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
     Permission.STUDENT_VIEW_ALL,
     Permission.SPORTS_MANAGE,
     Permission.TEACHER_VIEW_ALL,
+    Permission.STAFF_VIEW_ALL,
     // Sin PARENT_CREATE: ver DIRECTOR arriba — Secretaria solo asigna/cambia tutor.
     Permission.PARENT_ASSIGN_TUTOR,
     Permission.PARENT_VIEW_ALL,
@@ -339,6 +349,7 @@ export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
   Permission.USER_EDIT_OWN,
   // Ver maestros, estudiantes y padres (representa al colectivo de padres de familia)
   Permission.TEACHER_VIEW_ALL,
+  Permission.STAFF_VIEW_ALL,
   Permission.STUDENT_VIEW_ALL,
   // Marcar retirado/reactivar un estudiante desde Verificación por Curso —
   // angosto a propósito, no incluye crear/editar/borrar (eso sigue siendo de
@@ -506,6 +517,7 @@ export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
     Permission.USER_VIEW_ALL,       // ver estudiantes, maestros, padres y administrativos
     Permission.STUDENT_VIEW_ALL,
     Permission.TEACHER_VIEW_ALL,
+    Permission.STAFF_VIEW_ALL,
     Permission.PARENT_VIEW_ALL,
     // Verificación de identidad en portería
     Permission.STUDENT_VERIFY,

@@ -232,6 +232,26 @@ export const gateService = {
       { staff: { select: { id: true, firstName: true, lastName: true, staffRole: true } } }
     )
 
+    if (input.action === 'ENTRADA') {
+      const now = new Date()
+      // Tolerancia por persona (staff.entryTime/toleranceMin), a diferencia de
+      // registerTeacher que usa el SchoolSchedule global — el personal
+      // administrativo puede tener turnos distintos entre sí (mañana/tarde/
+      // noche) donde un solo horario global no aplicaría igual para todos.
+      const startMin = staff.entryTime ? parseTime(staff.entryTime) : 8 * 60
+      const nowMin = nowMinutesBolivia(now)
+      const tolerance = staff.toleranceMin ?? 10
+      const isRetraso = nowMin > startMin + tolerance
+
+      const existing = await gateRepository.findStaffAttendanceForDay(input.staffId, startOfDay(now), endOfDay(now))
+
+      if (existing) {
+        await gateRepository.updateStaffAttendance(existing.id, { checkIn: now, status: isRetraso ? 'RETRASO' : 'PRESENTE' })
+      } else {
+        await gateRepository.createStaffAttendance({ staffId: input.staffId, date: now, checkIn: now, status: isRetraso ? 'RETRASO' : 'PRESENTE' })
+      }
+    }
+
     return { message: `${input.action} de ${staff.lastName} ${staff.firstName} registrada`, record }
   },
 
@@ -275,6 +295,37 @@ export const gateService = {
     }
 
     return { message: `${count} maestros marcados como AUSENTE`, count }
+  },
+
+  // Mirror simple de markAbsentTeachers: todo Staff activo (sin distinción de
+  // período/horario, a diferencia de maestros) sin registro de ENTRADA hoy
+  // pasa a AUSENTE. No aplica el criterio de "clases hoy" de markAbsentTeachers
+  // porque Staff no tiene una noción de período/materia asignada.
+  async markAbsentStaff() {
+    const now = new Date()
+    const today = startOfDay(now)
+    const tomorrow = new Date(today); tomorrow.setDate(tomorrow.getDate() + 1)
+
+    const staffList = await gateRepository.findActiveStaff()
+    const staffIds = staffList.map((s) => s.id)
+
+    const withEntry = await gateRepository.findGateRecordsByCriteria({ staffId: { in: staffIds }, type: 'ADMINISTRATIVO', action: 'ENTRADA', createdAt: { gte: today, lt: tomorrow } })
+    const withEntryIds = new Set(withEntry.map((r) => r.staffId))
+    const absentIds = staffIds.filter((id) => !withEntryIds.has(id))
+
+    let count = 0
+    for (const staffId of absentIds) {
+      const existing = await gateRepository.findStaffAttendanceForDay(staffId, today, endOfDay(now))
+      if (!existing) {
+        await gateRepository.createStaffAttendance({ staffId, date: now, status: 'AUSENTE' })
+        count++
+      } else if (existing.status !== 'AUSENTE' && !existing.checkIn) {
+        await gateRepository.updateStaffAttendance(existing.id, { status: 'AUSENTE' })
+        count++
+      }
+    }
+
+    return { message: `${count} personal administrativo marcado como AUSENTE`, count }
   },
 
   async getRecords(date: string | undefined, type: string | undefined, action: string | undefined) {

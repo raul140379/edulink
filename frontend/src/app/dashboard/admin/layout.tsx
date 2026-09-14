@@ -52,7 +52,8 @@ const menuGroups: MenuGroup[] = [
     roles: ADMIN_ROLES,
     items: [
       { label: 'Padres / Tutores',  href: '/dashboard/admin/padres',     icon: <Users size={16}/>,         roles: ADMIN_ROLES },
-      { label: 'Asistencia de Maestros', href: '/dashboard/admin/asistencia', icon: <ClipboardCheck size={16}/>, roles: ['SUPER_ADMIN','DIRECTOR','SECRETARY'] },
+      { label: 'Personal Administrativo', href: '/dashboard/admin/personal-administrativo', icon: <Users size={16}/>, roles: ADMIN_ROLES },
+      { label: 'Asistente Administrativo', href: '/dashboard/admin/asistencia', icon: <ClipboardCheck size={16}/>, roles: ['SUPER_ADMIN','DIRECTOR','SECRETARY'] },
       { label: 'Seguridad y Control', href: '/dashboard/admin/portero',    icon: <ShieldCheck size={16}/>,   roles: ['SUPER_ADMIN','DIRECTOR'] },
       { label: 'Juegos Estudiantiles', href: '/dashboard/admin/juegos-estudiantiles', icon: <Trophy size={16}/>, roles: ADMIN_ROLES },
     ]

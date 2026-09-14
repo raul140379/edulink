@@ -15,6 +15,7 @@ import {
   registerStaff,
   registerVisitor,
   markAbsentTeachers,
+  markAbsentStaff,
   getRecords,
   getTodayTeachers,
   generateAttendanceCodes,
@@ -44,6 +45,7 @@ router.post('/teacher', requirePermission(Permission.GATE_REGISTER), validateBod
 router.post('/staff',   requirePermission(Permission.GATE_REGISTER), validateBody(registerStaffSchema), registerStaff)
 router.post('/visitor', requirePermission(Permission.GATE_REGISTER), validateBody(registerVisitorSchema), registerVisitor)
 router.post('/mark-absent', requirePermission(Permission.GATE_REGISTER), markAbsentTeachers)
+router.post('/mark-absent-staff', requirePermission(Permission.GATE_REGISTER), markAbsentStaff)
 
 // Historial
 router.get('/records',                requirePermission(Permission.GATE_VIEW), getRecords)
