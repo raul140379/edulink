@@ -134,6 +134,11 @@ export const parentService = {
   async createParent(input: CreateParentInput) {
     const { firstName, lastName, ci, phone, email, address, kardex, relationType, studentIds } = input
 
+    // Compatibilidad: `isTutor` es el campo real desde los 2 flujos nuevos
+    // (checkbox separado del Select) — si no llega (caller viejo), se cae al
+    // comportamiento de siempre derivado de relationType.
+    const willBeTutor = input.isTutor ?? (relationType === 'TUTOR_LEGAL')
+
     if (ci) {
       const existingCI = await parentRepository.findByCI(ci)
       if (existingCI) throw new HttpError(409, `Ya existe un padre/tutor con el CI ${ci}`)
@@ -148,6 +153,21 @@ export const parentService = {
       for (const sid of studentIds) {
         const student = await studentRepository.findRaw(sid)
         if (!student) throw new HttpError(404, `Estudiante con ID ${sid} no encontrado`)
+      }
+    }
+
+    // Candado: si va a ser tutor legal, NINGÚN estudiante de la lista puede
+    // tener ya otro tutor — se valida TODO antes de crear nada (ni el Parent
+    // ni ninguna relación), para no dejar un alta a medias.
+    if (willBeTutor && studentIds && studentIds.length > 0) {
+      for (const sid of studentIds) {
+        const currentTutor = await parentRepository.findTutorForStudent(sid)
+        if (currentTutor) {
+          throw new HttpError(
+            400,
+            `${currentTutor.student.lastName} ${currentTutor.student.firstName} ya tiene un tutor legal (${currentTutor.parent.lastName} ${currentTutor.parent.firstName}) — usá "Cambiar tutor" en su lugar.`
+          )
+        }
       }
     }
 
@@ -175,7 +195,7 @@ export const parentService = {
     let defaultPassword: string | undefined
     let userId: number | undefined
 
-    if (relationType === 'TUTOR_LEGAL') {
+    if (willBeTutor) {
       const result = await createTutorUser(firstName, lastName, ci)
       userId = result.user.id
       accessEmail = result.accessEmail
@@ -192,13 +212,13 @@ export const parentService = {
 
     if (studentIds && studentIds.length > 0) {
       for (const sid of studentIds) {
-        await parentRepository.createRelationSimple(parent.id, sid, relationType, relationType === 'TUTOR_LEGAL')
+        await parentRepository.createRelationSimple(parent.id, sid, relationType, willBeTutor)
       }
     }
 
     // Todo tutor nuevo recibe automáticamente los cargos obligatorios
     // vigentes de la gestión activa (ver mandatoryCharge.service.ts).
-    if (relationType === 'TUTOR_LEGAL') {
+    if (willBeTutor) {
       await mandatoryChargeService.applyActiveTemplatesToTutor(parent.id)
     }
 
@@ -206,7 +226,7 @@ export const parentService = {
 
     return {
       parent: parentFull,
-      ...(relationType === 'TUTOR_LEGAL' ? { accessEmail, defaultPassword } : {}),
+      ...(willBeTutor ? { accessEmail, defaultPassword } : {}),
     }
   },
 
@@ -338,12 +358,35 @@ export const parentService = {
     const parent = await parentRepository.findRaw(id)
     if (!parent) throw new HttpError(404, 'Padre/tutor no encontrado')
 
+    // Mismo criterio que createParent: `isTutor` explícito si el caller lo
+    // manda (los 2 flujos nuevos con checkbox separado); si no, cae al
+    // comportamiento viejo derivado de relationType (admin/inscripciones,
+    // que sigue mandando solo relationType:'TUTOR_LEGAL' sin este campo).
+    const willBeTutor = input.isTutor ?? (input.relationType === 'TUTOR_LEGAL')
+
+    // Candado: se valida TODO antes de crear ninguna relación — si cualquiera
+    // de los estudiantes ya tiene otro tutor, se rechaza el lote completo en
+    // vez de vincular parcialmente.
+    if (willBeTutor) {
+      for (const sid of input.studentIds) {
+        const existing = await parentRepository.findRelation(id, sid)
+        if (existing) continue // ya vinculado — no se toca, no hay tutor nuevo que validar acá
+        const currentTutor = await parentRepository.findTutorForStudent(sid)
+        if (currentTutor) {
+          throw new HttpError(
+            400,
+            `${currentTutor.student.lastName} ${currentTutor.student.firstName} ya tiene un tutor legal (${currentTutor.parent.lastName} ${currentTutor.parent.firstName}) — usá "Cambiar tutor" en su lugar.`
+          )
+        }
+      }
+    }
+
     const results = []
     for (const sid of input.studentIds) {
       const existing = await parentRepository.findRelation(id, sid)
       if (!existing) {
         const relationType = input.relationType || 'OTRO'
-        const rel = await parentRepository.createRelation(id, sid, relationType, relationType === 'TUTOR_LEGAL')
+        const rel = await parentRepository.createRelation(id, sid, relationType, willBeTutor)
         results.push(rel)
       }
     }
@@ -432,13 +475,30 @@ export const parentService = {
   },
 
   async changeRelation(id: number, studentId: number, input: ChangeRelationInput) {
-    if (input.isTutor) {
+    const current = await parentRepository.findRelation(id, studentId)
+    if (!current) throw new HttpError(404, 'Vínculo no encontrado')
+
+    const willBeTutor = input.isTutor || false
+
+    // Mismo candado que unlinkStudent: si esta relación es HOY el tutor y la
+    // actualización la desmarca sin promover a otro en el mismo paso, el
+    // estudiante quedaría sin tutor legal — se rechaza explícito en vez de
+    // dejar ese estado roto (un estudiante sin tutor no puede recibir cargos,
+    // ver academicClosure.service.ts).
+    if (current.isTutor && !willBeTutor) {
+      const otherTutors = await parentRepository.countOtherTutorsFor(studentId, id)
+      if (otherTutors === 0) {
+        throw new HttpError(400, 'No se puede quitar el tutor legal: el estudiante quedaría sin tutor. Asigná otro tutor primero.')
+      }
+    }
+
+    if (willBeTutor) {
       await parentRepository.clearAnyTutorForStudent(studentId)
     }
 
     await parentRepository.updateRelation(id, studentId, {
       relationType: input.relationType,
-      isTutor: input.isTutor || false,
+      isTutor: willBeTutor,
     })
 
     const parent = await parentRepository.findRaw(id)
@@ -661,6 +721,17 @@ export const parentService = {
       data: mapped, total, page: pagination.page, pageSize: pagination.pageSize,
       summary: { total: totalCount, activos: totalActivosCount, inactivos: totalCount - totalActivosCount },
     }
+  },
+
+  // Padres/tutores de UN estudiante puntual — para el modal "Cambiar tutor"
+  // desde Padres Registrados (ver findParentsByStudentId).
+  getParentsByStudent(studentId: number) {
+    return parentRepository.findParentsByStudentId(studentId).then((rows) =>
+      rows.map((r) => ({
+        id: r.parent.id, firstName: r.parent.firstName, lastName: r.parent.lastName,
+        ci: r.parent.ci, relationType: r.relationType, isTutor: r.isTutor,
+      }))
+    )
   },
 
   // Padres/tutores agrupados por curso — misma consulta de base para ambas

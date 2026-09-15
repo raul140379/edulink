@@ -21,6 +21,7 @@ import {
   regenerateTutorCode,
   releaseTutorKardex,
   getParentsByCourse,
+  getParentsByStudent,
   resetTutorPassword,
   getRegisteredStatus,
   regenerateParentEmail,
@@ -51,6 +52,7 @@ router.post('/regenerate-code/:id', requirePermission(Permission.PARENT_ASSIGN_T
 
 // Padres/tutores agrupados por curso (Familias → Listado).
 router.get('/by-course',            requirePermission(Permission.PARENT_VIEW_ALL), getParentsByCourse)
+router.get('/by-student/:studentId', requirePermission(Permission.PARENT_VIEW_ALL), getParentsByStudent)
 router.get('/registered-status',    requirePermission(Permission.PARENT_VIEW_ALL), getRegisteredStatus)
 
 router.get('/:id',                        requirePermission(Permission.PARENT_VIEW_ALL), getParentById)

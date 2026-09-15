@@ -10,6 +10,10 @@ export const createParentSchema = z.object({
   address:      z.string().optional(),
   kardex:       z.string().optional(),
   relationType: z.nativeEnum(RelationType),
+  // Opcional, con fallback a `relationType === 'TUTOR_LEGAL'` en el service
+  // si no se manda — mantiene compatible al caller viejo que todavía no
+  // separa el checkbox (ver linkStudentsSchema, mismo criterio).
+  isTutor:      z.boolean().optional(),
   studentIds:   z.array(z.coerce.number().int()).optional(),
 })
 
@@ -32,6 +36,10 @@ export const updateMeSchema = z.object({
 export const linkStudentsSchema = z.object({
   studentIds:   z.array(z.coerce.number().int()).min(1, 'Debe proporcionar al menos un estudiante'),
   relationType: z.nativeEnum(RelationType).optional(),
+  // Opcional, con fallback a `relationType === 'TUTOR_LEGAL'` en el service
+  // si no se manda — mantiene compatible a admin/inscripciones (sigue
+  // mandando solo relationType:'TUTOR_LEGAL', sin este campo).
+  isTutor:      z.boolean().optional(),
 })
 
 export const changeTutorSchema = z.object({

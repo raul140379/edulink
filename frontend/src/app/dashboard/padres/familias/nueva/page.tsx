@@ -11,15 +11,19 @@ import { useToast } from '@/components/ui/ToastProvider'
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000'
 
+// TUTOR_LEGAL queda fuera del Select a propósito — "es tutor legal" ahora es
+// un checkbox aparte (isTutor), independiente de la relación real elegida
+// acá (Padre/Madre/Otro). El enum sigue teniendo ese valor para registros
+// viejos y para admin/inscripciones (que todavía lo manda tal cual).
 const RELATION_LABELS: Record<string, string> = {
-  PADRE: 'Padre', MADRE: 'Madre', TUTOR_LEGAL: 'Tutor legal', OTRO: 'Otro (tercero)',
+  PADRE: 'Padre', MADRE: 'Madre', OTRO: 'Otro (tercero)',
 }
 
 interface StudentHit { id: number; firstName: string; lastName: string }
 
 const emptyForm = {
   firstName: '', lastName: '', ci: '', phone: '', email: '', address: '', kardex: '',
-  relationType: 'TUTOR_LEGAL',
+  relationType: 'PADRE', isTutor: true,
 }
 
 // Registro de padres/tutores — responsabilidad exclusiva de Junta Escolar
@@ -145,7 +149,11 @@ export default function NuevaFamiliaPage() {
           <Select label="Relación con el/los estudiante(s)" required value={form.relationType} onChange={e => setForm({ ...form, relationType: e.target.value })}>
             {Object.entries(RELATION_LABELS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
           </Select>
-          {form.relationType === 'TUTOR_LEGAL' && (
+          <label className="flex items-center gap-2 text-[13px] text-brand-700 cursor-pointer select-none">
+            <input type="checkbox" checked={form.isTutor} onChange={e => setForm({ ...form, isTutor: e.target.checked })} className="accent-brand-700 w-3.5 h-3.5" />
+            Marcar como tutor legal
+          </label>
+          {form.isTutor && (
             <p className="text-[12px] text-info-500 bg-info-500/10 rounded-lg px-3 py-2">
               Como Tutor legal, se le genera automáticamente una cuenta de acceso al sistema.
             </p>

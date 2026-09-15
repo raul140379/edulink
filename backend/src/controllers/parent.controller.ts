@@ -283,6 +283,18 @@ export const getParentsByCourse = async (req: AuthRequest, res: Response): Promi
 }
 
 // ─────────────────────────────────────────────
+// GET /api/parents/by-student/:studentId
+// ─────────────────────────────────────────────
+export const getParentsByStudent = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const parents = await parentService.getParentsByStudent(parseInt(req.params.studentId))
+    res.json(parents)
+  } catch (error) {
+    handleControllerError(res, error)
+  }
+}
+
+// ─────────────────────────────────────────────
 // POST /api/parents/import
 // ─────────────────────────────────────────────
 export const importParents = async (req: AuthRequest, res: Response): Promise<void> => {

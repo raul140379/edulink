@@ -159,6 +159,20 @@ export const parentRepository = {
     return prisma.parentStudent.count({ where: { studentId, isTutor: true, NOT: { parentId: excludeParentId } } })
   },
 
+  // Tutor legal ACTUAL de un estudiante (si tiene) — usado por el candado de
+  // linkStudents/createParent: antes de marcar a alguien como tutor, hay que
+  // saber si ya hay uno para rechazar con un mensaje que lo identifique, en
+  // vez de crear un segundo tutor en silencio.
+  findTutorForStudent(studentId: number) {
+    return prisma.parentStudent.findFirst({
+      where: { studentId, isTutor: true },
+      select: {
+        parent:  { select: { firstName: true, lastName: true } },
+        student: { select: { firstName: true, lastName: true } },
+      },
+    })
+  },
+
   // Cuántos registros de historial financiero real (no solo el vínculo
   // ParentStudent) tiene este tutor — deleteParent lo consulta ANTES de
   // borrar nada; si hay algo acá, el borrado se rechaza explícito en vez de
@@ -191,6 +205,23 @@ export const parentRepository = {
 
   findRelation(parentId: number, studentId: number) {
     return prisma.parentStudent.findUnique({ where: { parentId_studentId: { parentId, studentId } } })
+  },
+
+  // Todos los padres/tutores vinculados a UN estudiante puntual — liviano,
+  // pensado para cargarse bajo demanda solo al abrir "Cambiar tutor" desde
+  // Padres Registrados (esa pantalla está agrupada por padre, no por
+  // estudiante, así que no trae de entrada quién más está vinculado al mismo
+  // hijo — a diferencia de /by-course, que sí lo agrupa así pero excluye
+  // padres inactivos).
+  findParentsByStudentId(studentId: number) {
+    return prisma.parentStudent.findMany({
+      where: { studentId },
+      select: {
+        relationType: true, isTutor: true,
+        parent: { select: { id: true, firstName: true, lastName: true, ci: true } },
+      },
+      orderBy: { parent: { lastName: 'asc' } },
+    })
   },
 
   createRelation(parentId: number, studentId: number, relationType: RelationType, isTutor: boolean) {
