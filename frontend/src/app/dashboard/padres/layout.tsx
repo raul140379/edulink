@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react'
 import {
   LayoutDashboard, UserCircle, Calendar, BookOpen, Users,
   DollarSign, ClipboardCheck, ClipboardList, FileBarChart, Bell, Megaphone, Layers, UserCog,
-  UserPlus, CalendarClock, GraduationCap, AlertCircle, Clock, Hash, UserCheck, Users2,
+  UserPlus, CalendarClock, GraduationCap, AlertCircle, Clock, Hash, UserCheck, Lock,
 } from 'lucide-react'
 import DashboardShell, { MenuGroup } from '@/components/layout/DashboardShell'
 import { useDistrictConfig } from '@/hooks/useDistrictConfig'
@@ -30,10 +30,9 @@ const menuGroups: MenuGroup[] = [
       { label: 'Designar cargo',   href: '/dashboard/padres/junta/nueva',    icon: <Users size={15}/>,     roles: ['JUNTA_ESCOLAR'] },
       { label: 'Delegados',        href: '/dashboard/padres/delegados',      icon: <Users size={15}/>,     roles: ['JUNTA_ESCOLAR'] },
       { label: 'Cuentas de Tutor', href: '/dashboard/padres/tutores',        icon: <Users size={15}/>,     roles: ['JUNTA_ESCOLAR'] },
-      { label: 'Familias',         href: '/dashboard/padres/familias',       icon: <UserPlus size={15}/>,  roles: ['JUNTA_ESCOLAR'] },
+      { label: 'Tutores',          href: '/dashboard/padres/familias',       icon: <UserPlus size={15}/>,  roles: ['JUNTA_ESCOLAR'] },
       { label: 'Registrar Padre',  href: '/dashboard/padres/familias/nueva', icon: <UserPlus size={15}/>,  roles: ['JUNTA_ESCOLAR'] },
       { label: 'Padres registrados', href: '/dashboard/padres/personas/registrados', icon: <UserCheck size={15}/>, roles: ['JUNTA_ESCOLAR'] },
-      { label: 'Todos los tutores',  href: '/dashboard/padres/personas/tutores',     icon: <Users2 size={15}/>,    roles: ['JUNTA_ESCOLAR'] },
       { label: 'Mi Perfil',        href: '/dashboard/padres/perfil',         icon: <UserCircle size={15}/>, roles: ['JUNTA_ESCOLAR'] },
     ],
   },
@@ -60,6 +59,7 @@ const menuGroups: MenuGroup[] = [
       { label: 'Kardex',                href: '/dashboard/padres/tesoreria/kardex',     icon: <Hash size={15}/>,          roles: ['JUNTA_ESCOLAR'] },
       { label: 'Reportes Financieros',  href: '/dashboard/padres/tesoreria/reportes',   icon: <FileBarChart size={15}/>,  roles: ['JUNTA_ESCOLAR'] },
       { label: 'Cargos Obligatorios',   href: '/dashboard/padres/tesoreria/obligatorios', icon: <ClipboardList size={15}/>, roles: ['JUNTA_ESCOLAR'] },
+      { label: 'Cierre de Gestión',     href: '/dashboard/padres/tesoreria/cierre',     icon: <Lock size={15}/>,          roles: ['JUNTA_ESCOLAR'] },
     ],
   },
   {

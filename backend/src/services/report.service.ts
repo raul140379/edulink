@@ -50,9 +50,10 @@ export const reportService = {
     if (!activeYear) throw new HttpError(404, 'No hay gestión académica activa')
 
     const { base, next } = dayRange(date)
-    const [courses, attendances] = await Promise.all([
+    const [courses, attendances, allAssignments] = await Promise.all([
       reportRepository.findAllCoursesForSchool(),
       reportRepository.findAttendancesForSchoolDate(activeYear.id, base, next),
+      reportRepository.findAllAssignmentsForSchool(activeYear.id),
     ])
 
     // Dedupe por estudiante (4-sep-2026): con teacherId en la clave única de
@@ -60,13 +61,17 @@ export const reportService = {
     // fila por estudiante el mismo día — sin esto, "presentes" contaría cada
     // fila en vez de cada estudiante (37 alumnos podría mostrar 74). Se
     // queda con la más reciente por estudiante (attendances ya viene
-    // ordenado updatedAt desc).
+    // ordenado updatedAt desc). El bucket usa el courseId PROPIO de la fila
+    // (congelado al guardar) — nunca el curso actual del estudiante, para no
+    // reatribuír asistencia histórica si después cambió de curso.
     const seen = new Set<string>()
+    const withRealRow = new Set<number>()
     const byCourse = new Map<number, { presentes: number; ausentes: number; retrasos: number; licencias: number }>()
     for (const a of attendances) {
       const key = `${a.courseId}-${a.studentId}`
       if (seen.has(key)) continue
       seen.add(key)
+      withRealRow.add(a.studentId)
 
       if (!byCourse.has(a.courseId)) byCourse.set(a.courseId, { presentes: 0, ausentes: 0, retrasos: 0, licencias: 0 })
       const entry = byCourse.get(a.courseId)!
@@ -74,6 +79,24 @@ export const reportService = {
       else if (a.status === 'AUSENTE') entry.ausentes++
       else if (a.status === 'RETRASO') entry.retrasos++
       else if (a.status === 'LICENCIA') entry.licencias++
+    }
+
+    // Licencias (12-sep-2026, hueco cerrado): un estudiante con licencia
+    // activa hoy y SIN ninguna fila real todavía cuenta como "licencia" en
+    // su curso ACTUAL — antes no se contaba en absoluto (ni presente, ni
+    // ausente, ni licencia: invisible). Si ya tiene una fila real de otro
+    // día/maestro, esa fila real manda (mismo criterio de "nunca perder el
+    // histórico" — acá no hay ambigüedad de curso para pisar, a diferencia
+    // de getAttendanceByCourse que es de un solo curso).
+    const studentIds = allAssignments.map((a) => a.studentId)
+    const licenses = await reportRepository.findActiveLicensesForStudents(studentIds, base)
+    const courseByStudent = new Map(allAssignments.map((a) => [a.studentId, a.courseId]))
+    for (const lic of licenses) {
+      if (withRealRow.has(lic.studentId)) continue
+      const courseId = courseByStudent.get(lic.studentId)
+      if (courseId === undefined) continue
+      if (!byCourse.has(courseId)) byCourse.set(courseId, { presentes: 0, ausentes: 0, retrasos: 0, licencias: 0 })
+      byCourse.get(courseId)!.licencias++
     }
 
     return {
@@ -125,18 +148,30 @@ export const reportService = {
       ? `${attendances[0].teacher.firstName} ${attendances[0].teacher.lastName}`
       : null
 
+    // Licencias (12-sep-2026, hueco cerrado): mismo criterio que
+    // getAttendanceByCourse — la licencia TAPA el estado de quien la tenga
+    // activa hoy, sin importar si ya había una fila real (nunca se toca esa
+    // fila, solo se ignora para esta vista/conteo). Curso único acá, así que
+    // no hay ambigüedad de a qué curso atribuirla.
+    const licenses = await reportRepository.findActiveLicensesForStudents(assignments.map((a) => a.student.id), base)
+    const licenseByStudent = new Map(licenses.map((l) => [l.studentId, l.reason]))
+
     return {
       date: base.toISOString().split('T')[0],
       course,
       teacherName,
       registrado: attendances.length > 0,
-      students: assignments.map((a) => ({
-        studentId: a.student.id,
-        firstName: a.student.firstName,
-        lastName:  a.student.lastName,
-        gender:    a.student.gender,
-        status:    attendanceMap[a.student.id]?.status ?? null,
-      })),
+      students: assignments.map((a) => {
+        const onLicense = licenseByStudent.has(a.student.id)
+        return {
+          studentId: a.student.id,
+          firstName: a.student.firstName,
+          lastName:  a.student.lastName,
+          gender:    a.student.gender,
+          status:    onLicense ? 'LICENCIA' : (attendanceMap[a.student.id]?.status ?? null),
+          onLicense,
+        }
+      }),
     }
   },
 

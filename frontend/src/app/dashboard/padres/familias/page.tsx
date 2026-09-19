@@ -46,9 +46,10 @@ interface FlatTutor extends ParentInfo {
   students: { relationType: string; isTutor: boolean; student: { id: number; firstName: string; lastName: string } }[]
 }
 
-// "Padres por curso" se agrupa por ESTUDIANTE (no por padre) — un estudiante
-// con padre y madre queda en una sola fila con ambos, en vez de una fila por
-// cada uno repitiendo el nombre del estudiante.
+// "padres" por estudiante ya no tiene vista propia acá (se movió a Padres
+// registrados → pestaña "Padres por curso") — se sigue trayendo del mismo
+// fetch igual, porque findParentsForStudent lo necesita para saber si hay
+// a quién promover en "Cambiar tutor" (acá y en "Todos los tutores").
 interface StudentGroup {
   studentId: number
   studentName: string
@@ -64,14 +65,17 @@ interface CourseGroup {
 const emptyEditForm = { firstName: '', lastName: '', ci: '', phone: '', email: '', address: '', kardex: '' }
 
 // Listado de familias registradas por Junta Escolar/Delegado, agrupado por
-// curso — dos vistas: "Padres" (cualquier padre/madre/tercero vinculado) y
-// "Tutores" (los únicos que pueden recibir cargos, generar QR de asistencia,
-// o ser parte del directorio/delegados).
+// curso — dos vistas: "Tutores" (los únicos que pueden recibir cargos,
+// generar QR de asistencia, o ser parte del directorio/delegados) y "Todos
+// los tutores" (listado plano, sin agrupar por curso). "Padres por curso"
+// (cualquier padre/madre/tercero vinculado, no solo tutores) vive ahora en
+// Padres registrados → pestaña "Padres por curso" (exclusivo de Junta
+// Escolar — Delegado no tiene acceso a esa pantalla).
 export default function FamiliasPage() {
   const toast   = useToast()
   const confirm = useConfirm()
 
-  const [viewMode, setViewMode] = useState<'padres' | 'tutores' | 'todos'>('tutores')
+  const [viewMode, setViewMode] = useState<'tutores' | 'todos'>('tutores')
   const [byCourse, setByCourse] = useState<CourseGroup[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
@@ -114,13 +118,7 @@ export default function FamiliasPage() {
   const matchesSearch = (m: ParentInfo) =>
     !q || `${m.firstName} ${m.lastName}`.toLowerCase().includes(q) || (m.ci || '').toLowerCase().includes(q)
 
-  const byCourseFiltered = byCourse.map(g => ({
-    ...g,
-    padres: g.padres
-      .map(sg => ({ ...sg, parents: sg.parents.filter(matchesSearch) }))
-      .filter(sg => sg.parents.length > 0),
-    tutores: g.tutores.filter(matchesSearch),
-  }))
+  const byCourseFiltered = byCourse.map(g => ({ ...g, tutores: g.tutores.filter(matchesSearch) }))
 
   const openEdit = (row: ParentInfo) => {
     setEditingRow(row)
@@ -336,41 +334,6 @@ export default function FamiliasPage() {
     win.document.close()
   }
 
-  // "Padres por curso": una fila por ESTUDIANTE, con todos sus padres/tutores
-  // agrupados en una sola columna — cada uno con su relación (Padre/Madre/...),
-  // badge "Tutor" si corresponde, estado de acceso, y su propia acción Editar.
-  const studentGroupColumns: Column<StudentGroup>[] = [
-    { key: 'student', header: 'Estudiante', render: g => (
-      <span className="font-semibold text-brand-700 text-[12.5px]">{g.studentName}</span>
-    ) },
-    { key: 'parents', header: 'Padres / Tutores', render: g => (
-      <div className="flex flex-col gap-1">
-        {g.parents.map((p, i) => (
-          <div
-            key={p.id}
-            className={`flex items-center justify-between gap-4 flex-wrap py-1.5 ${i > 0 ? 'border-t border-neutral-100' : ''}`}
-          >
-            <div className="flex items-center gap-2 flex-wrap">
-              <span className="font-medium text-brand-700 text-[12.5px]">{p.lastName} {p.firstName}</span>
-              {p.ci && <span className="text-[11px] text-neutral-500">CI {p.ci}</span>}
-              <Badge tone="neutral">{RELATION_LABELS[p.relationType] || p.relationType}</Badge>
-              {p.isTutor && <Badge tone="success">Tutor</Badge>}
-            </div>
-            <div className="flex items-center gap-2.5 shrink-0">
-              {p.user
-                ? <Badge tone={p.user.isActive ? 'success' : 'danger'}>{p.user.isActive ? 'Activo' : 'Inactivo'}</Badge>
-                : <span className="text-[11px] text-neutral-400 italic">Sin cuenta</span>}
-              <Button size="sm" variant="secondary" onClick={() => openEdit(p)}><Pencil size={11}/> Editar</Button>
-              <Button size="sm" variant="secondary" className="text-danger-600" onClick={() => handleDelete(p)} loading={deletingId === p.id}>
-                <Trash2 size={11}/> Eliminar
-              </Button>
-            </div>
-          </div>
-        ))}
-      </div>
-    ) },
-  ]
-
   const nameColumn: Column<TutorInfo> = { key: 'name', header: 'Nombre', render: r => (
     <div>
       <div className="font-semibold text-brand-700">{r.lastName} {r.firstName}</div>
@@ -489,12 +452,6 @@ export default function FamiliasPage() {
       <div className="flex items-center gap-3 mb-4 flex-wrap">
         <div className="flex gap-1 bg-neutral-100 rounded-lg p-1">
           <button
-            onClick={() => setViewMode('padres')}
-            className={`px-3 py-1.5 rounded-md text-[12.5px] font-semibold transition-colors ${viewMode === 'padres' ? 'bg-white text-brand-700 shadow-sm' : 'text-neutral-500'}`}
-          >
-            Padres por curso
-          </button>
-          <button
             onClick={() => setViewMode('tutores')}
             className={`px-3 py-1.5 rounded-md text-[12.5px] font-semibold transition-colors ${viewMode === 'tutores' ? 'bg-white text-brand-700 shadow-sm' : 'text-neutral-500'}`}
           >
@@ -538,35 +495,27 @@ export default function FamiliasPage() {
             </Card>
           ) : loading ? (
             <Card className="text-center py-12 text-neutral-500">Cargando...</Card>
-          ) : byCourseFiltered.every(g => (viewMode === 'padres' ? g.padres : g.tutores).length === 0) ? (
+          ) : byCourseFiltered.every(g => g.tutores.length === 0) ? (
             <Card className="text-center py-12 text-neutral-500">
               {search ? 'Nadie coincide con la búsqueda.' : 'No hay familias registradas todavía.'}
             </Card>
           ) : byCourseFiltered
-              .filter(g => (viewMode === 'padres' ? g.padres : g.tutores).length > 0 || !search)
+              .filter(g => g.tutores.length > 0 || !search)
               .map(g => {
-                const parentsCount = g.padres.reduce((sum, sg) => sum + sg.parents.length, 0)
-                const countLabel = viewMode === 'padres'
-                  ? `${g.padres.length} estudiante(s) · ${parentsCount} padre(s)`
-                  : `${g.tutores.length} tutor(es)`
-                const isEmpty = viewMode === 'padres' ? g.padres.length === 0 : g.tutores.length === 0
+                const isEmpty = g.tutores.length === 0
                 return (
                   <Card key={g.course.id} padded={false} className="overflow-hidden">
                     <div className="flex items-center justify-between px-4.5 py-3 border-b border-neutral-100">
                       <span className="text-[13.5px] font-bold text-brand-700">{courseLabel(g.course)}</span>
-                      <span className="text-[11px] text-neutral-500">{countLabel}</span>
+                      <span className="text-[11px] text-neutral-500">{g.tutores.length} tutor(es)</span>
                     </div>
                     {isEmpty ? (
                       <p className="text-[13px] text-neutral-500 italic px-4.5 py-4">
-                        Sin {viewMode === 'padres' ? 'padres' : 'tutores'} registrados en este curso
+                        Sin tutores registrados en este curso
                       </p>
                     ) : (
                       <div className="p-4">
-                        {viewMode === 'padres' ? (
-                          <Table columns={studentGroupColumns} rows={g.padres} rowKey={sg => sg.studentId} />
-                        ) : (
-                          <Table columns={tutoresColumns} rows={g.tutores} rowKey={t => t.id} />
-                        )}
+                        <Table columns={tutoresColumns} rows={g.tutores} rowKey={t => t.id} />
                       </div>
                     )}
                   </Card>

@@ -186,7 +186,7 @@ export const studentAttendanceRepository = {
   // abajo (si el maestro ya había marcado algo) queda intacto.
   findActiveLicensesForStudents(studentIds: number[], date: Date) {
     return prisma.studentLicense.findMany({
-      where: { studentId: { in: studentIds }, startDate: { lte: date }, endDate: { gte: date } },
+      where: { studentId: { in: studentIds }, startDate: { lte: date }, endDate: { gte: date }, cancelledAt: null },
       select: { studentId: true, reason: true },
     })
   },
@@ -199,6 +199,7 @@ export const studentAttendanceRepository = {
     return prisma.studentLicense.findMany({
       where: {
         studentId,
+        cancelledAt: null,
         ...(start ? { endDate: { gte: start } } : {}),
         ...(end ? { startDate: { lt: end } } : {}),
       },

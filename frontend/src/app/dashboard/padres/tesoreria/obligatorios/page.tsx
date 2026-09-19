@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { Plus, RefreshCw, ClipboardList } from 'lucide-react'
+import { Plus, RefreshCw, ClipboardList, Pencil, Trash2 } from 'lucide-react'
 import Card from '@/components/ui/Card'
 import Badge from '@/components/ui/Badge'
 import Button from '@/components/ui/Button'
@@ -19,11 +19,15 @@ import { useModuleFilters } from '@/hooks/useModuleFilters'
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000'
 
 const TYPE_OPTIONS = [
-  { value: 'CUOTA_INICIAL',  label: 'Cuota Inicial' },
-  { value: 'DEUDA_ANTERIOR', label: 'Deuda Anterior' },
-  { value: 'MULTA_ASAMBLEA', label: 'Multa Asamblea' },
-  { value: 'MINGA',          label: 'Minga' },
-  { value: 'OTRO',           label: 'Otro' },
+  { value: 'CUOTA_INICIAL',    label: 'Cuota Inicial' },
+  { value: 'DEUDA_ANTERIOR',   label: 'Deuda Anterior' },
+  { value: 'MULTA_ASAMBLEA',   label: 'Multa Asamblea' },
+  { value: 'MINGA',            label: 'Minga' },
+  { value: 'MULTA_REUNION',    label: 'Multa Reunión' },
+  { value: 'ACTIVIDAD',        label: 'Actividad' },
+  { value: 'MATERIAL_ESCOLAR', label: 'Material Escolar' },
+  { value: 'AUTORIZADO',       label: 'Autorizado' },
+  { value: 'OTRO',             label: 'Otro' },
 ]
 const TYPE_LABELS: Record<string, string> = Object.fromEntries(TYPE_OPTIONS.map(o => [o.value, o.label]))
 
@@ -56,6 +60,10 @@ export default function CargosObligatoriosPage() {
   const [applyingId, setApplyingId] = useState<number | null>(null)
 
   const [form, setForm] = useState({ title: '', description: '', amount: '', type: 'CUOTA_INICIAL', dueDate: '', academicYearId: '' })
+
+  const [editingRow, setEditingRow] = useState<MandatoryCharge | null>(null)
+  const [editForm, setEditForm] = useState({ title: '', description: '', amount: '', type: 'CUOTA_INICIAL', dueDate: '' })
+  const [savingEdit, setSavingEdit] = useState(false)
 
   const token = () => (typeof window !== 'undefined' ? localStorage.getItem('token') : '') || ''
   const auth  = () => ({ Authorization: `Bearer ${token()}` })
@@ -104,6 +112,37 @@ export default function CargosObligatoriosPage() {
     finally { setSaving(false) }
   }
 
+  const openEdit = (m: MandatoryCharge) => {
+    setEditingRow(m)
+    setEditForm({
+      title: m.title, description: m.description || '', amount: String(m.amount),
+      type: m.type, dueDate: m.dueDate ? m.dueDate.slice(0, 10) : '',
+    })
+  }
+
+  const handleSaveEdit = async () => {
+    if (!editingRow) return
+    if (!editForm.title.trim() || !editForm.amount) {
+      toast('Título y monto son requeridos', 'error'); return
+    }
+    setSavingEdit(true)
+    try {
+      const res  = await fetch(`${API_URL}/api/treasury/mandatory-charges/${editingRow.id}`, {
+        method: 'PUT', headers: { 'Content-Type': 'application/json', ...auth() },
+        body: JSON.stringify({
+          title: editForm.title, description: editForm.description || undefined,
+          amount: parseFloat(editForm.amount), type: editForm.type, dueDate: editForm.dueDate || undefined,
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok) { toast(data.message, 'error'); return }
+      toast(data.message, 'success')
+      setEditingRow(null)
+      fetchData()
+    } catch { toast('Error de conexión', 'error') }
+    finally { setSavingEdit(false) }
+  }
+
   const handleToggle = async (m: MandatoryCharge) => {
     const activar = !m.isActive
     if (!await confirm(`¿${activar ? 'Activar' : 'Desactivar'} el cargo obligatorio "${m.title}"? ${activar ? 'Volverá a aplicarse a tutores nuevos.' : 'Ya no se aplicará a tutores nuevos (los cargos ya generados no se eliminan).'}`)) return
@@ -114,6 +153,34 @@ export default function CargosObligatoriosPage() {
       toast(data.message, 'success')
       fetchData()
     } catch { toast('Error de conexión', 'error') }
+  }
+
+  const [deletingId, setDeletingId] = useState<number | null>(null)
+
+  // Borrado permanente — a diferencia de Desactivar (solo deja de aplicarse a
+  // tutores nuevos), esto borra la plantilla Y todos los cargos que generó.
+  // Uso pensado para una plantilla creada por error (ej. mal etiquetada bajo
+  // la gestión equivocada) que nunca debió existir.
+  const handleDelete = async (m: MandatoryCharge, force = false) => {
+    if (!await confirm(
+      force
+        ? `Algunos de los ${m._count.charges} cargo(s) de "${m.title}" ya tienen un pago registrado. ¿Igual querés borrar todo, incluidos esos pagos? Esto no se puede deshacer.`
+        : `¿Eliminar definitivamente "${m.title}"? Se van a borrar también los ${m._count.charges} cargo(s) que generó a los tutores. Esto no se puede deshacer.`,
+      { danger: true }
+    )) return
+    setDeletingId(m.id)
+    try {
+      const res  = await fetch(`${API_URL}/api/treasury/mandatory-charges/${m.id}${force ? '?force=true' : ''}`, { method: 'DELETE', headers: auth() })
+      const data = await res.json()
+      if (!res.ok) {
+        if (res.status === 409 && !force) { setDeletingId(null); await handleDelete(m, true); return }
+        toast(data.message, 'error')
+        return
+      }
+      toast(data.message, 'success')
+      fetchData()
+    } catch { toast('Error de conexión', 'error') }
+    finally { setDeletingId(null) }
   }
 
   const handleApplyMissing = async (m: MandatoryCharge) => {
@@ -144,10 +211,14 @@ export default function CargosObligatoriosPage() {
     { key: 'estado', header: 'Estado', render: m => <Badge tone={m.isActive ? 'success' : 'neutral'}>{m.isActive ? 'Activo' : 'Inactivo'}</Badge> },
     { key: 'accion', header: 'Acción', render: m => (
       <div className="flex gap-1.5 flex-wrap">
+        <Button size="sm" variant="secondary" onClick={() => openEdit(m)}><Pencil size={12}/> Editar</Button>
         <Button size="sm" onClick={() => handleApplyMissing(m)} loading={applyingId === m.id}>
           <RefreshCw size={12}/> Buscar y aplicar a faltantes
         </Button>
         <Button size="sm" variant="secondary" onClick={() => handleToggle(m)}>{m.isActive ? 'Desactivar' : 'Activar'}</Button>
+        <Button size="sm" variant="secondary" className="text-danger-600" onClick={() => handleDelete(m)} loading={deletingId === m.id}>
+          <Trash2 size={12}/> Eliminar
+        </Button>
       </div>
     ) },
   ]
@@ -204,6 +275,33 @@ export default function CargosObligatoriosPage() {
             💡 Al crear esta plantilla se aplicará de inmediato a todos los tutores que aún no la tengan, y de ahí en más a todo tutor nuevo que se registre.
           </p>
         </div>
+      </Modal>
+
+      <Modal
+        open={!!editingRow} onClose={() => setEditingRow(null)} title="Editar cargo obligatorio"
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setEditingRow(null)}>Cancelar</Button>
+            <Button onClick={handleSaveEdit} loading={savingEdit}>Guardar</Button>
+          </>
+        }
+      >
+        {editingRow && (
+          <div className="flex flex-col gap-3">
+            <Input label="Título" required value={editForm.title} onChange={e => setEditForm({ ...editForm, title: e.target.value })} />
+            <div className="grid grid-cols-2 gap-3">
+              <Select label="Tipo" value={editForm.type} onChange={e => setEditForm({ ...editForm, type: e.target.value })}>
+                {TYPE_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+              </Select>
+              <Input label="Monto (Bs.)" required type="number" step="0.01" min="0" value={editForm.amount} onChange={e => setEditForm({ ...editForm, amount: e.target.value })} />
+            </div>
+            <Input label="Fecha de vencimiento" type="date" value={editForm.dueDate} onChange={e => setEditForm({ ...editForm, dueDate: e.target.value })} />
+            <Input label="Descripción (opcional)" value={editForm.description} onChange={e => setEditForm({ ...editForm, description: e.target.value })} />
+            <p className="text-[11px] text-neutral-500 bg-neutral-100 border border-neutral-300 rounded-lg p-2.5">
+              💡 Esto solo cambia la plantilla — los cargos ya generados a partir de ella no se modifican retroactivamente. La gestión no se puede editar.
+            </p>
+          </div>
+        )}
       </Modal>
     </div>
   )

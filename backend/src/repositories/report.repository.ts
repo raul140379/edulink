@@ -96,6 +96,17 @@ export const reportRepository = {
     })
   },
 
+  // Mismo criterio que studentAttendance.repository.ts::findActiveLicensesForStudents
+  // — repos separados por módulo, no cross-import (patrón ya establecido en
+  // el proyecto).
+  findActiveLicensesForStudents(studentIds: number[], date: Date) {
+    if (studentIds.length === 0) return Promise.resolve([])
+    return prisma.studentLicense.findMany({
+      where: { studentId: { in: studentIds }, startDate: { lte: date }, endDate: { gte: date }, cancelledAt: null },
+      select: { studentId: true, reason: true },
+    })
+  },
+
   findAssignmentsForCourse(courseId: number, academicYearId: number) {
     return prisma.studentAcademicAssignment.findMany({
       where: { courseId, academicYearId },
@@ -159,7 +170,7 @@ export const reportRepository = {
   findLicensesOverlappingRange(studentIds: number[], start: Date, end: Date) {
     if (studentIds.length === 0) return Promise.resolve([])
     return prisma.studentLicense.findMany({
-      where: { studentId: { in: studentIds }, startDate: { lt: end }, endDate: { gte: start } },
+      where: { studentId: { in: studentIds }, startDate: { lt: end }, endDate: { gte: start }, cancelledAt: null },
       select: { studentId: true, startDate: true, endDate: true },
     })
   },
