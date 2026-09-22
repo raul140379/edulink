@@ -575,6 +575,7 @@ model Course {
   tasks              Task[]
   teacherSubjects    TeacherSubjectCourse[]
   lateArrivals       StudentLateArrival[]
+  mandatoryCharges   MandatoryCharge[]
 
   @@unique([level, grade, parallel, educationType, shift, schoolId])
 }
@@ -941,10 +942,27 @@ model SportsParticipant {
   @@index([academicYearId])
 }
 
+// Alcance de una plantilla de cargo obligatorio — a quién se le aplica.
+// TODOS (default, comportamiento histórico) = todo el colegio. GRADO = un
+// grado completo con TODOS sus paralelos (requiere scopeLevel+scopeGrade
+// juntos, nunca grado solo — Grade es un enum compartido entre niveles, un
+// colegio con Primaria y Secundaria tendría dos "3°" distintos). CURSO = un
+// paralelo puntual (scopeCourseId, ya es específico por sí solo).
+enum MandatoryChargeScope {
+  TODOS
+  GRADO
+  CURSO
+}
+
 // Plantilla de cargo obligatorio — al crearla se aplica de inmediato a todos
-// los tutores actuales que aún no la tengan, y automáticamente a todo tutor
-// nuevo que se registre mientras esté activa (ver parentService.createParent
-// y mandatoryChargeService). Siempre target=TUTOR (igual que el cargo masivo).
+// los tutores actuales que aún no la tengan (dentro del alcance elegido), y
+// automáticamente a todo tutor nuevo que se registre mientras esté activa
+// (ver parentService.createParent y mandatoryChargeService). Siempre
+// target=TUTOR (igual que el cargo masivo). El alcance es editable después
+// de creada — ampliarlo requiere correr "aplicar a faltantes" de nuevo para
+// alcanzar a los recién incluidos; angostarlo nunca borra retroactivamente
+// los cargos ya generados a quien quedó fuera (mismo criterio de todo el
+// módulo: el histórico nunca se pierde).
 model MandatoryCharge {
   id             Int          @id @default(autoincrement())
   title          String
@@ -956,8 +974,13 @@ model MandatoryCharge {
   createdAt      DateTime     @default(now())
   academicYearId Int
   schoolId       Int
+  scope          MandatoryChargeScope @default(TODOS)
+  scopeLevel     AcademicLevel?
+  scopeGrade     Grade?
+  scopeCourseId  Int?
   school         School       @relation(fields: [schoolId], references: [id])
   academicYear   AcademicYear @relation(fields: [academicYearId], references: [id])
+  scopeCourse    Course?      @relation(fields: [scopeCourseId], references: [id])
   charges        Charge[]
 }
 

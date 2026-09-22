@@ -1,6 +1,19 @@
 import prisma from '../lib/prisma'
+import { MandatoryChargeScope, AcademicLevel, Grade } from '@prisma/client'
 
 type TxClient = Parameters<Parameters<typeof prisma.$transaction>[0]>[0]
+
+// Alcance de una plantilla, ya resuelto a la condición Prisma que hay que
+// anidar dentro de `assignments: { some: { academicYearId, ... } } }` al
+// buscar tutores — TODOS no agrega nada, GRADO filtra por nivel+grado del
+// curso (todos los paralelos), CURSO filtra por el curso puntual. Un solo
+// helper para que "aplicar a faltantes" y "aplicar a tutor nuevo" (los 2
+// llamadores de findTutorsMissingCharge) queden siempre consistentes.
+function scopeToCourseWhere(scope: { scope: MandatoryChargeScope; scopeLevel: AcademicLevel | null; scopeGrade: Grade | null; scopeCourseId: number | null }) {
+  if (scope.scope === 'GRADO') return { course: { level: scope.scopeLevel!, grade: scope.scopeGrade! } }
+  if (scope.scope === 'CURSO') return { courseId: scope.scopeCourseId! }
+  return {}
+}
 
 export const mandatoryChargeRepository = {
   findActiveAcademicYear() {
@@ -10,7 +23,11 @@ export const mandatoryChargeRepository = {
   findAll(schoolId: number) {
     return prisma.mandatoryCharge.findMany({
       where: { schoolId },
-      include: { academicYear: { select: { id: true, year: true } }, _count: { select: { charges: true } } },
+      include: {
+        academicYear: { select: { id: true, year: true } },
+        scopeCourse: { select: { id: true, level: true, grade: true, parallel: true, shift: true } },
+        _count: { select: { charges: true } },
+      },
       orderBy: { createdAt: 'desc' },
     })
   },
@@ -19,7 +36,11 @@ export const mandatoryChargeRepository = {
     return prisma.mandatoryCharge.findUnique({ where: { id } })
   },
 
-  create(data: { title: string; description: string | null; amount: number; type: any; dueDate: Date | null; academicYearId: number; schoolId: number }) {
+  create(data: {
+    title: string; description: string | null; amount: number; type: any; dueDate: Date | null
+    academicYearId: number; schoolId: number
+    scope: MandatoryChargeScope; scopeLevel: AcademicLevel | null; scopeGrade: Grade | null; scopeCourseId: number | null
+  }) {
     return prisma.mandatoryCharge.create({ data })
   },
 
@@ -27,7 +48,10 @@ export const mandatoryChargeRepository = {
     return prisma.mandatoryCharge.update({ where: { id }, data: { isActive } })
   },
 
-  update(id: number, data: Partial<{ title: string; description: string | null; amount: number; type: any; dueDate: Date | null }>) {
+  update(id: number, data: Partial<{
+    title: string; description: string | null; amount: number; type: any; dueDate: Date | null
+    scope: MandatoryChargeScope; scopeLevel: AcademicLevel | null; scopeGrade: Grade | null; scopeCourseId: number | null
+  }>) {
     return prisma.mandatoryCharge.update({ where: { id }, data })
   },
 
@@ -36,16 +60,22 @@ export const mandatoryChargeRepository = {
   },
 
   // Tutores del colegio (isTutor:true de un estudiante con matrícula activa
-  // en la gestión de la plantilla) que TODAVÍA no tienen un Charge generado
-  // desde esta plantilla — la base tanto de "aplicar a faltantes" como de la
-  // aplicación automática a un tutor nuevo. El chequeo de matrícula evita
-  // generar el cargo a un tutor cuyo único hijo ya no está inscrito ese año
-  // (ej. casos "Grupo C" — ver CLAUDE.md 19.2.3).
-  findTutorsMissingCharge(schoolId: number, mandatoryChargeId: number, academicYearId: number, onlyParentId?: number) {
+  // en la gestión de la plantilla, DENTRO del alcance de la plantilla) que
+  // TODAVÍA no tienen un Charge generado desde esta plantilla — la base
+  // tanto de "aplicar a faltantes" como de la aplicación automática a un
+  // tutor nuevo. El chequeo de matrícula evita generar el cargo a un tutor
+  // cuyo único hijo ya no está inscrito ese año (ej. casos "Grupo C" — ver
+  // CLAUDE.md 19.2.3). Sigue siendo una sola consulta — el alcance es una
+  // condición anidada más, no un loop aparte.
+  findTutorsMissingCharge(
+    schoolId: number, mandatoryChargeId: number, academicYearId: number,
+    scope: { scope: MandatoryChargeScope; scopeLevel: AcademicLevel | null; scopeGrade: Grade | null; scopeCourseId: number | null },
+    onlyParentId?: number,
+  ) {
     return prisma.parent.findMany({
       where: {
         schoolId,
-        students: { some: { isTutor: true, student: { assignments: { some: { academicYearId } } } } },
+        students: { some: { isTutor: true, student: { assignments: { some: { academicYearId, ...scopeToCourseWhere(scope) } } } } },
         charges: { none: { mandatoryChargeId } },
         ...(onlyParentId ? { id: onlyParentId } : {}),
       },
@@ -72,6 +102,7 @@ export const mandatoryChargeRepository = {
       where: { id: mandatoryChargeId },
       select: {
         id: true, title: true, amount: true, type: true, academicYearId: true,
+        scope: true, scopeLevel: true, scopeGrade: true, scopeCourseId: true,
         charges: {
           select: {
             id: true, parentId: true, amount: true, paidAmount: true, status: true,

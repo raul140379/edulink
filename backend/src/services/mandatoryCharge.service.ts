@@ -1,9 +1,21 @@
 import prisma from '../lib/prisma'
 import { mandatoryChargeRepository } from '../repositories/mandatoryCharge.repository'
+import { courseRepository } from '../repositories/course.repository'
 import { auditLogRepository } from '../repositories/auditLog.repository'
 import { HttpError } from '../utils/http-error'
 import { getTenantContext } from '../lib/tenant-context'
 import { CreateMandatoryChargeInput, UpdateMandatoryChargeInput } from '../schemas/treasury.schema'
+
+// El curso de scopeCourseId tiene que existir Y pertenecer al colegio del
+// actor — courseRepository.findById ya usa el cliente de Prisma con
+// tenant-scoping (Course está en DIRECT_SCHOOL_SCOPED_MODELS), así que un
+// curso de otro colegio ya vuelve null solo, sin chequeo manual de schoolId.
+async function assertValidScope(input: { scope?: string; scopeCourseId?: number | null }) {
+  if (input.scope === 'CURSO' && input.scopeCourseId) {
+    const course = await courseRepository.findById(input.scopeCourseId)
+    if (!course) throw new HttpError(404, 'El curso elegido para el alcance no existe')
+  }
+}
 
 export const mandatoryChargeService = {
   list() {
@@ -13,6 +25,8 @@ export const mandatoryChargeService = {
 
   async create(input: CreateMandatoryChargeInput) {
     const schoolId = getTenantContext()?.schoolId ?? 0
+    await assertValidScope(input)
+
     const mandatoryCharge = await mandatoryChargeRepository.create({
       title: input.title,
       description: input.description || null,
@@ -21,23 +35,32 @@ export const mandatoryChargeService = {
       dueDate: input.dueDate ? new Date(input.dueDate) : null,
       academicYearId: input.academicYearId,
       schoolId,
+      scope: input.scope,
+      scopeLevel: input.scope === 'GRADO' ? input.scopeLevel! : null,
+      scopeGrade: input.scope === 'GRADO' ? input.scopeGrade! : null,
+      scopeCourseId: input.scope === 'CURSO' ? input.scopeCourseId! : null,
     })
 
     // Se aplica de inmediato a todos los tutores actuales que aún no la
-    // tengan — cubre tanto "al inicio de gestión" (todos la reciben) como
-    // "en el transcurso de la gestión" (solo faltaba para los nuevos).
+    // tengan (dentro del alcance elegido) — cubre tanto "al inicio de
+    // gestión" (todos la reciben) como "en el transcurso de la gestión"
+    // (solo faltaba para los nuevos).
     const applied = await this.applyToMissing(mandatoryCharge.id)
 
     return { mandatoryCharge, appliedCount: applied.appliedCount }
   },
 
-  // Edita solo la plantilla (título/monto/tipo/vencimiento/descripción) — no
-  // toca retroactivamente los cargos ya generados a partir de ella, esos
-  // quedan con el valor que tenían al crearse (mismo criterio que
-  // treasuryService.updateCharge sobre un cargo individual).
+  // Edita la plantilla (título/monto/tipo/vencimiento/descripción/alcance) —
+  // no toca retroactivamente los cargos ya generados a partir de ella, esos
+  // quedan con el valor y el alcance que tenían al crearse (mismo criterio
+  // que treasuryService.updateCharge sobre un cargo individual). Si el
+  // alcance se AMPLÍA, hay que correr "aplicar a faltantes" de nuevo para
+  // alcanzar a los recién incluidos — no pasa solo. Si se ANGOSTA, los
+  // cargos ya dados a quien queda afuera no se borran ni se anulan.
   async update(id: number, input: UpdateMandatoryChargeInput) {
     const existing = await mandatoryChargeRepository.findById(id)
     if (!existing) throw new HttpError(404, 'Cargo obligatorio no encontrado')
+    if (input.scope !== undefined) await assertValidScope(input)
 
     return mandatoryChargeRepository.update(id, {
       ...(input.title       !== undefined ? { title: input.title } : {}),
@@ -45,6 +68,12 @@ export const mandatoryChargeService = {
       ...(input.amount      !== undefined ? { amount: input.amount } : {}),
       ...(input.type        !== undefined ? { type: input.type } : {}),
       ...(input.dueDate     !== undefined ? { dueDate: input.dueDate ? new Date(input.dueDate) : null } : {}),
+      ...(input.scope       !== undefined ? {
+        scope: input.scope,
+        scopeLevel: input.scope === 'GRADO' ? input.scopeLevel! : null,
+        scopeGrade: input.scope === 'GRADO' ? input.scopeGrade! : null,
+        scopeCourseId: input.scope === 'CURSO' ? input.scopeCourseId! : null,
+      } : {}),
     })
   },
 
@@ -86,13 +115,15 @@ export const mandatoryChargeService = {
     })
   },
 
-  // Busca tutores del colegio sin este cargo y se lo crea — el botón único
-  // "buscar y aplicar a faltantes" pedido por Junta Escolar.
+  // Busca tutores del colegio sin este cargo, DENTRO del alcance de la
+  // plantilla, y se lo crea — el botón único "buscar y aplicar a faltantes"
+  // pedido por Junta Escolar. Mismo botón sirve para alcanzar a los
+  // incluidos recién al ampliar el alcance de una plantilla ya creada.
   async applyToMissing(mandatoryChargeId: number) {
     const template = await mandatoryChargeRepository.findById(mandatoryChargeId)
     if (!template) throw new HttpError(404, 'Cargo obligatorio no encontrado')
 
-    const missing = await mandatoryChargeRepository.findTutorsMissingCharge(template.schoolId, mandatoryChargeId, template.academicYearId)
+    const missing = await mandatoryChargeRepository.findTutorsMissingCharge(template.schoolId, mandatoryChargeId, template.academicYearId, template)
     if (missing.length === 0) return { appliedCount: 0 }
 
     await mandatoryChargeRepository.createChargesForParents(
@@ -115,7 +146,7 @@ export const mandatoryChargeService = {
 
     const templates = await mandatoryChargeRepository.findActiveForYear(schoolId, activeYear.id)
     for (const template of templates) {
-      const missing = await mandatoryChargeRepository.findTutorsMissingCharge(schoolId, template.id, template.academicYearId, parentId)
+      const missing = await mandatoryChargeRepository.findTutorsMissingCharge(schoolId, template.id, template.academicYearId, template, parentId)
       if (missing.length === 0) continue
       await mandatoryChargeRepository.createChargesForParents(
         template.id, [parentId],

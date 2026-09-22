@@ -31,10 +31,86 @@ const TYPE_OPTIONS = [
 ]
 const TYPE_LABELS: Record<string, string> = Object.fromEntries(TYPE_OPTIONS.map(o => [o.value, o.label]))
 
+const GRADE_LABELS: Record<string, string> = { PRIMERO: '1°', SEGUNDO: '2°', TERCERO: '3°', CUARTO: '4°', QUINTO: '5°', SEXTO: '6°' }
+const LEVEL_LABELS: Record<string, string> = { INICIAL: 'Inicial', PRIMARIA: 'Primaria', SECUNDARIA: 'Secundaria' }
+const SHIFT_LABELS: Record<string, string> = { MORNING: 'Mañana', AFTERNOON: 'Tarde', NIGHT: 'Noche' }
+const LEVEL_ORDER: Record<string, number> = { INICIAL: 0, PRIMARIA: 1, SECUNDARIA: 2 }
+const GRADE_ORDER: Record<string, number> = { PRIMERO: 0, SEGUNDO: 1, TERCERO: 2, CUARTO: 3, QUINTO: 4, SEXTO: 5 }
+
+interface CourseOption { id: number; level: string; grade: string; parallel: string; shift: string }
+function courseLabel(c: CourseOption) {
+  return `${GRADE_LABELS[c.grade] || c.grade} "${c.parallel}" · ${SHIFT_LABELS[c.shift] || c.shift}`
+}
+
+// Alcance de la plantilla — TODOS (default histórico) no necesita nada más;
+// GRADO combina nivel+grado (un colegio con Primaria y Secundaria tendría
+// dos "3°" distintos, Grade es un enum compartido entre niveles); CURSO ya
+// es un paralelo puntual. Las opciones de grado se calculan de los cursos
+// reales del colegio, nunca de una lista fija — así el label siempre
+// coincide con lo que realmente existe.
+function gradeOptions(courses: CourseOption[]) {
+  const seen = new Map<string, { level: string; grade: string }>()
+  for (const c of courses) {
+    const key = `${c.level}|${c.grade}`
+    if (!seen.has(key)) seen.set(key, { level: c.level, grade: c.grade })
+  }
+  return Array.from(seen.values())
+    .sort((a, b) => (LEVEL_ORDER[a.level] - LEVEL_ORDER[b.level]) || (GRADE_ORDER[a.grade] - GRADE_ORDER[b.grade]))
+    .map(v => ({ value: `${v.level}|${v.grade}`, label: `${GRADE_LABELS[v.grade] || v.grade} ${LEVEL_LABELS[v.level] || v.level}` }))
+}
+
+interface ScopeFormState { scope: string; scopeLevel: string; scopeGrade: string; scopeCourseId: string }
+const emptyScope: ScopeFormState = { scope: 'TODOS', scopeLevel: '', scopeGrade: '', scopeCourseId: '' }
+
+// Compartido entre el modal de crear y el de editar — mismas 3 pastillas +
+// los 2 <Select> condicionales, reusando el patrón de selector de curso ya
+// usado en familias/nueva y cargos/nuevo.
+function ScopeSelector({ value, onChange, courses }: {
+  value: ScopeFormState
+  onChange: (patch: Partial<ScopeFormState>) => void
+  courses: CourseOption[]
+}) {
+  const grades = gradeOptions(courses)
+  return (
+    <div className="flex flex-col gap-2">
+      <span className="text-[13px] font-medium text-neutral-700">Alcance</span>
+      <div className="flex gap-1 bg-neutral-100 rounded-lg p-1 w-fit">
+        {(['TODOS', 'GRADO', 'CURSO'] as const).map(s => (
+          <button
+            key={s} type="button"
+            onClick={() => onChange({ scope: s, scopeLevel: '', scopeGrade: '', scopeCourseId: '' })}
+            className={`px-3 py-1.5 rounded-md text-[12.5px] font-semibold transition-colors ${value.scope === s ? 'bg-white text-brand-700 shadow-sm' : 'text-neutral-500'}`}
+          >
+            {s === 'TODOS' ? 'Todos los estudiantes' : s === 'GRADO' ? 'Por grado' : 'Por curso'}
+          </button>
+        ))}
+      </div>
+      {value.scope === 'GRADO' && (
+        <Select
+          label="Grado" required
+          value={value.scopeLevel && value.scopeGrade ? `${value.scopeLevel}|${value.scopeGrade}` : ''}
+          onChange={e => { const [level, grade] = e.target.value.split('|'); onChange({ scopeLevel: level || '', scopeGrade: grade || '' }) }}
+        >
+          <option value="">Selecciona grado</option>
+          {grades.map(g => <option key={g.value} value={g.value}>{g.label}</option>)}
+        </Select>
+      )}
+      {value.scope === 'CURSO' && (
+        <Select label="Curso" required value={value.scopeCourseId} onChange={e => onChange({ scopeCourseId: e.target.value })}>
+          <option value="">Selecciona curso</option>
+          {courses.map(c => <option key={c.id} value={c.id}>{LEVEL_LABELS[c.level] || c.level} {courseLabel(c)}</option>)}
+        </Select>
+      )}
+    </div>
+  )
+}
+
 interface MandatoryCharge {
   id: number; title: string; description?: string; amount: number; type: string
   dueDate: string | null; isActive: boolean; createdAt: string
   academicYear: { id: number; year: number }
+  scope: string; scopeLevel: string | null; scopeGrade: string | null; scopeCourseId: number | null
+  scopeCourse: CourseOption | null
   _count: { charges: number }
 }
 
@@ -54,15 +130,16 @@ export default function CargosObligatoriosPage() {
 
   const [items, setItems] = useState<MandatoryCharge[]>([])
   const [academicYears, setAcademicYears] = useState<AcademicYear[]>([])
+  const [courses, setCourses] = useState<CourseOption[]>([])
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
   const [saving, setSaving] = useState(false)
   const [applyingId, setApplyingId] = useState<number | null>(null)
 
-  const [form, setForm] = useState({ title: '', description: '', amount: '', type: 'CUOTA_INICIAL', dueDate: '', academicYearId: '' })
+  const [form, setForm] = useState({ title: '', description: '', amount: '', type: 'CUOTA_INICIAL', dueDate: '', academicYearId: '', ...emptyScope })
 
   const [editingRow, setEditingRow] = useState<MandatoryCharge | null>(null)
-  const [editForm, setEditForm] = useState({ title: '', description: '', amount: '', type: 'CUOTA_INICIAL', dueDate: '' })
+  const [editForm, setEditForm] = useState({ title: '', description: '', amount: '', type: 'CUOTA_INICIAL', dueDate: '', ...emptyScope })
   const [savingEdit, setSavingEdit] = useState(false)
 
   const token = () => (typeof window !== 'undefined' ? localStorage.getItem('token') : '') || ''
@@ -71,12 +148,14 @@ export default function CargosObligatoriosPage() {
   const fetchData = async () => {
     setLoading(true)
     try {
-      const [mRes, yRes] = await Promise.all([
+      const [mRes, yRes, cRes] = await Promise.all([
         fetch(`${API_URL}/api/treasury/mandatory-charges`, { headers: auth() }),
         fetch(`${API_URL}/api/academic`, { headers: auth() }),
+        fetch(`${API_URL}/api/courses`, { headers: auth() }),
       ])
-      const [mData, yData] = await Promise.all([mRes.json(), yRes.json()])
+      const [mData, yData, cData] = await Promise.all([mRes.json(), yRes.json(), cRes.json()])
       if (mRes.ok) setItems(mData)
+      if (cRes.ok) setCourses(cData)
       if (yRes.ok) {
         setAcademicYears(yData)
         const active = yData.find((y: AcademicYear) => y.isActive)
@@ -93,6 +172,8 @@ export default function CargosObligatoriosPage() {
     if (!form.title.trim() || !form.amount || !form.academicYearId) {
       toast('Título, monto y gestión son requeridos', 'error'); return
     }
+    if (form.scope === 'GRADO' && (!form.scopeLevel || !form.scopeGrade)) { toast('Elegí el grado para el alcance', 'error'); return }
+    if (form.scope === 'CURSO' && !form.scopeCourseId) { toast('Elegí el curso para el alcance', 'error'); return }
     setSaving(true)
     try {
       const res  = await fetch(`${API_URL}/api/treasury/mandatory-charges`, {
@@ -100,13 +181,17 @@ export default function CargosObligatoriosPage() {
         body: JSON.stringify({
           title: form.title, description: form.description || undefined, amount: parseFloat(form.amount),
           type: form.type, dueDate: form.dueDate || undefined, academicYearId: parseInt(form.academicYearId),
+          scope: form.scope,
+          scopeLevel: form.scope === 'GRADO' ? form.scopeLevel : undefined,
+          scopeGrade: form.scope === 'GRADO' ? form.scopeGrade : undefined,
+          scopeCourseId: form.scope === 'CURSO' ? parseInt(form.scopeCourseId) : undefined,
         }),
       })
       const data = await res.json()
       if (!res.ok) { toast(data.message, 'error'); return }
       toast(data.message, 'success')
       setShowForm(false)
-      setForm({ title: '', description: '', amount: '', type: 'CUOTA_INICIAL', dueDate: '', academicYearId: form.academicYearId })
+      setForm({ title: '', description: '', amount: '', type: 'CUOTA_INICIAL', dueDate: '', academicYearId: form.academicYearId, ...emptyScope })
       fetchData()
     } catch { toast('Error de conexión', 'error') }
     finally { setSaving(false) }
@@ -117,6 +202,8 @@ export default function CargosObligatoriosPage() {
     setEditForm({
       title: m.title, description: m.description || '', amount: String(m.amount),
       type: m.type, dueDate: m.dueDate ? m.dueDate.slice(0, 10) : '',
+      scope: m.scope, scopeLevel: m.scopeLevel || '', scopeGrade: m.scopeGrade || '',
+      scopeCourseId: m.scopeCourseId ? String(m.scopeCourseId) : '',
     })
   }
 
@@ -125,6 +212,8 @@ export default function CargosObligatoriosPage() {
     if (!editForm.title.trim() || !editForm.amount) {
       toast('Título y monto son requeridos', 'error'); return
     }
+    if (editForm.scope === 'GRADO' && (!editForm.scopeLevel || !editForm.scopeGrade)) { toast('Elegí el grado para el alcance', 'error'); return }
+    if (editForm.scope === 'CURSO' && !editForm.scopeCourseId) { toast('Elegí el curso para el alcance', 'error'); return }
     setSavingEdit(true)
     try {
       const res  = await fetch(`${API_URL}/api/treasury/mandatory-charges/${editingRow.id}`, {
@@ -132,6 +221,10 @@ export default function CargosObligatoriosPage() {
         body: JSON.stringify({
           title: editForm.title, description: editForm.description || undefined,
           amount: parseFloat(editForm.amount), type: editForm.type, dueDate: editForm.dueDate || undefined,
+          scope: editForm.scope,
+          scopeLevel: editForm.scope === 'GRADO' ? editForm.scopeLevel : undefined,
+          scopeGrade: editForm.scope === 'GRADO' ? editForm.scopeGrade : undefined,
+          scopeCourseId: editForm.scope === 'CURSO' ? parseInt(editForm.scopeCourseId) : undefined,
         }),
       })
       const data = await res.json()
@@ -202,7 +295,15 @@ export default function CargosObligatoriosPage() {
     { key: 'titulo', header: 'Cargo', render: m => (
       <div>
         <div className="font-medium text-brand-700">{m.title}</div>
-        <Badge tone="neutral" className="mt-0.5">{TYPE_LABELS[m.type] || m.type}</Badge>
+        <div className="flex gap-1 mt-0.5 flex-wrap">
+          <Badge tone="neutral">{TYPE_LABELS[m.type] || m.type}</Badge>
+          {m.scope === 'GRADO' && (
+            <Badge tone="info">{GRADE_LABELS[m.scopeGrade || ''] || m.scopeGrade} {LEVEL_LABELS[m.scopeLevel || ''] || m.scopeLevel}</Badge>
+          )}
+          {m.scope === 'CURSO' && m.scopeCourse && (
+            <Badge tone="info">{LEVEL_LABELS[m.scopeCourse.level] || m.scopeCourse.level} {courseLabel(m.scopeCourse)}</Badge>
+          )}
+        </div>
       </div>
     ) },
     { key: 'monto', header: 'Monto', render: m => <span className="font-semibold text-brand-700">{fmt(m.amount)}</span> },
@@ -271,8 +372,9 @@ export default function CargosObligatoriosPage() {
             <Input label="Fecha de vencimiento" type="date" value={form.dueDate} onChange={e => setForm({ ...form, dueDate: e.target.value })} />
           </div>
           <Input label="Descripción (opcional)" value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} />
+          <ScopeSelector value={form} onChange={patch => setForm({ ...form, ...patch })} courses={courses} />
           <p className="text-[11px] text-neutral-500 bg-neutral-100 border border-neutral-300 rounded-lg p-2.5">
-            💡 Al crear esta plantilla se aplicará de inmediato a todos los tutores que aún no la tengan, y de ahí en más a todo tutor nuevo que se registre.
+            💡 Al crear esta plantilla se aplicará de inmediato a los tutores dentro del alcance elegido que aún no la tengan, y de ahí en más a todo tutor nuevo que se registre y quede dentro de ese alcance.
           </p>
         </div>
       </Modal>
@@ -297,8 +399,9 @@ export default function CargosObligatoriosPage() {
             </div>
             <Input label="Fecha de vencimiento" type="date" value={editForm.dueDate} onChange={e => setEditForm({ ...editForm, dueDate: e.target.value })} />
             <Input label="Descripción (opcional)" value={editForm.description} onChange={e => setEditForm({ ...editForm, description: e.target.value })} />
+            <ScopeSelector value={editForm} onChange={patch => setEditForm({ ...editForm, ...patch })} courses={courses} />
             <p className="text-[11px] text-neutral-500 bg-neutral-100 border border-neutral-300 rounded-lg p-2.5">
-              💡 Esto solo cambia la plantilla — los cargos ya generados a partir de ella no se modifican retroactivamente. La gestión no se puede editar.
+              💡 Esto solo cambia la plantilla — los cargos ya generados a partir de ella no se modifican retroactivamente (ni al angostar el alcance). Si ampliás el alcance, corré &quot;Buscar y aplicar a faltantes&quot; después para alcanzar a los recién incluidos. La gestión no se puede editar.
             </p>
           </div>
         )}

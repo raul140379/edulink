@@ -1,5 +1,21 @@
 import { z } from 'zod'
-import { ChargeType, ChargeTarget, PaymentMethod } from '@prisma/client'
+import { ChargeType, ChargeTarget, PaymentMethod, MandatoryChargeScope, AcademicLevel, Grade } from '@prisma/client'
+
+// Alcance de un cargo obligatorio — TODOS no necesita nada más; GRADO exige
+// nivel+grado juntos (Grade es un enum compartido entre niveles, un colegio
+// con Primaria y Secundaria tendría dos "3°" distintos); CURSO exige el
+// curso puntual. Compartido entre create/update para no repetir el refine.
+function refineMandatoryChargeScope(
+  data: { scope?: MandatoryChargeScope; scopeLevel?: AcademicLevel; scopeGrade?: Grade; scopeCourseId?: number },
+  ctx: z.RefinementCtx,
+) {
+  if (data.scope === 'GRADO' && (!data.scopeLevel || !data.scopeGrade)) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Elegí nivel y grado para el alcance "Por grado"', path: ['scopeGrade'] })
+  }
+  if (data.scope === 'CURSO' && !data.scopeCourseId) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Elegí un curso para el alcance "Por curso"', path: ['scopeCourseId'] })
+  }
+}
 
 export const createChargeSchema = z.object({
   title:          z.string().min(1, 'El título es requerido'),
@@ -57,15 +73,26 @@ export const createMandatoryChargeSchema = z.object({
   type:           z.nativeEnum(ChargeType),
   dueDate:        z.string().optional(),
   academicYearId: z.coerce.number().int(),
-})
+  scope:          z.nativeEnum(MandatoryChargeScope).default('TODOS'),
+  scopeLevel:     z.nativeEnum(AcademicLevel).optional(),
+  scopeGrade:     z.nativeEnum(Grade).optional(),
+  scopeCourseId:  z.coerce.number().int().optional(),
+}).superRefine(refineMandatoryChargeScope)
 
+// El alcance es editable después de creada (ver mandatoryCharge.service.ts) —
+// si `scope` no viaja en el body, el service no lo toca; si viaja, exige los
+// campos localizadores correspondientes (mismo refine que crear).
 export const updateMandatoryChargeSchema = z.object({
-  title:       z.string().min(1, 'El título es requerido').optional(),
-  description: z.string().optional(),
-  amount:      z.coerce.number().positive('El monto debe ser mayor a 0').optional(),
-  type:        z.nativeEnum(ChargeType).optional(),
-  dueDate:     z.string().optional(),
-})
+  title:         z.string().min(1, 'El título es requerido').optional(),
+  description:   z.string().optional(),
+  amount:        z.coerce.number().positive('El monto debe ser mayor a 0').optional(),
+  type:          z.nativeEnum(ChargeType).optional(),
+  dueDate:       z.string().optional(),
+  scope:         z.nativeEnum(MandatoryChargeScope).optional(),
+  scopeLevel:    z.nativeEnum(AcademicLevel).optional(),
+  scopeGrade:    z.nativeEnum(Grade).optional(),
+  scopeCourseId: z.coerce.number().int().optional(),
+}).superRefine(refineMandatoryChargeScope)
 
 // Corrección histórica de un cargo ya PAGADO/PARCIAL/TRASLADADO — a diferencia
 // de updateChargeSchema/registerPaymentSchema, acá `paid` decide explícitamente
