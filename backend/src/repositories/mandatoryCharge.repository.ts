@@ -1,5 +1,6 @@
 import prisma from '../lib/prisma'
-import { MandatoryChargeScope, AcademicLevel, Grade } from '@prisma/client'
+import { MandatoryChargeScope, AcademicLevel, Grade, ChargeType } from '@prisma/client'
+import { normalizeChargeTitle } from '../utils/charge-concept'
 
 type TxClient = Parameters<Parameters<typeof prisma.$transaction>[0]>[0]
 
@@ -67,12 +68,28 @@ export const mandatoryChargeRepository = {
   // cuyo único hijo ya no está inscrito ese año (ej. casos "Grupo C" — ver
   // CLAUDE.md 19.2.3). Sigue siendo una sola consulta — el alcance es una
   // condición anidada más, no un loop aparte.
-  findTutorsMissingCharge(
-    schoolId: number, mandatoryChargeId: number, academicYearId: number,
+  // `type`+`title`: CUOTA_INICIAL es el único type con la invariante real
+  // "uno solo por CONCEPTO por tutor por gestión" (ver hallazgo del bug
+  // "Aporte BTH 2026" — se pudo crear 2 veces el mismo aporte, una desde
+  // Nuevo Cargo y otra desde acá, sin ningún chequeo cruzado). Para ese
+  // type, además de excluir a quien ya tiene un Charge de ESTA plantilla
+  // puntual, se excluye a quien ya tiene CUALQUIER Charge activo (no
+  // anulado, no traslado) con TÍTULO EQUIVALENTE (normalizeChargeTitle) en
+  // la gestión — venga de donde venga. Comparar por título, no solo type:
+  // "Cuota Inicial de Inscripción" y "Aporte BTH 2026" son 2 conceptos
+  // reales distintos, ambos CUOTA_INICIAL, que sí coexisten para el mismo
+  // tutor — filtrar solo por type los hubiera confundido. Se resuelve en 2
+  // consultas (nunca N+1: la segunda es un solo IN sobre los candidatos de
+  // la primera, sin importar cuántos sean). MULTA_ASAMBLEA/MULTA_REUNION
+  // (y el resto) nunca entran en la segunda consulta: se generan
+  // legítimamente más de una vez por gestión (una multa por cada
+  // asamblea/reunión faltada — ver convocatoria.service.ts/meeting.repository.ts).
+  async findTutorsMissingCharge(
+    schoolId: number, mandatoryChargeId: number, academicYearId: number, type: ChargeType, title: string,
     scope: { scope: MandatoryChargeScope; scopeLevel: AcademicLevel | null; scopeGrade: Grade | null; scopeCourseId: number | null },
     onlyParentId?: number,
   ) {
-    return prisma.parent.findMany({
+    const candidates = await prisma.parent.findMany({
       where: {
         schoolId,
         students: { some: { isTutor: true, student: { assignments: { some: { academicYearId, ...scopeToCourseWhere(scope) } } } } },
@@ -81,11 +98,28 @@ export const mandatoryChargeRepository = {
       },
       select: { id: true },
     })
+    if (type !== 'CUOTA_INICIAL' || candidates.length === 0) return candidates
+
+    const existing = await prisma.charge.findMany({
+      where: {
+        parentId: { in: candidates.map((c) => c.id) },
+        type: 'CUOTA_INICIAL', academicYearId, sourceChargeId: null, status: { not: 'ANULADO' },
+      },
+      select: { parentId: true, title: true },
+    })
+    const target = normalizeChargeTitle(title)
+    const alreadyHas = new Set(existing.filter((c) => normalizeChargeTitle(c.title) === target).map((c) => c.parentId))
+    return candidates.filter((c) => !alreadyHas.has(c.id))
   },
 
+  // skipDuplicates: red de seguridad ante una condición de carrera con el
+  // índice único parcial de CUOTA_INICIAL — el chequeo explícito en
+  // findTutorsMissingCharge ya filtra casi todo, esto solo cubre la ventana
+  // entre chequeo e insert si 2 requests corren en simultáneo.
   createChargesForParents(mandatoryChargeId: number, parentIds: number[], data: { title: string; amount: number; type: any; dueDate: Date | null; academicYearId: number; schoolId: number }) {
     return prisma.charge.createMany({
       data: parentIds.map((parentId) => ({ ...data, parentId, mandatoryChargeId, target: 'TUTOR' as const })),
+      skipDuplicates: true,
     })
   },
 

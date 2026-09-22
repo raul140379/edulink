@@ -1,0 +1,35 @@
+-- Índice único parcial: un tutor no puede tener 2 Charge activos (no
+-- anulados, no traslados) del mismo CONCEPTO CUOTA_INICIAL en la misma
+-- gestión -- compara por título normalizado (sin espacios, minúscula), no
+-- solo por type. No representable en schema.prisma (Prisma no soporta
+-- índices únicos parciales/de expresión en el DSL) -- se escribe a mano,
+-- ver comentario junto a model Charge en schema.prisma.
+--
+-- Por qué título normalizado y no solo (parentId, academicYearId) con
+-- type=CUOTA_INICIAL: en este colegio "Cuota Inicial de Inscripción" y
+-- "Aporte BTH 2026" son 2 conceptos reales DISTINTOS, ambos
+-- type=CUOTA_INICIAL, que coexisten legítimamente para el mismo tutor
+-- (confirmado con datos reales de producción, 38 tutores con ambos). Un
+-- índice único solo por (parentId, academicYearId) hubiera bloqueado esa
+-- coexistencia real. El bug real fue "Aporte BTH2026" vs "Aporte BTH 2026"
+-- -- mismo concepto, dos títulos casi idénticos tipeados en 2 flujos
+-- distintos (Nuevo Cargo / Cargos Obligatorios) -- de ahí normalizar
+-- espacios y mayúsculas antes de comparar.
+--
+-- Por qué solo CUOTA_INICIAL y no todos los type: MULTA_ASAMBLEA y
+-- MULTA_REUNION se generan legítimamente más de una vez por gestión (una
+-- multa por cada asamblea/reunión faltada -- ver convocatoria.service.ts y
+-- meeting.repository.ts). Aplicar esto a todos los type hubiera bloqueado
+-- esos 2 flujos reales.
+--
+-- Por qué excluye sourceChargeId IS NOT NULL: un traslado (cierre
+-- económico) puede generar legítimamente más de un DEUDA_ANTERIOR por
+-- tutor en la misma gestión destino (ej. dos cargos distintos de la
+-- gestión anterior, cada uno con su propio origen).
+--
+-- Por qué excluye status='ANULADO': un cargo ya anulado no debe seguir
+-- "ocupando" el lugar -- si se anula por error o por este mismo fix, un
+-- cargo nuevo legítimo del mismo concepto/gestión tiene que poder crearse.
+CREATE UNIQUE INDEX "Charge_parent_cuotaInicial_title_year_unique"
+ON "Charge" ("parentId", "academicYearId", (lower(regexp_replace("title", '\s+', '', 'g'))))
+WHERE "type" = 'CUOTA_INICIAL' AND "sourceChargeId" IS NULL AND "status" <> 'ANULADO';

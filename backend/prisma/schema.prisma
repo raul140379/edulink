@@ -805,6 +805,17 @@ model Classroom {
   @@unique([name, schoolId])
 }
 
+// Índice único parcial (migración 20260922181028, no representable en el
+// DSL de Prisma -- no aparece acá abajo): un tutor no puede tener 2+ Charge
+// activos con el MISMO CONCEPTO CUOTA_INICIAL (título normalizado -- sin
+// espacios/mayúsculas) en la misma gestión (excluye traslados y cargos ya
+// anulados). Compara por título, no solo type: "Cuota Inicial de
+// Inscripción" y "Aporte BTH 2026" son 2 conceptos reales distintos, ambos
+// CUOTA_INICIAL, que coexisten legítimamente para el mismo tutor. Solo
+// CUOTA_INICIAL -- MULTA_ASAMBLEA/MULTA_REUNION se generan legítimamente
+// más de una vez por gestión, nunca se restringen así. Ver
+// findParentIdsWithSameCuotaInicial / findTutorsMissingCharge para el
+// chequeo equivalente en código (capa 1, antes de insertar).
 model Charge {
   id                      Int              @id @default(autoincrement())
   title                   String

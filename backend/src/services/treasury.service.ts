@@ -1,6 +1,8 @@
 import { Prisma, Role } from '@prisma/client'
+import prisma from '../lib/prisma'
 import { treasuryRepository } from '../repositories/treasury.repository'
 import { delegateRepository } from '../repositories/delegate.repository'
+import { auditLogRepository } from '../repositories/auditLog.repository'
 import { HttpError } from '../utils/http-error'
 import { getTenantContext } from '../lib/tenant-context'
 import {
@@ -137,6 +139,23 @@ export const treasuryService = {
       for (const id of tutorParentIds) if (!myTutorParentIds.has(id)) errors.push(id)
     }
 
+    // 2.5) CUOTA_INICIAL es el único type con la invariante real "uno solo
+    // por CONCEPTO por tutor por gestión" (ver hallazgo del bug "Aporte BTH
+    // 2026" — se pudo crear 2 veces el mismo aporte, una desde acá y otra
+    // desde Cargos Obligatorios, sin ningún chequeo cruzado). Compara por
+    // título normalizado, no solo type -- "Cuota Inicial de Inscripción" y
+    // "Aporte BTH 2026" son 2 conceptos reales distintos, ambos
+    // CUOTA_INICIAL, que sí coexisten para el mismo tutor.
+    // MULTA_ASAMBLEA/MULTA_REUNION NUNCA entran acá — se generan
+    // legítimamente más de una vez por gestión.
+    if (input.type === 'CUOTA_INICIAL' && allowedParentIds.length > 0) {
+      const already = new Set(await treasuryRepository.findParentIdsWithSameCuotaInicial(allowedParentIds, input.title, input.academicYearId))
+      if (already.size > 0) {
+        allowedParentIds = allowedParentIds.filter((id) => !already.has(id))
+        for (const id of already) errors.push(id)
+      }
+    }
+
     // 3) Insert masivo de los cargos ya validados.
     let createdCount = 0
     if (allowedParentIds.length > 0) {
@@ -174,12 +193,26 @@ export const treasuryService = {
     })
   },
 
-  async cancelCharge(id: number) {
+  // Anular nunca borra el registro (ver CLAUDE.md 17.1, mismo criterio que
+  // mandatoryChargeService.remove) — queda con status=ANULADO y un
+  // AuditLog con el estado anterior, para poder reconstruir qué se anuló y
+  // por qué si hace falta después.
+  async cancelCharge(id: number, reason?: string) {
     const existing = await treasuryRepository.findChargeRaw(id)
     if (!existing) throw new HttpError(404, 'Cargo no encontrado')
     if (existing.status === 'PAGADO') throw new HttpError(400, 'No se puede anular un cargo ya pagado')
 
-    await treasuryRepository.setChargeStatus(id, 'ANULADO')
+    const ctx = getTenantContext()
+    await prisma.$transaction(async (tx) => {
+      await auditLogRepository.create({
+        action: 'OVERWRITE', entityType: 'Charge', entityId: id,
+        before: { title: existing.title, type: existing.type, amount: existing.amount, status: existing.status, parentId: existing.parentId, academicYearId: existing.academicYearId },
+        after: { status: 'ANULADO' },
+        reason,
+        actorUserId: ctx?.userId ?? null, schoolId: existing.schoolId,
+      }, tx)
+      await treasuryRepository.setChargeStatus(id, 'ANULADO', tx)
+    })
   },
 
   async registerPayment(id: number, input: RegisterPaymentInput) {

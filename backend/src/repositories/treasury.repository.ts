@@ -2,6 +2,9 @@ import { Prisma, ChargeStatus, PaymentMethod } from '@prisma/client'
 import prisma from '../lib/prisma'
 import { getTenantContext } from '../lib/tenant-context'
 import { Pagination, paginationArgs } from '../utils/pagination'
+import { normalizeChargeTitle } from '../utils/charge-concept'
+
+type TxClient = Parameters<Parameters<typeof prisma.$transaction>[0]>[0]
 
 export const treasuryRepository = {
   findCharges(where: Prisma.ChargeWhereInput, pagination?: Pagination) {
@@ -100,8 +103,30 @@ export const treasuryRepository = {
     })
   },
 
-  setChargeStatus(id: number, status: ChargeStatus) {
-    return prisma.charge.update({ where: { id }, data: { status } })
+  setChargeStatus(id: number, status: ChargeStatus, tx?: TxClient) {
+    return (tx ?? prisma).charge.update({ where: { id }, data: { status } })
+  },
+
+  // Tutores del lote que YA tienen un cargo activo (no anulado, no
+  // traslado) del mismo CONCEPTO -- type=CUOTA_INICIAL Y título equivalente
+  // (normalizeChargeTitle, para que "Aporte BTH2026" y "Aporte BTH 2026"
+  // matcheen). Solo título exacto normalizado, NUNCA solo `type`: en este
+  // colegio "Cuota Inicial de Inscripción" y "Aporte BTH 2026" son 2
+  // conceptos reales distintos que coexisten para el mismo tutor, ambos
+  // CUOTA_INICIAL -- filtrar solo por type los hubiera confundido. Usado
+  // solo para CUOTA_INICIAL (ver createBulkCharges/mandatoryCharge): es el
+  // único type con la invariante real "uno solo por concepto por tutor por
+  // año". MULTA_ASAMBLEA/MULTA_REUNION se generan legítimamente más de una
+  // vez por gestión (una multa por cada asamblea/reunión faltada — ver
+  // convocatoria.service.ts/meeting.repository.ts), nunca se les aplica.
+  async findParentIdsWithSameCuotaInicial(parentIds: number[], title: string, academicYearId: number): Promise<number[]> {
+    if (parentIds.length === 0) return []
+    const rows = await prisma.charge.findMany({
+      where: { parentId: { in: parentIds }, type: 'CUOTA_INICIAL', academicYearId, sourceChargeId: null, status: { not: 'ANULADO' } },
+      select: { parentId: true, title: true },
+    })
+    const target = normalizeChargeTitle(title)
+    return [...new Set(rows.filter((r) => normalizeChargeTitle(r.title) === target).map((r) => r.parentId))]
   },
 
   setChargePaid(id: number, paidAmount: number, status: ChargeStatus) {
@@ -201,8 +226,13 @@ export const treasuryRepository = {
 
   // Insert masivo — createBulkCharges ya valida tutoria/alcance de DELEGATE
   // antes de llamar acá, así que esto solo inserta lo ya aprobado.
+  // skipDuplicates: red de seguridad ante una condición de carrera con el
+  // índice único parcial de CUOTA_INICIAL (ver migración
+  // add_charge_unique_cuota_inicial_per_year) — el chequeo explícito en el
+  // service ya filtra casi todo, esto solo cubre la ventana entre chequeo e
+  // insert si 2 requests corren en simultáneo.
   createManyChargesRaw(data: Prisma.ChargeUncheckedCreateInput[]) {
-    return prisma.charge.createMany({ data })
+    return prisma.charge.createMany({ data, skipDuplicates: true })
   },
 
   // Estudiantes vinculados a un tutor — usado por assertDelegateOwnsParent
