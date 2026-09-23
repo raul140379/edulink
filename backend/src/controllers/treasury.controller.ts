@@ -103,7 +103,7 @@ export const updateCharge = async (req: AuthRequest, res: Response): Promise<voi
 // ─────────────────────────────────────────────
 export const cancelCharge = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    await treasuryService.cancelCharge(parseInt(req.params.id), typeof req.body?.reason === 'string' ? req.body.reason : undefined)
+    await treasuryService.cancelCharge(parseInt(req.params.id), req.body.reason)
     res.json({ message: 'Cargo anulado correctamente' })
   } catch (error) {
     handleControllerError(res, error)

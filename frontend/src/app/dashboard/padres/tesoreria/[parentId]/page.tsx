@@ -2,12 +2,12 @@
 
 import { useEffect, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
-import { ArrowLeft, Plus, DollarSign, CheckCircle, AlertCircle, Clock, CreditCard, Pencil } from 'lucide-react'
+import { ArrowLeft, Plus, DollarSign, CheckCircle, AlertCircle, Clock, CreditCard, Pencil, Ban } from 'lucide-react'
 import Card from '@/components/ui/Card'
 import Badge from '@/components/ui/Badge'
 import Button from '@/components/ui/Button'
 import Modal from '@/components/ui/Modal'
-import { Input, Select } from '@/components/ui/Input'
+import { Input, Select, Textarea } from '@/components/ui/Input'
 import { useToast } from '@/components/ui/ToastProvider'
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000'
@@ -38,6 +38,7 @@ interface Charge {
   academicYear: { year: number }
   payments:    Payment[]
   refunds:     { amount: number; reason: string; date: string }[]
+  cancelReason?: string | null
 }
 
 interface Account {
@@ -110,6 +111,9 @@ export default function TutorAccountPage() {
   const [editingPayment, setEditingPayment] = useState<Payment | null>(null)
   const [saving,       setSaving]       = useState(false)
   const [payForm,      setPayForm]      = useState({ amount: '', method: 'EFECTIVO', reference: '', note: '' })
+  const [chargeToCancel, setChargeToCancel] = useState<Charge | null>(null)
+  const [cancelReason,   setCancelReason]   = useState('')
+  const [cancelling,     setCancelling]     = useState(false)
 
   const fetchAccount = async () => {
     const token = localStorage.getItem('token')
@@ -169,12 +173,33 @@ export default function TutorAccountPage() {
     finally  { setSaving(false) }
   }
 
+  const handleConfirmCancel = async () => {
+    if (!chargeToCancel || !cancelReason.trim()) return
+    const token = localStorage.getItem('token')
+    setCancelling(true)
+    try {
+      const res  = await fetch(`${API_URL}/api/treasury/${chargeToCancel.id}/cancel`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ reason: cancelReason.trim() }),
+      })
+      const data = await res.json()
+      if (!res.ok) { toast(data.message, 'error'); return }
+      toast(data.message, 'success')
+      setChargeToCancel(null)
+      setCancelReason('')
+      fetchAccount()
+    } catch { toast('Error de conexión', 'error') }
+    finally  { setCancelling(false) }
+  }
+
   if (loading) return <div className="flex justify-center py-16"><p className="text-sm text-neutral-500">Cargando...</p></div>
   if (!account) return <div className="flex justify-center py-16"><p className="text-sm text-neutral-500">No se encontró el estado de cuenta</p></div>
 
   const { parent, charges, summary } = account
   const pending = charges.filter(c => c.status === 'PENDIENTE' || c.status === 'PARCIAL')
   const paid    = charges.filter(c => c.status === 'PAGADO')
+  const anulado = charges.filter(c => c.status === 'ANULADO')
 
   return (
     <div>
@@ -277,9 +302,22 @@ export default function TutorAccountPage() {
                     <div className="text-xs font-semibold text-danger-600">Pendiente: {fmt(c.amount - c.paidAmount)}</div>
                   </div>
                   {canEdit && (
-                    <Button size="sm" onClick={() => openPayModal(c)}>
-                      <CreditCard size={13}/> Registrar pago
-                    </Button>
+                    <div className="flex flex-col gap-1.5 items-end">
+                      <Button size="sm" onClick={() => openPayModal(c)}>
+                        <CreditCard size={13}/> Registrar pago
+                      </Button>
+                      {/* Solo PENDIENTE (0 pagos, garantizado por la máquina de
+                          estados) -- un PARCIAL ya tiene plata cobrada, ver
+                          "Editar"/"Registrar devolución" en su lugar. */}
+                      {c.status === 'PENDIENTE' && (
+                        <button
+                          onClick={() => { setChargeToCancel(c); setCancelReason('') }}
+                          className="text-[11px] text-danger-600 hover:text-danger-700 flex items-center gap-1"
+                        >
+                          <Ban size={11}/> Cancelar cargo
+                        </button>
+                      )}
+                    </div>
                   )}
                 </div>
               </div>
@@ -324,6 +362,35 @@ export default function TutorAccountPage() {
                   <RefundBadge refunds={c.refunds} />
                 </div>
                 <div className="text-base font-bold text-success-700">{fmt(c.amount)}</div>
+              </div>
+            ))}
+          </div>
+        </Card>
+      )}
+
+      {anulado.length > 0 && (
+        <Card padded={false} className="overflow-hidden mb-4">
+          <div className="flex items-center gap-2 px-4.5 py-3.5 border-b border-neutral-100 text-[13px] font-bold text-brand-700">
+            <Ban size={15} className="text-neutral-400"/> Cargos anulados
+          </div>
+          <div className="flex flex-col">
+            {anulado.map(c => (
+              <div key={c.id} className="flex justify-between items-start gap-4 px-4.5 py-4 border-b border-neutral-100 last:border-b-0 bg-neutral-100/30">
+                <div className="flex-1 flex flex-col gap-1.5">
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <Badge tone="brand">{TYPE_LABELS[c.type] || c.type}</Badge>
+                    <Badge tone="neutral">Anulado</Badge>
+                  </div>
+                  <div className="text-sm font-semibold text-brand-700 line-through decoration-neutral-400">{c.title}</div>
+                  {c.student && <div className="text-xs text-info-500">Estudiante: {c.student.lastName} {c.student.firstName}</div>}
+                  <div className="text-[11px] text-neutral-500">{c.academicYear.year}</div>
+                  {c.cancelReason && (
+                    <div className="text-[11px] text-neutral-600 bg-neutral-100 rounded-md px-2 py-1">
+                      Motivo: {c.cancelReason}
+                    </div>
+                  )}
+                </div>
+                <div className="text-base font-bold text-neutral-400 line-through">{fmt(c.amount)}</div>
               </div>
             ))}
           </div>
@@ -381,6 +448,35 @@ export default function TutorAccountPage() {
             <Input
               label="Nota adicional" placeholder="Opcional"
               value={payForm.note} onChange={e => setPayForm({ ...payForm, note: e.target.value })}
+            />
+          </div>
+        )}
+      </Modal>
+
+      {/* Modal cancelar cargo -- motivo obligatorio, ver cancelChargeSchema */}
+      <Modal
+        open={!!chargeToCancel} onClose={() => { setChargeToCancel(null); setCancelReason('') }}
+        title="Cancelar cargo"
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => { setChargeToCancel(null); setCancelReason('') }}>Volver</Button>
+            <Button variant="danger" onClick={handleConfirmCancel} loading={cancelling} disabled={!cancelReason.trim()}>
+              {!cancelling && <Ban size={14}/>}
+              {cancelling ? 'Cancelando...' : 'Confirmar cancelación'}
+            </Button>
+          </>
+        }
+      >
+        {chargeToCancel && (
+          <div className="flex flex-col gap-4">
+            <div className="bg-neutral-100 border border-neutral-300 rounded-lg p-3 text-[13px] text-neutral-500 leading-relaxed">
+              <strong className="text-brand-700">{chargeToCancel.title}</strong> — {fmt(chargeToCancel.amount)}<br/>
+              El cargo queda anulado (no borrado) y deja de contar en el saldo pendiente del tutor. Esta acción no se puede deshacer desde acá.
+            </div>
+            <Textarea
+              label="Motivo de la cancelación" required
+              placeholder="Ej: condonación aprobada por Junta, compensado con otro cargo, error de duplicado..."
+              value={cancelReason} onChange={e => setCancelReason(e.target.value)}
             />
           </div>
         )}

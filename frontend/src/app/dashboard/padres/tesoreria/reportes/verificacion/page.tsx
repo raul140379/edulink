@@ -2,12 +2,12 @@
 
 import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { ArrowLeft, RefreshCw, ClipboardCheck, ArrowRightLeft, Pencil, Send, CheckCircle2, UserPlus, Search, Upload, FileSpreadsheet, RotateCcw } from 'lucide-react'
+import { ArrowLeft, RefreshCw, ClipboardCheck, ArrowRightLeft, Pencil, Send, CheckCircle2, UserPlus, Search, Upload, FileSpreadsheet, RotateCcw, Ban } from 'lucide-react'
 import Card from '@/components/ui/Card'
 import Badge from '@/components/ui/Badge'
 import Button from '@/components/ui/Button'
 import Modal from '@/components/ui/Modal'
-import { Input, Select } from '@/components/ui/Input'
+import { Input, Select, Textarea } from '@/components/ui/Input'
 import Table, { Column } from '@/components/ui/Table'
 import PageHeader from '@/components/ui/PageHeader'
 import Toolbar from '@/components/ui/Toolbar'
@@ -26,10 +26,10 @@ const GRADE_LABELS: Record<string, string> = {
 const SHIFT_LABELS: Record<string, string> = { MORNING: 'Mañana', AFTERNOON: 'Tarde', NIGHT: 'Noche' }
 
 const ESTADO_LABELS: Record<string, string> = {
-  PAGADO: 'Pagado', PARCIAL: 'Parcial', PENDIENTE: 'Pendiente', NO_CARGADO: 'Sin registrar', TRASLADADO: 'Trasladado',
+  PAGADO: 'Pagado', PARCIAL: 'Parcial', PENDIENTE: 'Pendiente', NO_CARGADO: 'Sin registrar', TRASLADADO: 'Trasladado', ANULADO: 'Anulado',
 }
 const ESTADO_TONES: Record<string, 'success' | 'warning' | 'danger' | 'neutral' | 'info'> = {
-  PAGADO: 'success', PARCIAL: 'warning', PENDIENTE: 'danger', NO_CARGADO: 'neutral', TRASLADADO: 'info',
+  PAGADO: 'success', PARCIAL: 'warning', PENDIENTE: 'danger', NO_CARGADO: 'neutral', TRASLADADO: 'info', ANULADO: 'neutral',
 }
 
 const fmt = (n: number) => `Bs. ${n.toFixed(2)}`
@@ -52,6 +52,7 @@ interface AporteEstado {
   pendingVerificationNote?: string
   refunded?: number; refundReason?: string
   destino?: { chargeId: number; year: number; status: string }
+  cancelReason?: string | null
 }
 
 interface TutorInfo { id: number; firstName: string; lastName: string; ci: string | null; kardex: string | null }
@@ -81,7 +82,7 @@ interface Report {
   academicYearId: number
   totalStudents: number
   types: AporteType[]
-  summary: { mandatoryChargeId: number; title: string; type: string; amount: number; pagadoCompleto: number; parcial: number; trasladado: number; noPagado: number }[]
+  summary: { mandatoryChargeId: number; title: string; type: string; amount: number; pagadoCompleto: number; parcial: number; trasladado: number; anulado: number; noPagado: number }[]
   courses: CourseBlock[]
 }
 
@@ -123,6 +124,12 @@ export default function VerificacionPorCursoPage() {
   const [refunding, setRefunding] = useState<(CellContext & { current: AporteEstado }) | null>(null)
   const [refundForm, setRefundForm] = useState({ amount: '', reason: '', date: '' })
   const [refundSaving, setRefundSaving] = useState(false)
+
+  // Cancelar cargo — motivo obligatorio, solo para chargeId + PENDIENTE
+  // (0 pagos, garantizado por la máquina de estados, ver cancelChargeSchema).
+  const [cancelling, setCancelling] = useState<(CellContext & { current: AporteEstado }) | null>(null)
+  const [cancelReasonInput, setCancelReasonInput] = useState('')
+  const [cancelSaving, setCancelSaving] = useState(false)
 
   // Trasladar a 2026 (cargo existente o "Sin registrar") — por celda, para
   // deshabilitar solo el botón que está en curso
@@ -309,6 +316,32 @@ export default function VerificacionPorCursoPage() {
       setRefunding(null)
     } catch { toast('Error de conexión', 'error') }
     finally { setRefundSaving(false) }
+  }
+
+  const openCancel = (ctx: CellContext, current: AporteEstado) => {
+    setCancelling({ ...ctx, current })
+    setCancelReasonInput('')
+  }
+
+  const handleConfirmCancelCharge = async () => {
+    if (!cancelling || !cancelling.chargeId || !cancelReasonInput.trim()) return
+    setCancelSaving(true)
+    try {
+      const res = await fetch(`${API_URL}/api/treasury/${cancelling.chargeId}/cancel`, {
+        method: 'PATCH', headers: authJson(),
+        body: JSON.stringify({ reason: cancelReasonInput.trim() }),
+      })
+      const data = await res.json()
+      if (!res.ok) { toast(data.message, 'error'); return }
+      patchCell(cancelling, {
+        chargeId: cancelling.chargeId, estado: 'ANULADO', monto: cancelling.current.monto,
+        pagado: 0, pendiente: 0, cancelReason: cancelReasonInput.trim(),
+      })
+      toast(data.message, 'success')
+      setCancelling(null)
+      setCancelReasonInput('')
+    } catch { toast('Error de conexión', 'error') }
+    finally { setCancelSaving(false) }
   }
 
   const cellKey = (ctx: { courseId: number; studentId: number; mandatoryChargeId: number }) =>
@@ -535,7 +568,7 @@ export default function VerificacionPorCursoPage() {
     return report.types.every(t => {
       const e = row.byType[t.mandatoryChargeId]
       if (!e) return false
-      if (e.estado === 'PAGADO') return true
+      if (e.estado === 'PAGADO' || e.estado === 'ANULADO') return true
       if (e.estado === 'TRASLADADO') return e.destino?.status === 'PAGADO'
       return false
     })
@@ -552,6 +585,7 @@ export default function VerificacionPorCursoPage() {
     { key: 'completo',   header: 'Pagado completo', render: r => <Badge tone="success">{r.pagadoCompleto}</Badge> },
     { key: 'parcial',    header: 'Parcial',         render: r => <Badge tone="warning">{r.parcial}</Badge> },
     { key: 'trasladado', header: 'Trasladado',      render: r => <Badge tone="info">{r.trasladado}</Badge> },
+    { key: 'anulado',    header: 'Anulado',         render: r => <Badge tone="neutral">{r.anulado}</Badge> },
     { key: 'nopagado',   header: 'Sin registrar / pendiente', render: r => <Badge tone="danger">{r.noPagado}</Badge> },
   ]
 
@@ -625,6 +659,11 @@ export default function VerificacionPorCursoPage() {
                 🔙 {fmt(e.refunded)} devuelto{e.refundReason ? ` — ${e.refundReason}` : ''}
               </span>
             )}
+            {e.estado === 'ANULADO' && e.cancelReason && (
+              <span className="text-[10.5px] text-neutral-500" title={e.cancelReason}>
+                Motivo: {e.cancelReason}
+              </span>
+            )}
             {e.destino && e.destino.status === 'PAGADO' ? (
               <span className="flex items-center gap-1 text-[10.5px] text-success-700 font-semibold">
                 <CheckCircle2 size={11}/> Resuelto en {e.destino.year}
@@ -647,6 +686,11 @@ export default function VerificacionPorCursoPage() {
             {e.estado === 'PENDIENTE' && isSelectedYearClosed && (
               <button onClick={() => handleCarryForwardExisting(ctx)} disabled={busy} className="flex items-center gap-1 text-[10.5px] text-info-500 hover:underline mt-0.5 disabled:opacity-50">
                 <Send size={10}/> {busy ? 'Trasladando...' : 'Trasladar a 2026'}
+              </button>
+            )}
+            {e.estado === 'PENDIENTE' && e.chargeId && (
+              <button onClick={() => openCancel(ctx, e)} className="flex items-center gap-1 text-[10.5px] text-danger-600 hover:underline mt-0.5">
+                <Ban size={10}/> Cancelar cargo
               </button>
             )}
             {e.estado === 'NO_CARGADO' && isSelectedYearClosed && r.tutor && (
@@ -839,6 +883,34 @@ export default function VerificacionPorCursoPage() {
               label="Motivo" required
               placeholder='Ej. "Pago duplicado, recibo 82627 ya cubría el mismo aporte"'
               value={refundForm.reason} onChange={e => setRefundForm({ ...refundForm, reason: e.target.value })}
+            />
+          </div>
+        )}
+      </Modal>
+
+      <Modal
+        open={!!cancelling} onClose={() => setCancelling(null)}
+        title="Cancelar cargo"
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setCancelling(null)}>Volver</Button>
+            <Button variant="danger" onClick={handleConfirmCancelCharge} loading={cancelSaving} disabled={!cancelReasonInput.trim()}>
+              {!cancelSaving && <Ban size={14}/>}
+              {cancelSaving ? 'Cancelando...' : 'Confirmar cancelación'}
+            </Button>
+          </>
+        }
+      >
+        {cancelling && (
+          <div className="flex flex-col gap-4">
+            <div className="bg-neutral-100 border border-neutral-300 rounded-lg p-3 text-[13px] text-neutral-500 leading-relaxed">
+              Monto: <strong className="text-brand-700">{fmt(cancelling.current.monto)}</strong><br/>
+              El cargo queda anulado (no borrado) y deja de contar en el saldo pendiente del tutor. Esta acción no se puede deshacer desde acá.
+            </div>
+            <Textarea
+              label="Motivo de la cancelación" required
+              placeholder="Ej: condonación aprobada por Junta, compensado con otro cargo, error de duplicado..."
+              value={cancelReasonInput} onChange={e => setCancelReasonInput(e.target.value)}
             />
           </div>
         )}

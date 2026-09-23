@@ -41,6 +41,14 @@ export const createBulkChargesSchema = z.object({
   parentIds:      z.array(z.coerce.number().int()).min(1, 'Debe indicar al menos un tutor'),
 })
 
+// El motivo es obligatorio a propósito -- "Cancelar cargo" es una acción
+// real de negocio (condonación/compensación/ya resuelto de otra forma, o
+// limpieza de un duplicado), no un simple cambio de estado -- queda en
+// AuditLog.reason y se muestra después junto al badge "Anulado".
+export const cancelChargeSchema = z.object({
+  reason: z.string().trim().min(1, 'El motivo de la cancelación es obligatorio'),
+})
+
 export const updateChargeSchema = z.object({
   title:         z.string().min(1).optional(),
   description:   z.string().optional(),
@@ -132,6 +140,7 @@ export const registerRefundSchema = z.object({
 export type CreateChargeInput             = z.infer<typeof createChargeSchema>
 export type CreateBulkChargesInput        = z.infer<typeof createBulkChargesSchema>
 export type UpdateChargeInput             = z.infer<typeof updateChargeSchema>
+export type CancelChargeInput              = z.infer<typeof cancelChargeSchema>
 export type RegisterPaymentInput          = z.infer<typeof registerPaymentSchema>
 export type UpdatePaymentInput            = z.infer<typeof updatePaymentSchema>
 export type CreateMandatoryChargeInput    = z.infer<typeof createMandatoryChargeSchema>

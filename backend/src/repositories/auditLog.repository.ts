@@ -22,4 +22,23 @@ export const auditLogRepository = {
   ) {
     return (tx ?? prisma).auditLog.create({ data })
   },
+
+  // Trae el motivo (reason) del AuditLog más reciente por entidad -- usado
+  // para mostrar "por qué" se anuló un cargo (badge "Anulado — {motivo}")
+  // sin relación Prisma directa (AuditLog es genérico/polimórfico a
+  // propósito, ver CLAUDE.md 17.1). Una sola consulta batch, sirve tanto
+  // para 1 cargo como para una lista completa (Verificación por Curso).
+  async findLatestReasonsByEntityIds(entityType: string, entityIds: number[]): Promise<Map<number, string | null>> {
+    if (entityIds.length === 0) return new Map()
+    const rows = await prisma.auditLog.findMany({
+      where: { entityType, entityId: { in: entityIds } },
+      orderBy: { createdAt: 'desc' },
+      select: { entityId: true, reason: true },
+    })
+    const map = new Map<number, string | null>()
+    for (const row of rows) {
+      if (!map.has(row.entityId)) map.set(row.entityId, row.reason ?? null)
+    }
+    return map
+  },
 }

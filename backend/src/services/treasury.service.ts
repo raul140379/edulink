@@ -58,6 +58,13 @@ export const treasuryService = {
     await assertDelegateOwnsParent(studentIds, 'Solo podés ver la cuenta de tutores de estudiantes de tu propio curso')
 
     const charges = await treasuryRepository.findChargesByParent(parentId)
+    // El balance nunca cuenta un cargo ANULADO — mismo criterio que el resto
+    // de Tesorería (getSummary/getParentsWithBalance/getTreasuryByCourse,
+    // todos filtran status<>ANULADO en la propia consulta antes de sumar).
+    // Acá la consulta trae TODO a propósito (para poder mostrar el cargo
+    // anulado en la lista con su badge) — el filtro va solo sobre el cálculo
+    // de balance, nunca sobre `charges` (la lista completa que se devuelve).
+    const activeCharges = charges.filter((c) => c.status !== 'ANULADO')
 
     // DIRECTOR/REGENTE/SECRETARY: solo un estado simple (al día / con deuda),
     // nunca el detalle de cargos/pagos/recibos — la administración de esos
@@ -65,14 +72,20 @@ export const treasuryService = {
     // con ella directamente.
     const ctx = getTenantContext()
     if (ctx?.role === Role.DIRECTOR || ctx?.role === Role.REGENTE || ctx?.role === Role.SECRETARY) {
-      const { totalPending } = aggregateChargeBalances(charges)
+      const { totalPending } = aggregateChargeBalances(activeCharges)
       return {
         parent: { id: parent.id, firstName: parent.firstName, lastName: parent.lastName },
         estado: totalPending > 0 ? 'CON_DEUDA' as const : 'AL_DIA' as const,
       }
     }
 
-    return { parent, charges, summary: aggregateChargeBalances(charges) }
+    // Motivo de cancelación (AuditLog.reason) para los cargos anulados que sí
+    // se muestran en la lista completa — mismo mecanismo que guarda cancelCharge.
+    const anuladoIds = charges.filter((c) => c.status === 'ANULADO').map((c) => c.id)
+    const reasons = await auditLogRepository.findLatestReasonsByEntityIds('Charge', anuladoIds)
+    const chargesWithReason = charges.map((c) => c.status === 'ANULADO' ? { ...c, cancelReason: reasons.get(c.id) ?? null } : c)
+
+    return { parent, charges: chargesWithReason, summary: aggregateChargeBalances(activeCharges) }
   },
 
   async createCharge(input: CreateChargeInput) {
@@ -196,11 +209,33 @@ export const treasuryService = {
   // Anular nunca borra el registro (ver CLAUDE.md 17.1, mismo criterio que
   // mandatoryChargeService.remove) — queda con status=ANULADO y un
   // AuditLog con el estado anterior, para poder reconstruir qué se anuló y
-  // por qué si hace falta después.
-  async cancelCharge(id: number, reason?: string) {
-    const existing = await treasuryRepository.findChargeRaw(id)
+  // por qué si hace falta después. Motivo obligatorio (validado en el
+  // schema, ver cancelChargeSchema) — a diferencia del uso interno de hoy
+  // (limpieza de los 34 duplicados de Aporte BTH 2026), esta es ahora una
+  // acción de negocio real (condonación/compensación/ya resuelto de otra
+  // forma) expuesta como botón — necesita quedar explicado, no solo loggeado.
+  //
+  // Bloquea si el cargo tiene CUALQUIER Payment real (no solo si está
+  // PAGADO) — un cargo PARCIAL igual tiene plata ya cobrada, y
+  // aggregateChargeBalances excluye el cargo COMPLETO al anularlo (no solo
+  // el saldo pendiente), así que anular un PARCIAL haría desaparecer de los
+  // reportes agregados la plata que el colegio ya recibió. Para esos casos
+  // ya existen 2 mecanismos que no tienen este problema: "Editar" (reduce el
+  // monto al ya pagado) y "Registrar devolución" (Refund).
+  async cancelCharge(id: number, reason: string) {
+    const existing = await treasuryRepository.findChargeWithPayments(id)
     if (!existing) throw new HttpError(404, 'Cargo no encontrado')
-    if (existing.status === 'PAGADO') throw new HttpError(400, 'No se puede anular un cargo ya pagado')
+    if (existing.status === 'ANULADO') throw new HttpError(400, 'Este cargo ya está anulado')
+    if (existing.payments.length > 0) throw new HttpError(400, 'No se puede cancelar un cargo con pagos registrados — usá "Editar" para ajustar el monto o "Registrar devolución" si ya se cobró')
+
+    // DELEGATE solo puede cancelar cargos de tutores de estudiantes de su
+    // propio curso -- mismo patrón que createCharge/registerPayment/
+    // updatePayment (ver delegate-scope.ts). Faltaba acá porque cancelCharge
+    // se escribió hoy mismo para un uso interno puntual (script de limpieza,
+    // nunca llamado por un DELEGATE real) -- ahora que se expone como botón
+    // de uso general, el hueco es real.
+    const studentIds = await treasuryRepository.findParentStudentIds(existing.parentId)
+    await assertDelegateOwnsParent(studentIds, 'Solo podés cancelar cargos de tutores de estudiantes de tu propio curso')
 
     const ctx = getTenantContext()
     await prisma.$transaction(async (tx) => {
@@ -500,11 +535,26 @@ export const treasuryService = {
     const types = await treasuryRepository.findMandatoryChargesForYear(schoolId, yearId)
     const courses = await treasuryRepository.findVerificationByCourse(schoolId, yearId, effectiveCourseId)
 
+    // Motivo de cancelación (AuditLog.reason) para los cargos ANULADOS
+    // manualmente (sin traslado, ver abajo) que aparecen en este reporte —
+    // una sola consulta batch para todo el resultado, no una por cargo.
+    const manuallyAnuladoIds: number[] = []
+    for (const course of courses) {
+      for (const assignment of course.assignments) {
+        for (const ps of assignment.student.parents) {
+          for (const c of ps.parent.charges) {
+            if (c.status === 'ANULADO' && c.carriedCharges.length === 0) manuallyAnuladoIds.push(c.id)
+          }
+        }
+      }
+    }
+    const cancelReasons = await auditLogRepository.findLatestReasonsByEntityIds('Charge', manuallyAnuladoIds)
+
     // Para el resumen global se cuenta por TUTOR único, no por fila de
     // estudiante — un mismo cargo de aporte es por familia (target: TUTOR), así
     // que dos hermanos no deben contarse dos veces en "cuántos tutores pagaron".
-    const summaryByType = new Map<number, { seenParentIds: Set<number>; pagadoCompleto: number; parcial: number; trasladado: number; noPagado: number }>()
-    for (const t of types) summaryByType.set(t.id, { seenParentIds: new Set(), pagadoCompleto: 0, parcial: 0, trasladado: 0, noPagado: 0 })
+    const summaryByType = new Map<number, { seenParentIds: Set<number>; pagadoCompleto: number; parcial: number; trasladado: number; anulado: number; noPagado: number }>()
+    for (const t of types) summaryByType.set(t.id, { seenParentIds: new Set(), pagadoCompleto: 0, parcial: 0, trasladado: 0, anulado: 0, noPagado: 0 })
 
     let totalStudents = 0
 
@@ -514,7 +564,7 @@ export const treasuryService = {
         const tutorLink = assignment.student.parents[0]
         const tutor = tutorLink?.parent ?? null
 
-        const byType: Record<number, { chargeId?: number; estado: string; monto: number; pagado: number; pendiente: number; referencia?: string; pendingVerificationNote?: string; refunded?: number; refundReason?: string; destino?: { chargeId: number; year: number; status: string } }> = {}
+        const byType: Record<number, { chargeId?: number; estado: string; monto: number; pagado: number; pendiente: number; referencia?: string; pendingVerificationNote?: string; refunded?: number; refundReason?: string; destino?: { chargeId: number; year: number; status: string }; cancelReason?: string | null }> = {}
         for (const type of types) {
           const charge = tutor?.charges.find((c) => c.mandatoryChargeId === type.id)
           const entry = summaryByType.get(type.id)!
@@ -531,13 +581,21 @@ export const treasuryService = {
 
           if (!charge) {
             byType[type.id] = { estado: 'NO_CARGADO', monto: type.amount, pagado: 0, pendiente: type.amount }
-          } else if (charge.status === 'ANULADO') {
-            // Solo llega ANULADO acá si tiene carriedCharges (ver
-            // findVerificationByCourse) — se trasladó, no se "canceló".
+          } else if (charge.status === 'ANULADO' && charge.carriedCharges.length > 0) {
+            // Traslado de cierre económico — se movió a la gestión siguiente,
+            // no se "canceló".
             const dest = charge.carriedCharges[0]
             byType[type.id] = {
               chargeId: charge.id, estado: 'TRASLADADO', monto: charge.amount, pagado: charge.paidAmount, pendiente: chargeBalance(charge), referencia,
-              destino: dest ? { chargeId: dest.id, year: dest.academicYear.year, status: dest.status } : undefined,
+              destino: { chargeId: dest.id, year: dest.academicYear.year, status: dest.status },
+            }
+          } else if (charge.status === 'ANULADO') {
+            // Cancelado manualmente (condonación/compensación/ya resuelto de
+            // otra forma, o limpieza de un error/duplicado) — sin traslado.
+            // pendiente:0 -- ya no cuenta como deuda (ver cancelCharge).
+            byType[type.id] = {
+              chargeId: charge.id, estado: 'ANULADO', monto: charge.amount, pagado: charge.paidAmount, pendiente: 0, referencia,
+              cancelReason: cancelReasons.get(charge.id) ?? null,
             }
           } else {
             byType[type.id] = { chargeId: charge.id, estado: charge.status, monto: charge.amount, pagado: charge.paidAmount, pendiente: chargeBalance(charge), referencia, pendingVerificationNote, refunded, refundReason }
@@ -551,6 +609,7 @@ export const treasuryService = {
             if (estado === 'PAGADO') entry.pagadoCompleto++
             else if (estado === 'PARCIAL') entry.parcial++
             else if (estado === 'TRASLADADO') entry.trasladado++
+            else if (estado === 'ANULADO') entry.anulado++
             else entry.noPagado++
           }
         }
@@ -572,7 +631,7 @@ export const treasuryService = {
       const entry = summaryByType.get(t.id)!
       return {
         mandatoryChargeId: t.id, title: t.title, type: t.type, amount: t.amount,
-        pagadoCompleto: entry.pagadoCompleto, parcial: entry.parcial, trasladado: entry.trasladado, noPagado: entry.noPagado,
+        pagadoCompleto: entry.pagadoCompleto, parcial: entry.parcial, trasladado: entry.trasladado, anulado: entry.anulado, noPagado: entry.noPagado,
       }
     })
 

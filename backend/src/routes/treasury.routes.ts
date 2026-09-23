@@ -4,7 +4,7 @@ import { verifyToken, requirePermission, requireAnyPermission, restoreTenantCont
 import { validateBody } from '../middlewares/validate.middleware'
 import { Permission } from '../config/permissions'
 import {
-  createChargeSchema, createBulkChargesSchema, updateChargeSchema, registerPaymentSchema, updatePaymentSchema,
+  createChargeSchema, createBulkChargesSchema, updateChargeSchema, cancelChargeSchema, registerPaymentSchema, updatePaymentSchema,
   createMandatoryChargeSchema, updateMandatoryChargeSchema, historicalCorrectionSchema, createAndCarryForwardSchema,
   registerRefundSchema,
 } from '../schemas/treasury.schema'
@@ -86,7 +86,11 @@ router.get('/:id',              requirePermission(Permission.CHARGE_VIEW_ALL), g
 router.post('/',                requirePermission(Permission.CHARGE_CREATE), validateBody(createChargeSchema), createCharge)
 router.post('/bulk',            requirePermission(Permission.CHARGE_CREATE), validateBody(createBulkChargesSchema), createBulkCharges)
 router.put('/:id',              requirePermission(Permission.CHARGE_CREATE), validateBody(updateChargeSchema), updateCharge)
-router.patch('/:id/cancel',     requirePermission(Permission.CHARGE_CREATE), cancelCharge)
+// TREASURY_CLOSE_PERIOD (no CHARGE_CREATE) a propósito -- cancelar un cargo
+// puntual (condonación/compensación/duplicado) es más sensible que crear uno
+// nuevo, mismo criterio de permiso que Refund/corrección histórica arriba
+// (exclusivo de JUNTA_ESCOLAR, sin DELEGATE).
+router.patch('/:id/cancel',     requirePermission(Permission.TREASURY_CLOSE_PERIOD), validateBody(cancelChargeSchema), cancelCharge)
 
 // ── Pagos ────────────────────────────────────
 router.post('/:id/payments',           requirePermission(Permission.CHARGE_CREATE), validateBody(registerPaymentSchema), registerPayment)

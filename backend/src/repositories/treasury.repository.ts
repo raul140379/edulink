@@ -341,19 +341,16 @@ export const treasuryRepository = {
                     parent: {
                       select: {
                         id: true, firstName: true, lastName: true, ci: true, kardex: true,
-                        // Un cargo ANULADO por traslado (cierre económico) sigue
-                        // siendo relevante para la auditoría — solo se descarta
-                        // el que quedó ANULADO sin traslado (cancelación manual).
-                        // carriedCharges no vacío es la señal que lo distingue,
-                        // ver [[junta-escolar-cierre-economico-2025]].
+                        // Sin filtro de status a propósito -- un cargo ANULADO
+                        // (por traslado de cierre económico, O por cancelación
+                        // manual vía "Cancelar cargo") sigue siendo relevante
+                        // para la auditoría, se muestra con su propio estado en
+                        // vez de desaparecer como si nunca se hubiera cobrado.
+                        // carriedCharges no vacío distingue traslado de
+                        // cancelación manual (ver getVerificationReportByCourse),
+                        // ver también [[junta-escolar-cierre-economico-2025]].
                         charges: {
-                          where: {
-                            academicYearId,
-                            OR: [
-                              { status: { not: 'ANULADO' } },
-                              { status: 'ANULADO', carriedCharges: { some: {} } },
-                            ],
-                          },
+                          where: { academicYearId },
                           select: {
                             id: true, mandatoryChargeId: true, amount: true, paidAmount: true, status: true, pendingVerificationNote: true,
                             carriedCharges: { select: { id: true, status: true, academicYear: { select: { year: true } } } },
