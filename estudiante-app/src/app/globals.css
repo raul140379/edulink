@@ -1,0 +1,78 @@
+@import "tailwindcss";
+
+/* Misma paleta "gamificación" del Panel Estudiante web (dashboard/estudiantes,
+   DashboardShell theme={primary:'#3B5BDB', navbar:'#1E3AA6', accent:'#FF4D8D',
+   hover:'#5B7CF0', bg:'#EDF1FE'}), fijada acá directo (no re-tintable por rol)
+   porque esta app es de un solo actor — sin el sistema multi-panel del
+   frontend principal. accent-500 (Rosa Resaltador) es el mismo tono que ya
+   usa la campanita de notificaciones del panel web para "sin leer". */
+:root {
+  --color-brand-900: #1E3AA6;
+  --color-brand-700: #3B5BDB;
+  --color-brand-600: #5B7CF0;
+  --color-brand-500: #5B7CF0;
+  --color-brand-100: #EDF1FE;
+
+  --color-accent-500: #FF4D8D;
+
+  --color-bg: #EDF1FE;
+  --color-bg-soft: #C0CAED;
+  --color-border: #DADFF1;
+  --color-text-secondary: #707BA9;
+
+  --color-success-700: #0a5a45;
+  --color-success-500: #0f6e56;
+  --color-success-100: #e6f4f0;
+
+  --color-danger-600: #c0392b;
+  --color-danger-500: #e74c3c;
+  --color-danger-100: #fdecea;
+
+  --color-warning-600: #b9860a;
+  --color-warning-500: #e0a800;
+  --color-warning-100: #fff8e6;
+
+  --color-info-500: #4a9fd4;
+  --color-info-100: #e8f2fa;
+}
+
+@theme inline {
+  --color-brand-900: var(--color-brand-900);
+  --color-brand-700: var(--color-brand-700);
+  --color-brand-600: var(--color-brand-600);
+  --color-brand-500: var(--color-brand-500);
+  --color-brand-100: var(--color-brand-100);
+
+  --color-accent-500: var(--color-accent-500);
+
+  --color-bg: var(--color-bg);
+  --color-bg-soft: var(--color-bg-soft);
+  --color-border: var(--color-border);
+  --color-text-secondary: var(--color-text-secondary);
+
+  --color-success-700: var(--color-success-700);
+  --color-success-500: var(--color-success-500);
+  --color-success-100: var(--color-success-100);
+
+  --color-danger-600: var(--color-danger-600);
+  --color-danger-500: var(--color-danger-500);
+  --color-danger-100: var(--color-danger-100);
+
+  --color-warning-600: var(--color-warning-600);
+  --color-warning-500: var(--color-warning-500);
+  --color-warning-100: var(--color-warning-100);
+
+  --color-info-500: var(--color-info-500);
+  --color-info-100: var(--color-info-100);
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  background: var(--color-bg);
+  color: var(--color-brand-900);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, Helvetica, sans-serif;
+  overscroll-behavior-y: contain;
+}

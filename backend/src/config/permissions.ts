@@ -486,6 +486,7 @@ export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
     Permission.STUDENT_VIEW_OWN,    // Solo su propia ficha
     Permission.GRADE_VIEW_OWN,      // Solo sus propias notas
     Permission.SCHEDULE_VIEW_OWN,   // Solo su propio horario
+    Permission.ATTENDANCE_VIEW_OWN, // Solo su propia asistencia (estudiante-app) — assertOwnStudent en getStudentHistory ya soportaba STUDENT, faltaba el permiso en sí
     Permission.NOTIFICATION_VIEW,
     Permission.COMUNICADO_VIEW,     // Solo lectura — ve los comunicados de su colegio en Inicio
   ],
