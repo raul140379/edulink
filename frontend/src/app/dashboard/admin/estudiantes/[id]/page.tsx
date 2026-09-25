@@ -5,7 +5,8 @@ import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import {
   ArrowLeft, User, BookOpen, Users, GraduationCap,
-  Phone, Mail, MapPin, CreditCard, Calendar, KeyRound, Repeat, X
+  Phone, Mail, MapPin, CreditCard, Calendar, KeyRound, Repeat, X,
+  UserPlus, Search, Check, Star
 } from 'lucide-react'
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000'
@@ -60,6 +61,10 @@ interface CourseOption {
   educationType: string
 }
 
+interface ParentHit {
+  id: number; firstName: string; lastName: string; ci?: string; phone?: string
+}
+
 interface License {
   id:              number
   startDate:       string
@@ -87,6 +92,15 @@ const REL_LABELS: Record<string, string> = {
 }
 const REL_COLORS: Record<string, string> = {
   PADRE: '#0A5A45', MADRE: '#0F6E56', TUTOR_LEGAL: '#712B13', OTRO: '#444441'
+}
+const RELATION_TYPES = [
+  { value: 'PADRE', label: 'Padre' },
+  { value: 'MADRE', label: 'Madre' },
+  { value: 'OTRO',  label: 'Otro (tercero)' },
+]
+const emptyRegisterForm = {
+  firstName: '', lastName: '', ci: '', phone: '', email: '', address: '', kardex: '',
+  relationType: 'PADRE', isTutor: true,
 }
 
 // timeZone: 'UTC' es obligatorio acá — birthDate y las fechas de licencia son
@@ -137,6 +151,36 @@ export default function StudentDetailPage() {
   const [cancelError,     setCancelError]     = useState('')
 
   const token = typeof window !== 'undefined' ? localStorage.getItem('token') : ''
+  const currentRole = typeof window !== 'undefined' ? JSON.parse(localStorage.getItem('user') || '{}').role : ''
+  // PARENT_CREATE: hoy permanente para SUPER_ADMIN, temporal para DIRECTOR
+  // (ver DIRECTOR_TEMP_CAN_REGISTER_PARENTS en backend/src/config/permissions.ts).
+  const canRegisterParent = currentRole === 'SUPER_ADMIN' || currentRole === 'DIRECTOR'
+  // PARENT_ASSIGN_TUTOR: permiso permanente para los 3 (nunca dependió del
+  // interruptor temporal) — cubre vincular padre existente y cambiar tutor.
+  const canAssignTutor = ['SUPER_ADMIN', 'DIRECTOR', 'REGENTE', 'SECRETARY'].includes(currentRole)
+
+  // ---- Registrar padre/tutor nuevo (solo cuando el estudiante no tiene ninguno) ----
+  const [registerOpen,    setRegisterOpen]    = useState(false)
+  const [registerForm,    setRegisterForm]    = useState(emptyRegisterForm)
+  const [registerSaving,  setRegisterSaving]  = useState(false)
+  const [registerError,   setRegisterError]   = useState('')
+  const [registerCreds,   setRegisterCreds]   = useState<{ email: string; password: string } | null>(null)
+  const [showRegisterCreds, setShowRegisterCreds] = useState(false)
+
+  // ---- Vincular padre/tutor ya existente en el sistema (hermano, etc.) ----
+  const [linkOpen,        setLinkOpen]        = useState(false)
+  const [linkSearch,      setLinkSearch]      = useState('')
+  const [linkResults,     setLinkResults]     = useState<ParentHit[]>([])
+  const [linkSearching,   setLinkSearching]   = useState(false)
+  const [linkSelectedId,  setLinkSelectedId]  = useState<number | null>(null)
+  const [linkRelType,     setLinkRelType]     = useState('PADRE')
+  const [linkSaving,      setLinkSaving]      = useState(false)
+  const [linkError,       setLinkError]       = useState('')
+
+  // ---- Cambiar tutor legal (promover a otro padre/tutor YA vinculado) ----
+  const [tutorChangeTarget,  setTutorChangeTarget]  = useState<{ id: number; name: string } | null>(null)
+  const [tutorChangeSaving,  setTutorChangeSaving]  = useState(false)
+  const [tutorChangeError,   setTutorChangeError]   = useState('')
 
   const fetchStudent = async () => {
     setLoading(true)
@@ -264,6 +308,94 @@ export default function StudentDetailPage() {
     finally { setCancelSaving(false) }
   }
 
+  const openRegister = () => {
+    setRegisterForm(emptyRegisterForm); setRegisterError('')
+    setRegisterOpen(true)
+  }
+
+  const submitRegister = async () => {
+    if (!registerForm.firstName || !registerForm.lastName) { setRegisterError('Nombre y apellido son requeridos'); return }
+    setRegisterError(''); setRegisterSaving(true)
+    try {
+      const res  = await fetch(`${API_URL}/api/parents`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          ...registerForm,
+          ci: registerForm.ci || undefined, phone: registerForm.phone || undefined,
+          email: registerForm.email || undefined, address: registerForm.address || undefined,
+          kardex: registerForm.kardex || undefined,
+          studentIds: [Number(id)],
+        }),
+      })
+      const data = await res.json()
+      if (!res.ok) { setRegisterError(data.message || 'No se pudo registrar'); return }
+      setRegisterOpen(false)
+      await fetchStudent()
+      if (data.accessEmail) {
+        setRegisterCreds({ email: data.accessEmail, password: data.defaultPassword })
+        setShowRegisterCreds(true)
+      }
+    } catch { setRegisterError('Error de conexión') }
+    finally { setRegisterSaving(false) }
+  }
+
+  const openLinkExisting = () => {
+    setLinkSearch(''); setLinkResults([]); setLinkSelectedId(null); setLinkRelType('PADRE'); setLinkError('')
+    setLinkOpen(true)
+  }
+
+  const handleSearchParents = async () => {
+    if (!linkSearch.trim()) return
+    setLinkSearching(true)
+    try {
+      const params = new URLSearchParams({ search: linkSearch, page: '1', pageSize: '20' })
+      const res  = await fetch(`${API_URL}/api/parents?${params}`, { headers: { Authorization: `Bearer ${token}` } })
+      const data = await res.json()
+      const alreadyLinked = new Set(student?.parents.map(ps => ps.parent.id))
+      setLinkResults(res.ok ? (data.data || []).filter((p: ParentHit) => !alreadyLinked.has(p.id)) : [])
+    } catch { setLinkResults([]) }
+    finally { setLinkSearching(false) }
+  }
+
+  const submitLinkExisting = async () => {
+    if (!linkSelectedId) { setLinkError('Selecciona un padre/tutor'); return }
+    setLinkError(''); setLinkSaving(true)
+    try {
+      const res  = await fetch(`${API_URL}/api/parents/${linkSelectedId}/link-students`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ studentIds: [Number(id)], relationType: linkRelType }),
+      })
+      const data = await res.json()
+      if (!res.ok) { setLinkError(data.message || 'No se pudo vincular'); return }
+      setLinkOpen(false)
+      await fetchStudent()
+    } catch { setLinkError('Error de conexión') }
+    finally { setLinkSaving(false) }
+  }
+
+  const openChangeTutor = (parentId: number, name: string) => {
+    setTutorChangeTarget({ id: parentId, name }); setTutorChangeError('')
+  }
+
+  const submitChangeTutor = async () => {
+    if (!tutorChangeTarget) return
+    setTutorChangeError(''); setTutorChangeSaving(true)
+    try {
+      const res  = await fetch(`${API_URL}/api/parents/student/${id}/change-tutor`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ newTutorId: tutorChangeTarget.id }),
+      })
+      const data = await res.json()
+      if (!res.ok) { setTutorChangeError(data.message || 'No se pudo cambiar el tutor'); return }
+      setTutorChangeTarget(null)
+      await fetchStudent()
+    } catch { setTutorChangeError('Error de conexión') }
+    finally { setTutorChangeSaving(false) }
+  }
+
   return (
     <div>
       <div className="page-header">
@@ -376,9 +508,23 @@ export default function StudentDetailPage() {
         </div>
 
         <div className="card card-full">
-          <div className="card-title"><Users size={15}/> Padres y Tutores</div>
+          <div className="card-title" style={{ justifyContent: 'space-between' }}>
+            <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}><Users size={15}/> Padres y Tutores</span>
+            {canAssignTutor && (
+              <button className="link-parent-btn" onClick={openLinkExisting}>
+                <UserPlus size={13}/> Vincular padre/tutor existente
+              </button>
+            )}
+          </div>
           {student.parents.length === 0 ? (
-            <div className="no-data">No hay padres/tutores registrados</div>
+            <div className="no-data">
+              No hay padres/tutores registrados
+              {canRegisterParent && (
+                <button className="register-parent-btn" onClick={openRegister}>
+                  <UserPlus size={14}/> Registrar padre/tutor
+                </button>
+              )}
+            </div>
           ) : (
             <div className="parents-grid">
               {student.parents.map((ps, i) => (
@@ -395,6 +541,14 @@ export default function StudentDetailPage() {
                     {ps.parent.phone && <span><Phone size={11}/> {ps.parent.phone}</span>}
                     {ps.parent.email && <span><Mail size={11}/> {ps.parent.email}</span>}
                   </div>
+                  {!ps.isTutor && canAssignTutor && (
+                    <button
+                      className="make-tutor-btn"
+                      onClick={() => openChangeTutor(ps.parent.id, `${ps.parent.lastName} ${ps.parent.firstName}`)}
+                    >
+                      <Star size={11}/> Hacer tutor legal
+                    </button>
+                  )}
                 </div>
               ))}
             </div>
@@ -581,6 +735,145 @@ export default function StudentDetailPage() {
         </div>
       )}
 
+      {registerOpen && (
+        <div className="modal-backdrop" onClick={() => !registerSaving && setRegisterOpen(false)}>
+          <div className="modal-box" onClick={e => e.stopPropagation()}>
+            <div className="modal-head">
+              <h3>Registrar padre/tutor</h3>
+              <button className="modal-close" onClick={() => setRegisterOpen(false)} disabled={registerSaving}><X size={16}/></button>
+            </div>
+            <p className="modal-sub">
+              Para: <strong>{student.lastName} {student.firstName}</strong>
+            </p>
+
+            {registerError && <p className="modal-error">{registerError}</p>}
+
+            <div className="form-row-2">
+              <input className="text-input" placeholder="Nombres *" value={registerForm.firstName} onChange={e => setRegisterForm({ ...registerForm, firstName: e.target.value })} />
+              <input className="text-input" placeholder="Apellidos *" value={registerForm.lastName} onChange={e => setRegisterForm({ ...registerForm, lastName: e.target.value })} />
+            </div>
+            <div className="form-row-2">
+              <input className="text-input" placeholder="CI" value={registerForm.ci} onChange={e => setRegisterForm({ ...registerForm, ci: e.target.value })} />
+              <input className="text-input" placeholder="Teléfono" value={registerForm.phone} onChange={e => setRegisterForm({ ...registerForm, phone: e.target.value })} />
+            </div>
+            <input className="text-input" placeholder="Correo (opcional, para acceso propio)" type="email" value={registerForm.email} onChange={e => setRegisterForm({ ...registerForm, email: e.target.value })} />
+            <input className="text-input" placeholder="N° Kardex (opcional, se asigna solo si se deja vacío)" value={registerForm.kardex} onChange={e => setRegisterForm({ ...registerForm, kardex: e.target.value })} />
+
+            <select className="course-select" value={registerForm.relationType} onChange={e => setRegisterForm({ ...registerForm, relationType: e.target.value })}>
+              {RELATION_TYPES.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
+            </select>
+            <label className="checkbox-row">
+              <input type="checkbox" checked={registerForm.isTutor} onChange={e => setRegisterForm({ ...registerForm, isTutor: e.target.checked })} />
+              Marcar como tutor legal
+            </label>
+            {registerForm.isTutor && (
+              <p className="modal-hint">Como Tutor legal, se le genera automáticamente una cuenta de acceso al sistema.</p>
+            )}
+
+            <div className="modal-actions">
+              <button className="modal-cancel" onClick={() => setRegisterOpen(false)} disabled={registerSaving}>Cancelar</button>
+              <button className="modal-confirm" onClick={submitRegister} disabled={registerSaving}>
+                {registerSaving ? 'Guardando…' : 'Registrar'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showRegisterCreds && registerCreds && (
+        <div className="modal-backdrop" onClick={() => setShowRegisterCreds(false)}>
+          <div className="modal-box" onClick={e => e.stopPropagation()}>
+            <div className="modal-head">
+              <h3>✅ Padre/tutor registrado</h3>
+              <button className="modal-close" onClick={() => setShowRegisterCreds(false)}><X size={16}/></button>
+            </div>
+            <p className="modal-hint">
+              <Check size={13} style={{ verticalAlign: 'middle', marginRight: 4 }}/>
+              Se generó una cuenta de acceso. Anota estas credenciales — es la única vez que se muestran.
+            </p>
+            <div className="creds-row"><span>Email</span><strong>{registerCreds.email}</strong></div>
+            <div className="creds-row"><span>Contraseña</span><strong>{registerCreds.password}</strong></div>
+            <div className="modal-actions">
+              <button className="modal-confirm" onClick={() => setShowRegisterCreds(false)}>Entendido</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {linkOpen && (
+        <div className="modal-backdrop" onClick={() => !linkSaving && setLinkOpen(false)}>
+          <div className="modal-box" onClick={e => e.stopPropagation()}>
+            <div className="modal-head">
+              <h3>Vincular padre/tutor existente</h3>
+              <button className="modal-close" onClick={() => setLinkOpen(false)} disabled={linkSaving}><X size={16}/></button>
+            </div>
+            <p className="modal-sub">
+              Para: <strong>{student.lastName} {student.firstName}</strong>
+            </p>
+            <p className="modal-hint">Usá esto cuando el padre/tutor ya está registrado en el sistema (por ejemplo, ya tiene otro hijo inscrito) — no crea una persona nueva.</p>
+
+            {linkError && <p className="modal-error">{linkError}</p>}
+
+            <div className="search-row">
+              <input
+                className="text-input" placeholder="Buscar por nombre o CI…" value={linkSearch}
+                onChange={e => setLinkSearch(e.target.value)}
+                onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleSearchParents() } }}
+              />
+              <button className="search-btn" onClick={handleSearchParents} disabled={linkSearching}><Search size={14}/></button>
+            </div>
+
+            <div className="search-results">
+              {linkResults.map(p => (
+                <label key={p.id} className={`search-item ${linkSelectedId === p.id ? 'selected' : ''}`}>
+                  <input type="radio" name="linkParent" checked={linkSelectedId === p.id} onChange={() => setLinkSelectedId(p.id)} />
+                  <span className="parent-name">{p.lastName} {p.firstName}</span>
+                  {p.ci && <span className="muted">CI: {p.ci}</span>}
+                </label>
+              ))}
+              {linkResults.length === 0 && (
+                <p className="no-data">Buscá un padre/tutor para vincularlo</p>
+              )}
+            </div>
+
+            <select className="course-select" value={linkRelType} onChange={e => setLinkRelType(e.target.value)}>
+              {RELATION_TYPES.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
+            </select>
+
+            <div className="modal-actions">
+              <button className="modal-cancel" onClick={() => setLinkOpen(false)} disabled={linkSaving}>Cancelar</button>
+              <button className="modal-confirm" onClick={submitLinkExisting} disabled={!linkSelectedId || linkSaving}>
+                {linkSaving ? 'Vinculando…' : 'Vincular'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {tutorChangeTarget && (
+        <div className="modal-backdrop" onClick={() => !tutorChangeSaving && setTutorChangeTarget(null)}>
+          <div className="modal-box" onClick={e => e.stopPropagation()}>
+            <div className="modal-head">
+              <h3>Cambiar tutor legal</h3>
+              <button className="modal-close" onClick={() => setTutorChangeTarget(null)} disabled={tutorChangeSaving}><X size={16}/></button>
+            </div>
+            <p className="modal-sub">
+              ¿Confirmás que <strong>{tutorChangeTarget.name}</strong> pase a ser el Tutor Legal de {student.lastName} {student.firstName}?
+            </p>
+            <p className="modal-hint">El tutor legal actual deja de serlo (conserva su relación real — Padre/Madre/Otro — solo cambia quién tiene la responsabilidad de tutor).</p>
+
+            {tutorChangeError && <p className="modal-error">{tutorChangeError}</p>}
+
+            <div className="modal-actions">
+              <button className="modal-cancel" onClick={() => setTutorChangeTarget(null)} disabled={tutorChangeSaving}>Cancelar</button>
+              <button className="modal-confirm" onClick={submitChangeTutor} disabled={tutorChangeSaving}>
+                {tutorChangeSaving ? 'Guardando…' : 'Confirmar cambio'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <style>{`
         .center{display:flex;justify-content:center;align-items:center;padding:48px}
         .err-msg{color:#C0392B;font-size:14px}
@@ -613,7 +906,25 @@ export default function StudentDetailPage() {
         .course-big{font-size:36px;font-weight:800;color:#0A5A45}
         .course-details{display:flex;flex-wrap:wrap;gap:8px}
         .course-details span{background:#F5FAF7;color:#0A5A45;padding:3px 10px;border-radius:20px;font-size:12px}
-        .no-data{color:#6B8F7F;font-size:13px;padding:12px 0;font-style:italic}
+        .no-data{color:#6B8F7F;font-size:13px;padding:12px 0;font-style:italic;display:flex;flex-direction:column;align-items:flex-start;gap:10px}
+        .link-parent-btn{display:flex;align-items:center;gap:6px;background:#F5FAF7;border:1px solid #DCEEE6;color:#0A5A45;font-size:11px;font-weight:600;padding:6px 10px;border-radius:8px;cursor:pointer;white-space:nowrap}
+        .link-parent-btn:hover{background:#E1F5EE}
+        .register-parent-btn{display:flex;align-items:center;gap:6px;background:#0A5A45;border:none;color:#fff;font-size:12px;font-weight:600;padding:8px 14px;border-radius:8px;cursor:pointer;font-style:normal}
+        .register-parent-btn:hover{background:#0F6E56}
+        .make-tutor-btn{display:flex;align-items:center;gap:5px;background:#FFFDF0;border:1px solid #F5E1A0;color:#7A6000;font-size:10.5px;font-weight:600;padding:5px 9px;border-radius:8px;cursor:pointer;width:fit-content}
+        .make-tutor-btn:hover{background:#FFF7E0}
+        .form-row-2{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+        .text-input{width:100%;padding:10px 12px;border:1px solid #DCEEE6;border-radius:8px;font-size:13px;color:#0A5A45;background:#fff;font-family:inherit}
+        .checkbox-row{display:flex;align-items:center;gap:8px;font-size:13px;color:#0A5A45;cursor:pointer}
+        .creds-row{display:flex;align-items:center;gap:10px;background:#F5FAF7;border:1px solid #DCEEE6;border-radius:8px;padding:10px 12px;font-size:12px}
+        .creds-row span{color:#6B8F7F;min-width:80px;text-transform:uppercase;font-size:10px;font-weight:700}
+        .creds-row strong{color:#0A5A45;font-family:monospace;word-break:break-all}
+        .search-row{display:flex;gap:8px}
+        .search-btn{background:#0A5A45;border:none;color:#fff;padding:0 14px;border-radius:8px;cursor:pointer;display:flex;align-items:center}
+        .search-results{display:flex;flex-direction:column;gap:6px;max-height:180px;overflow-y:auto}
+        .search-item{display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:8px;background:#F5FAF7;font-size:13px;color:#0A5A45;cursor:pointer}
+        .search-item.selected{background:#E1F5EE;outline:1px solid #9FE1CB}
+        .search-item .muted{color:#6B8F7F;font-size:11px}
         .change-course-btn{display:flex;align-items:center;gap:6px;justify-content:center;background:#F5FAF7;border:1px solid #DCEEE6;color:#0A5A45;font-size:12px;font-weight:600;padding:8px 12px;border-radius:8px;cursor:pointer;width:fit-content}
         .change-course-btn:hover{background:#E1F5EE}
         .modal-backdrop{position:fixed;inset:0;background:rgba(10,30,25,.45);display:flex;align-items:center;justify-content:center;z-index:100;padding:16px}

@@ -530,8 +530,22 @@ export const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
   ],
 }
 
+// TEMPORAL — confirmado explícitamente con Raul: Director puede registrar
+// padres/tutores nuevos (además de asignar/cambiar tutor, que ya tenía),
+// como excepción agregada ENCIMA de la decisión de diseño documentada junto
+// a Role.DIRECTOR más abajo ("registrar un padre nuevo es responsabilidad
+// exclusiva de Junta Escolar/Delegado") — esa decisión NO se revierte, esto
+// es una excepción puntual. Interruptor manual, sin fecha de expiración
+// automática: cuando ya no haga falta, cambiar esta constante a `false` y
+// listo, no hace falta tocar nada más (no toca el array ROLE_PERMISSIONS ni
+// ningún otro lugar).
+export const DIRECTOR_TEMP_CAN_REGISTER_PARENTS = true
+
 // Función helper para verificar si un rol tiene un permiso
 export const hasPermission = (role: Role, permission: Permission): boolean => {
+  if (role === Role.DIRECTOR && permission === Permission.PARENT_CREATE && DIRECTOR_TEMP_CAN_REGISTER_PARENTS) {
+    return true
+  }
   const permissions = ROLE_PERMISSIONS[role]
   if (!permissions) return false
   return permissions.includes(permission)
@@ -549,10 +563,21 @@ export const CREATABLE_ROLES: Partial<Record<string, string[]>> = {
     Role.DIRECTOR, Role.REGENTE, Role.SECRETARY,
     Role.JUNTA_DISTRITO, Role.GOBIERNO_DISTRITO,
   ],
+  // Corregido (confirmado con Raul) — antes tenía 12 roles, incluidos PARENT/
+  // STUDENT/DELEGATE/JUNTA_ESCOLAR/STUDENT_GOV/STAFF, que NO solo eran de más
+  // por política: esos 6 roles se crean por endpoints dedicados propios
+  // (POST /api/parents con PARENT_CREATE, POST /api/students con
+  // STUDENT_CREATE, DELEGATE nunca se crea directo — es un Parent existente
+  // promovido vía course.service.ts, JUNTA_ESCOLAR vía
+  // junta.service.ts::createJuntaMember), nunca por este createUser genérico
+  // — tenerlos acá permitía crear un User suelto sin ningún Parent/Student/
+  // JuntaMember vinculado (cuenta rota, sin perfil). Estos 6 roles son los
+  // ÚNICOS que Director puede crear/gestionar hoy (ver también
+  // Personal Administrativo + admin/maestros, que ya usaban este mismo
+  // conjunto salvo Role.STAFF — "Otro" de Personal Administrativo queda
+  // fuera a propósito, confirmado explícitamente).
   [Role.DIRECTOR]: [
-    Role.REGENTE, Role.SECRETARY, Role.PSICOLOGO, Role.TEACHER, Role.TEACHER_TUTOR,
-    Role.STAFF, Role.PORTERO, Role.PARENT, Role.STUDENT,
-    Role.DELEGATE, Role.JUNTA_ESCOLAR, Role.STUDENT_GOV,
+    Role.TEACHER, Role.TEACHER_TUTOR, Role.REGENTE, Role.SECRETARY, Role.PSICOLOGO, Role.PORTERO,
   ],
   [Role.JUNTA_DISTRITO]:    [Role.JUNTA_DISTRITO, Role.JUNTA_NUCLEO, Role.JUNTA_ESCOLAR],
   [Role.JUNTA_NUCLEO]:      [Role.JUNTA_ESCOLAR],

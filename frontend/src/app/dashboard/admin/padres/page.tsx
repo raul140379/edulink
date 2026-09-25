@@ -1,10 +1,10 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { Search, Eye, Copy, Check, Link as LinkIcon } from 'lucide-react'
+import { Search, Eye, Copy, Check, Link as LinkIcon, Pencil, Power, Trash2, RefreshCw } from 'lucide-react'
 import { useRouter } from 'next/navigation'
 import Button from '@/components/ui/Button'
-import { Select } from '@/components/ui/Input'
+import { Input, Select } from '@/components/ui/Input'
 import Badge from '@/components/ui/Badge'
 import Modal from '@/components/ui/Modal'
 import Table, { Column } from '@/components/ui/Table'
@@ -62,11 +62,16 @@ const relTone: Record<string, 'brand' | 'success' | 'danger' | 'neutral'> = {
   PADRE: 'brand', MADRE: 'success', TUTOR_LEGAL: 'danger', OTRO: 'neutral'
 }
 
-// El registro (alta/edición/baja) de padres es responsabilidad exclusiva de
-// Junta Escolar/Delegado desde ahora (ver /dashboard/padres/familias) — esta
-// pantalla de administración conserva solo lo que Director/Regente/Secretaria
-// siguen necesitando para la matrícula: buscar un padre ya existente y
-// vincularlo/cambiarle el tipo de relación con un estudiante.
+// El registro (alta) de un padre/tutor NUEVO se hace exclusivamente desde el
+// detalle del estudiante (admin/estudiantes/[id], tarjeta "Padres y Tutores")
+// -- ahí ya se conoce el estudiante, sin necesidad de buscarlo. Esta pantalla
+// conserva Editar/Eliminar/Bloquear acceso/Vincular-a-otro-estudiante para lo
+// ya existente. Editar/Eliminar/Bloquear quedan detrás de PARENT_CREATE:
+// TEMPORAL para Director (interruptor manual DIRECTOR_TEMP_CAN_REGISTER_PARENTS
+// en backend/src/config/permissions.ts, confirmado explícitamente con Raul);
+// Regente/Secretaria no tienen ese permiso hoy, así que para ellos estos
+// botones fallarían con 403 -- si más adelante necesitan lo mismo, es la
+// misma decisión que revisar.
 export default function PadresPage() {
   const router = useRouter()
   const toast = useToast()
@@ -96,6 +101,19 @@ export default function PadresPage() {
   const [orderBy, setOrderBy] = useState('alfabetico')
   const [page, setPage] = useState(1)
   const [total, setTotal] = useState(0)
+
+  const currentRole = typeof window !== 'undefined' ? JSON.parse(localStorage.getItem('user') || '{}').role : ''
+  const canManageParents = currentRole === 'SUPER_ADMIN' || currentRole === 'DIRECTOR'
+
+  // ---- Editar / Eliminar / Bloquear acceso (mismo patrón que familias/page.tsx) ----
+  const emptyEditForm = { firstName: '', lastName: '', ci: '', phone: '', email: '', address: '', kardex: '' }
+  const [editingRow, setEditingRow] = useState<Parent | null>(null)
+  const [editForm, setEditForm] = useState(emptyEditForm)
+  const [editSaving, setEditSaving] = useState(false)
+  const [editError, setEditError] = useState('')
+  const [deletingId, setDeletingId] = useState<number | null>(null)
+  const [togglingId, setTogglingId] = useState<number | null>(null)
+  const [regenerating, setRegenerating] = useState(false)
 
   const token = typeof window !== 'undefined' ? localStorage.getItem('token') : ''
 
@@ -194,6 +212,87 @@ export default function PadresPage() {
     } catch { toast('Error al desvincular', 'error') }
   }
 
+  const openEdit = (row: Parent) => {
+    setEditingRow(row)
+    setEditForm({
+      firstName: row.firstName, lastName: row.lastName, ci: row.ci || '',
+      phone: row.phone || '', email: row.email || '', address: row.address || '', kardex: row.kardex || '',
+    })
+    setEditError('')
+  }
+
+  const handleSaveEdit = async () => {
+    if (!editingRow) return
+    if (!editForm.firstName || !editForm.lastName) { setEditError('Nombre y apellido son requeridos'); return }
+    setEditError(''); setEditSaving(true)
+    try {
+      const res = await fetch(`${API_URL}/api/parents/${editingRow.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify(editForm),
+      })
+      const data = await res.json()
+      if (!res.ok) { setEditError(data.message || 'Error al guardar'); return }
+      toast('Tutor/padre actualizado correctamente', 'success')
+      setEditingRow(null)
+      fetchParents()
+    } catch { setEditError('Error de conexión') }
+    finally { setEditSaving(false) }
+  }
+
+  const handleRegenerateEmail = async () => {
+    if (!editingRow) return
+    if (!await confirm(`¿Regenerar el correo de acceso institucional de ${editingRow.firstName} ${editingRow.lastName}? El correo con el que inicia sesión hoy dejará de funcionar.`, { danger: true })) return
+    setRegenerating(true)
+    try {
+      const res  = await fetch(`${API_URL}/api/parents/${editingRow.id}/regenerate-email`, { method: 'POST', headers: { Authorization: `Bearer ${token}` } })
+      const data = await res.json()
+      if (!res.ok) { toast(data.message, 'error'); return }
+      toast(`Nuevo correo de acceso: ${data.email}`, 'success')
+      setEditingRow(r => r && r.user ? { ...r, user: { ...r.user, email: data.email } } : r)
+      fetchParents()
+    } catch { toast('Error de conexión', 'error') }
+    finally { setRegenerating(false) }
+  }
+
+  // Solo para el caso de un duplicado creado por error — borra el Parent por
+  // completo (relaciones, cuenta de acceso si tiene, y el registro). El
+  // backend ya bloquea el borrado si dejaría a un estudiante sin ningún tutor
+  // legal, o si tiene historial financiero (Charge/Payment).
+  const handleDelete = async (row: Parent) => {
+    if (!await confirm(
+      `¿Eliminar definitivamente a ${row.lastName} ${row.firstName}? Usá esto solo si es un registro duplicado por error — se borra su cuenta de acceso (si tiene) y todos sus vínculos. No se puede deshacer.`,
+      { danger: true }
+    )) return
+    setDeletingId(row.id)
+    try {
+      const res  = await fetch(`${API_URL}/api/parents/${row.id}`, { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) { toast(data.message || 'No se pudo eliminar', 'error'); return }
+      toast('Registro eliminado', 'success')
+      fetchParents()
+    } catch { toast('Error de conexión', 'error') }
+    finally { setDeletingId(null) }
+  }
+
+  // Bloquea/desbloquea el ACCESO del padre al sistema (User.isActive) —
+  // independiente de cualquier otro estado, mismo endpoint que ya usa
+  // "Padres registrados" de Junta Escolar.
+  const handleToggleAccess = async (row: Parent) => {
+    if (!row.user) return
+    const activar = !row.user.isActive
+    if (!await confirm(`¿${activar ? 'Habilitar' : 'Bloquear'} el acceso al sistema de ${row.firstName} ${row.lastName}?`, { danger: !activar })) return
+    setTogglingId(row.id)
+    try {
+      const res  = await fetch(`${API_URL}/api/parents/${row.id}/toggle`, { method: 'PATCH', headers: { Authorization: `Bearer ${token}` } })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) { toast(data.message || 'No se pudo actualizar el acceso', 'error'); return }
+      toast(data.message || 'Acceso actualizado', 'success')
+      fetchParents()
+    } catch { toast('Error de conexión', 'error') }
+    finally { setTogglingId(null) }
+  }
+
   const copyCreds = () => {
     if (!creds) return
     navigator.clipboard.writeText(`Nombre: ${creds.name}\nEmail: ${creds.accessEmail}\nContraseña: ${creds.defaultPassword}`)
@@ -246,13 +345,30 @@ export default function PadresPage() {
     },
     {
       key: 'actions', header: 'Acciones', render: (p) => (
-        <div className="flex gap-1.5">
+        <div className="flex gap-1.5 flex-wrap">
           <button title="Ver detalle" onClick={() => router.push(`/dashboard/admin/padres/${p.id}`)} className="w-7 h-7 rounded-md bg-info-500/15 text-info-500 flex items-center justify-center hover:opacity-75">
             <Eye size={13} />
           </button>
           <button title="Vincular estudiante" onClick={() => openLink(p.id)} className="w-7 h-7 rounded-md bg-success-100 text-success-700 flex items-center justify-center hover:opacity-75">
             <LinkIcon size={13} />
           </button>
+          {canManageParents && (
+            <>
+              <button title="Editar" onClick={() => openEdit(p)} className="w-7 h-7 rounded-md bg-accent-500/15 text-accent-600 flex items-center justify-center hover:opacity-75">
+                <Pencil size={13} />
+              </button>
+              <button
+                title={!p.user ? 'Este padre no tiene cuenta de acceso' : p.user.isActive ? 'Bloquear acceso' : 'Habilitar acceso'}
+                onClick={() => handleToggleAccess(p)} disabled={!p.user || togglingId === p.id}
+                className={`w-7 h-7 rounded-md flex items-center justify-center hover:opacity-75 disabled:opacity-40 ${p.user?.isActive ? 'bg-danger-100 text-danger-600' : 'bg-success-100 text-success-700'}`}
+              >
+                <Power size={13} />
+              </button>
+              <button title="Eliminar" onClick={() => handleDelete(p)} disabled={deletingId === p.id} className="w-7 h-7 rounded-md bg-danger-100 text-danger-600 flex items-center justify-center hover:opacity-75 disabled:opacity-40">
+                <Trash2 size={13} />
+              </button>
+            </>
+          )}
         </div>
       ),
     },
@@ -264,7 +380,7 @@ export default function PadresPage() {
         <div>
           <h1 className="text-xl font-bold text-brand-700 mb-1">Padres y Tutores</h1>
           <p className="text-[13px] text-neutral-500">
-            Consulta y vinculación con estudiantes — el registro de nuevos padres lo gestiona la Junta Escolar
+            Consulta, edición y vinculación con estudiantes — para registrar un padre/tutor nuevo, hacelo desde el detalle del estudiante (Estudiantes → detalle → &quot;Registrar padre/tutor&quot;)
           </p>
         </div>
       </div>
@@ -415,6 +531,46 @@ export default function PadresPage() {
             <p className="text-[12px] text-[#8A6116] bg-warning-100 rounded-lg px-3 py-2.5">⚠️ Anota estas credenciales. No se podrán ver de nuevo.</p>
           </div>
         )}
+      </Modal>
+
+      {/* Modal editar padre/tutor -- mismo patrón que familias/page.tsx */}
+      <Modal
+        open={!!editingRow} onClose={() => setEditingRow(null)} title="Editar Padre/Tutor"
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => setEditingRow(null)}>Cancelar</Button>
+            <Button onClick={handleSaveEdit} loading={editSaving}>Guardar</Button>
+          </>
+        }
+      >
+        <div className="flex flex-col gap-3.5">
+          {editError && <p className="text-[13px] text-danger-600 bg-danger-100 rounded-lg px-3 py-2">{editError}</p>}
+          <div className="grid grid-cols-2 gap-3">
+            <Input label="Nombres" required value={editForm.firstName} onChange={e => setEditForm({ ...editForm, firstName: e.target.value })} />
+            <Input label="Apellidos" required value={editForm.lastName} onChange={e => setEditForm({ ...editForm, lastName: e.target.value })} />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <Input label="CI" value={editForm.ci} onChange={e => setEditForm({ ...editForm, ci: e.target.value })} />
+            <Input label="Teléfono" value={editForm.phone} onChange={e => setEditForm({ ...editForm, phone: e.target.value })} />
+          </div>
+          <Input label="Correo personal (opcional)" type="email" value={editForm.email} onChange={e => setEditForm({ ...editForm, email: e.target.value })} />
+          <Input label="Dirección" value={editForm.address} onChange={e => setEditForm({ ...editForm, address: e.target.value })} />
+          <Input label="N° Kardex" value={editForm.kardex} onChange={e => setEditForm({ ...editForm, kardex: e.target.value })} />
+
+          <div className="border-t border-neutral-100 pt-3 flex flex-col gap-2">
+            <span className="text-[11px] font-semibold text-neutral-500 uppercase tracking-wide">Correo de acceso al sistema</span>
+            {editingRow?.user ? (
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-[13px] font-mono text-brand-700 bg-neutral-100 border border-neutral-300 rounded-lg px-3 py-2 break-all">{editingRow.user.email}</span>
+                <Button size="sm" variant="secondary" onClick={handleRegenerateEmail} loading={regenerating}>
+                  <RefreshCw size={12}/> Regenerar correo institucional
+                </Button>
+              </div>
+            ) : (
+              <span className="text-[12px] text-neutral-500 italic">Sin cuenta de acceso</span>
+            )}
+          </div>
+        </div>
       </Modal>
     </div>
   )

@@ -27,10 +27,20 @@ const STAFF_ROLE_BY_USER_ROLE: Partial<Record<Role, StaffRole>> = {
 // Un DIRECTOR_DISTRITAL solo puede gestionar (editar/desactivar/resetear/eliminar)
 // las cuentas que él mismo creó — ver a un Director de otro colegio en la lista no
 // significa poder tocar su cuenta.
-function assertManageableByDistrictDirector(user: { createdByUserId: number | null }) {
+//
+// Un DIRECTOR (de colegio) solo puede gestionar cuentas de los roles que él
+// mismo puede crear (CREATABLE_ROLES — Maestro, Maestro Tutor, Regente,
+// Secretaria, Psicóloga, Portero). El resto (Delegado, Junta Escolar, Padre,
+// Estudiante, otro Director) los ve en el listado (USER_VIEW_ALL ya se lo
+// permite) pero no puede editarlos/desactivarlos/resetearles la contraseña/
+// eliminarlos — solo lectura. Confirmado explícitamente con Raul.
+function assertManageableByDirector(user: { createdByUserId: number | null; role: Role }) {
   const ctx = getTenantContext()
   if (ctx?.role === Role.DIRECTOR_DISTRITAL && user.createdByUserId !== ctx.userId) {
     throw new HttpError(403, 'Solo puedes gestionar los usuarios que vos mismo creaste')
+  }
+  if (ctx?.role === Role.DIRECTOR && !(CREATABLE_ROLES[Role.DIRECTOR] || []).includes(user.role)) {
+    throw new HttpError(403, 'Solo podés gestionar usuarios de los roles que podés crear (Maestro, Maestro Tutor, Regente, Secretaria, Psicóloga, Portero) — el resto queda en modo solo lectura')
   }
 }
 
@@ -142,7 +152,7 @@ export const userService = {
   async updateUser(id: number, input: UpdateUserInput) {
     const existing = await userRepository.findById(id)
     if (!existing) throw new HttpError(404, 'Usuario no encontrado')
-    assertManageableByDistrictDirector(existing)
+    assertManageableByDirector(existing)
 
     const data: Partial<{ email: string; role: UpdateUserInput['role']; password: string }> = {}
     if (input.email)    data.email = input.email
@@ -155,7 +165,7 @@ export const userService = {
   async toggleUserStatus(id: number, requesterId: number) {
     const user = await userRepository.findById(id)
     if (!user) throw new HttpError(404, 'Usuario no encontrado')
-    assertManageableByDistrictDirector(user)
+    assertManageableByDirector(user)
 
     if (user.id === requesterId) {
       throw new HttpError(400, 'No puedes desactivar tu propio usuario')
@@ -167,7 +177,7 @@ export const userService = {
   async resetPassword(id: number) {
     const user = await userRepository.findById(id)
     if (!user) throw new HttpError(404, 'Usuario no encontrado')
-    assertManageableByDistrictDirector(user)
+    assertManageableByDirector(user)
 
     const random      = Math.floor(100 + Math.random() * 900)
     const newPassword = `temp${new Date().getFullYear()}${random}`
@@ -189,7 +199,7 @@ export const userService = {
   async deleteUser(id: number) {
     const user = await userRepository.findById(id)
     if (!user) throw new HttpError(404, 'Usuario no encontrado')
-    assertManageableByDistrictDirector(user)
+    assertManageableByDirector(user)
 
     // Nuevo desde que createUser empezó a crear el Staff vinculado (ver
     // STAFF_ROLE_BY_USER_ROLE): Staff_userId_fkey es RESTRICT, así que borrar

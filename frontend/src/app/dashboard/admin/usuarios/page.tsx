@@ -44,12 +44,31 @@ const BOARD_ROLES = new Set(['JUNTA_NUCLEO', 'JUNTA_DISTRITO', 'GOBIERNO_NUCLEO'
 // ya rechaza (403) cualquier rol fuera de esta lista, esto es solo para no
 // mostrarle a cada rol opciones que igual le van a ser rechazadas. SUPER_ADMIN
 // no tiene restricción (ver getCreatableRoles).
+//
+// DIRECTOR corregido (confirmado con Raul) — antes tenía 12 roles, incluidos
+// PARENT/STUDENT/DELEGATE/JUNTA_ESCOLAR/STUDENT_GOV/STAFF, que se crean por
+// endpoints dedicados propios (nunca por este createUser genérico) — tenerlos
+// acá permitía crear una cuenta suelta sin ningún perfil real detrás. Estos 6
+// son los ÚNICOS roles que Director puede crear Y gestionar (ver también
+// canManageUser más abajo, que reusa esta misma lista para
+// editar/desactivar/eliminar en la tabla).
 const CREATABLE_ROLES: Record<string, string[]> = {
   DIRECTOR_DISTRITAL: ['DIRECTOR', 'REGENTE', 'SECRETARY', 'JUNTA_DISTRITO', 'GOBIERNO_DISTRITO'],
-  DIRECTOR: ['REGENTE', 'SECRETARY', 'PSICOLOGO', 'TEACHER', 'TEACHER_TUTOR', 'STAFF', 'PORTERO', 'PARENT', 'STUDENT', 'DELEGATE', 'JUNTA_ESCOLAR', 'STUDENT_GOV'],
+  DIRECTOR: ['TEACHER', 'TEACHER_TUTOR', 'REGENTE', 'SECRETARY', 'PSICOLOGO', 'PORTERO'],
   JUNTA_DISTRITO: ['JUNTA_DISTRITO', 'JUNTA_NUCLEO', 'JUNTA_ESCOLAR'],
   JUNTA_NUCLEO: ['JUNTA_ESCOLAR'],
   GOBIERNO_DISTRITO: ['GOBIERNO_NUCLEO', 'STUDENT_GOV'],
+}
+
+// Espejo de assertManageableByDirector en backend/src/services/user.service.ts
+// — Director puede VER cualquier rol (USER_VIEW_ALL), pero solo
+// editar/desactivar/resetear/eliminar los roles que puede crear
+// (CREATABLE_ROLES.DIRECTOR). El resto queda solo en visualización acá — el
+// backend ya lo rechaza con 403 igual, esto es solo para no ofrecer botones
+// que van a fallar.
+function canManageUser(currentRole: string, targetRole: string): boolean {
+  if (currentRole !== 'DIRECTOR') return true
+  return (CREATABLE_ROLES.DIRECTOR || []).includes(targetRole)
 }
 
 function getCreatableRoleLabels(currentRole: string): Record<string, string> {
@@ -66,9 +85,20 @@ function getCreatableRoleLabels(currentRole: string): Record<string, string> {
 const MANAGEMENT_ROLES_FRONT = ['DIRECTOR', 'REGENTE', 'SECRETARY', 'DIRECTOR_DISTRITAL']
 
 function getFilterRoleLabels(currentRole: string): Record<string, string> {
-  if (currentRole !== 'DIRECTOR_DISTRITAL') return roleLabels
-  const allowed = new Set([...MANAGEMENT_ROLES_FRONT, ...(CREATABLE_ROLES[currentRole] || [])])
-  return Object.fromEntries(Object.entries(roleLabels).filter(([k]) => allowed.has(k)))
+  if (currentRole === 'DIRECTOR_DISTRITAL') {
+    const allowed = new Set([...MANAGEMENT_ROLES_FRONT, ...(CREATABLE_ROLES[currentRole] || [])])
+    return Object.fromEntries(Object.entries(roleLabels).filter(([k]) => allowed.has(k)))
+  }
+  // Director: mismo criterio que canManageUser -- solo puede filtrar por los
+  // 6 roles que puede gestionar (Maestro, Maestro Tutor, Regente, Secretaria,
+  // Psicóloga, Portero). El resto los sigue viendo en la tabla (USER_VIEW_ALL
+  // sin restricción, solo lectura), pero no tiene sentido ofrecerlos acá como
+  // filtro si de todas formas no puede editarlos/eliminarlos.
+  if (currentRole === 'DIRECTOR') {
+    const allowed = new Set(CREATABLE_ROLES.DIRECTOR || [])
+    return Object.fromEntries(Object.entries(roleLabels).filter(([k]) => allowed.has(k)))
+  }
+  return roleLabels
 }
 
 const CARGO_LABELS: Record<string, string> = {
@@ -425,7 +455,7 @@ export default function UsuariosPage() {
     { key: 'status', header: 'Estado',  render: (u) => <Badge tone={u.isActive ? 'success' : 'danger'}>{u.isActive ? 'Activo' : 'Inactivo'}</Badge> },
     { key: 'date',   header: 'Fecha',   render: (u) => <span className="text-neutral-500">{new Date(u.createdAt).toLocaleDateString('es-BO')}</span> },
     {
-      key: 'actions', header: 'Acciones', render: (u) => (
+      key: 'actions', header: 'Acciones', render: (u) => canManageUser(currentRole, u.role) ? (
         <div className="flex gap-1.5">
           <button title="Editar" onClick={() => openEdit(u)} className="w-8 h-8 rounded-md bg-accent-500/15 text-accent-600 flex items-center justify-center hover:opacity-75">
             <Edit size={14} />
@@ -441,6 +471,8 @@ export default function UsuariosPage() {
             <Trash2 size={14} />
           </button>
         </div>
+      ) : (
+        <span className="text-[11px] text-neutral-400 italic">Solo lectura</span>
       ),
     },
   ]
