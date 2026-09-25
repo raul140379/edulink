@@ -135,6 +135,18 @@ export const updatePayment = async (req: AuthRequest, res: Response): Promise<vo
 }
 
 // ─────────────────────────────────────────────
+// PATCH /api/treasury/payments/:paymentId/void
+// ─────────────────────────────────────────────
+export const voidPayment = async (req: AuthRequest, res: Response): Promise<void> => {
+  try {
+    const result = await treasuryService.voidPayment(parseInt(req.params.paymentId), req.body.reason)
+    res.json({ message: 'Pago anulado correctamente', ...result })
+  } catch (error) {
+    handleControllerError(res, error)
+  }
+}
+
+// ─────────────────────────────────────────────
 // GET /api/treasury/summary
 // ─────────────────────────────────────────────
 export const getTreasurySummary = async (req: AuthRequest, res: Response): Promise<void> => {

@@ -49,6 +49,13 @@ export const cancelChargeSchema = z.object({
   reason: z.string().trim().min(1, 'El motivo de la cancelación es obligatorio'),
 })
 
+// "Anular pago" -- error de carga puro (monto mal tipeado, pago cargado al
+// tutor equivocado), no una devolución real de dinero (eso es Refund).
+// Motivo obligatorio, mismo criterio que cancelChargeSchema.
+export const voidPaymentSchema = z.object({
+  reason: z.string().trim().min(1, 'El motivo de la anulación es obligatorio'),
+})
+
 export const updateChargeSchema = z.object({
   title:         z.string().min(1).optional(),
   description:   z.string().optional(),
@@ -141,6 +148,7 @@ export type CreateChargeInput             = z.infer<typeof createChargeSchema>
 export type CreateBulkChargesInput        = z.infer<typeof createBulkChargesSchema>
 export type UpdateChargeInput             = z.infer<typeof updateChargeSchema>
 export type CancelChargeInput              = z.infer<typeof cancelChargeSchema>
+export type VoidPaymentInput               = z.infer<typeof voidPaymentSchema>
 export type RegisterPaymentInput          = z.infer<typeof registerPaymentSchema>
 export type UpdatePaymentInput            = z.infer<typeof updatePaymentSchema>
 export type CreateMandatoryChargeInput    = z.infer<typeof createMandatoryChargeSchema>

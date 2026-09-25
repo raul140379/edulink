@@ -5,7 +5,7 @@ import { validateBody } from '../middlewares/validate.middleware'
 import { Permission } from '../config/permissions'
 import {
   createChargeSchema, createBulkChargesSchema, updateChargeSchema, cancelChargeSchema, registerPaymentSchema, updatePaymentSchema,
-  createMandatoryChargeSchema, updateMandatoryChargeSchema, historicalCorrectionSchema, createAndCarryForwardSchema,
+  voidPaymentSchema, createMandatoryChargeSchema, updateMandatoryChargeSchema, historicalCorrectionSchema, createAndCarryForwardSchema,
   registerRefundSchema,
 } from '../schemas/treasury.schema'
 import {
@@ -18,6 +18,7 @@ import {
   cancelCharge,
   registerPayment,
   updatePayment,
+  voidPayment,
   getTreasurySummary,
   getParentsWithBalance,
   getTreasuryByCourse,
@@ -95,5 +96,9 @@ router.patch('/:id/cancel',     requirePermission(Permission.TREASURY_CLOSE_PERI
 // ── Pagos ────────────────────────────────────
 router.post('/:id/payments',           requirePermission(Permission.CHARGE_CREATE), validateBody(registerPaymentSchema), registerPayment)
 router.put('/payments/:paymentId',     requirePermission(Permission.CHARGE_CREATE), validateBody(updatePaymentSchema), updatePayment)
+// TREASURY_CLOSE_PERIOD (no CHARGE_CREATE) a propósito, mismo criterio que
+// "Cancelar cargo" -- anular un pago (error de carga) es exclusivo de
+// JUNTA_ESCOLAR, sin DELEGATE. Confirmado explícitamente por Raul.
+router.patch('/payments/:paymentId/void', requirePermission(Permission.TREASURY_CLOSE_PERIOD), validateBody(voidPaymentSchema), voidPayment)
 
 export default router

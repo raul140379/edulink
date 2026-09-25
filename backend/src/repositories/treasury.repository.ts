@@ -129,8 +129,8 @@ export const treasuryRepository = {
     return [...new Set(rows.filter((r) => normalizeChargeTitle(r.title) === target).map((r) => r.parentId))]
   },
 
-  setChargePaid(id: number, paidAmount: number, status: ChargeStatus) {
-    return prisma.charge.update({ where: { id }, data: { paidAmount, status } })
+  setChargePaid(id: number, paidAmount: number, status: ChargeStatus, tx?: TxClient) {
+    return (tx ?? prisma).charge.update({ where: { id }, data: { paidAmount, status } })
   },
 
   createPayment(data: { amount: number; method: PaymentMethod; reference: string | null; note: string | null; date: Date; chargeId: number; parentId: number }) {
@@ -139,6 +139,24 @@ export const treasuryRepository = {
 
   findPaymentById(id: number) {
     return prisma.payment.findUnique({ where: { id }, include: { charge: { include: { payments: true } } } })
+  },
+
+  // Base de voidPayment — a diferencia de findPaymentById, trae también los
+  // Refund del cargo (para el guard de consistencia: no se puede anular un
+  // pago si el resultado deja paidAmount por debajo de lo ya devuelto).
+  findPaymentForVoid(id: number) {
+    return prisma.payment.findUnique({
+      where: { id },
+      include: { charge: { include: { payments: true, refunds: true } } },
+    })
+  },
+
+  // Borrado físico real — solo para voidPayment (error de carga, el pago
+  // nunca debió existir, ver CLAUDE.md 17.1 / mandatoryChargeService.remove
+  // para el mismo criterio). `tx` explícito para que el AuditLog quede en la
+  // misma transacción.
+  deletePaymentTx(tx: TxClient, id: number) {
+    return tx.payment.delete({ where: { id } })
   },
 
   findPaymentByReference(reference: string) {

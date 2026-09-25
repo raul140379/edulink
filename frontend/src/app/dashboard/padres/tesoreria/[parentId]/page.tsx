@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
-import { ArrowLeft, Plus, DollarSign, CheckCircle, AlertCircle, Clock, CreditCard, Pencil, Ban } from 'lucide-react'
+import { ArrowLeft, Plus, DollarSign, CheckCircle, AlertCircle, Clock, CreditCard, Pencil, Ban, Trash2 } from 'lucide-react'
 import Card from '@/components/ui/Card'
 import Badge from '@/components/ui/Badge'
 import Button from '@/components/ui/Button'
@@ -114,6 +114,9 @@ export default function TutorAccountPage() {
   const [chargeToCancel, setChargeToCancel] = useState<Charge | null>(null)
   const [cancelReason,   setCancelReason]   = useState('')
   const [cancelling,     setCancelling]     = useState(false)
+  const [paymentToVoid,  setPaymentToVoid]  = useState<Payment | null>(null)
+  const [voidReason,     setVoidReason]     = useState('')
+  const [voiding,        setVoiding]        = useState(false)
 
   const fetchAccount = async () => {
     const token = localStorage.getItem('token')
@@ -191,6 +194,26 @@ export default function TutorAccountPage() {
       fetchAccount()
     } catch { toast('Error de conexión', 'error') }
     finally  { setCancelling(false) }
+  }
+
+  const handleConfirmVoidPayment = async () => {
+    if (!paymentToVoid || !voidReason.trim()) return
+    const token = localStorage.getItem('token')
+    setVoiding(true)
+    try {
+      const res  = await fetch(`${API_URL}/api/treasury/payments/${paymentToVoid.id}/void`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ reason: voidReason.trim() }),
+      })
+      const data = await res.json()
+      if (!res.ok) { toast(data.message, 'error'); return }
+      toast(data.message, 'success')
+      setPaymentToVoid(null)
+      setVoidReason('')
+      fetchAccount()
+    } catch { toast('Error de conexión', 'error') }
+    finally  { setVoiding(false) }
   }
 
   if (loading) return <div className="flex justify-center py-16"><p className="text-sm text-neutral-500">Cargando...</p></div>
@@ -285,9 +308,14 @@ export default function TutorAccountPage() {
                           <span className="text-neutral-500">{fmtDate(p.date)}</span>
                           {p.reference && <span className="text-neutral-500 italic">Ref: {p.reference}</span>}
                           {canEdit && (
-                            <button onClick={() => openEditPayment(c, p)} className="ml-auto text-brand-600 hover:text-brand-700 flex items-center gap-0.5">
-                              <Pencil size={11}/> Editar
-                            </button>
+                            <div className="ml-auto flex items-center gap-2.5">
+                              <button onClick={() => openEditPayment(c, p)} className="text-brand-600 hover:text-brand-700 flex items-center gap-0.5">
+                                <Pencil size={11}/> Editar
+                              </button>
+                              <button onClick={() => { setPaymentToVoid(p); setVoidReason('') }} className="text-danger-600 hover:text-danger-700 flex items-center gap-0.5">
+                                <Trash2 size={11}/> Anular
+                              </button>
+                            </div>
                           )}
                         </div>
                       ))}
@@ -351,9 +379,14 @@ export default function TutorAccountPage() {
                           <span className="text-neutral-500">{fmtDate(p.date)}</span>
                           {p.reference && <span className="text-neutral-500 italic">Ref: {p.reference}</span>}
                           {canEdit && (
-                            <button onClick={() => openEditPayment(c, p)} className="ml-auto text-brand-600 hover:text-brand-700 flex items-center gap-0.5">
-                              <Pencil size={11}/> Editar
-                            </button>
+                            <div className="ml-auto flex items-center gap-2.5">
+                              <button onClick={() => openEditPayment(c, p)} className="text-brand-600 hover:text-brand-700 flex items-center gap-0.5">
+                                <Pencil size={11}/> Editar
+                              </button>
+                              <button onClick={() => { setPaymentToVoid(p); setVoidReason('') }} className="text-danger-600 hover:text-danger-700 flex items-center gap-0.5">
+                                <Trash2 size={11}/> Anular
+                              </button>
+                            </div>
                           )}
                         </div>
                       ))}
@@ -477,6 +510,42 @@ export default function TutorAccountPage() {
               label="Motivo de la cancelación" required
               placeholder="Ej: condonación aprobada por Junta, compensado con otro cargo, error de duplicado..."
               value={cancelReason} onChange={e => setCancelReason(e.target.value)}
+            />
+          </div>
+        )}
+      </Modal>
+
+      {/* Modal anular pago -- error de carga puro (monto mal tipeado, tutor
+          equivocado), NO una devolución real de dinero -- eso es "Registrar
+          devolución" (Refund), que queda intacto y separado. Motivo
+          obligatorio, mismo criterio que cancelar cargo. El pago se borra
+          físicamente (queda registrado en AuditLog, sin pantalla propia). */}
+      <Modal
+        open={!!paymentToVoid} onClose={() => { setPaymentToVoid(null); setVoidReason('') }}
+        title="Anular pago"
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => { setPaymentToVoid(null); setVoidReason('') }}>Volver</Button>
+            <Button variant="danger" onClick={handleConfirmVoidPayment} loading={voiding} disabled={!voidReason.trim()}>
+              {!voiding && <Trash2 size={14}/>}
+              {voiding ? 'Anulando...' : 'Confirmar anulación'}
+            </Button>
+          </>
+        }
+      >
+        {paymentToVoid && (
+          <div className="flex flex-col gap-4">
+            <div className="bg-neutral-100 border border-neutral-300 rounded-lg p-3 text-[13px] text-neutral-500 leading-relaxed">
+              <strong className="text-brand-700">{fmt(paymentToVoid.amount)}</strong> — {METHOD_LABELS[paymentToVoid.method] || paymentToVoid.method}
+              {paymentToVoid.reference && <> · Ref: {paymentToVoid.reference}</>}<br/>
+              Usá esto solo para un <strong>error de carga</strong> (monto mal tipeado, pago cargado al tutor equivocado) —
+              el pago se borra por completo y el cargo recalcula su saldo. Si el tutor sí pagó de más y hay que devolverle
+              dinero real, usá &quot;Registrar devolución&quot; en su lugar. Esta acción no se puede deshacer desde acá.
+            </div>
+            <Textarea
+              label="Motivo de la anulación" required
+              placeholder="Ej: monto mal tipeado (se cargó Bs. 500 en vez de Bs. 50), pago cargado al tutor equivocado..."
+              value={voidReason} onChange={e => setVoidReason(e.target.value)}
             />
           </div>
         )}

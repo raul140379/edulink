@@ -2,10 +2,12 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Clock, RefreshCw } from 'lucide-react'
+import { Clock, RefreshCw, Trash2 } from 'lucide-react'
 import Card from '@/components/ui/Card'
 import Badge from '@/components/ui/Badge'
 import Button from '@/components/ui/Button'
+import Modal from '@/components/ui/Modal'
+import { Textarea } from '@/components/ui/Input'
 import Table, { Column } from '@/components/ui/Table'
 import PageHeader from '@/components/ui/PageHeader'
 import Toolbar from '@/components/ui/Toolbar'
@@ -55,6 +57,11 @@ export default function HistorialPage() {
   const [payments, setPayments] = useState<Payment[]>([])
   const [loading, setLoading]   = useState(true)
   const [page, setPage] = useState(1)
+  const userRole = typeof window !== 'undefined' ? JSON.parse(localStorage.getItem('user') || '{}').role : ''
+  const canVoid  = userRole === 'SUPER_ADMIN' || userRole === 'JUNTA_ESCOLAR'
+  const [paymentToVoid, setPaymentToVoid] = useState<Payment | null>(null)
+  const [voidReason,    setVoidReason]    = useState('')
+  const [voiding,       setVoiding]       = useState(false)
 
   const fetchPayments = () => {
     setLoading(true)
@@ -68,6 +75,26 @@ export default function HistorialPage() {
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(fetchPayments, [])
+
+  const handleConfirmVoidPayment = async () => {
+    if (!paymentToVoid || !voidReason.trim()) return
+    const token = localStorage.getItem('token')
+    setVoiding(true)
+    try {
+      const res  = await fetch(`${API_URL}/api/treasury/payments/${paymentToVoid.id}/void`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ reason: voidReason.trim() }),
+      })
+      const data = await res.json()
+      if (!res.ok) { toast(data.message, 'error'); return }
+      toast(data.message, 'success')
+      setPaymentToVoid(null)
+      setVoidReason('')
+      fetchPayments()
+    } catch { toast('Error de conexión', 'error') }
+    finally  { setVoiding(false) }
+  }
 
   const search = filters.search.trim().toLowerCase()
   const filtered = useMemo(() => !search ? payments : payments.filter(p =>
@@ -108,7 +135,18 @@ export default function HistorialPage() {
       </div>
     ) },
     { key: 'accion', header: 'Acción', render: p => (
-      <Button size="sm" variant="secondary" onClick={() => router.push(`/dashboard/padres/tesoreria/${p.parent.id}`)}>Ver cuenta</Button>
+      <div className="flex items-center gap-2">
+        <Button size="sm" variant="secondary" onClick={() => router.push(`/dashboard/padres/tesoreria/${p.parent.id}`)}>Ver cuenta</Button>
+        {canVoid && (
+          <button
+            onClick={() => { setPaymentToVoid(p); setVoidReason('') }}
+            className="text-[11px] text-danger-600 hover:text-danger-700 flex items-center gap-1"
+            title="Anular pago -- error de carga"
+          >
+            <Trash2 size={12}/> Anular
+          </button>
+        )}
+      </div>
     ) },
   ]
 
@@ -137,6 +175,42 @@ export default function HistorialPage() {
           </div>
         )}
       </Card>
+
+      {/* Modal anular pago -- error de carga puro, NO una devolución real de
+          dinero (eso es "Registrar devolución" en Verificación por Curso,
+          que queda intacto). El pago se borra físicamente (AuditLog, sin
+          pantalla propia) -- mismo criterio que la Cuenta del tutor. */}
+      <Modal
+        open={!!paymentToVoid} onClose={() => { setPaymentToVoid(null); setVoidReason('') }}
+        title="Anular pago"
+        footer={
+          <>
+            <Button variant="secondary" onClick={() => { setPaymentToVoid(null); setVoidReason('') }}>Volver</Button>
+            <Button variant="danger" onClick={handleConfirmVoidPayment} loading={voiding} disabled={!voidReason.trim()}>
+              {!voiding && <Trash2 size={14}/>}
+              {voiding ? 'Anulando...' : 'Confirmar anulación'}
+            </Button>
+          </>
+        }
+      >
+        {paymentToVoid && (
+          <div className="flex flex-col gap-4">
+            <div className="bg-neutral-100 border border-neutral-300 rounded-lg p-3 text-[13px] text-neutral-500 leading-relaxed">
+              <strong className="text-brand-700">{paymentToVoid.parent.lastName} {paymentToVoid.parent.firstName}</strong> —{' '}
+              <strong className="text-brand-700">{fmt(paymentToVoid.amount)}</strong> · {paymentToVoid.charge.title}
+              {paymentToVoid.reference && <> · Ref: {paymentToVoid.reference}</>}<br/>
+              Usá esto solo para un <strong>error de carga</strong> (monto mal tipeado, pago cargado al tutor equivocado) —
+              el pago se borra por completo y el cargo recalcula su saldo. Si el tutor sí pagó de más y hay que devolverle
+              dinero real, usá &quot;Registrar devolución&quot; en su lugar. Esta acción no se puede deshacer desde acá.
+            </div>
+            <Textarea
+              label="Motivo de la anulación" required
+              placeholder="Ej: monto mal tipeado (se cargó Bs. 500 en vez de Bs. 50), pago cargado al tutor equivocado..."
+              value={voidReason} onChange={e => setVoidReason(e.target.value)}
+            />
+          </div>
+        )}
+      </Modal>
     </div>
   )
 }

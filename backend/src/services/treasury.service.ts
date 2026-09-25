@@ -338,6 +338,69 @@ export const treasuryService = {
     }
   },
 
+  // "Anular pago" — para un ERROR DE CARGA puro (monto mal tipeado, pago
+  // cargado al tutor equivocado): el pago nunca debió existir tal cual quedó
+  // registrado, no es que hubo que devolver dinero real (eso es Refund, ver
+  // registerRefund). Por eso se borra físicamente en vez de dejarlo con un
+  // status "anulado" (Payment nunca tuvo ese concepto) — mismo criterio ya
+  // usado en mandatoryChargeService.remove para el mismo tipo de caso: foto
+  // completa en AuditLog.before ANTES de borrar (única forma de reconstruir
+  // qué se borró y por qué después, ver CLAUDE.md 17.1), luego borrado real
+  // dentro de la misma transacción.
+  //
+  // El recálculo de paidAmount/status del cargo reusa EXACTAMENTE la misma
+  // fórmula que updatePayment (sumar los demás pagos del cargo, nunca restar
+  // a ciegas) — acá "el pago nuevo" simplemente no existe.
+  async voidPayment(paymentId: number, reason: string) {
+    const payment = await treasuryRepository.findPaymentForVoid(paymentId)
+    if (!payment) throw new HttpError(404, 'Pago no encontrado')
+    const charge = payment.charge
+    if (charge.status === 'ANULADO') throw new HttpError(400, 'No se puede anular un pago de un cargo anulado')
+
+    const studentIds = await treasuryRepository.findParentStudentIds(charge.parentId)
+    await assertDelegateOwnsParent(studentIds, 'Solo podés anular pagos de tutores de estudiantes de tu propio curso')
+
+    const otherPaymentsTotal = charge.payments
+      .filter((p) => p.id !== paymentId)
+      .reduce((sum, p) => sum + p.amount, 0)
+    const newStatus = otherPaymentsTotal >= charge.amount
+      ? 'PAGADO'
+      : otherPaymentsTotal > 0 ? 'PARCIAL' : 'PENDIENTE'
+
+    // Guard de consistencia con Refund: si ya se registró una devolución
+    // real sobre este cargo, anular el pago no puede dejar paidAmount por
+    // debajo de lo ya devuelto — quedaría "se devolvió más de lo que consta
+    // como pagado", el mismo invariante que ya protege registerRefund
+    // (available = paidAmount - alreadyRefunded).
+    const alreadyRefunded = charge.refunds.reduce((sum, r) => sum + r.amount, 0)
+    if (otherPaymentsTotal < alreadyRefunded) {
+      throw new HttpError(400,
+        `No se puede anular este pago — dejaría el cargo con Bs. ${otherPaymentsTotal.toFixed(2)} pagados, ` +
+        `menos que los Bs. ${alreadyRefunded.toFixed(2)} ya devueltos sobre este cargo. Revisá la devolución primero.`)
+    }
+
+    const ctx = getTenantContext()
+    await prisma.$transaction(async (tx) => {
+      await auditLogRepository.create({
+        action: 'DELETE', entityType: 'Payment', entityId: paymentId,
+        before: {
+          amount: payment.amount, reference: payment.reference, date: payment.date, method: payment.method, note: payment.note,
+          chargeId: charge.id, chargeTitle: charge.title, parentId: charge.parentId,
+          chargeAmountBefore: charge.amount, paidAmountBefore: charge.paidAmount, statusBefore: charge.status,
+        },
+        reason,
+        actorUserId: ctx?.userId ?? null, schoolId: charge.schoolId,
+      }, tx)
+      await treasuryRepository.deletePaymentTx(tx, paymentId)
+      await treasuryRepository.setChargePaid(charge.id, otherPaymentsTotal, newStatus, tx)
+    })
+
+    return {
+      newStatus, paidAmount: otherPaymentsTotal,
+      remaining: chargeBalance({ amount: charge.amount, paidAmount: otherPaymentsTotal }),
+    }
+  },
+
   // Sin academicYearId explícito, se usa la gestión activa por defecto (mismo
   // criterio que getTreasuryByCourse/getVerificationReportByCourse) — antes
   // agregaba TODAS las gestiones juntas, inconsistente con el resto del
