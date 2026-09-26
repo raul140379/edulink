@@ -50,12 +50,28 @@ export const sendBulkNotification = async (req: AuthRequest, res: Response): Pro
   }
 }
 
+// Solo enteros positivos son un `limit` válido -- cualquier otra cosa
+// (decimales como "2.5", negativos, "0", texto, vacío) cae al default.
+// Un entero válido pero mayor al tope se recorta, no se rechaza.
+const DEFAULT_SENT_LIMIT = 50
+const MAX_SENT_LIMIT     = 50
+
+function parseSentLimit(raw: unknown): number {
+  if (typeof raw !== 'string') return DEFAULT_SENT_LIMIT
+  const trimmed = raw.trim()
+  if (!/^\d+$/.test(trimmed)) return DEFAULT_SENT_LIMIT
+  const n = parseInt(trimmed, 10)
+  if (!Number.isFinite(n) || n <= 0) return DEFAULT_SENT_LIMIT
+  return Math.min(n, MAX_SENT_LIMIT)
+}
+
 // ─────────────────────────────────────────────
 // GET /api/notifications/sent — Notificaciones enviadas (maestro/junta)
 // ─────────────────────────────────────────────
 export const getSentNotifications = async (req: AuthRequest, res: Response): Promise<void> => {
   try {
-    res.json(await notificationService.getSentNotifications(req.userId))
+    const limit = parseSentLimit(req.query.limit)
+    res.json(await notificationService.getSentNotifications(req.userId, limit))
   } catch (error) {
     handleControllerError(res, error)
   }

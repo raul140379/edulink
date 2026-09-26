@@ -51,20 +51,23 @@ export const notificationRepository = {
     })
   },
 
-  findSentByUser(userId: number | undefined) {
+  findSentByUser(userId: number | undefined, limit = 50) {
     return prisma.notification.findMany({
       where: { sentById: userId },
       include: { parent: { select: { id: true, firstName: true, lastName: true, phone: true } } },
       orderBy: { createdAt: 'desc' },
-      take: 50,
+      take: limit,
     })
   },
 
   // Historial compartido para DIRECTOR/SECRETARY/REGENTE (ver
   // notification.service.ts) — a diferencia de findSentByUser, varias
   // cuentas admin del mismo colegio pueden enviar, así que incluye quién lo
-  // mandó para poder distinguirlas en pantalla.
-  findSentBySchool(schoolId: number) {
+  // mandó para poder distinguirlas en pantalla. `limit` parametrizable (en
+  // vez de un endpoint nuevo) -- lo reusa el widget "Notificaciones
+  // recientes" del Dashboard con un límite chico (5), admin/notificaciones
+  // sigue pidiendo el default de 50.
+  findSentBySchool(schoolId: number, limit = 50) {
     return prisma.notification.findMany({
       where: { schoolId },
       include: {
@@ -72,7 +75,7 @@ export const notificationRepository = {
         sentBy: { select: { id: true, email: true, role: true } },
       },
       orderBy: { createdAt: 'desc' },
-      take: 50,
+      take: limit,
     })
   },
 }

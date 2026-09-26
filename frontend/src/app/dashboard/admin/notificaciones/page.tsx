@@ -6,6 +6,7 @@ import Card from '@/components/ui/Card'
 import Button from '@/components/ui/Button'
 import { Input, Select, Textarea } from '@/components/ui/Input'
 import { useToast } from '@/components/ui/ToastProvider'
+import { ROLE_LABELS } from '@/constants/roleLabels'
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000'
 
@@ -42,10 +43,6 @@ const GRADE_LABELS: Record<string, string> = {
 const REL_LABELS: Record<string, string> = {
   PADRE: 'Padre', MADRE: 'Madre', TUTOR_LEGAL: 'Tutor Legal', OTRO: 'Otro',
 }
-const ROLE_LABELS: Record<string, string> = {
-  DIRECTOR: 'Dirección', SECRETARY: 'Secretaría', REGENTE: 'Regencia', SUPER_ADMIN: 'Admin',
-}
-
 const fmtDate = (d: string) => new Date(d).toLocaleDateString('es-BO', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
 
 export default function AdminNotificacionesPage() {

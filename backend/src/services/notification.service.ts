@@ -75,13 +75,15 @@ export const notificationService = {
     return { count: input.parentIds.length }
   },
 
-  getSentNotifications(userId: number | undefined) {
+  getSentNotifications(userId: number | undefined, limit = 50) {
     // Director/Secretaría/Regente comparten un único historial por colegio
     // (varias cuentas admin pueden enviar) — Maestro/Junta/Delegado siguen
     // viendo solo lo que ellos mismos enviaron, sin cambios.
+    // `limit` ya viene validado como entero positivo 1-50 desde el
+    // controller (parseSentLimit) — acá no hace falta re-clampear.
     const ctx = getTenantContext()
     const isAdminRole = ctx?.role === Role.DIRECTOR || ctx?.role === Role.SECRETARY || ctx?.role === Role.REGENTE
-    if (isAdminRole && ctx.schoolId) return notificationRepository.findSentBySchool(ctx.schoolId)
-    return notificationRepository.findSentByUser(userId)
+    if (isAdminRole && ctx.schoolId) return notificationRepository.findSentBySchool(ctx.schoolId, limit)
+    return notificationRepository.findSentByUser(userId, limit)
   },
 }
